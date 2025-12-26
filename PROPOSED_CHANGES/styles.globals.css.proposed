@@ -1,0 +1,375 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================
+   ABEELY BRAND IDENTITY DESIGN SYSTEM
+   ======================================== */
+
+:root {
+    /* Core Colors - Light Mode */
+    --background: #ffffff;
+    --foreground: #0f172a;
+    --card: #ffffff;
+    --card-foreground: #0f172a;
+    --popover: #ffffff;
+    --popover-foreground: #0f172a;
+    
+    /* Primary - Brand Teal #1E968C */
+    --primary: #1E968C;
+    --primary-foreground: #ffffff;
+    
+    /* Secondary - Soft Gray */
+    --secondary: #f1f5f9;
+    --secondary-foreground: #0f172a;
+    
+    /* Muted */
+    --muted: #f1f5f9;
+    --muted-foreground: #64748b;
+    
+    /* Accent - Brand Deep Blue #153659 */
+    --accent: #153659;
+    --accent-foreground: #ffffff;
+    
+    /* Destructive - Red */
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    
+    /* Borders & Inputs */
+    --border: #e2e8f0;
+    --input: #e2e8f0;
+    --ring: #1E968C;
+    
+    /* Radius */
+    --radius: 0.75rem;
+}
+
+.dark {
+    --background: #0a0a0f;
+    --foreground: #f8fafc;
+    --card: #111118;
+    --card-foreground: #f8fafc;
+    --popover: #111118;
+    --popover-foreground: #f8fafc;
+    
+    /* Primary - Lighter Teal for Dark Mode */
+    --primary: #2db5a9;
+    --primary-foreground: #ffffff;
+    
+    --secondary: #1e1e2d;
+    --secondary-foreground: #f8fafc;
+    
+    --muted: #1e1e2d;
+    --muted-foreground: #94a3b8;
+    
+    /* Accent - Brand Deep Blue */
+    --accent: #153659;
+    --accent-foreground: #ffffff;
+    
+    --destructive: #dc2626;
+    --destructive-foreground: #ffffff;
+    
+    --border: #27272a;
+    --input: #27272a;
+    --ring: #2db5a9;
+}
+
+* {
+    border-color: var(--border);
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: 'Tajawal', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ========================================
+   GLASSMORPHISM EFFECTS - Brand Colors
+   ======================================== */
+.glass {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(30, 150, 140, 0.1);
+}
+
+.dark .glass {
+    background: rgba(21, 54, 89, 0.3);
+    border: 1px solid rgba(30, 150, 140, 0.2);
+}
+
+.glass-card {
+    background: var(--card);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 12px rgba(30, 150, 140, 0.08);
+}
+
+/* ========================================
+   PREMIUM BUTTON STYLES - Brand Colors
+   ======================================== */
+.btn-premium {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.btn-premium:hover {
+    box-shadow: 0 10px 25px -5px rgba(30, 150, 140, 0.3);
+    transform: translateY(-2px);
+}
+
+.btn-premium:active {
+    transform: scale(0.98);
+    box-shadow: none;
+}
+
+.btn-gradient {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+    color: white;
+}
+
+.btn-gradient:hover {
+    opacity: 0.9;
+}
+
+/* ========================================
+   CARD HOVER EFFECTS - Brand Colors
+   ======================================== */
+.card-lift {
+    transition: all 0.3s ease;
+}
+
+.card-lift:hover {
+    box-shadow: 0 10px 30px -5px rgba(30, 150, 140, 0.15);
+    transform: translateY(-4px);
+}
+
+.card-glow {
+    transition: all 0.3s ease;
+}
+
+.card-glow:hover {
+    box-shadow: 0 0 20px rgba(30, 150, 140, 0.25);
+    border-color: rgba(30, 150, 140, 0.3);
+}
+
+/* ========================================
+   SKELETON LOADING
+   ======================================== */
+.skeleton {
+    position: relative;
+    overflow: hidden;
+    background: var(--muted);
+    border-radius: 0.5rem;
+}
+
+.skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(30, 150, 140, 0.1) 50%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+}
+
+/* ========================================
+   INPUT STYLES - Brand Focus
+   ======================================== */
+.input-premium {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--input);
+    background: var(--background);
+    transition: all 0.2s ease;
+}
+
+.input-premium:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(30, 150, 140, 0.1);
+}
+
+.input-premium::placeholder {
+    color: var(--muted-foreground);
+    opacity: 0.5;
+}
+
+/* ========================================
+   TEXT GRADIENT - Brand Colors
+   ======================================== */
+.text-gradient {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* ========================================
+   SCROLLBAR - Brand Colors
+   ======================================== */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 10px;
+    opacity: 0.3;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+    opacity: 0.6;
+}
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+.animate-in {
+    animation-duration: 0.3s;
+    animation-timing-function: ease-out;
+    animation-fill-mode: forwards;
+}
+
+.fade-in {
+    animation-name: fade-in;
+}
+
+.slide-in-from-top-2 {
+    animation-name: slide-in-from-top-2;
+}
+
+.slide-in-from-bottom-2 {
+    animation-name: slide-in-from-bottom-2;
+}
+
+.slide-in-from-right-2 {
+    animation-name: slide-in-from-right-2;
+}
+
+.slide-in-from-left-2 {
+    animation-name: slide-in-from-left-2;
+}
+
+.zoom-in {
+    animation-name: zoom-in;
+}
+
+/* ========================================
+   STAGGER ANIMATION
+   ======================================== */
+.stagger-children > * {
+    animation: fade-up 0.4s ease-out forwards;
+    opacity: 0;
+}
+
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 250ms; }
+
+/* Keyframes */
+@keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fade-up {
+    from { 
+        opacity: 0; 
+        transform: translateY(10px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+@keyframes slide-in-from-top-2 {
+    from { 
+        transform: translateY(-0.5rem); 
+        opacity: 0; 
+    }
+    to { 
+        transform: translateY(0); 
+        opacity: 1; 
+    }
+}
+
+@keyframes slide-in-from-bottom-2 {
+    from { 
+        transform: translateY(0.5rem); 
+        opacity: 0; 
+    }
+    to { 
+        transform: translateY(0); 
+        opacity: 1; 
+    }
+}
+
+@keyframes slide-in-from-right-2 {
+    from { 
+        transform: translateX(0.5rem); 
+        opacity: 0; 
+    }
+    to { 
+        transform: translateX(0); 
+        opacity: 1; 
+    }
+}
+
+@keyframes slide-in-from-left-2 {
+    from { 
+        transform: translateX(-0.5rem); 
+        opacity: 0; 
+    }
+    to { 
+        transform: translateX(0); 
+        opacity: 1; 
+    }
+}
+
+@keyframes zoom-in {
+    from { 
+        transform: scale(0.95); 
+        opacity: 0; 
+    }
+    to { 
+        transform: scale(1); 
+        opacity: 1; 
+    }
+}
+
+@keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+}
+
