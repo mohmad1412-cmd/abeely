@@ -127,3 +127,5 @@ npm run preview
 ---
 
 تم التطوير بـ ❤️ باستخدام React و Tailwind CSS
+
+**آخر تحديث:** تم ربط المشروع بـ Vercel Auto-Deploy ✅
