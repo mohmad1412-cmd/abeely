@@ -653,38 +653,37 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ onRequestPublished, isGuest 
         console.log("✅ الذكاء الاصطناعي متصل بنجاح");
       }
       
-      // If AI is not connected and no messages exist, create manual draft immediately
-      if (!status.connected) {
-        setMessages((prev) => {
-          if (prev.length === 0) {
-            const emptyDraft: ChatMessage = {
-              id: Date.now().toString(),
-              role: "ai",
-              text: "", // No text - just show the form directly
-              isDraftPreview: true,
-              draftData: {
-                title: "", // Will be auto-generated on publish
-                description: "",
-                location: "",
-                categories: [],
-                budgetMin: "",
-                budgetMax: "",
-                deliveryTimeFrom: "",
-                budgetType: "negotiable",
-                seriousness: seriousnessLevel,
-                suggestions: [],
-                isNeighborhoodEnabled: false,
-                isBudgetEnabled: false,
-                isDeliveryEnabled: false,
-                isAttachmentsEnabled: false,
-              },
-            };
-            return [emptyDraft];
-          }
-          return prev;
-        });
-        setConversationTitle("طلب جديد");
-      }
+      // Always create draft card if no messages exist (whether AI is connected or not)
+      // This ensures accordions are always visible
+      setMessages((prev) => {
+        if (prev.length === 0) {
+          const emptyDraft: ChatMessage = {
+            id: Date.now().toString(),
+            role: "ai",
+            text: "", // No text - just show the form directly
+            isDraftPreview: true,
+            draftData: {
+              title: "", // Will be auto-generated on publish
+              description: "",
+              location: "",
+              categories: [],
+              budgetMin: "",
+              budgetMax: "",
+              deliveryTimeFrom: "",
+              budgetType: "negotiable",
+              seriousness: seriousnessLevel,
+              suggestions: [],
+              isNeighborhoodEnabled: false,
+              isBudgetEnabled: false,
+              isDeliveryEnabled: false,
+              isAttachmentsEnabled: false,
+            },
+          };
+          setConversationTitle("طلب جديد");
+          return [emptyDraft];
+        }
+        return prev;
+      });
     };
     
     // Start check immediately (no delay)
@@ -3063,6 +3062,7 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
       <LayoutGroup>
         <div className="sticky top-0 z-40 bg-background shadow-sm">
           {/* Render headers in order: closed one first, open one second (at bottom) */}
+          {/* Always show Smart Mode accordion when AI is connected */}
           {!smartModeOpen && aiConnected === true && (
             <motion.div
               layout
@@ -3075,7 +3075,7 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
               <button
                 onClick={() => {
                   setSmartModeOpen(true);
-                  setManualModeOpen(false);
+                  // Don't close manual mode - keep both accordions available
                 }}
                 className="w-full text-right flex items-center justify-between px-4 py-3 transition-colors"
               >
@@ -3090,6 +3090,7 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
             </motion.div>
           )}
 
+          {/* Always show Manual Mode accordion */}
           {!manualModeOpen && (
             <motion.div
               layout
@@ -3102,7 +3103,7 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
               <button
                 onClick={() => {
                   setManualModeOpen(true);
-                  setSmartModeOpen(false);
+                  // Don't close smart mode - keep both accordions available
                 }}
                 className="w-full text-right flex items-center justify-between px-4 py-3 transition-colors"
               >
@@ -3251,29 +3252,12 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
       </LayoutGroup>
       
       {/* Smart Mode Content - Chat with AI */}
-      <AnimatePresence>
-        {aiConnected === true && smartModeOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: "easeInOut" }}
-            className="overflow-visible"
-          >
-            <div className="px-4 py-6 bg-background text-center">
-              <div className="text-primary text-4xl mb-3">🤖</div>
-              <p className="text-sm text-muted-foreground mb-2">
-                الوضع الذكي نشط! اكتب طلبك في شريط الإدخال أدناه
-              </p>
-              <p className="text-xs text-muted-foreground/70">
-                سيساعدك المساعد الذكي في صياغة طلبك باحترافية
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* When Smart Mode is open, the chat interface below handles the AI interaction */}
+      {/* No separate section needed - AI chat works directly through the message interface */}
+      {/* AI chat works directly through the message interface - no separate section needed */}
 
-      {/* Manual Mode Content */}
+      {/* Manual Mode Content - Always available when draft exists */}
+      {/* Manual mode form is always available alongside AI chat for editing */}
       <AnimatePresence>
         {manualModeOpen && (
             <motion.div
