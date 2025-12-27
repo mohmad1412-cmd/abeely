@@ -22,6 +22,11 @@ import {
   X,
   Play,
   Pause,
+  ArrowLeftRight,
+  Bell,
+  Menu,
+  MessageCircle,
+  LogOut,
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { NoMessagesEmpty } from "./ui/EmptyState";
@@ -32,6 +37,8 @@ import { supabase } from "../services/supabaseClient";
 import { generateDraftWithCta, checkAIConnection } from "../services/aiService";
 import { verifyGuestPhone, confirmGuestPhone } from "../services/authService";
 import { AnimatePresence, motion, LayoutGroup } from "framer-motion";
+import { NotificationsPopover } from "./NotificationsPopover";
+import { UnifiedHeader } from "./ui/UnifiedHeader";
 
 
 type AttachmentPreview = { name: string; url: string; file?: File };
@@ -542,6 +549,23 @@ interface ChatAreaProps {
   savedScrollPosition?: number;
   onScrollPositionChange?: (pos: number) => void;
   aiStatus?: { connected: boolean; error?: string };
+  // Unified Header Props
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (open: boolean) => void;
+  mode: 'requests' | 'offers';
+  toggleMode: () => void;
+  isModeSwitching: boolean;
+  unreadCount: number;
+  hasUnreadMessages: boolean;
+  user: any;
+  isGuest: boolean;
+  setView: (view: any) => void;
+  setPreviousView: (view: any) => void;
+  titleKey: number;
+  notifications: any[];
+  onMarkAsRead: (id: string) => void;
+  onClearAll: () => void;
+  onSignOut: () => void;
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({ 
@@ -552,7 +576,23 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   onMessagesChange,
   savedScrollPosition = 0,
   onScrollPositionChange,
-  aiStatus
+  aiStatus,
+  // Unified Header Props
+  isSidebarOpen,
+  setIsSidebarOpen,
+  mode,
+  toggleMode,
+  isModeSwitching,
+  unreadCount,
+  hasUnreadMessages,
+  user,
+  setView,
+  setPreviousView,
+  titleKey,
+  notifications,
+  onMarkAsRead,
+  onClearAll,
+  onSignOut
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(savedMessages || []);
   const [input, setInput] = useState("");
@@ -1955,7 +1995,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   return (
     <>
       <div className="flex-1 flex flex-col h-full bg-background relative min-h-0">
-
         <div 
           ref={scrollContainerRef}
           className={`flex-1 overflow-y-auto min-h-0 relative ${messages.length === 0 && aiConnected !== false ? "flex items-center justify-center p-4" : ""}`}
@@ -1966,6 +2005,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           )}
 
+          {/* Content wrapper - unified header is now sticky above this container */}
+          <div>
           {/* Show messages based on active mode */}
           {/* Draft previews (accordions) always appear */}
           {/* Chat messages (non-draft) appear ONLY inside Smart Mode accordion content */}
@@ -1975,14 +2016,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             
             if (aiConnected === false) {
               // When AI is not connected, show draft previews and AI/system messages
-              filteredMessages = messages.filter((m) => m.isDraftPreview || m.role === "ai");
+              filteredMessages = (messages || []).filter((m) => m.isDraftPreview || m.role === "ai");
             } else if (smartModeOpenState) {
               // When smart mode is open, show ONLY draft previews here
               // Chat messages will be shown inside Smart Mode accordion content
-              filteredMessages = messages.filter((m) => m.isDraftPreview);
+              filteredMessages = (messages || []).filter((m) => m.isDraftPreview);
             } else {
               // When smart mode is closed (manual mode), show only draft previews
-              filteredMessages = messages.filter((m) => m.isDraftPreview);
+              filteredMessages = (messages || []).filter((m) => m.isDraftPreview);
             }
             
             return filteredMessages;
@@ -3040,6 +3081,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           </div>
         )}
+          </div>
       </div>
 
       {/* New Request Confirmation Modal */}
@@ -3339,7 +3381,7 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
     <div className="w-full" id={`draft-${msg.id}`}>
       {/* Sticky Accordion Headers with Layout Animation */}
       <LayoutGroup>
-        <div className={`sticky z-40 bg-background shadow-sm ${
+        <div className={`sticky z-40 bg-background ${
           manualModeOpen 
             ? "top-0" 
             : "bottom-0 mb-1"

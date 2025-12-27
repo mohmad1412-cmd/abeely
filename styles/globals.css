@@ -183,6 +183,49 @@ body {
     animation: shimmer 1.5s infinite;
 }
 
+.loading-shimmer-overlay {
+    position: relative;
+    overflow: hidden;
+}
+
+.loading-shimmer-overlay::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        120deg,
+        transparent 30%,
+        rgba(255, 255, 255, 0.1) 45%,
+        rgba(255, 255, 255, 0.3) 50%,
+        rgba(255, 255, 255, 0.1) 55%,
+        transparent 70%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite linear;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.marketplace-loading-bg {
+    position: relative;
+}
+
+.marketplace-loading-bg::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(30, 150, 140, 0.03) 50%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 3s infinite linear;
+    pointer-events: none;
+    z-index: 0;
+}
+
 /* ========================================
    INPUT STYLES
    ======================================== */
@@ -371,8 +414,8 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 @keyframes shimmer {
-    from { background-position: 200% 0; }
-    to { background-position: -200% 0; }
+    from { background-position: -200% 0; }
+    to { background-position: 200% 0; }
 }
 
 /* ========================================

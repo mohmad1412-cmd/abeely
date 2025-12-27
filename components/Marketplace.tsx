@@ -25,11 +25,17 @@ import {
   ExternalLink,
   ImageIcon,
   Lock,
+  ArrowLeftRight,
+  Menu,
+  LogOut,
+  Check,
+  User,
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
 import { AnimatePresence, motion } from "framer-motion";
 import { CardsGridSkeleton } from "./ui/LoadingSkeleton";
+import { UnifiedHeader } from "./ui/UnifiedHeader";
 
 interface MarketplaceProps {
   requests: Request[];
@@ -46,6 +52,23 @@ interface MarketplaceProps {
   loadError?: string | null;
   savedScrollPosition?: number;
   onScrollPositionChange?: (pos: number) => void;
+  // Main Header Props
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (open: boolean) => void;
+  mode: 'requests' | 'offers';
+  toggleMode: () => void;
+  isModeSwitching: boolean;
+  unreadCount: number;
+  hasUnreadMessages: boolean;
+  user: any;
+  isGuest: boolean;
+  setView: (view: any) => void;
+  setPreviousView: (view: any) => void;
+  titleKey: number;
+  notifications: any[];
+  onMarkAsRead: (id: string) => void;
+  onClearAll: () => void;
+  onSignOut: () => void;
 }
 
 export const Marketplace: React.FC<MarketplaceProps> = ({
@@ -63,6 +86,23 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   loadError = null,
   savedScrollPosition: externalScrollPos = 0,
   onScrollPositionChange,
+  // Main Header Props
+  isSidebarOpen,
+  setIsSidebarOpen,
+  mode,
+  toggleMode,
+  isModeSwitching,
+  unreadCount,
+  hasUnreadMessages,
+  user,
+  isGuest,
+  setView,
+  setPreviousView,
+  titleKey,
+  notifications,
+  onMarkAsRead,
+  onClearAll,
+  onSignOut,
 }) => {
   const [viewMode, setViewMode] = useState<"all" | "interests">("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -135,6 +175,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   ];
 
   const marketplaceScrollRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastScrollPosRef = useRef<number>(0);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
@@ -248,13 +289,18 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       
       // Show scroll to top button if scrolled past the 9th item
       let hasScrolledPast = false;
-      if (requests.length >= 9 && ninthItemRef.current) {
+      if (ninthItemRef.current) {
         const ninthItemTop = ninthItemRef.current.offsetTop;
         const containerTop = container.scrollTop;
         hasScrolledPast = containerTop >= ninthItemTop - container.clientHeight;
       }
       setHasScrolledPastFirstPage(hasScrolledPast);
       setShowScrollToTop(hasScrolledPast);
+
+      // Rule 2: Mission ends if scrolled down past 9 requests
+      if (hasScrolledPast && isAtTop) {
+        setIsAtTop(false);
+      }
       
       // Debounce the parent notification to avoid jitter
       if (scrollTimeoutRef.current) {
@@ -274,7 +320,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         clearTimeout(scrollTimeoutRef.current);
       }
     };
-  }, [onScrollPositionChange, pullToRefreshState.isPulling, requests.length]);
+  }, [onScrollPositionChange, pullToRefreshState.isPulling, requests.length, isAtTop, viewMode]);
 
   // Track if initial scroll restoration happened
   const initialScrollRestored = useRef(false);
@@ -479,17 +525,39 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       ref={marketplaceScrollRef}
       className="h-full overflow-y-auto overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar"
     >
-      {/* Sticky Header Wrapper - High z-index to stay on top */}
-      {/* Sticky Header Wrapper - High z-index to stay on top */}
+      {/* Sticky Header Wrapper - Unified with main header */}
       <div 
-        className={`sticky top-0 z-30 transition-all duration-300 px-4 ${
-          isScrolled || pullToRefreshState.isPulling || pullToRefreshState.isRefreshing
-            ? "bg-background/95 backdrop-blur-xl border-b border-border/50 shadow-sm" 
-            : "bg-transparent"
-        }`}
+        ref={headerRef}
+        className="sticky top-16 z-30 px-4 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-gray-200/30 dark:border-white/10 shadow-sm"
       >
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between py-3 gap-2">
+        <div className="flex flex-col">
+          {/* Main Header Content - Transparent when inside Marketplace */}
+          <UnifiedHeader
+            isSidebarOpen={isSidebarOpen}
+            setIsSidebarOpen={setIsSidebarOpen}
+            mode={mode}
+            toggleMode={toggleMode}
+            isModeSwitching={isModeSwitching}
+            unreadCount={unreadCount}
+            hasUnreadMessages={hasUnreadMessages}
+            user={user}
+            setView={setView}
+            setPreviousView={setPreviousView}
+            titleKey={titleKey}
+            notifications={notifications}
+            onMarkAsRead={onMarkAsRead}
+            onClearAll={onClearAll}
+            onSignOut={onSignOut}
+            currentView="marketplace"
+            transparent={true}
+          />
+
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            className="flex flex-col gap-2 pb-3"
+          >
+            <div className="flex items-center justify-between py-1 gap-2">
             {/* Left Side - Tabs or Search Term */}
             {searchTerm ? (
               <div className="flex items-center gap-2 bg-card px-3 py-1.5 rounded-xl border border-border shadow-md h-11">
@@ -503,16 +571,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 </button>
               </div>
              ) : (
-               <div className="flex items-center gap-1 bg-card p-1 rounded-xl border border-border shadow-md h-11 relative overflow-hidden">
-                 <motion.div 
-                   layout
-                   className="absolute top-1 bottom-1 rounded-lg bg-primary shadow-md"
-                   style={{ 
-                     width: 'calc(50% - 6px)', 
-                     right: viewMode === "all" ? '4px' : 'calc(50% + 2px)' 
-                   }}
-                   transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
-                 />
+               <div className="flex items-center gap-1 bg-card p-1 rounded-2xl border border-border shadow-md h-11 relative overflow-hidden min-w-[240px]">
                  <button
                    onClick={() => {
                      if (navigator.vibrate) navigator.vibrate(15);
@@ -522,13 +581,20 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                      }
                      setViewMode("all");
                    }}
-                   className={`h-full px-5 font-bold transition-all rounded-lg text-xs sm:text-sm flex items-center justify-center relative z-10 flex-1 ${
+                   className={`h-full font-bold transition-all rounded-xl text-xs sm:text-sm flex items-center justify-center relative flex-1 ${
                      viewMode === "all" && !hasActiveFilters
                        ? "text-white"
                        : "text-muted-foreground hover:text-foreground"
                    }`}
                  >
-                   الكل
+                   {viewMode === "all" && !hasActiveFilters && (
+                     <motion.div 
+                       layoutId="active-marketplace-tab"
+                       className="absolute inset-0 rounded-xl bg-primary shadow-sm z-0"
+                       transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
+                     />
+                   )}
+                   <span className="relative z-10 mb-0.5">الكل</span>
                  </button>
                  <button
                    onClick={() => {
@@ -539,37 +605,36 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                      }
                      setViewMode("interests");
                    }}
-                   className={`h-full px-5 font-bold transition-all rounded-lg flex items-center gap-2 text-xs sm:text-sm justify-center relative z-10 flex-1 ${
+                   className={`h-full font-bold transition-all rounded-xl flex items-center gap-2 text-xs sm:text-sm justify-center relative flex-1 ${
                      viewMode === "interests" && !hasActiveFilters
                        ? "text-white"
                        : "text-muted-foreground hover:text-foreground"
                    }`}
                  >
-                   اهتماماتي
-                   {unreadInterestsCount > 0 && (
-                     <span className={`min-w-[18px] h-5 px-1 rounded-full text-[11px] flex items-center justify-center font-bold ${
-                       viewMode === "interests" && !hasActiveFilters ? "bg-white/20 text-white" : "bg-primary/10 text-primary"
-                     }`}>
-                       {unreadInterestsCount}
-                     </span>
+                   {viewMode === "interests" && !hasActiveFilters && (
+                     <motion.div 
+                       layoutId="active-marketplace-tab"
+                       className="absolute inset-0 rounded-xl bg-primary shadow-sm z-0"
+                       transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
+                     />
                    )}
-                   {unreadInterestsCount === 0 && interestsRequests.length > 0 && (
-                     <span className={`min-w-[18px] h-5 px-1 rounded-full text-[11px] flex items-center justify-center font-bold ${
+                   <span className="relative z-10 mb-0.5">اهتماماتي</span>
+                   {(unreadInterestsCount > 0 || interestsRequests.length > 0) && (
+                     <span className={`relative z-10 min-w-[20px] h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center font-bold ${
                        viewMode === "interests" && !hasActiveFilters ? "bg-white/20 text-white" : "bg-primary/10 text-primary"
                      }`}>
-                       {interestsRequests.length}
+                       {unreadInterestsCount > 0 ? unreadInterestsCount : interestsRequests.length}
                      </span>
                    )}
                  </button>
                </div>
             )}
 
-          {/* Right Side - Search Icon */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsSearchPageOpen(true)}
-              className="relative w-11 h-11 flex items-center justify-center rounded-xl bg-card border border-border text-muted-foreground hover:text-primary transition-all active:scale-95 shadow-md overflow-hidden"
-            >
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsSearchPageOpen(true)}
+                className="relative w-11 h-11 flex items-center justify-center rounded-xl bg-card border border-border text-muted-foreground hover:text-primary transition-all active:scale-95 shadow-md"
+              >
             <div className="relative w-full h-full flex items-center justify-center">
               <motion.div
                 animate={{ 
@@ -678,6 +743,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               </div>
             </div>
           )}
+          </motion.div>
         </div>
       </div>
 
@@ -1091,14 +1157,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       </AnimatePresence>
 
       <div className="p-4">
-        {/* Skeleton for initial empty state while loading */}
-        {requests.length === 0 && !loadError && (
-          <div className="mt-4">
-            <CardsGridSkeleton count={6} />
-          </div>
-        )}
-
-        {/* Sub-Filters - Only show when in interests mode */}
+        {/* 1. Sub-Filters (Interests Panel) - ALWAYS TOP when in interests mode */}
         {viewMode === "interests" && (
           <div className="mb-6 animate-in fade-in slide-in-from-top-1">
             {/* Interests Panel - Clean Redesign */}
@@ -1306,6 +1365,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 </div>
               </div>
             </motion.div>
+          </div>
+        )}
+
+        {/* 2. Skeleton/Loading State */}
+        {((viewMode === "all" && requests.length === 0) || (viewMode === "interests" && interestsRequests.length === 0)) && !loadError && (
+          <div className="mt-4">
+            <CardsGridSkeleton count={6} />
           </div>
         )}
 
@@ -1798,15 +1864,138 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         </motion.div>
 
         {/* Load more sentinel + indicator */}
-        <div ref={loadMoreTriggerRef} className="h-10 w-full" />
-        <div className="py-6">
-          {isLoadingMore ? (
-            <CardsGridSkeleton count={3} />
-          ) : hasMore ? (
-            <div className="text-center text-xs text-muted-foreground">مرر للأسفل لتحميل المزيد</div>
-          ) : (
-            <div className="text-center text-xs text-muted-foreground">تم عرض كل الطلبات</div>
-          )}
+        <div ref={loadMoreTriggerRef} className="h-4 w-full" />
+        <div className="py-10 pb-24 min-h-[200px] flex flex-col justify-start">
+          <AnimatePresence mode="wait">
+            {isLoadingMore ? (
+              <motion.div 
+                key="loading-more"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="space-y-8 w-full"
+              >
+                <CardsGridSkeleton count={3} />
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <div className="relative w-10 h-10">
+                    <div className="absolute inset-0 rounded-full border-2 border-primary/10" />
+                    <div className="absolute inset-0 rounded-full border-2 border-t-primary animate-spin" />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.3em] animate-pulse">جاري جلب المزيد...</span>
+                </div>
+              </motion.div>
+            ) : hasMore && !pullToRefreshState.isRefreshing && filteredRequests.length >= 9 ? (
+              <motion.div 
+                key="load-more-button"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="flex flex-col items-center gap-4 py-2 w-full"
+              >
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  animate={{ 
+                    y: [0, 8, 0],
+                  }}
+                  transition={{ 
+                    y: { repeat: Infinity, duration: 2, ease: "easeInOut" },
+                  }}
+                  onClick={() => {
+                    if (onLoadMore) {
+                      onLoadMore();
+                      // Haptic feedback
+                      if (navigator.vibrate) {
+                        navigator.vibrate(10);
+                      }
+                    }
+                  }}
+                  className="relative w-14 h-14 flex items-center justify-center group"
+                >
+                  {/* Background Progress Circle - Matching pull-to-refresh style */}
+                  <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                    <circle
+                      cx="28"
+                      cy="28"
+                      r="24"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      fill="transparent"
+                      className="text-primary/10 group-hover:text-primary/20 transition-colors"
+                    />
+                    <circle
+                      cx="28"
+                      cy="28"
+                      r="24"
+                      stroke="url(#load-more-gradient-v3)"
+                      strokeWidth="3"
+                      fill="transparent"
+                      strokeDasharray={150.7}
+                      strokeDashoffset={150.7 * 0.4}
+                      strokeLinecap="round"
+                      className="opacity-40 group-hover:opacity-100 transition-opacity"
+                    />
+                    <defs>
+                      <linearGradient id="load-more-gradient-v3" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#1E968C" />
+                        <stop offset="100%" stopColor="#153659" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+
+                  {/* Inner Circle with Arrow */}
+                  <div className="w-10 h-10 rounded-full bg-card flex items-center justify-center text-primary shadow-xl border border-primary/10 group-hover:border-primary/30 transition-all">
+                    <motion.div
+                      animate={{ y: [0, 3, 0] }}
+                      transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                    >
+                      <ArrowDown size={22} strokeWidth={2.5} />
+                    </motion.div>
+                  </div>
+                </motion.button>
+                <div className="text-center text-[11px] font-extrabold text-muted-foreground/50 uppercase tracking-[0.2em]">
+                  اضغط للتحميل اليدوي أو مرر للأسفل
+                </div>
+              </motion.div>
+            ) : !hasMore && filteredRequests.length > 0 ? (
+              <motion.div 
+                key="end-of-content"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className="relative overflow-hidden p-8 rounded-[2.5rem] bg-gradient-to-b from-secondary/20 to-transparent border border-border/40 text-center group mx-4 w-full"
+              >
+                {/* Decorative background elements */}
+                <div className="absolute -top-12 -right-12 w-40 h-40 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/8 transition-colors" />
+                <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/8 transition-colors" />
+                
+                <div className="relative z-10 space-y-5">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 text-primary mb-2 shadow-inner">
+                    <Check size={28} strokeWidth={3} />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-black text-foreground">لقد وصلت للنهاية!</h3>
+                    <p className="text-sm text-muted-foreground max-w-[260px] mx-auto leading-relaxed font-medium">
+                      تم عرض كافة الطلبات المتاحة حالياً. تأكد من تحديث الصفحة باستمرار لرؤية العروض الجديدة فور وصولها.
+                    </p>
+                  </div>
+                  
+                  <div className="pt-4 flex flex-col items-center gap-3">
+                    <div className="h-px w-12 bg-border/50" />
+                    <div className="flex items-center gap-2 text-primary/60 text-xs font-bold">
+                      <span>اسحب للأعلى للتحديث</span>
+                      <motion.div 
+                        animate={{ y: [-4, 2, -4] }}
+                        transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                      >
+                        <ChevronUp size={16} strokeWidth={3} />
+                      </motion.div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </div>
       </div>
     </div>

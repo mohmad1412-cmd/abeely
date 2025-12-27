@@ -46,6 +46,7 @@ import { verifyGuestPhone, confirmGuestPhone } from "../services/authService";
 import { markRequestAsViewed, markRequestAsRead } from "../services/requestViewsService";
 import ReactDOM from "react-dom";
 import html2canvas from "html2canvas";
+import { UnifiedHeader } from "./ui/UnifiedHeader";
 
 interface RequestDetailProps {
   request: Request;
@@ -82,10 +83,41 @@ interface RequestDetailProps {
   }) => void;
   savedScrollPosition?: number;
   onScrollPositionChange?: (pos: number) => void;
+  // Unified Header Props
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (open: boolean) => void;
+  toggleMode: () => void;
+  isModeSwitching: boolean;
+  unreadCount: number;
+  hasUnreadMessages: boolean;
+  user: any;
+  setView: (view: any) => void;
+  setPreviousView: (view: any) => void;
+  titleKey: number;
+  notifications: any[];
+  onMarkAsRead: (id: string) => void;
+  onClearAll: () => void;
+  onSignOut: () => void;
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
-  { request, mode, myOffer, onBack, isGuest = false, scrollToOfferSection = false, onNavigateToMessages, autoTranslateRequests = false, currentLanguage = 'ar', onCompleteRequest, savedOfferForm, onOfferFormChange, savedScrollPosition = 0, onScrollPositionChange },
+  { request, mode, myOffer, onBack, isGuest = false, scrollToOfferSection = false, onNavigateToMessages, autoTranslateRequests = false, currentLanguage = 'ar', onCompleteRequest, savedOfferForm, onOfferFormChange, savedScrollPosition = 0, onScrollPositionChange,
+    // Unified Header Props
+    isSidebarOpen,
+    setIsSidebarOpen,
+    toggleMode,
+    isModeSwitching,
+    unreadCount,
+    hasUnreadMessages,
+    user,
+    setView,
+    setPreviousView,
+    titleKey,
+    notifications,
+    onMarkAsRead,
+    onClearAll,
+    onSignOut
+  },
 ) => {
   const [negotiationOpen, setNegotiationOpen] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
@@ -587,14 +619,27 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
   // Scroll to offer section and show pulse animation
   useEffect(() => {
-    if (scrollToOfferSection && offerSectionRef.current) {
+    if (scrollToOfferSection && offerSectionRef.current && scrollContainerRef.current) {
       // Small delay to ensure the component is fully rendered
       setTimeout(() => {
-        offerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const container = scrollContainerRef.current;
+        const target = offerSectionRef.current;
+        if (container && target) {
+          // Calculate target position relative to the scroll container accurately
+          const containerRect = container.getBoundingClientRect();
+          const targetRect = target.getBoundingClientRect();
+          const relativeTop = targetRect.top - containerRect.top + container.scrollTop;
+          
+          // Offset by 70px (header height approx 64px + small gap)
+          container.scrollTo({
+            top: relativeTop - 70,
+            behavior: 'smooth'
+          });
+        }
         setShowOfferPulse(true);
         // Hide pulse after animation
         setTimeout(() => setShowOfferPulse(false), 2000);
-      }, 300);
+      }, 500); // Slightly more delay to ensure layout is stable
     }
   }, [scrollToOfferSection]);
 
@@ -631,106 +676,29 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         />
       )}
 
-      {/* Secondary Header - Sticky with h-16 to match main header */}
-      <motion.div
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.25, ease: "easeOut" }}
-        className={`sticky top-0 z-50 h-16 transition-all duration-300 shrink-0 ${
-          isScrolled
-            ? "bg-background/95 backdrop-blur-xl shadow-sm"
-            : "bg-transparent"
-        }`}
-      >
-        <div className="flex items-center justify-between px-4 h-full">
-          {/* Back Button */}
-          <motion.button
-            onClick={onBack}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
-          >
-            <ArrowRight size={22} strokeWidth={2.5} />
-          </motion.button>
-
-          {/* Title - Shows on scroll with smooth transition */}
-          <AnimatePresence mode="wait">
-            {isScrolled && (
-              <motion.h2
-                key="header-title"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ 
-                  duration: 0.2, 
-                  ease: [0.4, 0, 0.2, 1]
-                }}
-                className="flex-1 font-bold text-base truncate px-4 text-foreground text-center"
-              >
-                {request.title}
-              </motion.h2>
-            )}
-          </AnimatePresence>
-
-          {/* Menu Button */}
-          <div className="relative">
-            <motion.button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
-            >
-              <MoreVertical size={20} />
-            </motion.button>
-
-            <AnimatePresence>
-              {isMenuOpen && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                  className="absolute top-12 left-0 w-48 bg-card border-2 border-border rounded-xl shadow-2xl overflow-hidden z-[60] flex flex-col"
-                >
-                  <button
-                    className="w-full text-right px-4 py-3 hover:bg-secondary flex items-center gap-3 transition-colors text-sm border-b border-border"
-                    onClick={() => {
-                      navigator.clipboard.writeText(request.id);
-                      setIsIdCopied(true);
-                      setTimeout(() => setIsIdCopied(false), 2000);
-                    }}
-                  >
-                    {isIdCopied ? (
-                      <Check size={16} className="text-green-600" />
-                    ) : (
-                      <Copy size={16} className="text-muted-foreground" />
-                    )}
-                    <span className={`font-mono text-xs ${isIdCopied ? 'text-green-600' : ''}`}>
-                      {isIdCopied ? "تم النسخ" : `#${request.id.substring(0, 8)}`}
-                    </span>
-                  </button>
-                  <button
-                    className="w-full text-right px-4 py-3 hover:bg-secondary flex items-center gap-3 transition-colors text-sm border-b border-border"
-                    onClick={() => {
-                      handleShare();
-                      setIsMenuOpen(false);
-                    }}
-                  >
-                    <Share2 size={16} className="text-muted-foreground" />{" "}
-                    مشاركة الطلب
-                  </button>
-                  <button
-                    className="w-full text-right px-4 py-3 hover:bg-red-50 text-red-600 flex items-center gap-3 transition-colors text-sm"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <AlertCircle size={16} /> إبلاغ عن محتوى
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-      </motion.div>
+      {/* Unified Header */}
+      <UnifiedHeader
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={setIsSidebarOpen}
+        mode={mode}
+        toggleMode={toggleMode}
+        isModeSwitching={isModeSwitching}
+        unreadCount={unreadCount}
+        hasUnreadMessages={hasUnreadMessages}
+        user={user}
+        setView={setView}
+        setPreviousView={setPreviousView}
+        titleKey={titleKey}
+        notifications={notifications}
+        onMarkAsRead={onMarkAsRead}
+        onClearAll={onClearAll}
+        onSignOut={onSignOut}
+        backButton={true}
+        onBack={onBack}
+        title={request.title}
+        isScrolled={isScrolled}
+        currentView="request-detail"
+      />
 
       <div className="container mx-auto max-w-5xl flex-1 flex flex-col md:flex-row gap-6 min-h-0 px-4">
         {/* Main Content (Left Side) */}

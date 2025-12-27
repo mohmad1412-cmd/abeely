@@ -49,7 +49,7 @@ export const NotificationsPopover: React.FC<NotificationsPopoverProps> = ({
   onMarkAsRead,
   onClearAll
 }) => {
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const unreadCount = (notifications || []).filter(n => !n.isRead).length;
 
   return (
     <AnimatePresence>

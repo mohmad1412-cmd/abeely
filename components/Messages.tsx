@@ -21,17 +21,47 @@ import {
 } from '../services/messagesService';
 import { getCurrentUser } from '../services/authService';
 import { ListItemSkeleton, ChatMessageSkeleton } from './ui/LoadingSkeleton';
+import { UnifiedHeader } from './ui/UnifiedHeader';
 
 interface MessagesProps {
   onBack: () => void;
   onSelectConversation?: (conversationId: string) => void;
   initialConversationId?: string;
+  // Unified Header Props
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (open: boolean) => void;
+  mode: 'requests' | 'offers';
+  toggleMode: () => void;
+  isModeSwitching: boolean;
+  unreadCount: number;
+  hasUnreadMessages: boolean;
+  setView: (view: any) => void;
+  setPreviousView: (view: any) => void;
+  titleKey: number;
+  notifications: any[];
+  onMarkAsRead: (id: string) => void;
+  onClearAll: () => void;
+  onSignOut: () => void;
 }
 
 export const Messages: React.FC<MessagesProps> = ({ 
   onBack, 
   onSelectConversation,
-  initialConversationId 
+  initialConversationId,
+  isSidebarOpen,
+  setIsSidebarOpen,
+  mode,
+  toggleMode,
+  isModeSwitching,
+  unreadCount,
+  hasUnreadMessages,
+  setView,
+  setPreviousView,
+  titleKey,
+  notifications,
+  onMarkAsRead,
+  onClearAll,
+  onSignOut
 }) => {
   const [user, setUser] = React.useState<any>(null);
 
@@ -189,16 +219,28 @@ export const Messages: React.FC<MessagesProps> = ({
   if (!selectedConversation) {
     return (
       <div className="h-full flex flex-col bg-background">
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-background border-b border-border px-4 py-3 flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="p-2 rounded-lg hover:bg-secondary transition-colors"
-          >
-            <ArrowRight size={20} className="text-foreground" />
-          </button>
-          <h1 className="text-lg font-bold flex-1">المحادثات</h1>
-        </div>
+        {/* Unified Header */}
+        <UnifiedHeader
+          isSidebarOpen={isSidebarOpen}
+          setIsSidebarOpen={setIsSidebarOpen}
+          mode={mode}
+          toggleMode={toggleMode}
+          isModeSwitching={isModeSwitching}
+          unreadCount={unreadCount}
+          hasUnreadMessages={hasUnreadMessages}
+          user={user}
+          setView={setView}
+          setPreviousView={setPreviousView}
+          titleKey={titleKey}
+          notifications={notifications}
+          onMarkAsRead={onMarkAsRead}
+          onClearAll={onClearAll}
+          onSignOut={onSignOut}
+          backButton={true}
+          onBack={onBack}
+          title="الرسائل"
+          currentView="messages"
+        />
 
         {/* Conversations List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -273,7 +315,7 @@ export const Messages: React.FC<MessagesProps> = ({
   return (
     <div className="h-full flex flex-col bg-background">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-background border-b border-border px-4 py-3 flex items-center gap-3">
+      <div className="sticky top-0 z-10 bg-white/70 dark:bg-[#0a0a0f]/70 backdrop-blur-3xl px-4 py-3 flex items-center gap-3">
         <button
           onClick={() => setSelectedConversation(null)}
           className="p-2 rounded-lg hover:bg-secondary transition-colors"

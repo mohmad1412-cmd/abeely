@@ -86,6 +86,7 @@ const App: React.FC = () => {
     notifyOnInterest: true,
     roleMode: "requester",
   });
+  const [isModeSwitching, setIsModeSwitching] = useState(false); // Temporary state for button animation
 
   // ==========================================
   // Data State
@@ -115,7 +116,7 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [reviews] = useState<Review[]>(MOCK_REVIEWS);
-  const userRating = reviews.reduce((acc, r) => acc + r.rating, 0) / (reviews.length || 1);
+  const userRating = (reviews || []).reduce((acc, r) => acc + r.rating, 0) / ((reviews || []).length || 1);
 
   // ==========================================
   // Selection State
@@ -585,8 +586,17 @@ const App: React.FC = () => {
     if (navigator.vibrate) {
       navigator.vibrate([10, 20, 10]);
     }
+    
+    // Start animation
+    setIsModeSwitching(true);
+    
     setTitleKey((prev) => prev + 1);
     handleModeSwitch(mode === "requests" ? "offers" : "requests");
+    
+    // Reset animation state after a short delay
+    setTimeout(() => {
+      setIsModeSwitching(false);
+    }, 600);
   };
 
   const handleNavigate = (newView: any) => {
@@ -777,7 +787,7 @@ const App: React.FC = () => {
     switch (view) {
       case "create-request":
         return (
-          <div className="h-full p-0 flex flex-col items-center justify-start pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] overflow-x-hidden">
+          <div className="h-full p-0 flex flex-col items-center justify-start pb-[env(safe-area-inset-bottom,0px)] overflow-x-hidden">
             <div className="w-full max-w-4xl h-full flex flex-col overflow-x-hidden">
               <ChatArea 
                 onRequestPublished={reloadData} 
@@ -795,11 +805,6 @@ const App: React.FC = () => {
       case "marketplace":
         return (
           <div className="h-full flex flex-col overflow-hidden relative">
-            {isLoadingData && allRequests.length === 0 && (
-              <div className="absolute inset-0 z-20">
-                <FullScreenLoading message="جاري تحميل سوق الطلبات..." />
-              </div>
-            )}
             {allRequests && Array.isArray(allRequests) ? (
               <Marketplace
                 requests={allRequests}
@@ -808,15 +813,33 @@ const App: React.FC = () => {
                 myOffers={myOffers}
                 onSelectRequest={handleSelectRequest}
                 userInterests={userInterests}
-              onUpdateInterests={setUserInterests}
-              hasMore={marketplaceHasMore}
-              isLoadingMore={marketplaceIsLoadingMore}
-              onLoadMore={loadMoreMarketplaceRequests}
-              onRefresh={reloadData}
-              loadError={requestsLoadError}
-              savedScrollPosition={marketplaceScrollPos}
-              onScrollPositionChange={setMarketplaceScrollPos}
-            />
+                onUpdateInterests={setUserInterests}
+                hasMore={marketplaceHasMore}
+                isLoadingMore={marketplaceIsLoadingMore}
+                isLoading={isLoadingData}
+                onLoadMore={loadMoreMarketplaceRequests}
+                onRefresh={reloadData}
+                loadError={requestsLoadError}
+                savedScrollPosition={marketplaceScrollPos}
+                onScrollPositionChange={setMarketplaceScrollPos}
+                // Header integration props
+                isSidebarOpen={isSidebarOpen}
+                setIsSidebarOpen={setIsSidebarOpen}
+                mode={mode}
+                toggleMode={toggleMode}
+                isModeSwitching={isModeSwitching}
+                unreadCount={unreadCount}
+                hasUnreadMessages={hasUnreadMessages}
+                user={user}
+                isGuest={isGuest}
+                setView={setView}
+                setPreviousView={setPreviousView}
+                titleKey={titleKey}
+                notifications={notifications}
+                onMarkAsRead={handleMarkAsRead}
+                onClearAll={handleClearNotifications}
+                onSignOut={handleSignOut}
+              />
             ) : (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
@@ -868,6 +891,21 @@ const App: React.FC = () => {
               }}
               savedScrollPosition={requestDetailScrollPos}
               onScrollPositionChange={setRequestDetailScrollPos}
+              // Header integration props
+              isSidebarOpen={isSidebarOpen}
+              setIsSidebarOpen={setIsSidebarOpen}
+              toggleMode={toggleMode}
+              isModeSwitching={isModeSwitching}
+              unreadCount={unreadCount}
+              hasUnreadMessages={hasUnreadMessages}
+              user={user}
+              setView={setView}
+              setPreviousView={setPreviousView}
+              titleKey={titleKey}
+              notifications={notifications}
+              onMarkAsRead={handleMarkAsRead}
+              onClearAll={handleClearNotifications}
+              onSignOut={handleSignOut}
             />
           </div>
         ) : null;
@@ -892,13 +930,54 @@ const App: React.FC = () => {
                 }
               }}
               onSignOut={handleSignOut}
+              // Header integration props
+              isSidebarOpen={isSidebarOpen}
+              setIsSidebarOpen={setIsSidebarOpen}
+              mode={mode}
+              toggleMode={toggleMode}
+              isModeSwitching={isModeSwitching}
+              unreadCount={unreadCount}
+              hasUnreadMessages={hasUnreadMessages}
+              setView={setView}
+              setPreviousView={setPreviousView}
+              titleKey={titleKey}
+              notifications={notifications}
+              onMarkAsRead={handleMarkAsRead}
+              onClearAll={handleClearNotifications}
             />
           </div>
         );
       case "profile":
         return (
           <div className="h-full flex flex-col overflow-hidden">
-            <Profile userReviews={reviews} userRating={userRating} />
+            <Profile 
+              userReviews={reviews} 
+              userRating={userRating}
+              // Header integration props
+              isSidebarOpen={isSidebarOpen}
+              setIsSidebarOpen={setIsSidebarOpen}
+              mode={mode}
+              toggleMode={toggleMode}
+              isModeSwitching={isModeSwitching}
+              unreadCount={unreadCount}
+              hasUnreadMessages={hasUnreadMessages}
+              user={user}
+              setView={setView}
+              setPreviousView={setPreviousView}
+              titleKey={titleKey}
+              notifications={notifications}
+              onMarkAsRead={handleMarkAsRead}
+              onClearAll={handleClearNotifications}
+              onSignOut={handleSignOut}
+              onBack={() => {
+                if (previousView) {
+                  setView(previousView);
+                  setPreviousView(null);
+                } else {
+                  handleNavigate(mode === "requests" ? "create-request" : "marketplace");
+                }
+              }}
+            />
           </div>
         );
       case "messages":
@@ -916,6 +995,21 @@ const App: React.FC = () => {
               onSelectConversation={(conversationId) => {
                 setView("conversation");
               }}
+              // Header integration props
+              isSidebarOpen={isSidebarOpen}
+              setIsSidebarOpen={setIsSidebarOpen}
+              mode={mode}
+              toggleMode={toggleMode}
+              isModeSwitching={isModeSwitching}
+              unreadCount={unreadCount}
+              hasUnreadMessages={hasUnreadMessages}
+              setView={setView}
+              setPreviousView={setPreviousView}
+              titleKey={titleKey}
+              notifications={notifications}
+              onMarkAsRead={handleMarkAsRead}
+              onClearAll={handleClearNotifications}
+              onSignOut={handleSignOut}
             />
           </div>
         );
@@ -927,6 +1021,21 @@ const App: React.FC = () => {
               onSelectConversation={(conversationId) => {
                 // Already in conversation view
               }}
+              // Header integration props
+              isSidebarOpen={isSidebarOpen}
+              setIsSidebarOpen={setIsSidebarOpen}
+              mode={mode}
+              toggleMode={toggleMode}
+              isModeSwitching={isModeSwitching}
+              unreadCount={unreadCount}
+              hasUnreadMessages={hasUnreadMessages}
+              setView={setView}
+              setPreviousView={setPreviousView}
+              titleKey={titleKey}
+              notifications={notifications}
+              onMarkAsRead={handleMarkAsRead}
+              onClearAll={handleClearNotifications}
+              onSignOut={handleSignOut}
             />
           </div>
         );
@@ -935,7 +1044,7 @@ const App: React.FC = () => {
     }
   };
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const unreadCount = (notifications || []).filter((n) => !n.isRead).length;
 
   // ==========================================
   // App View Rendering
@@ -1009,117 +1118,132 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-        {/* Header */}
-        <header className="min-h-16 bg-card/80 backdrop-blur-xl flex items-center justify-between px-4 shrink-0 relative z-30 shadow-sm pt-[env(safe-area-inset-top,0px)]">
-          <div className="flex items-center gap-3">
-            <button
-              className="md:hidden p-2.5 hover:bg-primary/10 rounded-xl transition-all duration-300 active:scale-95 group"
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            >
-              {isSidebarOpen ? (
-                <X size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
-              ) : (
-                <Menu size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
-              )}
-            </button>
-            <div className="flex items-start gap-3">
-              <h1 className="font-bold text-base text-foreground flex flex-col gap-0.5">
-                <span className="text-xs text-muted-foreground mt-1.5">أبيلي</span>
-                <motion.span
-                  key={titleKey}
-                  initial={{ scale: 1 }}
-                  animate={{
-                    scale: [1, 1.08, 1],
-                    x: [0, -2, 2, -2, 2, 0],
+        {/* Header - Sticky, unified with second header - hidden in marketplace and request-detail views because it's unified there */}
+        {view !== "marketplace" && view !== "request-detail" && (
+          <header className="sticky top-0 left-0 right-0 h-16 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl flex items-center justify-between px-4 z-50 pt-[env(safe-area-inset-top,0px)] border-b border-gray-200/30 dark:border-white/10">
+            <div className="flex items-center gap-3">
+              <button
+                className="md:hidden p-2.5 hover:bg-primary/10 rounded-xl transition-all duration-300 active:scale-95 group"
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              >
+                {isSidebarOpen ? (
+                  <X size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
+                ) : (
+                  <Menu size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
+                )}
+              </button>
+              <div className="flex items-start gap-3">
+                <h1 className="font-bold text-base text-foreground flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground mt-1.5">أبيلي</span>
+                  <motion.span
+                    key={titleKey}
+                    initial={{ scale: 1 }}
+                    animate={{
+                      scale: [1, 1.08, 1],
+                      x: [0, -2, 2, -2, 2, 0],
+                    }}
+                    transition={{
+                      duration: 0.4,
+                      ease: "easeInOut",
+                    }}
+                    className="bg-primary/10 text-primary px-3 py-1.5 rounded-lg text-sm inline-block"
+                  >
+                    {mode === "requests" ? "إنشاء الطلبات" : "تقديم العروض"}
+                  </motion.span>
+                </h1>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Mode Switch Button */}
+              <button
+                onClick={toggleMode}
+                className={`flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group ${
+                  isModeSwitching 
+                    ? "bg-primary/20 border-primary/40 shadow-[0_0_15px_rgba(30,150,140,0.3)]" 
+                    : "bg-secondary/50 hover:bg-primary/10 border border-border hover:border-primary/30"
+                }`}
+              >
+                <motion.div
+                  animate={isModeSwitching ? { 
+                    rotate: 360,
+                    scale: [1, 1.2, 1],
+                  } : { 
+                    rotate: 0,
+                    scale: 1 
                   }}
-                  transition={{
-                    duration: 0.4,
-                    ease: "easeInOut",
-                  }}
-                  className="bg-primary/10 text-primary px-3 py-1.5 rounded-lg text-sm inline-block"
+                  transition={{ duration: 0.5, ease: "easeInOut" }}
                 >
-                  {mode === "requests" ? "إنشاء الطلبات" : "تقديم العروض"}
-                </motion.span>
-              </h1>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Guest Badge */}
-
-            {/* Mode Switch Button */}
-            <button
-              onClick={toggleMode}
-              className="flex items-center justify-center h-11 w-11 rounded-xl bg-secondary/50 hover:bg-primary/10 border border-border hover:border-primary/30 transition-all duration-300 active:scale-95 group"
-            >
-              <ArrowLeftRight 
-                size={18} 
-                strokeWidth={2} 
-                className="text-muted-foreground group-hover:text-primary group-hover:rotate-180 transition-all duration-300" 
-              />
-            </button>
-
-            {/* Messages Button */}
-            {user && (
-              <button
-                onClick={() => {
-                  setPreviousView(view);
-                  setView("messages");
-                }}
-                className="p-2.5 rounded-xl hover:bg-primary/10 relative text-muted-foreground hover:text-primary transition-all duration-300 active:scale-95 group"
-                title="الرسائل"
-              >
-                <MessageCircle size={22} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
-                {/* Pulse indicator for unread messages - no count, just pulse */}
-                {hasUnreadMessages && (
-                  <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-                  </span>
-                )}
+                  <ArrowLeftRight 
+                    size={18} 
+                    strokeWidth={2} 
+                    className={`transition-all duration-300 ${
+                      isModeSwitching ? "text-primary" : "text-muted-foreground group-hover:text-primary"
+                    }`} 
+                  />
+                </motion.div>
               </button>
-            )}
 
-            {/* Notification Bell */}
-            <div className="relative" ref={notifRef}>
-              <button
-                onClick={() => setIsNotifOpen(!isNotifOpen)}
-                className="p-2.5 rounded-xl hover:bg-primary/10 relative text-muted-foreground hover:text-primary transition-all duration-300 active:scale-95 group"
-              >
-                <Bell size={22} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
-                {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                    <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 bg-red-500 text-[11px] text-white font-bold">
-                      {unreadCount}
+              {/* Messages Button */}
+              {user && (
+                <button
+                  onClick={() => {
+                    setPreviousView(view);
+                    setView("messages");
+                  }}
+                  className="p-2.5 rounded-xl hover:bg-primary/10 relative text-muted-foreground hover:text-primary transition-all duration-300 active:scale-95 group"
+                  title="الرسائل"
+                >
+                  <MessageCircle size={22} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
+                  {hasUnreadMessages && (
+                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
                     </span>
-                  </span>
-                )}
-              </button>
+                  )}
+                </button>
+              )}
 
-              <NotificationsPopover
-                isOpen={isNotifOpen}
-                notifications={notifications}
-                onClose={() => setIsNotifOpen(false)}
-                onMarkAsRead={handleMarkAsRead}
-                onClearAll={handleClearNotifications}
-              />
+              {/* Notification Bell */}
+              <div className="relative" ref={notifRef}>
+                <button
+                  onClick={() => setIsNotifOpen(!isNotifOpen)}
+                  className="p-2.5 rounded-xl hover:bg-primary/10 relative text-muted-foreground hover:text-primary transition-all duration-300 active:scale-95 group"
+                >
+                  <Bell size={22} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                      <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 bg-red-500 text-[11px] text-white font-bold">
+                        {unreadCount}
+                      </span>
+                    </span>
+                  )}
+                </button>
+
+                <NotificationsPopover
+                  isOpen={isNotifOpen}
+                  notifications={notifications}
+                  onClose={() => setIsNotifOpen(false)}
+                  onMarkAsRead={handleMarkAsRead}
+                  onClearAll={handleClearNotifications}
+                />
+              </div>
+
+              {/* Sign Out (if logged in) */}
+              {user && (
+                <button
+                  onClick={handleSignOut}
+                  className="hidden sm:flex p-2.5 rounded-xl hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-all active:scale-95"
+                  title="تسجيل الخروج"
+                >
+                  <LogOut size={20} strokeWidth={2} />
+                </button>
+              )}
             </div>
-
-            {/* Sign Out (if logged in) */}
-            {user && (
-              <button
-                onClick={handleSignOut}
-                className="hidden sm:flex p-2.5 rounded-xl hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-all active:scale-95"
-                title="تسجيل الخروج"
-              >
-                <LogOut size={20} strokeWidth={2} />
-              </button>
-            )}
-          </div>
-        </header>
-
-        {/* Scrollable Content Area */}
+          </header>
+        )}
+        {/* Scrollable Content Area - Content scrolls behind headers for glass effect */}
         <div
           id="main-scroll-container"
           ref={scrollContainerRef}
@@ -1168,7 +1292,6 @@ const App: React.FC = () => {
               <div className="p-4 space-y-4">
                 {/* Language Options */}
                 <div className="space-y-2">
-                  {/* Arabic */}
                   <button
                     onClick={() => setCurrentLanguage('ar')}
                     className={`w-full p-4 rounded-xl border-2 transition-all flex items-center justify-between ${
@@ -1193,7 +1316,6 @@ const App: React.FC = () => {
                     )}
                   </button>
 
-                  {/* English */}
                   <button
                     disabled
                     className="w-full p-4 rounded-xl border-2 border-border opacity-50 cursor-not-allowed flex items-center justify-between"
@@ -1209,7 +1331,6 @@ const App: React.FC = () => {
                     </div>
                   </button>
 
-                  {/* Urdu */}
                   <button
                     disabled
                     className="w-full p-4 rounded-xl border-2 border-border opacity-50 cursor-not-allowed flex items-center justify-between"
@@ -1226,7 +1347,6 @@ const App: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Auto Translate Toggle */}
                 <div className="p-4 bg-secondary/50 rounded-lg border border-border">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
@@ -1249,7 +1369,6 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Footer */}
               <div className="p-4 border-t border-border">
                 <button
                   onClick={() => setIsLanguagePopupOpen(false)}

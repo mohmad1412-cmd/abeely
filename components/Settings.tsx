@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AVAILABLE_CATEGORIES } from '../data';
 import { UserPreferences } from '../types';
 import { UserProfile } from '../services/authService';
+import { UnifiedHeader } from './ui/UnifiedHeader';
 
 interface SettingsProps {
   isDarkMode: boolean;
@@ -13,6 +14,20 @@ interface SettingsProps {
   onUpdatePreferences?: (prefs: UserPreferences) => void;
   user?: UserProfile | null;
   onSignOut?: () => void;
+  // Unified Header Props
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (open: boolean) => void;
+  mode: 'requests' | 'offers';
+  toggleMode: () => void;
+  isModeSwitching: boolean;
+  unreadCount: number;
+  hasUnreadMessages: boolean;
+  setView: (view: any) => void;
+  setPreviousView: (view: any) => void;
+  titleKey: number;
+  notifications: any[];
+  onMarkAsRead: (id: string) => void;
+  onClearAll: () => void;
 }
 
 const CITIES = [
@@ -34,7 +49,20 @@ export const Settings: React.FC<SettingsProps> = ({
   },
   onUpdatePreferences,
   user = null,
-  onSignOut
+  onSignOut,
+  isSidebarOpen,
+  setIsSidebarOpen,
+  mode,
+  toggleMode,
+  isModeSwitching,
+  unreadCount,
+  hasUnreadMessages,
+  setView,
+  setPreviousView,
+  titleKey,
+  notifications,
+  onMarkAsRead,
+  onClearAll,
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingEmail, setIsEditingEmail] = useState(false);
@@ -120,22 +148,33 @@ export const Settings: React.FC<SettingsProps> = ({
 
   return (
     <div className="h-full flex flex-col">
+      {/* Unified Header */}
+      <UnifiedHeader
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={setIsSidebarOpen}
+        mode={mode}
+        toggleMode={toggleMode}
+        isModeSwitching={isModeSwitching}
+        unreadCount={unreadCount}
+        hasUnreadMessages={hasUnreadMessages}
+        user={user}
+        setView={setView}
+        setPreviousView={setPreviousView}
+        titleKey={titleKey}
+        notifications={notifications}
+        onMarkAsRead={onMarkAsRead}
+        onClearAll={onClearAll}
+        onSignOut={onSignOut || (() => {})}
+        backButton={true}
+        onBack={onBack}
+        title="الإعدادات"
+        currentView="settings"
+      />
+
       <div className="flex-1 overflow-y-auto relative">
-        {/* Sticky Header - Back Button & Theme Toggle */}
-        <div className="sticky top-0 z-50 transition-all duration-300 bg-transparent">
-          <div className="flex items-center justify-between px-4 py-3">
-            {onBack && (
-              <motion.button
-                onClick={onBack}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
-              >
-                <ArrowRight size={22} strokeWidth={2.5} />
-              </motion.button>
-            )}
-            {!onBack && <div />}
-            
+        {/* Sticky Theme Toggle Bar */}
+        <div className="sticky top-0 z-40 transition-all duration-300 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-gray-200/30 dark:border-white/10">
+          <div className="flex items-center justify-end px-4 py-3">
             {/* Theme Toggle Button */}
             <motion.button 
               onClick={() => {

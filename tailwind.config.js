@@ -127,7 +127,7 @@ export default {
         "gradient-brand": "linear-gradient(135deg, #1E968C 0%, #153659 100%)",
         "gradient-brand-light": "linear-gradient(135deg, #2db5a9 0%, #1e4a73 100%)",
         shimmer:
-          "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)",
+          "linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%)",
       },
     },
   },

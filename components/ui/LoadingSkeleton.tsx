@@ -30,26 +30,40 @@ export const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({
   return (
     <>
       {items.map((i) => (
-        <div
+        <motion.div
           key={i}
           className={`${baseStyles} ${variantStyles[variant]} ${className}`}
           style={{
             width: width || '100%',
             height: height || (variant === 'text' ? '1rem' : variant === 'circular' ? '3rem' : '6rem'),
           }}
+          animate={{
+            opacity: [0.6, 0.8, 0.6],
+          }}
+          transition={{
+            duration: 3,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
         >
+          {/* Diagonal Shimmer Effect - Top Left to Bottom Right */}
+          {/* Reduced opacity to 0.1 for subtle effect as requested */}
+          {/* Slowed duration to 3s for smoother animation */}
           <motion.div
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/10 to-transparent"
+            className="absolute inset-0 -translate-x-full"
+            style={{
+              background: 'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.05) 50%, transparent 70%)',
+            }}
             animate={{
-              x: ['-100%', '100%']
+              x: ['-100%', '200%'],
             }}
             transition={{
-              duration: 1.5,
+              duration: 3,
               repeat: Infinity,
-              ease: 'easeInOut'
+              ease: 'linear',
             }}
           />
-        </div>
+        </motion.div>
       ))}
     </>
   );
@@ -66,15 +80,15 @@ export const BrandSpinner: React.FC<{ size?: 'sm' | 'md' | 'lg'; className?: str
     lg: 'w-24 h-24 text-4xl'
   };
 
+  // Removed rotation to prevent "wobble/shake" effect
   return (
     <motion.div
       className={`rounded-2xl bg-gradient-brand flex items-center justify-center shadow-xl ${sizeMap[size]} ${className}`}
       animate={{ 
-        scale: [1, 1.1, 1],
-        rotate: [0, 5, -5, 0]
+        scale: [1, 1.05, 1],
       }}
       transition={{ 
-        duration: 1.5, 
+        duration: 2, 
         repeat: Infinity, 
         ease: "easeInOut" 
       }}
@@ -121,9 +135,7 @@ export const FullScreenLoading: React.FC<{ message?: string }> = ({ message = 'Ø
 
 // Preset skeletons for common use cases
 export const CardSkeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <motion.div 
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
+  <div 
     className={`bg-card border border-border rounded-2xl overflow-hidden ${className}`}
   >
     <LoadingSkeleton variant="rectangular" height={160} className="rounded-none" />
@@ -136,13 +148,11 @@ export const CardSkeleton: React.FC<{ className?: string }> = ({ className = '' 
         <LoadingSkeleton variant="rectangular" width={80} height={28} className="rounded-full" />
       </div>
     </div>
-  </motion.div>
+  </div>
 );
 
 export const ChatMessageSkeleton: React.FC<{ isUser?: boolean }> = ({ isUser = false }) => (
-  <motion.div 
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
+  <div 
     className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}
   >
     {isUser ? (
@@ -164,13 +174,11 @@ export const ChatMessageSkeleton: React.FC<{ isUser?: boolean }> = ({ isUser = f
         className={isUser ? 'rounded-tl-none rounded-2xl' : 'rounded-tr-none rounded-2xl'} 
       />
     </div>
-  </motion.div>
+  </div>
 );
 
 export const ListItemSkeleton: React.FC = () => (
-  <motion.div 
-    initial={{ opacity: 0, x: 20 }}
-    animate={{ opacity: 1, x: 0 }}
+  <div 
     className="flex items-center gap-3 p-3 bg-card border border-border rounded-xl"
   >
     <LoadingSkeleton variant="circular" width={48} height={48} />
@@ -179,21 +187,32 @@ export const ListItemSkeleton: React.FC = () => (
       <LoadingSkeleton variant="text" width="40%" height={12} />
     </div>
     <LoadingSkeleton variant="rectangular" width={60} height={24} className="rounded-full" />
-  </motion.div>
+  </div>
 );
 
 // Grid of Card Skeletons
-export const CardsGridSkeleton: React.FC<{ count?: number }> = ({ count = 6 }) => (
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-    {Array.from({ length: count }).map((_, i) => (
-      <motion.div
-        key={i}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: i * 0.1 }}
-      >
-        <CardSkeleton />
-      </motion.div>
-    ))}
-  </div>
-);
+export const CardsGridSkeleton: React.FC<{ count?: number; showLogo?: boolean }> = ({ count = 6, showLogo = true }) => {
+  return (
+    <div className="relative">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-60">
+        {Array.from({ length: count }).map((_, i) => (
+          <div
+            key={i}
+            className=""
+          >
+            <CardSkeleton />
+          </div>
+        ))}
+      </div>
+      
+      {/* Central Brand Spinner */}
+      {showLogo && (
+        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+          <div className="bg-background/40 backdrop-blur-[2px] p-8 rounded-full shadow-2xl">
+            <BrandSpinner size="lg" className="shadow-2xl" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
