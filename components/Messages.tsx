@@ -316,12 +316,14 @@ export const Messages: React.FC<MessagesProps> = ({
     <div className="h-full flex flex-col bg-background">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white/70 dark:bg-[#0a0a0f]/70 backdrop-blur-3xl px-4 py-3 flex items-center gap-3">
-        <button
+        <motion.button
           onClick={() => setSelectedConversation(null)}
-          className="p-2 rounded-lg hover:bg-secondary transition-colors"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
         >
-          <ArrowRight size={20} className="text-foreground" />
-        </button>
+          <ArrowRight size={22} strokeWidth={2.5} />
+        </motion.button>
         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
           {selectedConversation.other_user?.avatar_url ? (
             <img

@@ -55,6 +55,7 @@ interface RequestDetailProps {
   onBack: () => void;
   isGuest?: boolean;
   scrollToOfferSection?: boolean;
+  navigatedFromSidebar?: boolean; // لتحديد إذا كان التنقل من الشريط الجانبي
   onNavigateToMessages?: (conversationId?: string, userId?: string, requestId?: string, offerId?: string) => void;
   autoTranslateRequests?: boolean;
   currentLanguage?: 'ar' | 'en' | 'ur';
@@ -101,7 +102,7 @@ interface RequestDetailProps {
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
-  { request, mode, myOffer, onBack, isGuest = false, scrollToOfferSection = false, onNavigateToMessages, autoTranslateRequests = false, currentLanguage = 'ar', onCompleteRequest, savedOfferForm, onOfferFormChange, savedScrollPosition = 0, onScrollPositionChange,
+  { request, mode, myOffer, onBack, isGuest = false, scrollToOfferSection = false, navigatedFromSidebar = false, onNavigateToMessages, autoTranslateRequests = false, currentLanguage = 'ar', onCompleteRequest, savedOfferForm, onOfferFormChange, savedScrollPosition = 0, onScrollPositionChange,
     // Unified Header Props
     isSidebarOpen,
     setIsSidebarOpen,
@@ -693,7 +694,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         onMarkAsRead={onMarkAsRead}
         onClearAll={onClearAll}
         onSignOut={onSignOut}
-        backButton={true}
+        backButton={!navigatedFromSidebar}
         onBack={onBack}
         title={request.title}
         isScrolled={isScrolled}
@@ -1977,12 +1978,14 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       </span>
                     </div>
                   </div>
-                  <button
+                  <motion.button
                     onClick={() => setNegotiationOpen(false)}
-                    className="w-10 h-10 rounded-full bg-secondary hover:bg-secondary/80 flex items-center justify-center transition-all"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
                   >
                     <X size={20} />
-                  </button>
+                  </motion.button>
                 </div>
 
                 {/* Messages Area */}

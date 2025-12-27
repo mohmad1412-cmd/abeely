@@ -42,9 +42,11 @@ interface MarketplaceProps {
   interestsRequests?: Request[]; // طلبات اهتماماتي فقط
   unreadInterestsCount?: number; // عدد الطلبات غير المقروءة في اهتماماتي
   myOffers: Offer[]; // Pass myOffers to check application status
-  onSelectRequest: (req: Request, scrollToOffer?: boolean) => void;
+  onSelectRequest: (req: Request, scrollToOffer?: boolean, fromSidebar?: boolean) => void;
   userInterests: string[];
   onUpdateInterests: (interests: string[]) => void;
+  interestedCities: string[];
+  onUpdateCities: (cities: string[]) => void;
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -69,6 +71,7 @@ interface MarketplaceProps {
   onMarkAsRead: (id: string) => void;
   onClearAll: () => void;
   onSignOut: () => void;
+  isLoading?: boolean;
 }
 
 export const Marketplace: React.FC<MarketplaceProps> = ({
@@ -79,6 +82,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   onSelectRequest,
   userInterests,
   onUpdateInterests,
+  interestedCities,
+  onUpdateCities,
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
@@ -103,15 +108,17 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   onMarkAsRead,
   onClearAll,
   onSignOut,
+  isLoading = false,
 }) => {
+  // View mode state - "all" or "interests"
   const [viewMode, setViewMode] = useState<"all" | "interests">("all");
-  const [searchTerm, setSearchTerm] = useState("");
+
+  // Scroll state for glass header animation
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  // Offer button pulse animation state
   const [showOfferButtonPulse, setShowOfferButtonPulse] = useState(false);
-  const [showScrollToTop, setShowScrollToTop] = useState(false);
-  const [hasScrolledPastFirstPage, setHasScrolledPastFirstPage] = useState(false);
-  const [isAtTop, setIsAtTop] = useState(false); // Track if we scrolled to top via button
-  const [savedScrollPosition, setSavedScrollPosition] = useState(0); // Save position before scrolling to top
-  
+
   // Pull-to-refresh state
   const [pullToRefreshState, setPullToRefreshState] = useState<{
     isPulling: boolean;
@@ -123,12 +130,18 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     isRefreshing: false,
   });
 
-  // Monitor requests prop changes
-  useEffect(() => {
-  }, [requests, viewMode]);
+  // Scroll tracking states
+  const [hasScrolledPastFirstPage, setHasScrolledPastFirstPage] = useState(false);
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
+  const [isAtTop, setIsAtTop] = useState(false);
+  const [savedScrollPosition, setSavedScrollPosition] = useState(0);
 
-  // Scroll state for glass header animation
-  const [isScrolled, setIsScrolled] = useState(false);
+  // Touch interaction state
+  const [touchHoveredCardId, setTouchHoveredCardId] = useState<string | null>(null);
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Search term state
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Offer button pulse animation every 8 seconds
   useEffect(() => {
@@ -153,12 +166,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   // Interest View States
   const [isManageInterestsOpen, setIsManageInterestsOpen] = useState(false);
   const [notifyOnInterest, setNotifyOnInterest] = useState(true);
-  const [selectedCities, setSelectedCities] = useState<string[]>(["الرياض"]);
   const [radarWords, setRadarWords] = useState<string[]>([]); // Saved radar words
 
   // Temp state for Modal
   const [tempInterests, setTempInterests] = useState<string[]>(userInterests);
-  const [tempCities, setTempCities] = useState<string[]>(selectedCities);
+  const [tempCities, setTempCities] = useState<string[]>(interestedCities);
   const [tempCitySearch, setTempCitySearch] = useState("");
   const [tempCatSearch, setTempCatSearch] = useState("");
   const [isCategoriesExpanded, setIsCategoriesExpanded] = useState(false);
@@ -322,6 +334,53 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     };
   }, [onScrollPositionChange, pullToRefreshState.isPulling, requests.length, isAtTop, viewMode]);
 
+  // Touch scroll card detection - يكتشف أي كارت الإصبع فوقه أثناء السكرول
+  useEffect(() => {
+    const container = marketplaceScrollRef.current;
+    if (!container) return;
+
+    const handleTouchMoveForCards = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      if (!touch) return;
+      
+      const touchX = touch.clientX;
+      const touchY = touch.clientY;
+      
+      // Find which card the finger is currently over
+      let foundCard: string | null = null;
+      cardRefs.current.forEach((element, cardId) => {
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          if (
+            touchX >= rect.left &&
+            touchX <= rect.right &&
+            touchY >= rect.top &&
+            touchY <= rect.bottom
+          ) {
+            foundCard = cardId;
+          }
+        }
+      });
+      
+      setTouchHoveredCardId(foundCard);
+    };
+
+    const handleTouchEndForCards = () => {
+      // Clear the hovered card when finger is lifted
+      setTouchHoveredCardId(null);
+    };
+
+    container.addEventListener('touchmove', handleTouchMoveForCards, { passive: true });
+    container.addEventListener('touchend', handleTouchEndForCards, { passive: true });
+    container.addEventListener('touchcancel', handleTouchEndForCards, { passive: true });
+
+    return () => {
+      container.removeEventListener('touchmove', handleTouchMoveForCards);
+      container.removeEventListener('touchend', handleTouchEndForCards);
+      container.removeEventListener('touchcancel', handleTouchEndForCards);
+    };
+  }, []);
+
   // Track if initial scroll restoration happened
   const initialScrollRestored = useRef(false);
   const prevExternalScrollPos = useRef(externalScrollPos);
@@ -370,7 +429,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
   const handleManageInterests = () => {
     setTempInterests(userInterests);
-    setTempCities(selectedCities);
+    setTempCities(interestedCities);
     setTempCitySearch("");
     setTempCatSearch("");
     setTempRadarWords(radarWords); // Load saved radar words
@@ -379,7 +438,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
   const handleSaveInterests = () => {
     onUpdateInterests(tempInterests);
-    setSelectedCities(tempCities);
+    onUpdateCities(tempCities);
     setRadarWords(tempRadarWords); // Save radar words
     setIsManageInterestsOpen(false);
   };
@@ -439,20 +498,24 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
   // Toggle Category Selection
   const toggleSearchCategory = (id: string) => {
-    if (searchCategories.includes(id)) {
-      setSearchCategories(searchCategories.filter(c => c !== id));
-    } else {
-      setSearchCategories([...searchCategories, id]);
-    }
+    setSearchCategories(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(c => c !== id);
+      } else {
+        return [...prev, id];
+      }
+    });
   };
 
   // Toggle City Selection
   const toggleSearchCity = (city: string) => {
-    if (searchCities.includes(city)) {
-      setSearchCities(searchCities.filter(c => c !== city));
-    } else {
-      setSearchCities([...searchCities, city]);
-    }
+    setSearchCities(prev => {
+      if (prev.includes(city)) {
+        return prev.filter(c => c !== city);
+      } else {
+        return [...prev, city];
+      }
+    });
   };
 
   // Apply search and close modal
@@ -473,12 +536,25 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     // Category filter (Multi-select)
     if (searchCategories.length > 0) {
       // If request has categories, check if any match selected categories
-      if (!req.categories?.some(cat => searchCategories.includes(cat))) return false;
+      // Need to compare Arabic labels because req.categories contains labels
+      const hasMatch = req.categories?.some(catLabel => 
+        searchCategories.some(catId => {
+          const categoryObj = AVAILABLE_CATEGORIES.find(c => c.id === catId);
+          const interestLabel = categoryObj?.label || catId;
+          return catLabel.toLowerCase().includes(interestLabel.toLowerCase()) ||
+                 interestLabel.toLowerCase().includes(catLabel.toLowerCase());
+        })
+      );
+      if (!hasMatch) return false;
     }
 
     // City filter (Multi-select)
     if (searchCities.length > 0) {
-      if (!searchCities.includes(req.location || "")) return false;
+      const hasCityMatch = searchCities.some(city => 
+        req.location?.toLowerCase().includes(city.toLowerCase()) || 
+        city.toLowerCase().includes(req.location?.toLowerCase() || "")
+      );
+      if (!hasCityMatch) return false;
     }
 
     // Budget filter
@@ -489,12 +565,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       if (Number(req.budgetMin || 0) > parseInt(searchBudgetMax)) return false;
     }
 
-    // In interests mode, all requests in interestsRequests are already filtered
-    // So we just return true (no additional filtering needed)
-    if (viewMode === "interests") {
-      return true;
-    }
-
+    // In interests mode, all requests in interestsRequests are already filtered by user interests
+    // but we still want to apply search and city/budget filters if the user uses them
     return true;
   });
 
@@ -528,7 +600,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       {/* Sticky Header Wrapper - Unified with main header */}
       <div 
         ref={headerRef}
-        className="sticky top-16 z-30 px-4 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-gray-200/30 dark:border-white/10 shadow-sm"
+        className="sticky top-0 z-[60] px-4 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-gray-200/30 dark:border-white/10 shadow-sm"
       >
         <div className="flex flex-col">
           {/* Main Header Content - Transparent when inside Marketplace */}
@@ -555,12 +627,16 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           <motion.div 
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
+            transition={{
+              duration: 0.3,
+              ease: [0.25, 0.1, 0.25, 1],
+            }}
             className="flex flex-col gap-2 pb-3"
           >
             <div className="flex items-center justify-between py-1 gap-2">
             {/* Left Side - Tabs or Search Term */}
             {searchTerm ? (
-              <div className="flex items-center gap-2 bg-card px-3 py-1.5 rounded-xl border border-border shadow-md h-11">
+              <div className="flex items-center gap-2 bg-card px-3 py-1.5 rounded-xl border border-border h-11">
                 <span className="text-sm font-bold text-primary">{searchTerm}</span>
                 <button
                   onClick={handleResetSearch}
@@ -571,7 +647,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 </button>
               </div>
              ) : (
-               <div className="flex items-center gap-1 bg-card p-1 rounded-2xl border border-border shadow-md h-11 relative overflow-hidden min-w-[240px]">
+               <div className="flex items-center gap-1 bg-card p-1 rounded-2xl border border-border h-11 relative overflow-hidden min-w-[240px]">
                  <button
                    onClick={() => {
                      if (navigator.vibrate) navigator.vibrate(15);
@@ -623,7 +699,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                      <span className={`relative z-10 min-w-[20px] h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center font-bold ${
                        viewMode === "interests" && !hasActiveFilters ? "bg-white/20 text-white" : "bg-primary/10 text-primary"
                      }`}>
-                       {unreadInterestsCount > 0 ? unreadInterestsCount : interestsRequests.length}
+                       {interestsRequests.length > 0 ? interestsRequests.length : unreadInterestsCount}
                      </span>
                    )}
                  </button>
@@ -633,7 +709,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsSearchPageOpen(true)}
-                className="relative w-11 h-11 flex items-center justify-center rounded-xl bg-card border border-border text-muted-foreground hover:text-primary transition-all active:scale-95 shadow-md"
+                className="relative w-11 h-11 flex items-center justify-center rounded-xl bg-card border border-border text-muted-foreground hover:text-primary transition-all active:scale-95"
               >
             <div className="relative w-full h-full flex items-center justify-center">
               <motion.div
@@ -907,12 +983,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               {/* Search Header */}
               <div className="shrink-0 p-4 border-b border-border bg-card/80 backdrop-blur-xl">
                 <div className="flex items-center gap-3">
-                  <button
+                  <motion.button
                     onClick={() => setIsSearchPageOpen(false)}
-                    className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-all"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
                   >
-                    <ArrowRight size={22} strokeWidth={2} />
-                  </button>
+                    <ArrowRight size={22} strokeWidth={2.5} />
+                  </motion.button>
                   <div className="flex-1 relative">
                     <Search
                       className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none"
@@ -1237,7 +1315,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   >
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">المدن المغطاة</span>
-                      <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-secondary px-1.5 text-[11px] text-muted-foreground font-bold">{selectedCities.length || "الكل"}</span>
+                      <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-secondary px-1.5 text-[11px] text-muted-foreground font-bold">{interestedCities.length || "الكل"}</span>
                     </div>
                     <div className={`transition-transform duration-200 ${isCitiesExpanded ? "rotate-180" : ""}`}>
                       <ChevronDown size={14} className="text-muted-foreground group-hover:text-primary" />
@@ -1253,10 +1331,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         className="overflow-hidden"
                       >
                         <div className="flex flex-wrap gap-2 pt-1">
-                          {selectedCities.length === 0 ? (
+                          {interestedCities.length === 0 ? (
                             <span className="text-xs text-muted-foreground italic">جميع المدن</span>
                           ) : (
-                            selectedCities.map((city) => (
+                            interestedCities.map((city) => (
                               <div
                                 key={city}
                                 className="flex items-center gap-1.5 bg-primary/5 border border-primary/10 text-primary px-3 py-1.5 rounded-full text-xs font-bold"
@@ -1369,9 +1447,35 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         )}
 
         {/* 2. Skeleton/Loading State */}
-        {((viewMode === "all" && requests.length === 0) || (viewMode === "interests" && interestsRequests.length === 0)) && !loadError && (
+        {((viewMode === "all" && requests.length === 0 && isLoading) || 
+          (viewMode === "interests" && interestsRequests.length === 0 && isLoading)) && !loadError && (
           <div className="mt-4">
-            <CardsGridSkeleton count={6} />
+            <CardsGridSkeleton count={6} showLogo={false} />
+          </div>
+        )}
+
+        {/* 3. Empty State */}
+        {((viewMode === "all" && requests.length === 0 && !isLoading) || 
+          (viewMode === "interests" && interestsRequests.length === 0 && !isLoading)) && !loadError && (
+          <div className="mt-10 py-20 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-secondary mb-4">
+              <Search className="text-muted-foreground" size={24} />
+            </div>
+            <h3 className="text-lg font-bold text-foreground mb-2">لا توجد نتائج</h3>
+            <p className="text-muted-foreground max-w-xs mx-auto">
+              {viewMode === "interests" 
+                ? "لم نجد طلبات تطابق اهتماماتك الحالية. جرب تعديل الاهتمامات أو اختيار مدن أخرى."
+                : "لا توجد طلبات متاحة حالياً."}
+            </p>
+            {viewMode === "interests" && (
+              <Button
+                variant="outline"
+                onClick={handleManageInterests}
+                className="mt-6 rounded-2xl"
+              >
+                تعديل الاهتمامات
+              </Button>
+            )}
           </div>
         )}
 
@@ -1621,6 +1725,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
         {/* Grid */}
         <motion.div 
+          key={`grid-${viewMode}-${searchCategories.length}-${searchCities.length}-${searchTerm}-${searchBudgetMin}-${searchBudgetMax}`}
           initial="hidden"
           animate="show"
           variants={{
@@ -1632,9 +1737,19 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           {filteredRequests.map((req, index) => {
             const myOffer = getMyOffer(req.id);
             const isNinthItem = index === 8; // 9th item (0-indexed)
+            const isTouchHovered = touchHoveredCardId === req.id; // هل الإصبع فوق هذا الكارت؟
             return (
               <motion.div
-                ref={isNinthItem ? ninthItemRef : null}
+                ref={(el) => {
+                  // Store ref in cardRefs map for touch detection
+                  if (el) {
+                    cardRefs.current.set(req.id, el);
+                  }
+                  // Also handle ninthItemRef
+                  if (isNinthItem && el) {
+                    (ninthItemRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+                  }
+                }}
                 layoutId={`card-${req.id}`}
                 key={req.id}
                 variants={{
@@ -1648,7 +1763,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 }}
                 whileHover={{ y: -8, scale: 1.02, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}
                 whileTap={{ scale: 0.98 }}
-                className="bg-card border border-border rounded-2xl overflow-hidden transition-colors flex flex-col group cursor-pointer relative shadow-sm"
+                animate={isTouchHovered ? { y: -8, scale: 1.02, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" } : {}}
+                className={`bg-card border border-border rounded-2xl overflow-hidden transition-colors flex flex-col cursor-pointer relative shadow-sm ${isTouchHovered ? '' : 'group'}`}
                  onClick={() => {
                    onSelectRequest(req);
                  }}
@@ -1843,17 +1959,45 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         </motion.div>
                       ) : (
                         <motion.button
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
+                          initial={false}
+                          whileHover={{ 
+                            scale: 1.05,
+                            boxShadow: "0 0 15px rgba(30, 150, 140, 0.4)",
+                          }}
+                          whileTap={{ 
+                            scale: 0.88,
+                          }}
+                          animate={isTouchHovered ? {
+                            scale: 1.05,
+                            boxShadow: "0 0 15px rgba(30, 150, 140, 0.4)",
+                          } : {}}
+                          transition={{
+                            type: "spring",
+                            stiffness: 800,
+                            damping: 15,
+                            mass: 0.5,
+                          }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            onSelectRequest(req, true); // true = scroll to offer section
+                            // Quick haptic
+                            if (navigator.vibrate) {
+                              navigator.vibrate(10);
+                            }
+                            onSelectRequest(req, true);
                           }}
-                          className={`h-9 px-4 text-xs font-bold rounded-xl bg-primary text-white shadow-md hover:shadow-lg transition-shadow ${
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onPointerUp={(e) => e.stopPropagation()}
+                          onTouchStart={(e) => e.stopPropagation()}
+                          onTouchEnd={(e) => e.stopPropagation()}
+                          className={`h-9 px-4 text-xs font-bold rounded-xl bg-primary text-white shadow-md relative overflow-hidden ${
                             showOfferButtonPulse ? "animate-soft-pulse" : ""
                           }`}
                         >
-                          تقديم عرض
+                          {/* Continuous shimmer - يعمل مع hover و touch scroll */}
+                          <span className={`absolute inset-0 bg-gradient-to-r from-transparent via-white/35 to-transparent -translate-x-full pointer-events-none ${
+                            isTouchHovered ? "animate-shimmer-loop" : "group-hover:animate-shimmer-loop"
+                          }`} />
+                          <span className="relative z-10">تقديم عرض</span>
                         </motion.button>
                       )}
                   </div>

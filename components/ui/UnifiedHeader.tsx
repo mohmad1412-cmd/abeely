@@ -104,14 +104,11 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
               ) : (
                 <motion.span
                   key={titleKey}
-                  initial={{ scale: 1 }}
-                  animate={{
-                    scale: [1, 1.08, 1],
-                    x: [0, -2, 2, -2, 2, 0],
-                  }}
+                  initial={{ opacity: 0.8 }}
+                  animate={{ opacity: 1 }}
                   transition={{
-                    duration: 0.4,
-                    ease: "easeInOut",
+                    duration: 0.2,
+                    ease: "easeOut",
                   }}
                   className="bg-primary/10 text-primary px-3 py-1.5 rounded-lg text-sm inline-block"
                 >
@@ -129,24 +126,24 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           onClick={toggleMode}
           className={`flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group ${
             isModeSwitching 
-              ? "bg-primary/20 border-primary/40 shadow-[0_0_15px_rgba(30,150,140,0.3)]" 
-              : "bg-secondary/50 hover:bg-primary/10 border border-border hover:border-primary/30"
+              ? "bg-primary/20 border border-primary/40 shadow-[0_0_15px_rgba(30,150,140,0.3)]" 
+              : "bg-card border border-border hover:text-primary"
           }`}
         >
           <motion.div
             animate={isModeSwitching ? { 
-              rotate: 360,
-              scale: [1, 1.2, 1],
+              rotate: 180,
+              scale: 1.05,
             } : { 
               rotate: 0,
               scale: 1 
             }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
           >
             <ArrowLeftRight 
               size={18} 
               strokeWidth={2} 
-              className={`transition-all duration-300 ${
+              className={`transition-all duration-200 ${
                 isModeSwitching ? "text-primary" : "text-muted-foreground group-hover:text-primary"
               }`} 
             />
@@ -160,14 +157,14 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
               if (currentView) setPreviousView(currentView);
               setView("messages");
             }}
-            className="p-2.5 rounded-xl hover:bg-primary/10 relative text-muted-foreground hover:text-primary transition-all duration-300 active:scale-95 group"
+            className="flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/30 relative"
             title="الرسائل"
           >
-            <MessageCircle size={22} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
+            <MessageCircle size={20} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
             {hasUnreadMessages && (
-              <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center">
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
               </span>
             )}
           </button>
@@ -177,11 +174,11 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
         <div className="relative" ref={notifRef}>
           <button
             onClick={() => setIsNotifOpen(!isNotifOpen)}
-            className="p-2.5 rounded-xl hover:bg-primary/10 relative text-muted-foreground hover:text-primary transition-all duration-300 active:scale-95 group"
+            className="flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/30 relative"
           >
-            <Bell size={22} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
+            <Bell size={20} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center">
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
                 <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 bg-red-500 text-[11px] text-white font-bold">
                   {unreadCount}
@@ -215,8 +212,8 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
 
   return (
     <>
-      <div className={`shrink-0 ${transparent ? "" : "px-4 sticky top-0 z-30 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-gray-200/30 dark:border-white/10 shadow-sm"}`}>
-        <div className="flex flex-col">
+      <div className={transparent ? "" : "sticky top-0 z-30 px-4 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-gray-200/30 dark:border-white/10 shadow-sm shrink-0"}>
+        <div className={transparent ? "" : "flex flex-col"}>
           {headerContent}
         </div>
       </div>

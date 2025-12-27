@@ -155,9 +155,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
             onClick={goBack}
-            className="absolute top-4 right-4 mt-[env(safe-area-inset-top,0px)] p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-colors"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="absolute top-4 right-4 mt-[env(safe-area-inset-top,0px)] w-10 h-10 rounded-full flex items-center justify-center transition-all text-white focus:outline-none bg-white/10 backdrop-blur-sm border border-white/20 shadow-lg hover:bg-white/20"
           >
-            <ArrowRight size={20} className="text-white" />
+            <ArrowRight size={22} strokeWidth={2.5} />
           </motion.button>
         )}
       </AnimatePresence>
