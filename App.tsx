@@ -295,93 +295,54 @@ const App: React.FC = () => {
     const loadData = async () => {
       loadingRef.current = true;
       
-      console.log("🔍 Checking connection...", { 
-        online: navigator.onLine,
-        timestamp: new Date().toLocaleTimeString()
-      });
-
-      // Attempt to check if we can even reach the internet
-      try {
-        await fetch('https://www.google.com/favicon.ico', { mode: 'no-cors', cache: 'no-store' });
-        console.log("🌐 Internet Ping (Google): OK");
-      } catch (e) {
-        console.warn("🌐 Internet Ping (Google): FAILED - Your browser/network might be offline or blocking outbound requests.");
-      }
-      
-      // Check connections in parallel for better performance
-      const startTime = Date.now();
-      
-      // Run both checks in parallel
-      const [supabaseStatus, aiStatus] = await Promise.all([
-        checkSupabaseConnection(),
-        checkAIConnection()
-      ]);
-      
-      setConnectionStatus({
-        supabase: supabaseStatus,
-        ai: aiStatus,
-      });
-
-      console.log("📊 Final Connection Status:", { supabase: supabaseStatus, ai: aiStatus });
-
       // Load data from Supabase 
-      // EVEN IF status check failed, we try to fetch once to be sure
       try {
         setIsLoadingData(true);
         setRequestsLoadError(null);
         
         // Fetch first page of public requests (lazy loading)
-        console.log("📥 Attempting to fetch real requests from Supabase (page 0)...");
-        const { data: firstPage, count: totalCount } = await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
+        // We do this immediately without waiting for other checks
+        const fetchPromise = fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
         
-        // If we got data, we are actually connected!
+        // Background connection checks (don't block the data fetch)
+        Promise.all([
+          checkSupabaseConnection(),
+          checkAIConnection()
+        ]).then(([supabaseStatus, aiStatus]) => {
+          setConnectionStatus({
+            supabase: supabaseStatus,
+            ai: aiStatus,
+          });
+        });
+
+        const { data: firstPage, count: totalCount } = await fetchPromise;
+        
         if (Array.isArray(firstPage)) {
-          console.log(`✅ Success! Fetched ${firstPage.length} real requests (page 1).`);
           setAllRequests(firstPage);
           setMarketplacePage(0);
           const more = typeof totalCount === 'number'
             ? firstPage.length < totalCount
             : firstPage.length === MARKETPLACE_PAGE_SIZE;
           setMarketplaceHasMore(more);
-          // Connection is already tracked via connectionStatus
-        } else {
-          // Both check and fetch failed
-          throw new Error("Both connection check and initial fetch failed");
         }
         
         // Fetch user's data if logged in
         if (user?.id) {
-            const myReqs = await fetchMyRequests(user.id);
-            // Exclude archived requests from main list
-            setMyRequests(myReqs.filter(r => r.status !== 'archived'));
-            
-            const offers = await fetchMyOffers(user.id);
-            // Exclude archived offers from main list
-            setMyOffers(offers.filter(o => o.status !== 'archived'));
-            
-            // Fetch archived items separately
-            const archivedReqs = await fetchArchivedRequests(user.id);
-            setArchivedRequests(archivedReqs);
-            
-            const archivedOffs = await fetchArchivedOffers(user.id);
-            setArchivedOffers(archivedOffs);
-          } else {
-            setMyRequests([]);
-            setMyOffers([]);
-            setArchivedRequests([]);
-            setArchivedOffers([]);
-          }
-        } catch (error) {
-          console.error("Error loading data:", error);
-          // Show user-friendly error message (not technical details)
-          setRequestsLoadError("حدث خطأ في تحميل الطلبات. يرجى المحاولة مرة أخرى.");
-          setAllRequests([]);
-          setMarketplaceHasMore(false);
-        } finally {
-          setIsLoadingData(false);
-          loadingRef.current = false;
+          await Promise.all([
+            fetchMyRequests(user.id).then(reqs => setMyRequests(reqs.filter(r => r.status !== 'archived'))),
+            fetchMyOffers(user.id).then(offers => setMyOffers(offers.filter(o => o.status !== 'archived'))),
+            fetchArchivedRequests(user.id).then(setArchivedRequests),
+            fetchArchivedOffers(user.id).then(setArchivedOffers)
+          ]);
         }
-      };
+      } catch (error) {
+        console.error("Error loading data:", error);
+        setRequestsLoadError("حدث خطأ في تحميل الطلبات.");
+      } finally {
+        setIsLoadingData(false);
+        loadingRef.current = false;
+      }
+    };
 
       loadData();
     }, [appView, user?.id]);
@@ -829,7 +790,12 @@ const App: React.FC = () => {
         );
       case "marketplace":
         return (
-          <div className="h-full flex flex-col overflow-hidden">
+          <div className="h-full flex flex-col overflow-hidden relative">
+            {isLoadingData && allRequests.length === 0 && (
+              <div className="absolute inset-0 z-20">
+                <FullScreenLoading message="جاري تحميل سوق الطلبات..." />
+              </div>
+            )}
             {allRequests && Array.isArray(allRequests) ? (
               <Marketplace
                 requests={allRequests}
@@ -933,7 +899,7 @@ const App: React.FC = () => {
         );
       case "messages":
         return (
-          <div className="h-full flex flex-col overflow-hidden">
+          <div className="h-full flex flex-col overflow-hidden relative">
             <Messages
               onBack={() => {
                 if (previousView) {
@@ -1037,9 +1003,6 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-        {/* Full screen loading for data initialization */}
-        {isLoadingData && <FullScreenLoading message="جاري تجهيز سوق أبيلي..." />}
-        
         {/* Header */}
         <header className="min-h-16 bg-card/80 backdrop-blur-xl flex items-center justify-between px-4 shrink-0 relative z-30 shadow-sm pt-[env(safe-area-inset-top,0px)]">
           <div className="flex items-center gap-3">

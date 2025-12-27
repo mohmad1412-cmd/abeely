@@ -734,59 +734,56 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
   // Check AI connection status and create manual draft if AI is not connected
   useEffect(() => {
-    // Start AI check immediately (no delay) to avoid blocking UI
-    let cancelled = false;
-    
-    const checkAI = async () => {
-      const status = await checkAIConnection();
-      
-      if (cancelled) return;
-      
-      setAiConnected(status.connected);
-      
-      // Log connection status for debugging
-      if (!status.connected) {
-        console.warn("⚠️ الذكاء الاصطناعي غير متصل:", status.error);
-      } else {
-        console.log("✅ الذكاء الاصطناعي متصل بنجاح");
+    // 1. Create initial draft card immediately (don't wait for AI check)
+    setMessages((prev) => {
+      if (prev.length === 0) {
+        const emptyDraft: ChatMessage = {
+          id: Date.now().toString(),
+          role: "ai",
+          text: "", // No text - just show the form directly
+          isDraftPreview: true,
+          draftData: {
+            title: "", // Will be auto-generated on publish
+            description: "",
+            location: "",
+            categories: [],
+            budgetMin: "",
+            budgetMax: "",
+            deliveryTimeFrom: "",
+            budgetType: "negotiable",
+            seriousness: seriousnessLevel,
+            suggestions: [],
+            isNeighborhoodEnabled: false,
+            isBudgetEnabled: false,
+            isDeliveryEnabled: false,
+            isAttachmentsEnabled: false,
+          },
+        };
+        setConversationTitle("طلب جديد");
+        return [emptyDraft];
       }
-      
-      // Always create draft card if no messages exist (whether AI is connected or not)
-      // This ensures accordions are always visible
-      setMessages((prev) => {
-        if (prev.length === 0) {
-          const emptyDraft: ChatMessage = {
-            id: Date.now().toString(),
-            role: "ai",
-            text: "", // No text - just show the form directly
-            isDraftPreview: true,
-            draftData: {
-              title: "", // Will be auto-generated on publish
-              description: "",
-              location: "",
-              categories: [],
-              budgetMin: "",
-              budgetMax: "",
-              deliveryTimeFrom: "",
-              budgetType: "negotiable",
-              seriousness: seriousnessLevel,
-              suggestions: [],
-              isNeighborhoodEnabled: false,
-              isBudgetEnabled: false,
-              isDeliveryEnabled: false,
-              isAttachmentsEnabled: false,
-            },
-          };
-          setConversationTitle("طلب جديد");
-          return [emptyDraft];
+      return prev;
+    });
+
+    // 2. Perform AI check in the background
+    let cancelled = false;
+    const checkAI = async () => {
+      try {
+        const status = await checkAIConnection();
+        if (cancelled) return;
+        
+        setAiConnected(status.connected);
+        if (!status.connected) {
+          console.warn("⚠️ الذكاء الاصطناعي غير متصل:", status.error);
+        } else {
+          console.log("✅ الذكاء الاصطناعي متصل بنجاح");
         }
-        return prev;
-      });
+      } catch (err) {
+        console.error("AI Check Error:", err);
+      }
     };
     
-    // Start check immediately (no delay)
     checkAI();
-    
     return () => {
       cancelled = true;
     };

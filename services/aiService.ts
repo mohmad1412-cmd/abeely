@@ -279,7 +279,7 @@ export const classifyAndDraft = generateDraftWithCta;
  */
 // Cache the AI connection status to avoid repeated slow checks
 let aiConnectionCache: {connected: boolean; error?: string; timestamp: number} | null = null;
-const AI_CACHE_DURATION = 60000; // 1 minute
+const AI_CACHE_DURATION = 600000; // 10 minutes (increased to reduce network overhead)
 
 export async function checkAIConnection(): Promise<{connected: boolean; error?: string}> {
   // Return cached result if still valid
