@@ -19,6 +19,8 @@ import {
   ChevronUp,
   AlertCircle,
   RotateCw,
+  Loader2,
+  ArrowDown,
   Plus,
   ExternalLink,
   ImageIcon,
@@ -668,48 +670,107 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           <motion.div 
             initial={{ height: 0, opacity: 0 }}
             animate={{ 
-              height: pullToRefreshState.isRefreshing ? 70 : Math.min(pullToRefreshState.pullDistance, 90),
+              height: pullToRefreshState.isRefreshing ? 90 : Math.min(pullToRefreshState.pullDistance, 110),
               opacity: 1 
             }}
             exit={{ height: 0, opacity: 0 }}
-            className="flex items-center justify-center overflow-hidden z-10 bg-gradient-to-b from-secondary/20 to-transparent border-b border-border/10"
+            className="flex items-center justify-center overflow-hidden z-10 bg-gradient-to-b from-secondary/40 to-transparent border-b border-border/5"
           >
             <motion.div 
               initial={{ y: -20 }}
               animate={{ y: 0 }}
-              className="flex flex-col items-center py-3"
+              className="flex flex-col items-center py-4"
             >
-              <motion.div
-                animate={pullToRefreshState.isRefreshing ? { rotate: 360 } : {}}
-                transition={pullToRefreshState.isRefreshing ? { 
-                  rotate: { duration: 1, repeat: Infinity, ease: "linear" } 
-                } : {}}
-                className={`p-2.5 rounded-full bg-card shadow-xl border-2 transition-all duration-300 ${
-                  pullToRefreshState.pullDistance >= 80 ? 'text-primary border-primary scale-110' : 'text-muted-foreground border-border/50 scale-100'
-                }`}
-              >
-                <RotateCw 
-                  size={24} 
-                  className={pullToRefreshState.isRefreshing ? "animate-pulse" : ""}
-                  style={{
-                    transform: pullToRefreshState.isRefreshing ? 'none' : `rotate(${Math.min(pullToRefreshState.pullDistance / 80 * 360, 360)}deg)`
+              <div className="relative w-14 h-14 flex items-center justify-center">
+                {/* Background Progress Circle */}
+                <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                  <circle
+                    cx="28"
+                    cy="28"
+                    r="24"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    fill="transparent"
+                    className="text-secondary/30"
+                  />
+                  {!pullToRefreshState.isRefreshing && (
+                    <motion.circle
+                      cx="28"
+                      cy="28"
+                      r="24"
+                      stroke="url(#pull-gradient-hero)"
+                      strokeWidth="1.5"
+                      fill="transparent"
+                      strokeDasharray={150.8}
+                      strokeDashoffset={150.8 - (Math.min(pullToRefreshState.pullDistance / 80, 1) * 150.8)}
+                      strokeLinecap="round"
+                      className="opacity-60"
+                    />
+                  )}
+                  <defs>
+                    <linearGradient id="pull-gradient-hero" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#1E968C" />
+                      <stop offset="100%" stopColor="#153659" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+
+                {/* Icon Container with Gradient Background */}
+                <motion.div 
+                  animate={{ 
+                    scale: pullToRefreshState.pullDistance >= 80 ? 1.05 : 1,
+                    backgroundColor: pullToRefreshState.isRefreshing ? "transparent" : "rgba(255, 255, 255, 0.5)"
                   }}
-                />
-              </motion.div>
-              {!pullToRefreshState.isRefreshing && (
-                <motion.span 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: pullToRefreshState.pullDistance > 40 ? 1 : 0 }}
-                  className="text-[10px] font-black mt-2 text-primary/70 uppercase tracking-[0.25em]"
+                  className="w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors duration-300"
                 >
-                  {pullToRefreshState.pullDistance >= 80 ? 'أفلت للتحديث' : 'اسحب أكثر'}
-                </motion.span>
-              )}
-              {pullToRefreshState.isRefreshing && (
-                <span className="text-[10px] font-black mt-2 text-primary uppercase tracking-[0.25em] animate-pulse">
-                  جاري التحديث
+                  <AnimatePresence mode="wait">
+                    {pullToRefreshState.isRefreshing ? (
+                      <motion.div
+                        key="refreshing-icon"
+                        initial={{ opacity: 0, rotate: 0 }}
+                        animate={{ opacity: 1, rotate: 360 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ 
+                          rotate: { duration: 1.5, repeat: Infinity, ease: "linear" },
+                          opacity: { duration: 0.3 }
+                        }}
+                        className="text-primary"
+                      >
+                        <Loader2 size={24} strokeWidth={2} className="opacity-80" />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="pulling-icon"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ 
+                          opacity: 1, 
+                          scale: 1,
+                          rotate: (pullToRefreshState.pullDistance / 80) * 360
+                        }}
+                        exit={{ opacity: 0, scale: 0.5 }}
+                        transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                        className={pullToRefreshState.pullDistance >= 80 ? "text-primary" : "text-muted-foreground/70"}
+                      >
+                        <RotateCw size={20} strokeWidth={2.5} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              </div>
+
+              <motion.div 
+                animate={{ 
+                  y: pullToRefreshState.pullDistance > 30 ? 0 : 5,
+                  opacity: pullToRefreshState.pullDistance > 30 ? 1 : 0
+                }}
+                className="flex flex-col items-center mt-1"
+              >
+                <span className={`text-[9px] font-bold uppercase tracking-[0.2em] transition-colors duration-500 ${
+                  pullToRefreshState.pullDistance >= 80 ? 'text-primary' : 'text-muted-foreground/60'
+                }`}>
+                  {pullToRefreshState.isRefreshing ? 'تحديث البيانات' : pullToRefreshState.pullDistance >= 80 ? 'أفلت للتحديث' : 'اسحب لتحديث الصفحة'}
                 </span>
-              )}
+              </motion.div>
             </motion.div>
           </motion.div>
         )}

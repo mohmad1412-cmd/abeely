@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { supabase } from "./supabaseClient";
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 const MODEL_NAME = "gemini-2.0-flash-001";
@@ -63,11 +64,34 @@ export async function generateDraftWithCta(
   attachments?: File[],
   audioBlob?: Blob,
 ): Promise<AIDraft & { isClarification?: boolean; aiResponse: string }> {
+  // 1. Try Supabase Edge Function first (Secure, handles API key on server)
+  try {
+    console.log("🔄 Calling Supabase Edge Function 'ai-chat' (draft mode)...");
+    const { data, error } = await supabase.functions.invoke("ai-chat", {
+      body: { 
+        prompt: text,
+        mode: "draft"
+      },
+    });
+
+    if (!error && data) {
+      console.log("✅ AI response from Supabase Edge Function:", data);
+      return data;
+    }
+    
+    if (error) {
+      console.warn("⚠️ Supabase function error, falling back to direct API:", error);
+    }
+  } catch (err) {
+    console.warn("⚠️ Failed to invoke Supabase function, falling back to direct API:", err);
+  }
+
+  // 2. Fallback to direct client-side call (if VITE_GEMINI_API_KEY exists)
   const gemini = getClient();
   if (!gemini) {
     return {
       summary: text,
-      aiResponse: "عذراً، يبدو أن هناك مشكلة في الربط مع المساعد الذكي.",
+      aiResponse: "عذراً، يبدو أن هناك مشكلة في الربط مع المساعد الذكي. تأكد من إعداد مفاتيح API.",
     };
   }
 
@@ -263,6 +287,23 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
     return { connected: aiConnectionCache.connected, error: aiConnectionCache.error };
   }
   
+  // 1. Try checking Edge Function first
+  try {
+    const { data, error } = await supabase.functions.invoke("ai-chat", {
+      body: { prompt: "ping", mode: "chat" },
+    });
+    
+    if (!error && data) {
+      console.log("✅ Supabase Edge Function 'ai-chat' is healthy.");
+      const result = { connected: true };
+      aiConnectionCache = { ...result, timestamp: Date.now() };
+      return result;
+    }
+  } catch (err) {
+    console.warn("⚠️ Edge Function check failed:", err);
+  }
+
+  // 2. Fallback to checking direct API key
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   
   if (!apiKey) {
