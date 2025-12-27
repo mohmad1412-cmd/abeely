@@ -138,6 +138,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleResizeStart = (e: React.MouseEvent | React.TouchEvent, type: 'requests' | 'offers') => {
     e.stopPropagation();
+    
+    // Immediate haptic feedback on touch
+    if (navigator.vibrate) {
+      navigator.vibrate(10);
+    }
+    
     setIsResizing(true);
     dragStartedRef.current = false;
     
@@ -459,8 +465,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="px-4 pt-3 shrink-0 relative z-0">
         <div className="flex bg-secondary/30 rounded-xl p-1 border border-border/30 relative">
           <motion.div layout className="absolute top-1 bottom-1 rounded-sm bg-primary shadow-lg" style={{ width: 'calc(50% - 6px)', right: mode === "requests" ? '4px' : 'calc(50% + 2px)' }} transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }} />
-          <button onClick={() => { if (navigator.vibrate) navigator.vibrate(15); onNavigate("requests-mode"); }} className={`flex-1 py-3 text-sm font-bold rounded-sm transition-colors duration-200 relative z-10 flex items-center justify-center gap-2 ${mode === "requests" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>طلباتي <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "requests" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userRequests.length}</span></button>
-          <button onClick={() => { if (navigator.vibrate) navigator.vibrate(15); onNavigate("offers-mode"); }} className={`flex-1 py-3 text-sm font-bold rounded-sm transition-colors duration-200 relative z-10 flex items-center justify-center gap-2 ${mode === "offers" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>عروضي <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "offers" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userOffers.length}</span></button>
+          <button onClick={() => { 
+            if (navigator.vibrate) navigator.vibrate(15); onNavigate("requests-mode"); 
+          }} className={`flex-1 py-3 text-sm font-bold rounded-sm transition-colors duration-200 relative z-10 flex items-center justify-center gap-2 ${mode === "requests" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>طلباتي <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "requests" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userRequests.length}</span></button>
+          <button onClick={() => { 
+            if (navigator.vibrate) navigator.vibrate(15); onNavigate("offers-mode"); 
+          }} className={`flex-1 py-3 text-sm font-bold rounded-sm transition-colors duration-200 relative z-10 flex items-center justify-center gap-2 ${mode === "offers" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>عروضي <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "offers" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userOffers.length}</span></button>
         </div>
       </div>
 
@@ -692,7 +702,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {mode === "offers" && (
           <div className="border-t border-border bg-card z-20 shrink-0 px-4 py-3">
-            <motion.button onClick={() => onNavigate("marketplace")} whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} className="w-full h-12 text-right flex items-center justify-between px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-md hover:shadow-lg transition-all group">
+            <motion.button onClick={() => {
+              onNavigate("marketplace");
+            }} whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} className="w-full h-12 text-right flex items-center justify-between px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-md hover:shadow-lg transition-all group">
               <div className="flex items-center gap-2"><LayoutDashboard size={22} strokeWidth={2} /><span className="font-bold text-sm">تصفح طلبات الآخرين</span></div>
               <ChevronLeft size={20} strokeWidth={2.5} className="group-hover:-translate-x-1 transition-transform" />
             </motion.button>

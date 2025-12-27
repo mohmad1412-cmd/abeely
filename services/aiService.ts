@@ -278,14 +278,27 @@ export const classifyAndDraft = generateDraftWithCta;
  * Check if AI service is properly configured
  */
 // Cache the AI connection status to avoid repeated slow checks
-let aiConnectionCache: {connected: boolean; error?: string; timestamp: number} | null = null;
-const AI_CACHE_DURATION = 600000; // 10 minutes (increased to reduce network overhead)
+let aiConnectionCache: {connected: boolean; error?: string; timestamp: number} | null = (() => {
+  try {
+    const saved = localStorage.getItem('abeely_ai_connection_cache');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Only use if less than 30 minutes old
+      if (Date.now() - parsed.timestamp < 1800000) return parsed;
+    }
+  } catch (e) {}
+  return null;
+})();
+
+const AI_CACHE_DURATION = 600000; // 10 minutes
 
 export async function checkAIConnection(): Promise<{connected: boolean; error?: string}> {
   // Return cached result if still valid
   if (aiConnectionCache && (Date.now() - aiConnectionCache.timestamp) < AI_CACHE_DURATION) {
     return { connected: aiConnectionCache.connected, error: aiConnectionCache.error };
   }
+  
+  // ... rest of function ...
   
   // 1. Try checking Edge Function first
   try {
@@ -297,6 +310,7 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
       console.log("✅ Supabase Edge Function 'ai-chat' is healthy.");
       const result = { connected: true };
       aiConnectionCache = { ...result, timestamp: Date.now() };
+      localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
       return result;
     }
   } catch (err) {
@@ -310,6 +324,7 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
     console.warn("⚠️ VITE_GEMINI_API_KEY غير موجود في ملف .env");
     const result = { connected: false, error: "VITE_GEMINI_API_KEY غير موجود في ملف .env" };
     aiConnectionCache = { ...result, timestamp: Date.now() };
+    localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
     return result;
   }
 
@@ -318,6 +333,7 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
     console.error("❌ فشل في إنشاء عميل Gemini");
     const result = { connected: false, error: "فشل في إنشاء عميل Gemini" };
     aiConnectionCache = { ...result, timestamp: Date.now() };
+    localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
     return result;
   }
 
@@ -343,12 +359,14 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
       console.log(`✅ الاتصال بالذكاء الاصطناعي ناجح باستخدام: ${modelName}`);
       const successResult = { connected: true };
       aiConnectionCache = { ...successResult, timestamp: Date.now() };
+      localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
       return successResult;
     }
   } catch (err: any) {
     console.warn(`⚠️ فشل النموذج ${modelName}:`, err.message);
     const failResult = { connected: false, error: err.message };
     aiConnectionCache = { ...failResult, timestamp: Date.now() };
+    localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
     return failResult;
   }
   

@@ -231,6 +231,12 @@ const FloatingTextarea = ({
   const handleResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // Immediate haptic feedback on touch
+    if (navigator.vibrate) {
+      navigator.vibrate(10);
+    }
+    
     setIsResizing(true);
     const startY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     const startHeight = textareaRef.current?.offsetHeight || MIN_HEIGHT;
@@ -535,6 +541,7 @@ interface ChatAreaProps {
   onMessagesChange?: (messages: ChatMessage[]) => void;
   savedScrollPosition?: number;
   onScrollPositionChange?: (pos: number) => void;
+  aiStatus?: { connected: boolean; error?: string };
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({ 
@@ -544,7 +551,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   savedMessages,
   onMessagesChange,
   savedScrollPosition = 0,
-  onScrollPositionChange
+  onScrollPositionChange,
+  aiStatus
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(savedMessages || []);
   const [input, setInput] = useState("");
@@ -566,7 +574,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [showCitySuggestions, setShowCitySuggestions] = useState(false);
   const [clarificationAnswer, setClarificationAnswer] = useState<string | null>(null);
   const [pendingClarification, setPendingClarification] = useState<{question: string; quickOptions?: string[]} | null>(null);
-  const [aiConnected, setAiConnected] = useState<boolean | null>(true); // Start as true (optimistic) to avoid flickering
+  
+  // Use aiStatus from props if available, otherwise fallback to local state
+  const [aiConnectedInternal, setAiConnected] = useState<boolean | null>(true); 
+  const aiConnected = aiStatus ? aiStatus.connected : aiConnectedInternal;
   
   // Guest verification state
   const [guestStep, setGuestStep] = useState<'none' | 'phone' | 'otp' | 'terms'>('none');
@@ -765,7 +776,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       return prev;
     });
 
-    // 2. Perform AI check in the background
+    // 2. Perform AI check in the background ONLY if not provided by parent
+    if (aiStatus) return;
+
     let cancelled = false;
     const checkAI = async () => {
       try {
@@ -775,9 +788,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         
         setAiConnected(status.connected);
         if (!status.connected) {
-          console.warn("⚠️ الذكاء الاصطناعي غير متصل:", status.error);
+          console.warn("⚠️ الذكاء الاصطناعي غير متصل (محلي):", status.error);
         } else {
-          console.log("✅ الذكاء الاصطناعي متصل بنجاح");
+          console.log("✅ الذكاء الاصطناعي متصل بنجاح (محلي)");
         }
       } catch (err) {
         console.error("AI Check Error:", err);

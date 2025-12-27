@@ -285,66 +285,67 @@ const App: React.FC = () => {
   const loadingRef = useRef(false);
   
   useEffect(() => {
-    // Start loading data as soon as possible, even during splash
-    // Prevent concurrent loadData calls
-    if (loadingRef.current) {
-      return;
-    }
-
-    const loadData = async () => {
+    // Start loading public data immediately
+    const loadPublicData = async () => {
+      if (loadingRef.current) return;
       loadingRef.current = true;
       
-      // Load data from Supabase 
       try {
         setIsLoadingData(true);
-        setRequestsLoadError(null);
-        
-        // Fetch first page of public requests (lazy loading)
-        // We do this immediately
-        const fetchPromise = fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
-        
-        // Background connection checks
-        Promise.all([
-          checkSupabaseConnection(),
-          checkAIConnection()
-        ]).then(([supabaseStatus, aiStatus]) => {
-          setConnectionStatus({
-            supabase: supabaseStatus,
-            ai: aiStatus,
-          });
-        });
-
-        const { data: firstPage, count: totalCount } = await fetchPromise;
+        const { data: firstPage, count: totalCount } = await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
         
         if (Array.isArray(firstPage)) {
           setAllRequests(firstPage);
           setMarketplacePage(0);
-          const more = typeof totalCount === 'number'
-            ? firstPage.length < totalCount
-            : firstPage.length === MARKETPLACE_PAGE_SIZE;
-          setMarketplaceHasMore(more);
-        }
-        
-        // Fetch user's data ONLY if logged in
-        if (user?.id) {
-          await Promise.all([
-            fetchMyRequests(user.id).then(reqs => setMyRequests(reqs.filter(r => r.status !== 'archived'))),
-            fetchMyOffers(user.id).then(offers => setMyOffers(offers.filter(o => o.status !== 'archived'))),
-            fetchArchivedRequests(user.id).then(setArchivedRequests),
-            fetchArchivedOffers(user.id).then(setArchivedOffers)
-          ]);
+          setMarketplaceHasMore(firstPage.length === MARKETPLACE_PAGE_SIZE);
         }
       } catch (error) {
-        console.error("Error loading data:", error);
-        setRequestsLoadError("حدث خطأ في تحميل الطلبات.");
+        console.error("Error loading public data:", error);
       } finally {
         setIsLoadingData(false);
         loadingRef.current = false;
       }
     };
 
-    loadData();
-  }, [user?.id]); // Re-run if user logs in to fetch private data
+    loadPublicData();
+
+    // Background connection checks
+    Promise.all([
+      checkSupabaseConnection(),
+      checkAIConnection()
+    ]).then(([supabaseStatus, aiStatus]) => {
+      setConnectionStatus({
+        supabase: supabaseStatus,
+        ai: aiStatus,
+      });
+    });
+  }, []);
+
+  // Separate effect for user-specific data
+  useEffect(() => {
+    if (!user?.id) {
+      setMyRequests([]);
+      setMyOffers([]);
+      setArchivedRequests([]);
+      setArchivedOffers([]);
+      return;
+    }
+
+    const loadUserData = async () => {
+      try {
+        await Promise.all([
+          fetchMyRequests(user.id).then(reqs => setMyRequests(reqs.filter(r => r.status !== 'archived'))),
+          fetchMyOffers(user.id).then(offers => setMyOffers(offers.filter(o => o.status !== 'archived'))),
+          fetchArchivedRequests(user.id).then(setArchivedRequests),
+          fetchArchivedOffers(user.id).then(setArchivedOffers)
+        ]);
+      } catch (error) {
+        console.error("Error loading user data:", error);
+      }
+    };
+
+    loadUserData();
+  }, [user?.id]);
 
   // ==========================================
   // Reload Data When Opening Marketplace
@@ -589,9 +590,12 @@ const App: React.FC = () => {
   };
 
   const handleNavigate = (newView: any) => {
-    // Note: Scroll position is automatically saved via onScrollPositionChange callbacks
-    // in Marketplace and ChatArea components (via useLayoutEffect cleanup on unmount)
-    // No need to manually save here as components handle it themselves
+    // Auto-switch mode if needed based on view to keep state consistent
+    if (newView === "marketplace" || newView === "request-detail") {
+      if (mode !== "offers") setMode("offers");
+    } else if (newView === "create-request") {
+      if (mode !== "requests") setMode("requests");
+    }
 
     if (newView === "requests-mode") {
       handleModeSwitch("requests");
@@ -783,6 +787,7 @@ const App: React.FC = () => {
                 onMessagesChange={setSavedChatMessages}
                 savedScrollPosition={chatAreaScrollPos}
                 onScrollPositionChange={setChatAreaScrollPos}
+                aiStatus={connectionStatus?.ai}
               />
             </div>
           </div>
@@ -985,7 +990,9 @@ const App: React.FC = () => {
         archivedOffers={archivedOffers}
         onSelectRequest={handleSelectRequest}
         onSelectOffer={handleSelectOffer}
-        onCreateRequest={() => handleNavigate("create-request")}
+        onCreateRequest={() => {
+          handleNavigate("create-request");
+        }}
         onNavigate={handleNavigate}
         onArchiveRequest={handleArchiveRequest}
         onUnarchiveRequest={handleUnarchiveRequest}
@@ -1118,15 +1125,15 @@ const App: React.FC = () => {
           ref={scrollContainerRef}
           className="flex-1 min-h-0 bg-background relative overflow-hidden"
         >
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="popLayout">
             <motion.div
-              key={`${mode}-${view}-${selectedRequest?.id || 'list'}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              key={`${view}-${selectedRequest?.id || 'list'}`}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
               transition={{ 
-                duration: 0.1, 
-                ease: "easeInOut"
+                duration: 0.2, 
+                ease: "easeOut"
               }}
               className="absolute inset-0 flex flex-col overflow-auto"
             >

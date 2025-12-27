@@ -239,6 +239,12 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   // Custom resize handler for description textarea
   const handleDescResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
+    
+    // Immediate haptic feedback on touch
+    if (navigator.vibrate) {
+      navigator.vibrate(10);
+    }
+    
     setIsDescResizing(true);
     const startY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     const startHeight = descTextareaRef.current?.offsetHeight || DESC_MIN_HEIGHT;

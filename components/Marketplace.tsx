@@ -154,6 +154,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       if (container.scrollTop !== 0) return; // Only allow pull when at top
       pullStartY.current = e.touches[0].clientY;
       pullCurrentY.current = pullStartY.current;
+      
+      // Feedback on touch start for pull-to-refresh
+      if (navigator.vibrate) {
+        navigator.vibrate(5);
+      }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
@@ -498,35 +503,46 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 </button>
               </div>
              ) : (
-               <div className="flex items-center gap-1 bg-card p-1 rounded-xl border border-border shadow-md h-11">
+               <div className="flex items-center gap-1 bg-card p-1 rounded-xl border border-border shadow-md h-11 relative overflow-hidden">
+                 <motion.div 
+                   layout
+                   className="absolute top-1 bottom-1 rounded-lg bg-primary shadow-md"
+                   style={{ 
+                     width: 'calc(50% - 6px)', 
+                     right: viewMode === "all" ? '4px' : 'calc(50% + 2px)' 
+                   }}
+                   transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
+                 />
                  <button
                    onClick={() => {
+                     if (navigator.vibrate) navigator.vibrate(15);
                      // If filters are active, clear them when clicking "الكل"
                      if (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax) {
                        handleResetSearch();
                      }
                      setViewMode("all");
                    }}
-                   className={`h-full px-5 font-bold transition-all rounded-sm text-xs sm:text-sm flex items-center justify-center ${
+                   className={`h-full px-5 font-bold transition-all rounded-lg text-xs sm:text-sm flex items-center justify-center relative z-10 flex-1 ${
                      viewMode === "all" && !hasActiveFilters
-                       ? "bg-primary text-white shadow-md"
-                       : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                       ? "text-white"
+                       : "text-muted-foreground hover:text-foreground"
                    }`}
                  >
                    الكل
                  </button>
                  <button
                    onClick={() => {
+                     if (navigator.vibrate) navigator.vibrate(15);
                      // If filters are active, clear them when clicking "اهتماماتي"
                      if (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax) {
                        handleResetSearch();
                      }
                      setViewMode("interests");
                    }}
-                   className={`h-full px-5 font-bold transition-all rounded-sm flex items-center gap-2 text-xs sm:text-sm justify-center ${
+                   className={`h-full px-5 font-bold transition-all rounded-lg flex items-center gap-2 text-xs sm:text-sm justify-center relative z-10 flex-1 ${
                      viewMode === "interests" && !hasActiveFilters
-                       ? "bg-primary text-white shadow-md"
-                       : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                       ? "text-white"
+                       : "text-muted-foreground hover:text-foreground"
                    }`}
                  >
                    اهتماماتي
@@ -546,7 +562,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                    )}
                  </button>
                </div>
-             )}
+            )}
 
           {/* Right Side - Search Icon */}
           <div className="flex items-center gap-2">
@@ -683,7 +699,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               className="flex flex-col items-center py-2"
             >
               <div className="relative w-12 h-12 flex items-center justify-center">
-                {/* Background Progress Circle - Very Light */}
+                {/* Background Progress Circle - Minimal & Discrete */}
                 <svg className="absolute inset-0 w-full h-full transform -rotate-90">
                   <circle
                     cx="24"
@@ -692,7 +708,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     stroke="currentColor"
                     strokeWidth="1"
                     fill="transparent"
-                    className="text-secondary/20"
+                    className="text-primary/5"
                   />
                   {!pullToRefreshState.isRefreshing && (
                     <motion.circle
@@ -705,7 +721,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       strokeDasharray={125.6}
                       strokeDashoffset={125.6 - (Math.min(pullToRefreshState.pullDistance / 80, 1) * 125.6)}
                       strokeLinecap="round"
-                      className="opacity-40"
+                      className="opacity-30"
                     />
                   )}
                   <defs>
@@ -719,8 +735,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 {/* Icon Container - Floating & Minimal */}
                 <motion.div 
                   animate={{ 
-                    scale: pullToRefreshState.pullDistance >= 80 ? 1.05 : 1,
-                    backgroundColor: pullToRefreshState.isRefreshing ? "transparent" : "rgba(255, 255, 255, 0.3)"
+                    scale: pullToRefreshState.pullDistance >= 80 ? 1.1 : 1,
+                    backgroundColor: pullToRefreshState.isRefreshing ? "transparent" : "rgba(255, 255, 255, 0.2)"
                   }}
                   className="w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors duration-300"
                 >
@@ -737,7 +753,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         }}
                         className="text-primary"
                       >
-                        <Loader2 size={22} strokeWidth={2} className="opacity-70" />
+                        <Loader2 size={22} strokeWidth={2.5} className="opacity-80" />
                       </motion.div>
                     ) : (
                       <motion.div
