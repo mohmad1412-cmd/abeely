@@ -29,6 +29,7 @@ import {
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
 import { AnimatePresence, motion } from "framer-motion";
+import { CardsGridSkeleton } from "./ui/LoadingSkeleton";
 
 interface MarketplaceProps {
   requests: Request[];
@@ -670,41 +671,41 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           <motion.div 
             initial={{ height: 0, opacity: 0 }}
             animate={{ 
-              height: pullToRefreshState.isRefreshing ? 90 : Math.min(pullToRefreshState.pullDistance, 110),
+              height: pullToRefreshState.isRefreshing ? 70 : Math.min(pullToRefreshState.pullDistance, 90),
               opacity: 1 
             }}
             exit={{ height: 0, opacity: 0 }}
-            className="flex items-center justify-center overflow-hidden z-10 bg-gradient-to-b from-secondary/40 to-transparent border-b border-border/5"
+            className="flex items-center justify-center overflow-hidden z-10"
           >
             <motion.div 
               initial={{ y: -20 }}
               animate={{ y: 0 }}
-              className="flex flex-col items-center py-4"
+              className="flex flex-col items-center py-2"
             >
-              <div className="relative w-14 h-14 flex items-center justify-center">
-                {/* Background Progress Circle */}
+              <div className="relative w-12 h-12 flex items-center justify-center">
+                {/* Background Progress Circle - Very Light */}
                 <svg className="absolute inset-0 w-full h-full transform -rotate-90">
                   <circle
-                    cx="28"
-                    cy="28"
-                    r="24"
+                    cx="24"
+                    cy="24"
+                    r="20"
                     stroke="currentColor"
-                    strokeWidth="2.5"
+                    strokeWidth="1"
                     fill="transparent"
-                    className="text-secondary/30"
+                    className="text-secondary/20"
                   />
                   {!pullToRefreshState.isRefreshing && (
                     <motion.circle
-                      cx="28"
-                      cy="28"
-                      r="24"
+                      cx="24"
+                      cy="24"
+                      r="20"
                       stroke="url(#pull-gradient-hero)"
                       strokeWidth="1.5"
                       fill="transparent"
-                      strokeDasharray={150.8}
-                      strokeDashoffset={150.8 - (Math.min(pullToRefreshState.pullDistance / 80, 1) * 150.8)}
+                      strokeDasharray={125.6}
+                      strokeDashoffset={125.6 - (Math.min(pullToRefreshState.pullDistance / 80, 1) * 125.6)}
                       strokeLinecap="round"
-                      className="opacity-60"
+                      className="opacity-40"
                     />
                   )}
                   <defs>
@@ -715,13 +716,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   </defs>
                 </svg>
 
-                {/* Icon Container with Gradient Background */}
+                {/* Icon Container - Floating & Minimal */}
                 <motion.div 
                   animate={{ 
                     scale: pullToRefreshState.pullDistance >= 80 ? 1.05 : 1,
-                    backgroundColor: pullToRefreshState.isRefreshing ? "transparent" : "rgba(255, 255, 255, 0.5)"
+                    backgroundColor: pullToRefreshState.isRefreshing ? "transparent" : "rgba(255, 255, 255, 0.3)"
                   }}
-                  className="w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors duration-300"
+                  className="w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors duration-300"
                 >
                   <AnimatePresence mode="wait">
                     {pullToRefreshState.isRefreshing ? (
@@ -731,12 +732,12 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         animate={{ opacity: 1, rotate: 360 }}
                         exit={{ opacity: 0 }}
                         transition={{ 
-                          rotate: { duration: 1.5, repeat: Infinity, ease: "linear" },
-                          opacity: { duration: 0.3 }
+                          rotate: { duration: 1.2, repeat: Infinity, ease: "linear" },
+                          opacity: { duration: 0.2 }
                         }}
                         className="text-primary"
                       >
-                        <Loader2 size={24} strokeWidth={2} className="opacity-80" />
+                        <Loader2 size={22} strokeWidth={2} className="opacity-70" />
                       </motion.div>
                     ) : (
                       <motion.div
@@ -749,28 +750,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         }}
                         exit={{ opacity: 0, scale: 0.5 }}
                         transition={{ type: "spring", stiffness: 200, damping: 20 }}
-                        className={pullToRefreshState.pullDistance >= 80 ? "text-primary" : "text-muted-foreground/70"}
+                        className={pullToRefreshState.pullDistance >= 80 ? "text-primary" : "text-primary/40"}
                       >
-                        <RotateCw size={20} strokeWidth={2.5} />
+                        <RotateCw size={18} strokeWidth={2.5} />
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </motion.div>
               </div>
-
-              <motion.div 
-                animate={{ 
-                  y: pullToRefreshState.pullDistance > 30 ? 0 : 5,
-                  opacity: pullToRefreshState.pullDistance > 30 ? 1 : 0
-                }}
-                className="flex flex-col items-center mt-1"
-              >
-                <span className={`text-[9px] font-bold uppercase tracking-[0.2em] transition-colors duration-500 ${
-                  pullToRefreshState.pullDistance >= 80 ? 'text-primary' : 'text-muted-foreground/60'
-                }`}>
-                  {pullToRefreshState.isRefreshing ? 'تحديث البيانات' : pullToRefreshState.pullDistance >= 80 ? 'أفلت للتحديث' : 'اسحب لتحديث الصفحة'}
-                </span>
-              </motion.div>
             </motion.div>
           </motion.div>
         )}
@@ -1088,6 +1075,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       </AnimatePresence>
 
       <div className="p-4">
+        {/* Skeleton for initial empty state while loading */}
+        {requests.length === 0 && !loadError && (
+          <div className="mt-4">
+            <CardsGridSkeleton count={6} />
+          </div>
+        )}
+
         {/* Sub-Filters - Only show when in interests mode */}
         {viewMode === "interests" && (
           <div className="mb-6 animate-in fade-in slide-in-from-top-1">
@@ -1789,16 +1783,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
         {/* Load more sentinel + indicator */}
         <div ref={loadMoreTriggerRef} className="h-10 w-full" />
-        <div className="py-6 flex items-center justify-center">
+        <div className="py-6">
           {isLoadingMore ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground animate-spin" />
-              جاري تحميل المزيد...
-            </div>
+            <CardsGridSkeleton count={3} />
           ) : hasMore ? (
-            <div className="text-xs text-muted-foreground">مرر للأسفل لتحميل المزيد</div>
+            <div className="text-center text-xs text-muted-foreground">مرر للأسفل لتحميل المزيد</div>
           ) : (
-            <div className="text-xs text-muted-foreground">تم عرض كل الطلبات</div>
+            <div className="text-center text-xs text-muted-foreground">تم عرض كل الطلبات</div>
           )}
         </div>
       </div>

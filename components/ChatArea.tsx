@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { NoMessagesEmpty } from "./ui/EmptyState";
+import { BrandSpinner, ChatMessageSkeleton } from "./ui/LoadingSkeleton";
 import { Request } from "../types";
 import { createRequestFromChat } from "../services/requestsService";
 import { supabase } from "../services/supabaseClient";
@@ -3621,21 +3622,9 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
               
               {/* Loading indicator - Inside Smart Mode */}
               {isLoading && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex justify-end"
-                >
-                  <div className="flex gap-2">
-                    <div className="bg-gradient-to-r from-secondary to-secondary/50 p-2.5 px-3 rounded-xl rounded-tl-none border border-border/50 shadow-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          يتم التحضير...
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
+                <div className="flex flex-col gap-4 mt-4">
+                  <ChatMessageSkeleton />
+                </div>
               )}
               <div ref={smartModeMessagesEndRef} />
             </div>

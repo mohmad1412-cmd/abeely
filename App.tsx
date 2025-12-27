@@ -52,6 +52,7 @@ import { getUnreadInterestsCount } from "./services/requestViewsService";
 import { checkAIConnection } from "./services/aiService";
 import { supabase } from "./services/supabaseClient";
 import { signOut as authSignOut, getCurrentUser, UserProfile, onAuthStateChange } from "./services/authService";
+import { FullScreenLoading } from "./components/ui/LoadingSkeleton";
 
 // Auth Views
 type AppView = 'splash' | 'auth' | 'main';
@@ -1036,6 +1037,9 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+        {/* Full screen loading for data initialization */}
+        {isLoadingData && <FullScreenLoading message="جاري تجهيز سوق أبيلي..." />}
+        
         {/* Header */}
         <header className="min-h-16 bg-card/80 backdrop-blur-xl flex items-center justify-between px-4 shrink-0 relative z-30 shadow-sm pt-[env(safe-area-inset-top,0px)]">
           <div className="flex items-center gap-3">

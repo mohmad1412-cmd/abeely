@@ -18,6 +18,7 @@ import {
   signInWithEmail,
   isValidSaudiPhone,
 } from '../services/authService';
+import { BrandSpinner } from './ui/LoadingSkeleton';
 
 interface AuthPageProps {
   onAuthenticated: () => void;
@@ -137,7 +138,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#153659] via-[#0d9488] to-[#153659] flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-[#153659] via-[#0d9488] to-[#153659] flex flex-col relative">
+      {isLoading && (
+        <div className="absolute inset-0 z-[100] bg-black/20 backdrop-blur-sm flex items-center justify-center">
+          <BrandSpinner size="lg" />
+        </div>
+      )}
       {/* Header */}
       <div className="pt-[env(safe-area-inset-top,0px)]" />
       
@@ -347,14 +353,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   disabled={isLoading || phone.length < 9}
                   className="w-full py-4 px-6 rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
                 >
-                  {isLoading ? (
-                    <Loader2 size={22} className="animate-spin" />
-                  ) : (
-                    <>
-                      <span>إرسال رمز التحقق</span>
-                      <ChevronLeft size={20} />
-                    </>
-                  )}
+                  <span>إرسال رمز التحقق</span>
+                  <ChevronLeft size={20} />
                 </button>
               </motion.div>
             )}
@@ -413,14 +413,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   disabled={isLoading || otp.length !== 6}
                   className="w-full py-4 px-6 rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
                 >
-                  {isLoading ? (
-                    <Loader2 size={22} className="animate-spin" />
-                  ) : (
-                    <>
-                      <Check size={22} />
-                      <span>تأكيد الدخول</span>
-                    </>
-                  )}
+                  <Check size={22} />
+                  <span>تأكيد الدخول</span>
                 </button>
 
                 <button
@@ -467,14 +461,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   disabled={isLoading || !email.includes('@')}
                   className="w-full py-4 px-6 rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
                 >
-                  {isLoading ? (
-                    <Loader2 size={22} className="animate-spin" />
-                  ) : (
-                    <>
-                      <span>إرسال رابط الدخول</span>
-                      <ChevronLeft size={20} />
-                    </>
-                  )}
+                  <span>إرسال رابط الدخول</span>
+                  <ChevronLeft size={20} />
                 </button>
               </motion.div>
             )}

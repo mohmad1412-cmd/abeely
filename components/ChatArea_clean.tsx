@@ -19,6 +19,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "./ui/Button";
+import { ChatMessageSkeleton } from "./ui/LoadingSkeleton";
 import { Request } from "../types";
 import { createRequestFromChat } from "../services/requestsService";
 import { supabase } from "../services/supabaseClient";
@@ -699,15 +700,7 @@ const ChatPanel = ({
         ))}
         
         {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-secondary p-3 rounded-2xl rounded-tr-none">
-              <div className="flex gap-1">
-                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-2 h-2 bg-primary/80 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-              </div>
-            </div>
-          </div>
+          <ChatMessageSkeleton />
         )}
         <div ref={messagesEndRef} />
       </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'gradient' | 'glow' | 'success';
@@ -118,7 +118,11 @@ export const Button: React.FC<ButtonProps> = ({
 
       {/* Loading spinner */}
       {isLoading && (
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <motion.div
+          className="h-5 w-5 border-2 border-current border-t-transparent rounded-full"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+        />
       )}
 
       {/* Left icon */}

@@ -20,6 +20,7 @@ import {
   Message
 } from '../services/messagesService';
 import { getCurrentUser } from '../services/authService';
+import { ListItemSkeleton, ChatMessageSkeleton } from './ui/LoadingSkeleton';
 
 interface MessagesProps {
   onBack: () => void;
@@ -200,11 +201,14 @@ export const Messages: React.FC<MessagesProps> = ({
         </div>
 
         {/* Conversations List */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {isLoading ? (
-            <div className="flex items-center justify-center h-full">
-              <Loader2 size={24} className="animate-spin text-primary" />
-            </div>
+            <>
+              <ListItemSkeleton />
+              <ListItemSkeleton />
+              <ListItemSkeleton />
+              <ListItemSkeleton />
+            </>
           ) : conversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-6">
               <MessageCircle size={48} className="text-muted-foreground mb-4" />
@@ -295,8 +299,10 @@ export const Messages: React.FC<MessagesProps> = ({
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {isLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 size={24} className="animate-spin text-primary" />
+          <div className="space-y-6">
+            <ChatMessageSkeleton />
+            <ChatMessageSkeleton isUser />
+            <ChatMessageSkeleton />
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
