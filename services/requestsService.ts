@@ -143,13 +143,13 @@ export async function fetchRequestsPaginated(page: number = 0, pageSize: number 
           category_id,
           categories (id, label)
         )
-      `, { count: 'exact' })
+      `)
       .eq("is_public", true)
       .order("created_at", { ascending: false })
       .range(from, to);
     data = res.data;
     error = res.error;
-    count = res.count ?? null;
+    count = null; // Don't use heavy count query for faster load
   } catch (thrown: any) {
     throw thrown;
   }

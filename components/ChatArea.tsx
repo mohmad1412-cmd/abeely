@@ -566,7 +566,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [showCitySuggestions, setShowCitySuggestions] = useState(false);
   const [clarificationAnswer, setClarificationAnswer] = useState<string | null>(null);
   const [pendingClarification, setPendingClarification] = useState<{question: string; quickOptions?: string[]} | null>(null);
-  const [aiConnected, setAiConnected] = useState<boolean>(false); // Start as false to avoid flash
+  const [aiConnected, setAiConnected] = useState<boolean | null>(true); // Start as true (optimistic) to avoid flickering
   
   // Guest verification state
   const [guestStep, setGuestStep] = useState<'none' | 'phone' | 'otp' | 'terms'>('none');
@@ -769,6 +769,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     let cancelled = false;
     const checkAI = async () => {
       try {
+        // Set to true optimistically if we have a key or edge function
         const status = await checkAIConnection();
         if (cancelled) return;
         
@@ -780,6 +781,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         }
       } catch (err) {
         console.error("AI Check Error:", err);
+        if (!cancelled) setAiConnected(false);
       }
     };
     
@@ -3331,7 +3333,7 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
         }`}>
           {/* Render headers in order: closed one first, open one second (at bottom) */}
           {/* Always show Smart Mode accordion when AI is connected */}
-          {!smartModeOpen && aiConnected === true && (
+          {!smartModeOpen && aiConnected !== false && (
             <motion.div
               layout
               layoutId="smart-mode-header"
@@ -3441,7 +3443,7 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
            )}
 
           {/* Smart Mode Header - Open (at bottom) */}
-          {smartModeOpen && aiConnected === true && (
+          {smartModeOpen && aiConnected !== false && (
             <motion.div
               layout
               layoutId="smart-mode-header"
@@ -3517,7 +3519,7 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
                   if (navigator.vibrate) {
                     navigator.vibrate(15);
                   }
-                  if (aiConnected === true) {
+                  if (aiConnected !== false) {
                     setSmartModeOpen(true);
                   }
                   setShouldShakeAfterTransition(false);
@@ -3539,7 +3541,7 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
       
       {/* Smart Mode Content - Floating chat area visual */}
       <AnimatePresence>
-        {smartModeOpen && aiConnected === true && (
+        {smartModeOpen && aiConnected !== false && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}

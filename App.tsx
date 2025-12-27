@@ -285,8 +285,7 @@ const App: React.FC = () => {
   const loadingRef = useRef(false);
   
   useEffect(() => {
-    if (appView !== 'main') return;
-    
+    // Start loading data as soon as possible, even during splash
     // Prevent concurrent loadData calls
     if (loadingRef.current) {
       return;
@@ -301,10 +300,10 @@ const App: React.FC = () => {
         setRequestsLoadError(null);
         
         // Fetch first page of public requests (lazy loading)
-        // We do this immediately without waiting for other checks
+        // We do this immediately
         const fetchPromise = fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
         
-        // Background connection checks (don't block the data fetch)
+        // Background connection checks
         Promise.all([
           checkSupabaseConnection(),
           checkAIConnection()
@@ -326,7 +325,7 @@ const App: React.FC = () => {
           setMarketplaceHasMore(more);
         }
         
-        // Fetch user's data if logged in
+        // Fetch user's data ONLY if logged in
         if (user?.id) {
           await Promise.all([
             fetchMyRequests(user.id).then(reqs => setMyRequests(reqs.filter(r => r.status !== 'archived'))),
@@ -344,8 +343,8 @@ const App: React.FC = () => {
       }
     };
 
-      loadData();
-    }, [appView, user?.id]);
+    loadData();
+  }, [user?.id]); // Re-run if user logs in to fetch private data
 
   // ==========================================
   // Reload Data When Opening Marketplace
