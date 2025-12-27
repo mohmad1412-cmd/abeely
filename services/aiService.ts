@@ -1,8 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-const MODEL_NAME = "gemini-2.0-flash-exp";
-const FALLBACK_MODEL = "gemini-1.5-flash";
+const MODEL_NAME = "gemini-2.0-flash-001";
 
 let client: GoogleGenerativeAI | null = null;
 
@@ -141,8 +140,8 @@ ${audioBlob ? `
 `;
 
   try {
-    // Try both the latest and stable models
-    const modelsToTry = [MODEL_NAME, FALLBACK_MODEL];
+    // Enforce a single model (per requirement).
+    const modelsToTry = [MODEL_NAME];
     
     // Prepare content parts
     const parts: any[] = [{ text: prompt }];
@@ -259,17 +258,8 @@ let aiConnectionCache: {connected: boolean; error?: string; timestamp: number} |
 const AI_CACHE_DURATION = 60000; // 1 minute
 
 export async function checkAIConnection(): Promise<{connected: boolean; error?: string}> {
-  const startTime = Date.now();
-  
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:checkAIConnection',message:'checkAIConnection called',data:{startTime,hasCachedResult:!!aiConnectionCache,cacheAge:aiConnectionCache?Date.now()-aiConnectionCache.timestamp:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
-  // #endregion
-  
   // Return cached result if still valid
   if (aiConnectionCache && (Date.now() - aiConnectionCache.timestamp) < AI_CACHE_DURATION) {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:checkAIConnection',message:'returning cached result',data:{connected:aiConnectionCache.connected,duration:0},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
     return { connected: aiConnectionCache.connected, error: aiConnectionCache.error };
   }
   
@@ -279,11 +269,6 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
     console.warn("⚠️ VITE_GEMINI_API_KEY غير موجود في ملف .env");
     const result = { connected: false, error: "VITE_GEMINI_API_KEY غير موجود في ملف .env" };
     aiConnectionCache = { ...result, timestamp: Date.now() };
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:checkAIConnection',message:'no API key',data:{duration:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
-    
     return result;
   }
 
@@ -295,50 +280,39 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
     return result;
   }
 
-  // Try multiple models with a short timeout to avoid blocking UI
-  const modelsToTry = [MODEL_NAME, FALLBACK_MODEL];
-  let lastError: any = null;
+  // Try only one model with a short timeout to avoid blocking UI
+  const modelName = MODEL_NAME;
   
-  for (const modelName of modelsToTry) {
-    try {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:checkAIConnection',message:'trying model',data:{modelName,elapsed:Date.now()-startTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
-      
-      const model = gemini.getGenerativeModel({ model: modelName });
-      
-      // Add timeout to prevent blocking
-      const timeout = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error(`AI connection timeout for ${modelName} (3s)`)), 3000)
-      );
-      
-      const result = await Promise.race([
-        model.generateContent({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
-        timeout
-      ]) as any;
-      
-      const content = result.response?.text();
-      
-      if (content) {
-        console.log(`✅ الاتصال بالذكاء الاصطناعي ناجح باستخدام: ${modelName}`);
-        const successResult = { connected: true };
-        aiConnectionCache = { ...successResult, timestamp: Date.now() };
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:checkAIConnection',message:'AI connected successfully',data:{duration:Date.now()-startTime,modelName},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
-        
-        return successResult;
-      }
-    } catch (err: any) {
-      console.warn(`⚠️ فشل النموذج ${modelName}:`, err.message);
-      lastError = err;
-      // Continue to next model if this one fails
+  try {
+    const model = gemini.getGenerativeModel({ model: modelName });
+    
+    // Add timeout to prevent blocking
+    const timeout = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error("AI connection timeout (5s)")), 5000)
+    );
+    
+    const result = await Promise.race([
+      model.generateContent({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+      timeout
+    ]) as any;
+    
+    const content = result.response?.text();
+    
+    if (content) {
+      console.log(`✅ الاتصال بالذكاء الاصطناعي ناجح باستخدام: ${modelName}`);
+      const successResult = { connected: true };
+      aiConnectionCache = { ...successResult, timestamp: Date.now() };
+      return successResult;
     }
+  } catch (err: any) {
+    console.warn(`⚠️ فشل النموذج ${modelName}:`, err.message);
+    const failResult = { connected: false, error: err.message };
+    aiConnectionCache = { ...failResult, timestamp: Date.now() };
+    return failResult;
   }
   
-  // If we get here, all models failed
-  const failResult = { connected: false, error: lastError?.message || "فشلت جميع نماذج الذكاء الاصطناعي" };
-  aiConnectionCache = { ...failResult, timestamp: Date.now() };
-  return failResult;
+  // If we get here, something unexpected happened
+  const unknownResult = { connected: false, error: "Unknown error" };
+  aiConnectionCache = { ...unknownResult, timestamp: Date.now() };
+  return unknownResult;
 }

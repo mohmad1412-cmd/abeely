@@ -138,7 +138,13 @@ export const Settings: React.FC<SettingsProps> = ({
             
             {/* Theme Toggle Button */}
             <motion.button 
-              onClick={toggleTheme}
+              onClick={() => {
+                // Haptic feedback
+                if (navigator.vibrate) {
+                  navigator.vibrate(15);
+                }
+                toggleTheme();
+              }}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 group ${
@@ -336,7 +342,13 @@ export const Settings: React.FC<SettingsProps> = ({
                     <p className="text-xs text-muted-foreground">إشعار عند وجود طلبات جديدة حسب اهتماماتك</p>
              </div>
                   <button
-                    onClick={() => setNotifyOnInterest(!notifyOnInterest)}
+                    onClick={() => {
+                      // Haptic feedback
+                      if (navigator.vibrate) {
+                        navigator.vibrate(15);
+                      }
+                      setNotifyOnInterest(!notifyOnInterest);
+                    }}
                     className={`w-14 h-7 rounded-full p-1 transition-all relative flex items-center shrink-0 ${
                       notifyOnInterest ? "bg-primary" : "bg-gray-300"
                     }`}
@@ -356,7 +368,13 @@ export const Settings: React.FC<SettingsProps> = ({
                     <p className="text-xs text-muted-foreground">إشعار عند استلام عروض جديدة على طلباتك</p>
                   </div>
           <button 
-                    onClick={() => setNotifyOnOffers(!notifyOnOffers)}
+                    onClick={() => {
+                      // Haptic feedback
+                      if (navigator.vibrate) {
+                        navigator.vibrate(15);
+                      }
+                      setNotifyOnOffers(!notifyOnOffers);
+                    }}
                     className={`w-14 h-7 rounded-full p-1 transition-all relative flex items-center shrink-0 ${
                       notifyOnOffers ? "bg-primary" : "bg-gray-300"
                     }`}
@@ -376,7 +394,13 @@ export const Settings: React.FC<SettingsProps> = ({
                     <p className="text-xs text-muted-foreground">إشعار عند استلام رسائل جديدة</p>
                   </div>
                   <button
-                    onClick={() => setNotifyOnMessages(!notifyOnMessages)}
+                    onClick={() => {
+                      // Haptic feedback
+                      if (navigator.vibrate) {
+                        navigator.vibrate(15);
+                      }
+                      setNotifyOnMessages(!notifyOnMessages);
+                    }}
                     className={`w-14 h-7 rounded-full p-1 transition-all relative flex items-center shrink-0 ${
                       notifyOnMessages ? "bg-primary" : "bg-gray-300"
                     }`}
@@ -550,7 +574,13 @@ export const Settings: React.FC<SettingsProps> = ({
                       </div>
                     </div>
                     <button
-                      onClick={() => setNotifyOnInterest(!notifyOnInterest)}
+                      onClick={() => {
+                        // Haptic feedback
+                        if (navigator.vibrate) {
+                          navigator.vibrate(15);
+                        }
+                        setNotifyOnInterest(!notifyOnInterest);
+                      }}
                       className={`w-14 h-7 rounded-full p-1 transition-all relative flex items-center shrink-0 ${
                         notifyOnInterest ? "bg-primary" : "bg-gray-300"
                       }`}
@@ -745,7 +775,13 @@ export const Settings: React.FC<SettingsProps> = ({
                   إلغاء
                 </button>
                 <button
-                  onClick={handleSaveInterests}
+                  onClick={() => {
+                    // Haptic feedback
+                    if (navigator.vibrate) {
+                      navigator.vibrate(15);
+                    }
+                    handleSaveInterests();
+                  }}
                   className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium"
                 >
                   حفظ

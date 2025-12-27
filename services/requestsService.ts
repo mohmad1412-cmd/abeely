@@ -131,35 +131,37 @@ export async function fetchRequestsPaginated(page: number = 0, pageSize: number 
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'requestsService.ts:fetchRequestsPaginated:start',message:'Starting Supabase query',data:{page,pageSize,from,to},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
-  // #endregion
-
-  const { data, error, count } = await supabase
-    .from("requests")
-    .select(`
-      *,
-      request_categories (
-        category_id,
-        categories (id, label)
-      )
-    `, { count: 'exact' })
-    .eq("is_public", true)
-    .order("created_at", { ascending: false })
-    .range(from, to);
-
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'requestsService.ts:fetchRequestsPaginated:response',message:'Supabase response received',data:{hasError:!!error,errorMsg:error?.message,rawDataLength:data?.length,count,firstRawTitle:data?.[0]?.title},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3,H5'})}).catch(()=>{});
-  // #endregion
+  let data: any;
+  let error: any;
+  let count: number | null = null;
+  try {
+    const res = await supabase
+      .from("requests")
+      .select(`
+        *,
+        request_categories (
+          category_id,
+          categories (id, label)
+        )
+      `, { count: 'exact' })
+      .eq("is_public", true)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+    data = res.data;
+    error = res.error;
+    count = res.count ?? null;
+  } catch (thrown: any) {
+    throw thrown;
+  }
 
   if (error) {
     console.error("❌ Error fetching requests:", error);
-    console.error("Error details:", {
+    console.error("Error details:", JSON.stringify({
       message: error.message,
       code: error.code,
       details: error.details,
       hint: error.hint
-    });
+    }, null, 2));
     throw error;
   }
   
@@ -192,12 +194,12 @@ export async function checkSupabaseConnection(): Promise<{connected: boolean; er
       const { data, error } = await supabase.from("requests").select("id").limit(1);
       
       if (error) {
-        console.error("❌ Supabase query error:", {
+        console.error("❌ Supabase query error:", JSON.stringify({
           message: error.message,
           code: error.code,
           details: error.details,
           hint: error.hint
-        });
+        }, null, 2));
         return { connected: false, error: error.message };
       }
       console.log("✅ Supabase connection check passed");

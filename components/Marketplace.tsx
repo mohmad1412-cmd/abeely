@@ -16,7 +16,9 @@ import {
   SlidersHorizontal,
   X,
   ChevronDown,
+  ChevronUp,
   AlertCircle,
+  RotateCw,
   Plus,
   ExternalLink,
   ImageIcon,
@@ -34,6 +36,11 @@ interface MarketplaceProps {
   onSelectRequest: (req: Request, scrollToOffer?: boolean) => void;
   userInterests: string[];
   onUpdateInterests: (interests: string[]) => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
+  onRefresh?: () => void; // Callback for pull-to-refresh
+  loadError?: string | null;
   savedScrollPosition?: number;
   onScrollPositionChange?: (pos: number) => void;
 }
@@ -46,13 +53,32 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   onSelectRequest,
   userInterests,
   onUpdateInterests,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
+  onRefresh,
+  loadError = null,
   savedScrollPosition: externalScrollPos = 0,
   onScrollPositionChange,
 }) => {
-  
   const [viewMode, setViewMode] = useState<"all" | "interests">("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [showOfferButtonPulse, setShowOfferButtonPulse] = useState(false);
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
+  const [hasScrolledPastFirstPage, setHasScrolledPastFirstPage] = useState(false);
+  const [isAtTop, setIsAtTop] = useState(false); // Track if we scrolled to top via button
+  const [savedScrollPosition, setSavedScrollPosition] = useState(0); // Save position before scrolling to top
+  
+  // Pull-to-refresh state
+  const [pullToRefreshState, setPullToRefreshState] = useState<{
+    isPulling: boolean;
+    pullDistance: number;
+    isRefreshing: boolean;
+  }>({
+    isPulling: false,
+    pullDistance: 0,
+    isRefreshing: false,
+  });
 
   // Monitor requests prop changes
   useEffect(() => {
@@ -85,6 +111,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   const [isManageInterestsOpen, setIsManageInterestsOpen] = useState(false);
   const [notifyOnInterest, setNotifyOnInterest] = useState(true);
   const [selectedCities, setSelectedCities] = useState<string[]>(["الرياض"]);
+  const [radarWords, setRadarWords] = useState<string[]>([]); // Saved radar words
 
   // Temp state for Modal
   const [tempInterests, setTempInterests] = useState<string[]>(userInterests);
@@ -107,7 +134,91 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   const marketplaceScrollRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastScrollPosRef = useRef<number>(0);
+  const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
+  const ninthItemRef = useRef<HTMLDivElement | null>(null);
+  const pullStartY = useRef<number>(0);
+  const pullCurrentY = useRef<number>(0);
   
+  // Pull-to-refresh handlers
+  useEffect(() => {
+    const container = marketplaceScrollRef.current;
+    if (!container || !onRefresh) return;
+
+    const PULL_THRESHOLD = 80; // Distance in pixels to trigger refresh
+    const MAX_PULL = 120; // Maximum pull distance
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (container.scrollTop !== 0) return; // Only allow pull when at top
+      pullStartY.current = e.touches[0].clientY;
+      pullCurrentY.current = pullStartY.current;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (container.scrollTop !== 0) {
+        setPullToRefreshState({ isPulling: false, pullDistance: 0, isRefreshing: false });
+        return;
+      }
+
+      pullCurrentY.current = e.touches[0].clientY;
+      const pullDistance = Math.max(0, pullCurrentY.current - pullStartY.current);
+      
+      if (pullDistance > 0) {
+        e.preventDefault(); // Prevent default scroll
+        const limitedPull = Math.min(pullDistance, MAX_PULL);
+        setPullToRefreshState({
+          isPulling: true,
+          pullDistance: limitedPull,
+          isRefreshing: false,
+        });
+      }
+    };
+
+    const handleTouchEnd = () => {
+      if (pullToRefreshState.pullDistance >= PULL_THRESHOLD && onRefresh) {
+        setPullToRefreshState({
+          isPulling: false,
+          pullDistance: 0,
+          isRefreshing: true,
+        });
+        
+        // Haptic feedback
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+        
+        // Call refresh callback
+        onRefresh();
+        
+        // Reset after refresh completes (you may want to handle this in parent)
+        setTimeout(() => {
+          setPullToRefreshState({
+            isPulling: false,
+            pullDistance: 0,
+            isRefreshing: false,
+          });
+        }, 1000);
+      } else {
+        setPullToRefreshState({
+          isPulling: false,
+          pullDistance: 0,
+          isRefreshing: false,
+        });
+      }
+      pullStartY.current = 0;
+      pullCurrentY.current = 0;
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [onRefresh]);
+
   // Scroll Listener with debounced position save
   useEffect(() => {
     const container = marketplaceScrollRef.current;
@@ -117,6 +228,25 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       const scrollTop = container.scrollTop;
       setIsScrolled(scrollTop > 20);
       lastScrollPosRef.current = scrollTop;
+      
+      // Reset pull state if user scrolls away from top
+      if (scrollTop > 0 && pullToRefreshState.isPulling) {
+        setPullToRefreshState({
+          isPulling: false,
+          pullDistance: 0,
+          isRefreshing: false,
+        });
+      }
+      
+      // Show scroll to top button if scrolled past the 9th item
+      let hasScrolledPast = false;
+      if (requests.length >= 9 && ninthItemRef.current) {
+        const ninthItemTop = ninthItemRef.current.offsetTop;
+        const containerTop = container.scrollTop;
+        hasScrolledPast = containerTop >= ninthItemTop - container.clientHeight;
+      }
+      setHasScrolledPastFirstPage(hasScrolledPast);
+      setShowScrollToTop(hasScrolledPast);
       
       // Debounce the parent notification to avoid jitter
       if (scrollTimeoutRef.current) {
@@ -136,33 +266,45 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         clearTimeout(scrollTimeoutRef.current);
       }
     };
-  }, [onScrollPositionChange]);
+  }, [onScrollPositionChange, pullToRefreshState.isPulling, requests.length]);
 
   // Track if initial scroll restoration happened
   const initialScrollRestored = useRef(false);
+  const prevExternalScrollPos = useRef(externalScrollPos);
   
   // Restore scroll position IMMEDIATELY before browser paint using useLayoutEffect
   useLayoutEffect(() => {
     const container = marketplaceScrollRef.current;
-    if (container && externalScrollPos > 0 && !initialScrollRestored.current) {
-      initialScrollRestored.current = true;
-      // Set scroll immediately - no delay
-      container.scrollTop = externalScrollPos;
+    if (container) {
+      // Only restore if scroll position changed from parent or on initial mount
+      if (externalScrollPos !== prevExternalScrollPos.current || !initialScrollRestored.current) {
+        if (externalScrollPos > 0 || !initialScrollRestored.current) {
+          initialScrollRestored.current = true;
+          // Set scroll immediately - no delay
+          container.scrollTop = externalScrollPos;
+        }
+        prevExternalScrollPos.current = externalScrollPos;
+      }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [externalScrollPos]);
   
-  // Save scroll position when component unmounts
-  useEffect(() => {
+  // Save scroll position when component unmounts - useLayoutEffect ensures this runs synchronously before unmount
+  useLayoutEffect(() => {
     return () => {
       // Save final scroll position before unmount
-      if (onScrollPositionChange && lastScrollPosRef.current > 0) {
+      if (onScrollPositionChange && marketplaceScrollRef.current) {
+        const currentScroll = marketplaceScrollRef.current.scrollTop;
+        if (currentScroll >= 0) {
+          lastScrollPosRef.current = currentScroll;
+          onScrollPositionChange(currentScroll);
+        }
+      } else if (onScrollPositionChange && lastScrollPosRef.current >= 0) {
+        // Fallback: use last known scroll position if ref is not available
         onScrollPositionChange(lastScrollPosRef.current);
       }
       initialScrollRestored.current = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [onScrollPositionChange]);
 
   // Continuous icon toggle animation
   useEffect(() => {
@@ -177,13 +319,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     setTempCities(selectedCities);
     setTempCitySearch("");
     setTempCatSearch("");
-    setTempRadarWords([]); // Initialize radar words
+    setTempRadarWords(radarWords); // Load saved radar words
     setIsManageInterestsOpen(true);
   };
 
   const handleSaveInterests = () => {
     onUpdateInterests(tempInterests);
     setSelectedCities(tempCities);
+    setRadarWords(tempRadarWords); // Save radar words
     setIsManageInterestsOpen(false);
   };
 
@@ -301,16 +444,38 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     return true;
   });
 
+  // Infinite scroll: when user reaches the end (10th item for first page), load next page
+  useEffect(() => {
+    if (!onLoadMore) return;
+    const root = marketplaceScrollRef.current;
+    const target = loadMoreTriggerRef.current;
+    if (!root || !target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        if (isLoadingMore || !hasMore) return;
+        onLoadMore();
+      },
+      { root, rootMargin: "400px 0px", threshold: 0.1 },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [onLoadMore, hasMore, isLoadingMore]);
+
   return (
     <div 
+      id="marketplace-container"
       ref={marketplaceScrollRef}
       className="h-full overflow-y-auto overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar"
     >
-      {/* Sticky Header Wrapper - Consistent with RequestDetail Glass Style */}
-      {/* Sticky Header Wrapper - Consistent with RequestDetail Glass Style */}
+      {/* Sticky Header Wrapper - High z-index to stay on top */}
+      {/* Sticky Header Wrapper - High z-index to stay on top */}
       <div 
-        className={`sticky top-0 z-20 transition-all duration-300 px-4 ${
-          isScrolled 
+        className={`sticky top-0 z-30 transition-all duration-300 px-4 ${
+          isScrolled || pullToRefreshState.isPulling || pullToRefreshState.isRefreshing
             ? "bg-background/95 backdrop-blur-xl border-b border-border/50 shadow-sm" 
             : "bg-transparent"
         }`}
@@ -330,7 +495,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 </button>
               </div>
              ) : (
-               <div className="flex items-center gap-1 bg-card p-1 rounded-2xl border border-border shadow-md h-11">
+               <div className="flex items-center gap-1 bg-card p-1 rounded-xl border border-border shadow-md h-11">
                  <button
                    onClick={() => {
                      // If filters are active, clear them when clicking "الكل"
@@ -339,7 +504,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                      }
                      setViewMode("all");
                    }}
-                   className={`h-full px-5 font-bold transition-all rounded-xl text-xs sm:text-sm flex items-center justify-center ${
+                   className={`h-full px-5 font-bold transition-all rounded-sm text-xs sm:text-sm flex items-center justify-center ${
                      viewMode === "all" && !hasActiveFilters
                        ? "bg-primary text-white shadow-md"
                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
@@ -355,7 +520,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                      }
                      setViewMode("interests");
                    }}
-                   className={`h-full px-5 font-bold transition-all rounded-xl flex items-center gap-2 text-xs sm:text-sm justify-center ${
+                   className={`h-full px-5 font-bold transition-all rounded-sm flex items-center gap-2 text-xs sm:text-sm justify-center ${
                      viewMode === "interests" && !hasActiveFilters
                        ? "bg-primary text-white shadow-md"
                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
@@ -363,14 +528,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                  >
                    اهتماماتي
                    {unreadInterestsCount > 0 && (
-                     <span className={`min-w-[18px] h-5 px-1 rounded-full text-[10px] flex items-center justify-center font-bold ${
+                     <span className={`min-w-[18px] h-5 px-1 rounded-full text-[11px] flex items-center justify-center font-bold ${
                        viewMode === "interests" && !hasActiveFilters ? "bg-white/20 text-white" : "bg-primary/10 text-primary"
                      }`}>
                        {unreadInterestsCount}
                      </span>
                    )}
                    {unreadInterestsCount === 0 && interestsRequests.length > 0 && (
-                     <span className={`min-w-[18px] h-5 px-1 rounded-full text-[10px] flex items-center justify-center font-bold ${
+                     <span className={`min-w-[18px] h-5 px-1 rounded-full text-[11px] flex items-center justify-center font-bold ${
                        viewMode === "interests" && !hasActiveFilters ? "bg-white/20 text-white" : "bg-primary/10 text-primary"
                      }`}>
                        {interestsRequests.length}
@@ -380,11 +545,12 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                </div>
              )}
 
-          {/* Right Side - Search Icon with Sliding Animation */}
-          <button
-            onClick={() => setIsSearchPageOpen(true)}
-            className="relative w-10 h-10 flex items-center justify-center rounded-xl bg-card border border-border text-muted-foreground hover:text-primary transition-all active:scale-95 shadow-md overflow-hidden"
-          >
+          {/* Right Side - Search Icon */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsSearchPageOpen(true)}
+              className="relative w-11 h-11 flex items-center justify-center rounded-xl bg-card border border-border text-muted-foreground hover:text-primary transition-all active:scale-95 shadow-md overflow-hidden"
+            >
             <div className="relative w-full h-full flex items-center justify-center">
               <motion.div
                 animate={{ 
@@ -421,6 +587,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-primary rounded-full animate-pulse z-10" />
             )}
           </button>
+          </div>
           </div>
 
           {/* Active Filters Display - Second Row */}
@@ -494,6 +661,102 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           )}
         </div>
       </div>
+
+      {/* Pull-to-Refresh Indicator - Emerges from under the header */}
+      <AnimatePresence>
+        {(pullToRefreshState.isPulling || pullToRefreshState.isRefreshing) && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ 
+              height: pullToRefreshState.isRefreshing ? 70 : Math.min(pullToRefreshState.pullDistance, 90),
+              opacity: 1 
+            }}
+            exit={{ height: 0, opacity: 0 }}
+            className="flex items-center justify-center overflow-hidden z-10 bg-gradient-to-b from-secondary/20 to-transparent border-b border-border/10"
+          >
+            <motion.div 
+              initial={{ y: -20 }}
+              animate={{ y: 0 }}
+              className="flex flex-col items-center py-3"
+            >
+              <motion.div
+                animate={pullToRefreshState.isRefreshing ? { rotate: 360 } : {}}
+                transition={pullToRefreshState.isRefreshing ? { 
+                  rotate: { duration: 1, repeat: Infinity, ease: "linear" } 
+                } : {}}
+                className={`p-2.5 rounded-full bg-card shadow-xl border-2 transition-all duration-300 ${
+                  pullToRefreshState.pullDistance >= 80 ? 'text-primary border-primary scale-110' : 'text-muted-foreground border-border/50 scale-100'
+                }`}
+              >
+                <RotateCw 
+                  size={24} 
+                  className={pullToRefreshState.isRefreshing ? "animate-pulse" : ""}
+                  style={{
+                    transform: pullToRefreshState.isRefreshing ? 'none' : `rotate(${Math.min(pullToRefreshState.pullDistance / 80 * 360, 360)}deg)`
+                  }}
+                />
+              </motion.div>
+              {!pullToRefreshState.isRefreshing && (
+                <motion.span 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: pullToRefreshState.pullDistance > 40 ? 1 : 0 }}
+                  className="text-[10px] font-black mt-2 text-primary/70 uppercase tracking-[0.25em]"
+                >
+                  {pullToRefreshState.pullDistance >= 80 ? 'أفلت للتحديث' : 'اسحب أكثر'}
+                </motion.span>
+              )}
+              {pullToRefreshState.isRefreshing && (
+                <span className="text-[10px] font-black mt-2 text-primary uppercase tracking-[0.25em] animate-pulse">
+                  جاري التحديث
+                </span>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Scroll to Top Button - Bottom Left */}
+      <AnimatePresence>
+        {(showScrollToTop || isAtTop) && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, y: 20 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => {
+              if (marketplaceScrollRef.current) {
+                if (isAtTop) {
+                  // Return to saved position
+                  marketplaceScrollRef.current.scrollTo({ top: savedScrollPosition, behavior: 'smooth' });
+                  setIsAtTop(false);
+                } else {
+                  // Save current position and scroll to top
+                  setSavedScrollPosition(marketplaceScrollRef.current.scrollTop);
+                  marketplaceScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                  setIsAtTop(true);
+                }
+              }
+            }}
+            className="fixed bottom-8 left-8 z-50 w-14 h-14 flex items-center justify-center rounded-2xl bg-card border-2 border-primary text-primary transition-all shadow-xl backdrop-blur-sm"
+            style={{ 
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)'
+            }}
+          >
+            <motion.div
+              animate={{ rotate: isAtTop ? 180 : 0 }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+            >
+              <ChevronUp size={20} strokeWidth={2.5} />
+            </motion.div>
+            {viewMode === "interests" && unreadInterestsCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-5 px-1 rounded-full bg-primary text-white text-[11px] flex items-center justify-center font-bold">
+                {unreadInterestsCount}
+              </span>
+            )}
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* Search Page Full Screen Modal */}
       <AnimatePresence>
@@ -706,25 +969,25 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b border-border/50">
                      <div className="flex flex-wrap gap-2 max-h-[60px] overflow-y-auto no-scrollbar">
                       {searchTerm && (
-                        <span className="bg-primary/10 text-primary px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 whitespace-nowrap">
+                        <span className="bg-primary/10 text-primary px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1 whitespace-nowrap">
                           {searchTerm}
                           <X size={10} className="cursor-pointer" onClick={() => setSearchTerm("")} />
                         </span>
                       )}
                       {searchCategories.map(catId => (
-                        <span key={catId} className="bg-primary/10 text-primary px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 whitespace-nowrap">
+                        <span key={catId} className="bg-primary/10 text-primary px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1 whitespace-nowrap">
                           {AVAILABLE_CATEGORIES.find(c => c.id === catId)?.label}
                           <X size={10} className="cursor-pointer" onClick={() => toggleSearchCategory(catId)} />
                         </span>
                       ))}
                       {searchCities.map(city => (
-                        <span key={city} className="bg-primary/10 text-primary px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 whitespace-nowrap">
+                        <span key={city} className="bg-primary/10 text-primary px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1 whitespace-nowrap">
                           {city}
                           <X size={10} className="cursor-pointer" onClick={() => toggleSearchCity(city)} />
                         </span>
                       ))}
                       {(searchBudgetMin || searchBudgetMax) && (
-                        <span className={`px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 whitespace-nowrap ${
+                        <span className={`px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1 whitespace-nowrap ${
                            searchBudgetMin && searchBudgetMax && Number(searchBudgetMin) > Number(searchBudgetMax)
                              ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 border border-red-200"
                              : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border border-green-200"
@@ -747,10 +1010,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 {/* Main Action Button */}
                 <div className="p-4">
                   <Button
-                    className="w-full h-12 text-base font-bold shadow-lg"
+                    className="w-full h-12 text-base font-bold shadow-lg gap-2"
                     onClick={handleApplySearch}
                   >
-                    عرض النتائج ({filteredRequests.length})
+                    عرض النتائج
+                    <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-white/20 text-white px-1.5 text-[11px] font-bold">
+                      {filteredRequests.length}
+                    </span>
                   </Button>
                 </div>
               </div>
@@ -761,11 +1027,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       </AnimatePresence>
 
       <div className="p-4">
-        {/* Sub-Filters */}
-        <div className="mb-6 animate-in fade-in slide-in-from-top-1">
-
-          {/* Interests Panel - Clean Redesign */}
-          {viewMode === "interests" && (
+        {/* Sub-Filters - Only show when in interests mode */}
+        {viewMode === "interests" && (
+          <div className="mb-6 animate-in fade-in slide-in-from-top-1">
+            {/* Interests Panel - Clean Redesign */}
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -780,7 +1045,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   size="sm"
                   variant="outline"
                   onClick={handleManageInterests}
-                  className="gap-2 h-9 rounded-xl border-primary/20 hover:bg-primary/5 text-primary text-xs font-bold"
+                  className="gap-2 h-9 rounded-2xl border-primary/10 hover:bg-primary/5 text-primary text-xs font-bold"
                 >
                   <Edit size={14} />
                   تعديل
@@ -796,7 +1061,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   >
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">التصنيفات المختارة</span>
-                      <span className="bg-secondary px-1.5 py-0.5 rounded-md text-[10px] text-muted-foreground">{userInterests.length}</span>
+                      <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-secondary px-1.5 text-[11px] text-muted-foreground font-bold">{userInterests.length}</span>
                     </div>
                     <div className={`transition-transform duration-200 ${isCategoriesExpanded ? "rotate-180" : ""}`}>
                       <ChevronDown size={14} className="text-muted-foreground group-hover:text-primary" />
@@ -842,7 +1107,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   >
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">المدن المغطاة</span>
-                      <span className="bg-secondary px-1.5 py-0.5 rounded-md text-[10px] text-muted-foreground">{selectedCities.length || "الكل"}</span>
+                      <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-secondary px-1.5 text-[11px] text-muted-foreground font-bold">{selectedCities.length || "الكل"}</span>
                     </div>
                     <div className={`transition-transform duration-200 ${isCitiesExpanded ? "rotate-180" : ""}`}>
                       <ChevronDown size={14} className="text-muted-foreground group-hover:text-primary" />
@@ -877,9 +1142,58 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   </AnimatePresence>
                 </div>
 
+                {/* Radar Words - Collapsible */}
+                <div className="space-y-3">
+                  <div 
+                    onClick={() => setIsRadarWordsExpanded(!isRadarWordsExpanded)}
+                    className="flex items-center justify-between cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">رادار الكلمات</span>
+                      <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-secondary px-1.5 text-[11px] text-muted-foreground font-bold">{radarWords.length}</span>
+                    </div>
+                    <div className={`transition-transform duration-200 ${isRadarWordsExpanded ? "rotate-180" : ""}`}>
+                      <ChevronDown size={14} className="text-muted-foreground group-hover:text-primary" />
+                    </div>
+                  </div>
+                  
+                  <AnimatePresence>
+                    {isRadarWordsExpanded && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {radarWords.length === 0 ? (
+                            <span className="text-xs text-muted-foreground italic">لم تحدد كلمات رادار بعد</span>
+                          ) : (
+                            radarWords.map((word) => (
+                              <div
+                                key={word}
+                                className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 px-3 py-1.5 rounded-full text-xs font-bold"
+                              >
+                                <Compass size={12} />
+                                {word}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 {/* Notification Toggle - Always visible for easy access */}
                 <div 
-                  onClick={() => setNotifyOnInterest(!notifyOnInterest)}
+                  onClick={() => {
+                    // Haptic feedback
+                    if (navigator.vibrate) {
+                      navigator.vibrate(15);
+                    }
+                    setNotifyOnInterest(!notifyOnInterest);
+                  }}
                   className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all group cursor-pointer ${
                     notifyOnInterest 
                       ? "bg-primary/5 border-primary/10 hover:bg-primary/10" 
@@ -900,7 +1214,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     </div>
                   </div>
                   <button
-                    onClick={() => setNotifyOnInterest(!notifyOnInterest)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Haptic feedback
+                      if (navigator.vibrate) {
+                        navigator.vibrate(15);
+                      }
+                      setNotifyOnInterest(!notifyOnInterest);
+                    }}
                     className={`w-14 h-7 rounded-full p-1 transition-all relative flex items-center shrink-0 ${
                       notifyOnInterest ? "bg-primary" : "bg-gray-300"
                     }`}
@@ -914,8 +1235,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 </div>
               </div>
             </motion.div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Modal logic for Interests - Simplified like Settings */}
         {isManageInterestsOpen && (
@@ -1145,7 +1466,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   إلغاء
                 </button>
                 <button
-                  onClick={handleSaveInterests}
+                  onClick={() => {
+                    // Haptic feedback
+                    if (navigator.vibrate) {
+                      navigator.vibrate(15);
+                    }
+                    handleSaveInterests();
+                  }}
                   className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium"
                 >
                   حفظ وتطبيق
@@ -1167,8 +1494,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         >
           {filteredRequests.map((req, index) => {
             const myOffer = getMyOffer(req.id);
+            const isNinthItem = index === 8; // 9th item (0-indexed)
             return (
               <motion.div
+                ref={isNinthItem ? ninthItemRef : null}
                 layoutId={`card-${req.id}`}
                 key={req.id}
                 variants={{
@@ -1204,7 +1533,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       <motion.span 
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="absolute bottom-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[10px] px-2.5 py-1 rounded-full font-medium"
+                        className="absolute bottom-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[11px] px-2.5 py-1 rounded-full font-medium"
                       >
                         +{req.images.length - 1} صور
                       </motion.span>
@@ -1220,31 +1549,20 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     
                     {/* Very Subtle Dashed Pattern - Slow Rain Animation */}
                     <motion.div 
-                      className="absolute inset-0 opacity-[0.06]"
+                      className="absolute -inset-20 opacity-[0.08]"
                       style={{
-                        backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 12px, currentColor 0.5px, currentColor 12.5px)`,
-                        backgroundSize: '48px 48px',
+                        backgroundImage: `repeating-linear-gradient(45deg, currentColor, currentColor 0.5px, transparent 0.5px, transparent 11.5px)`,
+                        backgroundSize: '40px 40px',
                       }}
                       animate={{
-                        y: [0, 48],
+                        backgroundPosition: ['0px 0px', '40px 40px']
                       }}
                       transition={{
-                        duration: 30,
+                        duration: 8,
                         repeat: Infinity,
                         ease: 'linear',
                       }}
                     />
-                    
-                    {/* Icon in Center - No Image Indicator */}
-                    <div className="absolute inset-0 flex items-center justify-center z-10">
-                      <div className="relative w-16 h-16 rounded-2xl bg-muted/40 flex items-center justify-center border-2 border-dashed border-muted-foreground/30">
-                        <ImageIcon size={24} className="text-muted-foreground/50" strokeWidth={1.5} />
-                        {/* Clear Diagonal Slash */}
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <div className="w-full h-0.5 bg-muted-foreground/60 rotate-45 rounded-full" />
-                        </div>
-                      </div>
-                    </div>
                   </motion.div>
                 )}
 
@@ -1266,7 +1584,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     <div className="grid grid-cols-3 gap-2">
                       {/* City */}
                       <div className="relative isolate">
-                        <label className="absolute -top-2 right-1.5 px-1 bg-card z-10 text-[10px] text-primary font-bold">
+                        <label className="absolute -top-2 right-1.5 px-1 bg-card z-10 text-[11px] text-primary font-bold">
                           المدينة
                         </label>
                         <div className="relative h-9 rounded-md border border-border/60 bg-background flex items-center justify-center overflow-hidden transition-all hover:border-primary/40 group">
@@ -1297,7 +1615,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       
                       {/* Budget */}
                       <div className="relative isolate">
-                        <label className="absolute -top-2 right-1.5 px-1 bg-card z-10 text-[10px] text-primary font-bold">
+                        <label className="absolute -top-2 right-1.5 px-1 bg-card z-10 text-[11px] text-primary font-bold">
                           الميزانية
                         </label>
                         <div className="relative h-9 rounded-md border border-border/60 bg-background flex items-center justify-center overflow-hidden transition-all hover:border-primary/40 group">
@@ -1313,7 +1631,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       
                       {/* Delivery Time */}
                       <div className="relative isolate">
-                        <label className="absolute -top-2 right-1.5 px-1 bg-card z-10 text-[10px] text-primary font-bold">
+                        <label className="absolute -top-2 right-1.5 px-1 bg-card z-10 text-[11px] text-primary font-bold">
                           المدة
                         </label>
                         <div className="relative h-9 rounded-md border border-border/60 bg-background flex items-center justify-center overflow-hidden transition-all hover:border-primary/40 group">
@@ -1342,7 +1660,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         </>
                       ) : (
                         <>
-                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
+                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[11px] font-bold text-primary">
                             {req.authorFirstName && req.authorLastName 
                               ? `${req.authorFirstName.charAt(0)}${req.authorLastName.charAt(0)}`
                               : req.authorName 
@@ -1407,6 +1725,21 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             );
           })}
         </motion.div>
+
+        {/* Load more sentinel + indicator */}
+        <div ref={loadMoreTriggerRef} className="h-10 w-full" />
+        <div className="py-6 flex items-center justify-center">
+          {isLoadingMore ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground animate-spin" />
+              جاري تحميل المزيد...
+            </div>
+          ) : hasMore ? (
+            <div className="text-xs text-muted-foreground">مرر للأسفل لتحميل المزيد</div>
+          ) : (
+            <div className="text-xs text-muted-foreground">تم عرض كل الطلبات</div>
+          )}
+        </div>
       </div>
     </div>
   );

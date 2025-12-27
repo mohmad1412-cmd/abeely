@@ -59,7 +59,9 @@ export const Profile: React.FC<ProfileProps> = ({ userReviews, userRating }) => 
             <div className="flex flex-col items-center bg-background/50 p-3 rounded-lg border border-border backdrop-blur-sm">
               <span className="text-xs text-muted-foreground mb-1">التقييم العام</span>
               <StarRating rating={userRating} size={20} className="mb-1" />
-              <span className="text-xs text-muted-foreground">({userReviews.length} مراجعة)</span>
+              <span className="text-[11px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full mt-1">
+                {userReviews.length} مراجعة
+              </span>
             </div>
           </div>
           
@@ -98,7 +100,10 @@ export const Profile: React.FC<ProfileProps> = ({ userReviews, userRating }) => 
       {/* Reviews Section */}
       <div>
         <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-          التقييمات والمراجعات <span className="text-sm font-normal text-muted-foreground">({userReviews.length})</span>
+          التقييمات والمراجعات
+          <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-primary/10 text-primary px-1.5 text-[11px] font-bold">
+            {userReviews.length}
+          </span>
         </h2>
         
         <div className="grid gap-4">

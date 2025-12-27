@@ -58,10 +58,34 @@ interface RequestDetailProps {
   autoTranslateRequests?: boolean;
   currentLanguage?: 'ar' | 'en' | 'ur';
   onCompleteRequest?: (requestId: string) => void;
+  savedOfferForm?: {
+    price: string;
+    duration: string;
+    city: string;
+    title: string;
+    description: string;
+    attachments: any[];
+    guestVerificationStep?: 'none' | 'phone' | 'otp';
+    guestPhone?: string;
+    guestOTP?: string;
+  };
+  onOfferFormChange?: (form: {
+    price: string;
+    duration: string;
+    city: string;
+    title: string;
+    description: string;
+    attachments: any[];
+    guestVerificationStep?: 'none' | 'phone' | 'otp';
+    guestPhone?: string;
+    guestOTP?: string;
+  }) => void;
+  savedScrollPosition?: number;
+  onScrollPositionChange?: (pos: number) => void;
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
-  { request, mode, myOffer, onBack, isGuest = false, scrollToOfferSection = false, onNavigateToMessages, autoTranslateRequests = false, currentLanguage = 'ar', onCompleteRequest },
+  { request, mode, myOffer, onBack, isGuest = false, scrollToOfferSection = false, onNavigateToMessages, autoTranslateRequests = false, currentLanguage = 'ar', onCompleteRequest, savedOfferForm, onOfferFormChange, savedScrollPosition = 0, onScrollPositionChange },
 ) => {
   const [negotiationOpen, setNegotiationOpen] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
@@ -80,10 +104,43 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     ur: 'الأوردية'
   };
   
-  // Guest verification state for offers
-  const [guestOfferVerificationStep, setGuestOfferVerificationStep] = useState<'none' | 'phone' | 'otp'>('none');
-  const [guestOfferPhone, setGuestOfferPhone] = useState("");
-  const [guestOfferOTP, setGuestOfferOTP] = useState("");
+  // Guest verification state for offers - Initialize from saved form if available
+  const [guestOfferVerificationStep, setGuestOfferVerificationStep] = useState<'none' | 'phone' | 'otp'>(savedOfferForm?.guestVerificationStep || 'none');
+  const [guestOfferPhone, setGuestOfferPhone] = useState(savedOfferForm?.guestPhone || "");
+  const [guestOfferOTP, setGuestOfferOTP] = useState(savedOfferForm?.guestOTP || "");
+  
+  // Track previous savedOfferForm to prevent unnecessary updates
+  const prevSavedFormRef = useRef<typeof savedOfferForm>(null);
+  
+  // Update form fields when savedOfferForm changes
+  useEffect(() => {
+    // Check if savedOfferForm actually changed
+    const hasChanged = !prevSavedFormRef.current || 
+      !savedOfferForm ||
+      prevSavedFormRef.current.price !== savedOfferForm.price ||
+      prevSavedFormRef.current.duration !== savedOfferForm.duration ||
+      prevSavedFormRef.current.city !== savedOfferForm.city ||
+      prevSavedFormRef.current.title !== savedOfferForm.title ||
+      prevSavedFormRef.current.description !== savedOfferForm.description ||
+      prevSavedFormRef.current.guestVerificationStep !== savedOfferForm.guestVerificationStep ||
+      prevSavedFormRef.current.guestPhone !== savedOfferForm.guestPhone ||
+      prevSavedFormRef.current.guestOTP !== savedOfferForm.guestOTP;
+
+    if (savedOfferForm && hasChanged) {
+      if (savedOfferForm.price !== undefined && savedOfferForm.price !== offerPrice) setOfferPrice(savedOfferForm.price);
+      if (savedOfferForm.duration !== undefined && savedOfferForm.duration !== offerDuration) setOfferDuration(savedOfferForm.duration);
+      if (savedOfferForm.city !== undefined && savedOfferForm.city !== offerCity) setOfferCity(savedOfferForm.city);
+      if (savedOfferForm.title !== undefined && savedOfferForm.title !== offerTitle) setOfferTitle(savedOfferForm.title);
+      if (savedOfferForm.description !== undefined && savedOfferForm.description !== offerDescription) setOfferDescription(savedOfferForm.description);
+      if (savedOfferForm.guestVerificationStep !== undefined && savedOfferForm.guestVerificationStep !== guestOfferVerificationStep) setGuestOfferVerificationStep(savedOfferForm.guestVerificationStep);
+      if (savedOfferForm.guestPhone !== undefined && savedOfferForm.guestPhone !== guestOfferPhone) setGuestOfferPhone(savedOfferForm.guestPhone);
+      if (savedOfferForm.guestOTP !== undefined && savedOfferForm.guestOTP !== guestOfferOTP) setGuestOfferOTP(savedOfferForm.guestOTP);
+      // Update ref after updating fields
+      prevSavedFormRef.current = savedOfferForm;
+    } else if (!savedOfferForm) {
+      prevSavedFormRef.current = null;
+    }
+  }, [savedOfferForm]);
   const [isSendingOfferOTP, setIsSendingOfferOTP] = useState(false);
   const [isVerifyingOfferOTP, setIsVerifyingOfferOTP] = useState(false);
 
@@ -106,12 +163,12 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [isImageGenerating, setIsImageGenerating] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
 
-  // Form State
-  const [offerPrice, setOfferPrice] = useState("");
-  const [offerDuration, setOfferDuration] = useState("");
-  const [offerCity, setOfferCity] = useState("");
-  const [offerTitle, setOfferTitle] = useState("");
-  const [offerDescription, setOfferDescription] = useState("");
+  // Form State - Initialize from saved form if available
+  const [offerPrice, setOfferPrice] = useState(savedOfferForm?.price || "");
+  const [offerDuration, setOfferDuration] = useState(savedOfferForm?.duration || "");
+  const [offerCity, setOfferCity] = useState(savedOfferForm?.city || "");
+  const [offerTitle, setOfferTitle] = useState(savedOfferForm?.title || "");
+  const [offerDescription, setOfferDescription] = useState(savedOfferForm?.description || "");
   const [isNegotiable, setIsNegotiable] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   
@@ -397,6 +454,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   // Scroll state for glass header animation
   const [isScrolled, setIsScrolled] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastScrollPosRef = useRef<number>(0);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -404,11 +463,93 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
     const handleScroll = () => {
       setIsScrolled(container.scrollTop > 20);
+      lastScrollPosRef.current = container.scrollTop;
+      
+      // Debounce scroll position save
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      scrollTimeoutRef.current = setTimeout(() => {
+        if (onScrollPositionChange) {
+          onScrollPositionChange(lastScrollPosRef.current);
+        }
+      }, 150);
     };
 
-    container.addEventListener("scroll", handleScroll);
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, []);
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, [onScrollPositionChange]);
+
+  // Restore scroll position on mount
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container && savedScrollPosition > 0) {
+      // Use requestAnimationFrame to ensure container is fully rendered
+      requestAnimationFrame(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = savedScrollPosition;
+        }
+      });
+    }
+  }, [savedScrollPosition]);
+
+  // Track previous form values to prevent infinite loop
+  const prevFormRef = useRef<{
+    price: string;
+    duration: string;
+    city: string;
+    title: string;
+    description: string;
+    guestVerificationStep: 'none' | 'phone' | 'otp';
+    guestPhone: string;
+    guestOTP: string;
+  } | null>(null);
+
+  // Save offer form when it changes
+  useEffect(() => {
+    const currentForm = {
+      price: offerPrice,
+      duration: offerDuration,
+      city: offerCity,
+      title: offerTitle,
+      description: offerDescription,
+      guestVerificationStep: guestOfferVerificationStep,
+      guestPhone: guestOfferPhone,
+      guestOTP: guestOfferOTP,
+    };
+
+    // Check if values actually changed
+    const hasChanged = !prevFormRef.current || 
+      prevFormRef.current.price !== currentForm.price ||
+      prevFormRef.current.duration !== currentForm.duration ||
+      prevFormRef.current.city !== currentForm.city ||
+      prevFormRef.current.title !== currentForm.title ||
+      prevFormRef.current.description !== currentForm.description ||
+      prevFormRef.current.guestVerificationStep !== currentForm.guestVerificationStep ||
+      prevFormRef.current.guestPhone !== currentForm.guestPhone ||
+      prevFormRef.current.guestOTP !== currentForm.guestOTP;
+
+    if (onOfferFormChange && hasChanged) {
+      onOfferFormChange({
+        price: offerPrice,
+        duration: offerDuration,
+        city: offerCity,
+        title: offerTitle,
+        description: offerDescription,
+        attachments: [],
+        guestVerificationStep: guestOfferVerificationStep,
+        guestPhone: guestOfferPhone,
+        guestOTP: guestOfferOTP,
+      });
+      // Update ref after calling callback
+      prevFormRef.current = currentForm;
+    }
+  }, [offerPrice, offerDuration, offerCity, offerTitle, offerDescription, guestOfferVerificationStep, guestOfferPhone, guestOfferOTP, onOfferFormChange]);
 
   // Mark request as viewed when component mounts
   useEffect(() => {
@@ -460,7 +601,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         setTimeout(() => setShowOfferPulse(false), 2000);
       }, 8000); // Every 8 seconds
 
-      return () => clearInterval(interval);
+      return () => {
+        clearInterval(interval);
+      };
     }
   }, [mode, isMyOffer, request.status]);
 
@@ -623,17 +766,18 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   </motion.div>
                 )}
 
-                {/* Title Overlay - Above Image with Better Contrast */}
+                {/* Title Overlay - Above Image with Simple Glassmorphism */}
                 <motion.h1
                   layoutId={`title-${request.id}`}
                   initial={{ opacity: 1 }}
                   animate={{ opacity: isScrolled ? 0 : 1 }}
                   transition={{ duration: 0.3 }}
-                  className="absolute top-4 right-4 left-4 text-base font-bold text-white z-20 px-4 py-2 rounded-lg"
+                  className="absolute top-4 right-4 left-4 text-base font-bold text-foreground z-20 px-4 py-2.5 rounded-xl"
                   style={{ 
-                    textShadow: '0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)',
-                    background: 'linear-gradient(to bottom, rgba(0,0,0,0.4), rgba(0,0,0,0.2))',
-                    backdropFilter: 'blur(8px)',
+                    background: 'rgba(255, 255, 255, 0.85)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
+                    boxShadow: '0 2px 12px rgba(0, 0, 0, 0.1)',
                   }}
                 >
                   {request.title}
@@ -688,36 +832,30 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 
                 {/* Very Subtle Dashed Pattern - Slow Rain Animation */}
                 <motion.div 
-                  className="absolute inset-0 opacity-[0.06]"
+                  className="absolute -inset-20 opacity-[0.08]"
                   style={{
-                    backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 12px, currentColor 0.5px, currentColor 12.5px)`,
-                    backgroundSize: '48px 48px',
+                    backgroundImage: `repeating-linear-gradient(45deg, currentColor, currentColor 0.5px, transparent 0.5px, transparent 11.5px)`,
+                    backgroundSize: '40px 40px',
                   }}
                   animate={{
-                    y: [0, 48],
+                    backgroundPosition: ['0px 0px', '40px 40px']
                   }}
                   transition={{
-                    duration: 30,
+                    duration: 8,
                     repeat: Infinity,
                     ease: 'linear',
                   }}
                 />
                 
                 {/* Center Content - Call to Add Images */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-20">
-                  {/* No Image Indicator - Simple and Clear */}
-                  <div className="relative w-16 h-16 rounded-2xl bg-muted/40 flex items-center justify-center border-2 border-dashed border-muted-foreground/30">
-                    <Camera size={24} className="text-muted-foreground/50" strokeWidth={1.5} />
-                    {/* Clear Diagonal Slash */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="w-full h-0.5 bg-muted-foreground/60 rotate-45 rounded-full" />
-                    </div>
-                  </div>
-                  
+                <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
                   {/* Info Text - Simple */}
-                  <div className="text-center px-4">
+                  <div className="text-center px-4 space-y-1">
                     <p className="text-xs text-muted-foreground/80">
                       لا توجد صور توضيحية
+                    </p>
+                    <p className="text-xs text-muted-foreground/70">
+                      اطلب تفاصيل أكثر من صاحب الطلب
                     </p>
                   </div>
                 </div>
@@ -735,17 +873,18 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   </motion.div>
                 )}
                 
-                {/* Title Overlay - Same Style as With Images */}
+                {/* Title Overlay - Same Simple Glassmorphism Style as With Images */}
                 <motion.h1
                   layoutId={`title-${request.id}`}
                   initial={{ opacity: 1 }}
                   animate={{ opacity: isScrolled ? 0 : 1 }}
                   transition={{ duration: 0.3 }}
-                  className="absolute top-4 right-4 left-4 text-base font-bold text-white z-20 px-4 py-2 rounded-lg"
+                  className="absolute top-4 right-4 left-4 text-base font-bold text-foreground z-20 px-4 py-2.5 rounded-xl"
                   style={{ 
-                    textShadow: '0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)',
-                    background: 'linear-gradient(to bottom, rgba(0,0,0,0.4), rgba(0,0,0,0.2))',
-                    backdropFilter: 'blur(8px)',
+                    background: 'rgba(255, 255, 255, 0.85)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
+                    boxShadow: '0 2px 12px rgba(0, 0, 0, 0.1)',
                   }}
                 >
                   {request.title}
@@ -792,7 +931,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-secondary/20 rounded-xl border border-border/50"
+                className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 rounded-xl border"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(30, 150, 140, 0.08) 0%, rgba(30, 150, 140, 0.04) 50%, rgba(21, 54, 89, 0.08) 100%)',
+                  borderColor: 'rgba(30, 150, 140, 0.15)'
+                }}
               >
                 {/* Location - First */}
                 <div className="flex flex-col gap-1.5">
@@ -883,7 +1026,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.2 }}
-                className="prose dark:prose-invert max-w-none text-base leading-relaxed text-foreground/80"
+                className="prose dark:prose-invert max-w-none text-lg leading-relaxed text-foreground/80"
               >
                 <p className="whitespace-pre-line">{request.description}</p>
               </motion.div>
@@ -916,9 +1059,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 <h3 className="font-bold text-lg flex items-center gap-2">
                   {request.status === "assigned" ? <>العرض المعتمد</> : (
                     <>
-                      العروض المستلمة{" "}
-                      <span className="text-sm font-normal text-muted-foreground">
-                        ({request.offers.length})
+                      العروض المستلمة
+                      <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-primary/10 text-primary px-1.5 text-[11px] font-bold">
+                        {request.offers.length}
                       </span>
                     </>
                   )}
@@ -1202,7 +1345,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
-                        className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-secondary/20 rounded-xl border border-border/50"
+                        className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 rounded-xl border"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(30, 150, 140, 0.08) 0%, rgba(30, 150, 140, 0.04) 50%, rgba(21, 54, 89, 0.08) 100%)',
+                          borderColor: 'rgba(30, 150, 140, 0.15)'
+                        }}
                       >
                         {/* Price - First */}
                         <div className="flex flex-col gap-1.5">
@@ -1478,7 +1625,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         }`}
                         placeholder=""
                         value={offerDescription}
-                        onChange={(e) => setOfferDescription(e.target.value)}
+                        onChange={(e) => {
+                          setOfferDescription(e.target.value);
+                        }}
                         onFocus={() => setIsDescriptionFocused(true)}
                         onBlur={() => setIsDescriptionFocused(false)}
                       />
@@ -1541,7 +1690,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                               >
                                 <X size={18} />
                               </button>
-                              <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-3 py-1 rounded-full backdrop-blur-sm">
+                              <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[11px] px-3 py-1 rounded-full backdrop-blur-sm">
                                 صورة تقريبية من البحث
                               </div>
                             </div>
@@ -1648,6 +1797,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           if (isGuest) {
                             setGuestOfferVerificationStep('phone');
                           } else {
+                            // Haptic feedback - positive send pattern
+                            if (navigator.vibrate) {
+                              navigator.vibrate([30, 50, 30]);
+                            }
                             // TODO: Submit offer
                             alert("سيتم إرسال العرض قريباً");
                           }
@@ -1769,6 +1922,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         const result = await confirmGuestPhone(guestOfferPhone, guestOfferOTP);
                         setIsVerifyingOfferOTP(false);
                         if (result.success) {
+                          // Haptic feedback - positive send pattern
+                          if (navigator.vibrate) {
+                            navigator.vibrate([30, 50, 30]);
+                          }
                           setGuestOfferVerificationStep('none');
                           // TODO: Submit offer
                           alert("تم التحقق بنجاح! سيتم إرسال العرض قريباً");

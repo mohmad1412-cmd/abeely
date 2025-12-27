@@ -206,6 +206,17 @@ body {
     opacity: 0.5;
 }
 
+/* Hide number input spinner arrows */
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
 /* ========================================
    TEXT GRADIENT
    ======================================== */
@@ -663,16 +674,28 @@ button, a, input, textarea, select {
 
 /* Soft Pulse Animation - gentle glow effect */
 @keyframes soft-pulse {
-    0%, 100% {
+    0% {
         box-shadow: 0 0 0 0 rgba(30, 150, 140, 0);
     }
+    40% {
+        box-shadow: 0 0 12px 2px rgba(30, 150, 140, 0.35);
+    }
     50% {
-        box-shadow: 0 0 15px 3px rgba(30, 150, 140, 0.4);
+        box-shadow: 0 0 10px 2px rgba(30, 150, 140, 0.3);
+    }
+    70% {
+        box-shadow: 0 0 8px 2px rgba(30, 150, 140, 0.2);
+    }
+    85% {
+        box-shadow: 0 0 4px 1px rgba(30, 150, 140, 0.1);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(30, 150, 140, 0);
     }
 }
 
 .animate-soft-pulse {
-    animation: soft-pulse 1s ease-in-out 2;
+    animation: soft-pulse 1.2s ease-out 2;
 }
 
 /* Auto-scroll text animation for long text - smooth left to right */

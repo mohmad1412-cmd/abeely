@@ -58,7 +58,7 @@ export const Button: React.FC<ButtonProps> = ({
       hover:bg-secondary/80 hover:shadow-sm
     `,
     outline: `
-      border-2 border-input bg-transparent
+      border border-input bg-transparent
       hover:bg-secondary hover:border-primary/30
     `,
     ghost: `

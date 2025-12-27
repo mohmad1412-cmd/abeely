@@ -11,8 +11,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
   });
 } else {
   console.log('✅ Supabase env vars loaded:', {
-    url: supabaseUrl.substring(0, 30) + '...',
-    hasKey: !!supabaseAnonKey
+    url: supabaseUrl,
+    urlPreview: supabaseUrl.substring(0, 30) + '...',
+    hasKey: !!supabaseAnonKey,
+    keyPreview: supabaseAnonKey?.substring(0, 20) + '...'
   });
 }
 

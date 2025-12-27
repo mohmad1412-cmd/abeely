@@ -36,7 +36,7 @@ import {
 
 // Services
 import {
-  fetchAllRequests, 
+  fetchRequestsPaginated,
   fetchMyRequests, 
   fetchMyOffers,
   fetchArchivedRequests,
@@ -81,6 +81,7 @@ const App: React.FC = () => {
   const [userPreferences, setUserPreferences] = useState<UserPreferences>({
     interestedCategories: ["tech", "writing"],
     interestedCities: ["الرياض"],
+    radarWords: [],
     notifyOnInterest: true,
     roleMode: "requester",
   });
@@ -96,6 +97,11 @@ const App: React.FC = () => {
   const [archivedRequests, setArchivedRequests] = useState<Request[]>([]);
   const [archivedOffers, setArchivedOffers] = useState<Offer[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [requestsLoadError, setRequestsLoadError] = useState<string | null>(null);
+  const MARKETPLACE_PAGE_SIZE = 10;
+  const [marketplacePage, setMarketplacePage] = useState(0);
+  const [marketplaceHasMore, setMarketplaceHasMore] = useState(true);
+  const [marketplaceIsLoadingMore, setMarketplaceIsLoadingMore] = useState(false);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<{
     supabase: { connected: boolean; error?: string };
@@ -115,13 +121,77 @@ const App: React.FC = () => {
   // ==========================================
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [scrollToOfferSection, setScrollToOfferSection] = useState(false);
+  
+  // Save state when switching modes to restore when coming back
+  const [savedOffersModeState, setSavedOffersModeState] = useState<{
+    view: ViewState;
+    selectedRequest: Request | null;
+    scrollToOfferSection: boolean;
+  } | null>(null);
+  const [savedRequestsModeState, setSavedRequestsModeState] = useState<{
+    view: ViewState;
+  } | null>(null);
 
   // ==========================================
   // Scroll Persistence
   // ==========================================
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [marketplaceScrollPos, setMarketplaceScrollPos] = useState(0);
+  // Separate scroll positions for each mode
+  // Load from localStorage on mount
+  const [marketplaceScrollPos, setMarketplaceScrollPos] = useState(() => {
+    const saved = localStorage.getItem('abeely_marketplace_scroll');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [requestsModeScrollPos, setRequestsModeScrollPos] = useState(() => {
+    const saved = localStorage.getItem('abeely_requests_scroll');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [chatAreaScrollPos, setChatAreaScrollPos] = useState(() => {
+    const saved = localStorage.getItem('abeely_chatarea_scroll');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [requestDetailScrollPos, setRequestDetailScrollPos] = useState(() => {
+    const saved = localStorage.getItem('abeely_requestdetail_scroll');
+    return saved ? parseInt(saved, 10) : 0;
+  });
   const notifRef = useRef<HTMLDivElement>(null);
+
+  // Save to localStorage whenever scroll positions change
+  useEffect(() => {
+    localStorage.setItem('abeely_marketplace_scroll', marketplaceScrollPos.toString());
+  }, [marketplaceScrollPos]);
+
+  useEffect(() => {
+    localStorage.setItem('abeely_requests_scroll', requestsModeScrollPos.toString());
+  }, [requestsModeScrollPos]);
+
+  useEffect(() => {
+    localStorage.setItem('abeely_chatarea_scroll', chatAreaScrollPos.toString());
+  }, [chatAreaScrollPos]);
+
+  useEffect(() => {
+    localStorage.setItem('abeely_requestdetail_scroll', requestDetailScrollPos.toString());
+  }, [requestDetailScrollPos]);
+
+  // ==========================================
+  // State Persistence for ChatArea
+  // ==========================================
+  const [savedChatMessages, setSavedChatMessages] = useState<any[]>([]);
+
+  // ==========================================
+  // State Persistence for RequestDetail
+  // ==========================================
+  const [savedOfferForms, setSavedOfferForms] = useState<Record<string, {
+    price: string;
+    duration: string;
+    city: string;
+    title: string;
+    description: string;
+    attachments: any[];
+    guestVerificationStep?: 'none' | 'phone' | 'otp';
+    guestPhone?: string;
+    guestOTP?: string;
+  }>>({});
 
   // ==========================================
   // Auth Initialization
@@ -237,10 +307,6 @@ const App: React.FC = () => {
         console.warn("🌐 Internet Ping (Google): FAILED - Your browser/network might be offline or blocking outbound requests.");
       }
       
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:loadData',message:'loadData started',data:{online:navigator.onLine},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'H5'})}).catch(()=>{});
-      // #endregion
-      
       // Check connections in parallel for better performance
       const startTime = Date.now();
       
@@ -249,10 +315,6 @@ const App: React.FC = () => {
         checkSupabaseConnection(),
         checkAIConnection()
       ]);
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:loadData',message:'connection checks completed',data:{duration:Date.now()-startTime,supabaseConnected:supabaseStatus.connected,aiConnected:aiStatus.connected},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'H5'})}).catch(()=>{});
-      // #endregion
       
       setConnectionStatus({
         supabase: supabaseStatus,
@@ -265,33 +327,22 @@ const App: React.FC = () => {
       // EVEN IF status check failed, we try to fetch once to be sure
       try {
         setIsLoadingData(true);
+        setRequestsLoadError(null);
         
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:loadData:beforeFetch',message:'About to fetch requests',data:{supabaseConnected:supabaseStatus.connected,supabaseError:supabaseStatus.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-        // #endregion
-        
-        // Fetch all public requests
-        console.log("📥 Attempting to fetch real requests from Supabase...");
-        const allReqs = await fetchAllRequests();
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:loadData:afterFetch',message:'Fetch completed',data:{isArray:Array.isArray(allReqs),length:allReqs?.length,firstTitle:allReqs?.[0]?.title},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2,H3'})}).catch(()=>{});
-        // #endregion
+        // Fetch first page of public requests (lazy loading)
+        console.log("📥 Attempting to fetch real requests from Supabase (page 0)...");
+        const { data: firstPage, count: totalCount } = await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
         
         // If we got data, we are actually connected!
-        if (Array.isArray(allReqs) && allReqs.length > 0) {
-          console.log(`✅ Success! Fetched ${allReqs.length} real requests.`);
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:loadData:setReal',message:'Setting REAL requests',data:{count:allReqs.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-          // #endregion
-          setAllRequests(allReqs);
+        if (Array.isArray(firstPage)) {
+          console.log(`✅ Success! Fetched ${firstPage.length} real requests (page 1).`);
+          setAllRequests(firstPage);
+          setMarketplacePage(0);
+          const more = typeof totalCount === 'number'
+            ? firstPage.length < totalCount
+            : firstPage.length === MARKETPLACE_PAGE_SIZE;
+          setMarketplaceHasMore(more);
           // Connection is already tracked via connectionStatus
-        } else if (supabaseStatus.connected) {
-          // If check was OK but no data, just set empty array
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:loadData:emptyArray',message:'Setting empty array (connected but no data)',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-          // #endregion
-          setAllRequests([]);
         } else {
           // Both check and fetch failed
           throw new Error("Both connection check and initial fetch failed");
@@ -321,12 +372,10 @@ const App: React.FC = () => {
           }
         } catch (error) {
           console.error("Error loading data:", error);
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:loadData:catch',message:'FALLBACK to MOCK_REQUESTS',data:{error:String(error),mockCount:MOCK_REQUESTS.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2,H4'})}).catch(()=>{});
-          // #endregion
-          // Fallback to mock data if Supabase fails
-          console.log("📦 Using mock data as fallback");
-          setAllRequests(MOCK_REQUESTS);
+          // Show user-friendly error message (not technical details)
+          setRequestsLoadError("حدث خطأ في تحميل الطلبات. يرجى المحاولة مرة أخرى.");
+          setAllRequests([]);
+          setMarketplaceHasMore(false);
         } finally {
           setIsLoadingData(false);
           loadingRef.current = false;
@@ -335,6 +384,40 @@ const App: React.FC = () => {
 
       loadData();
     }, [appView, user?.id]);
+
+  // ==========================================
+  // Reload Data When Opening Marketplace
+  // ==========================================
+  useEffect(() => {
+    if (appView !== 'main' || view !== 'marketplace') return;
+    if (loadingRef.current) return;
+    if (allRequests.length === 0 || requestsLoadError) {
+      // Trigger reload if no data or error
+      const reloadData = async () => {
+        loadingRef.current = true;
+        try {
+          setIsLoadingData(true);
+          setRequestsLoadError(null);
+          const { data: firstPage, count: totalCount } = await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
+          if (Array.isArray(firstPage)) {
+            setAllRequests(firstPage);
+            setMarketplacePage(0);
+            const more = typeof totalCount === 'number'
+              ? firstPage.length < totalCount
+              : firstPage.length === MARKETPLACE_PAGE_SIZE;
+            setMarketplaceHasMore(more);
+          }
+        } catch (error) {
+          console.error("Error reloading marketplace data:", error);
+          setRequestsLoadError("حدث خطأ في تحميل الطلبات. يرجى المحاولة مرة أخرى.");
+        } finally {
+          setIsLoadingData(false);
+          loadingRef.current = false;
+        }
+      };
+      reloadData();
+    }
+  }, [view, appView, allRequests.length, requestsLoadError]);
 
   // ==========================================
   // Load Notifications from Supabase
@@ -362,6 +445,34 @@ const App: React.FC = () => {
       unsubscribe();
     };
   }, [appView, user?.id]);
+
+  const loadMoreMarketplaceRequests = async () => {
+    if (marketplaceIsLoadingMore || !marketplaceHasMore) return;
+    try {
+      setMarketplaceIsLoadingMore(true);
+      const nextPage = marketplacePage + 1;
+      const { data: pageData, count: totalCount } = await fetchRequestsPaginated(nextPage, MARKETPLACE_PAGE_SIZE);
+      setAllRequests((prev) => {
+        const seen = new Set(prev.map(r => r.id));
+        const merged = [...prev];
+        for (const r of pageData) {
+          if (!seen.has(r.id)) merged.push(r);
+        }
+        return merged;
+      });
+      setMarketplacePage(nextPage);
+      const loadedSoFar = allRequests.length + (pageData?.length || 0);
+      const more = typeof totalCount === 'number'
+        ? loadedSoFar < totalCount
+        : (pageData?.length || 0) === MARKETPLACE_PAGE_SIZE;
+      setMarketplaceHasMore(more);
+    } catch (e) {
+      console.error('Error loading more requests:', e);
+      setMarketplaceHasMore(false);
+    } finally {
+      setMarketplaceIsLoadingMore(false);
+    }
+  };
 
   // ==========================================
   // Load Interests Requests and Unread Count
@@ -459,13 +570,52 @@ const App: React.FC = () => {
   // Navigation Helpers
   // ==========================================
   const handleModeSwitch = (newMode: AppMode) => {
-    setMode(newMode);
-    const newView = newMode === "requests" ? "create-request" : "marketplace";
-    setView(newView);
+    // Save current scroll position before switching
+    if (scrollContainerRef.current) {
+      const currentScroll = scrollContainerRef.current.scrollTop;
+      if (mode === "requests") {
+        setRequestsModeScrollPos(currentScroll);
+      } else if (mode === "offers") {
+        setMarketplaceScrollPos(currentScroll);
+      }
+    }
     
-    // Reset scroll position when switching modes
-    if (newMode === "offers") {
-      setMarketplaceScrollPos(0);
+    // Save current state before switching modes
+    if (mode === "offers") {
+      // Save offers mode state (view and selectedRequest) to restore later
+      setSavedOffersModeState({
+        view: view,
+        selectedRequest: selectedRequest,
+        scrollToOfferSection: scrollToOfferSection,
+      });
+    } else if (mode === "requests") {
+      // Save requests mode state (view only, no selected request in requests mode)
+      setSavedRequestsModeState({
+        view: view,
+      });
+    }
+    
+    setMode(newMode);
+    
+    // Restore saved state if available, otherwise use default view
+    if (newMode === "offers" && savedOffersModeState) {
+      // Restore offers mode state
+      setView(savedOffersModeState.view);
+      setSelectedRequest(savedOffersModeState.selectedRequest);
+      setScrollToOfferSection(savedOffersModeState.scrollToOfferSection);
+    } else if (newMode === "requests" && savedRequestsModeState) {
+      // Restore requests mode state
+      setView(savedRequestsModeState.view);
+      setSelectedRequest(null); // No selected request in requests mode
+      setScrollToOfferSection(false);
+    } else {
+      // No saved state, use default view
+      const defaultView = newMode === "requests" ? "create-request" : "marketplace";
+      setView(defaultView);
+      if (newMode === "offers") {
+        setSelectedRequest(null);
+        setScrollToOfferSection(false);
+      }
     }
   };
 
@@ -478,9 +628,9 @@ const App: React.FC = () => {
   };
 
   const handleNavigate = (newView: any) => {
-    if (view === "marketplace" && scrollContainerRef.current) {
-      setMarketplaceScrollPos(scrollContainerRef.current.scrollTop);
-    }
+    // Note: Scroll position is automatically saved via onScrollPositionChange callbacks
+    // in Marketplace and ChatArea components (via useLayoutEffect cleanup on unmount)
+    // No need to manually save here as components handle it themselves
 
     if (newView === "requests-mode") {
       handleModeSwitch("requests");
@@ -501,20 +651,28 @@ const App: React.FC = () => {
     }
   };
 
-  // Restore scroll position
+  // Restore scroll position when switching views or modes
+  // Note: Marketplace component handles its own scroll restoration via savedScrollPosition prop
+  // This effect is mainly for other views that use scrollContainerRef
   useEffect(() => {
     if (view !== "request-detail" && scrollContainerRef.current) {
-      if (view === "create-request" && mode === "requests") {
-        // Reset scroll immediately when switching to create-request in requests mode
-        scrollContainerRef.current.scrollTop = 0;
-      } else if (view === "marketplace" && mode === "offers") {
-        // Restore marketplace scroll position immediately
-        scrollContainerRef.current.scrollTop = marketplaceScrollPos;
-      }
+      // Use requestAnimationFrame to ensure DOM is ready
+      requestAnimationFrame(() => {
+        if (!scrollContainerRef.current) return;
+        
+        if (view === "create-request" && mode === "requests") {
+          // Restore scroll position for requests mode
+          scrollContainerRef.current.scrollTop = requestsModeScrollPos;
+        }
+        // Marketplace handles its own scroll restoration via savedScrollPosition prop
+        // No need to manually set scroll here
+      });
     }
-  }, [view, mode, marketplaceScrollPos]);
+  }, [view, mode, requestsModeScrollPos]);
 
   const handleSelectRequest = (req: Request, scrollToOffer = false) => {
+    // Marketplace component already saves scroll position via onScrollPositionChange
+    // No need to manually save it here - marketplaceScrollPos is already up to date
     setSelectedRequest(req);
     setScrollToOfferSection(scrollToOffer);
     setView("request-detail");
@@ -549,11 +707,17 @@ const App: React.FC = () => {
 
   // Reload data function
   const reloadData = async () => {
-    if (!connectionStatus?.supabase.connected) return;
-
     try {
-      const allReqs = await fetchAllRequests();
-      setAllRequests(allReqs);
+      setIsLoadingData(true);
+      setRequestsLoadError(null);
+      
+      const { data: firstPage, count: totalCount } = await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
+      setAllRequests(firstPage);
+      setMarketplacePage(0);
+      const more = typeof totalCount === 'number'
+        ? firstPage.length < totalCount
+        : firstPage.length === MARKETPLACE_PAGE_SIZE;
+      setMarketplaceHasMore(more);
 
       if (user?.id) {
         const myReqs = await fetchMyRequests(user.id);
@@ -571,6 +735,9 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error("Error reloading data:", error);
+      setRequestsLoadError("حدث خطأ في تحميل الطلبات. يرجى المحاولة مرة أخرى.");
+    } finally {
+      setIsLoadingData(false);
     }
   };
 
@@ -644,7 +811,6 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (view) {
       case "create-request":
-        
         return (
           <div className="h-full p-0 flex flex-col items-center justify-start pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] overflow-x-hidden">
             <div className="w-full max-w-4xl h-full flex flex-col overflow-x-hidden">
@@ -652,111 +818,149 @@ const App: React.FC = () => {
                 onRequestPublished={reloadData} 
                 isGuest={isGuest}
                 userId={user?.id}
+                savedMessages={savedChatMessages}
+                onMessagesChange={setSavedChatMessages}
+                savedScrollPosition={chatAreaScrollPos}
+                onScrollPositionChange={setChatAreaScrollPos}
               />
             </div>
           </div>
         );
       case "marketplace":
-        
         return (
-          <Marketplace
-            requests={allRequests}
-            interestsRequests={interestsRequests}
-            unreadInterestsCount={unreadInterestsCount}
-            myOffers={myOffers}
-            onSelectRequest={handleSelectRequest}
-            userInterests={userInterests}
-            onUpdateInterests={setUserInterests}
-            savedScrollPosition={marketplaceScrollPos}
-            onScrollPositionChange={setMarketplaceScrollPos}
-          />
+          <div className="h-full flex flex-col overflow-hidden">
+            {allRequests && Array.isArray(allRequests) ? (
+              <Marketplace
+                requests={allRequests}
+                interestsRequests={interestsRequests}
+                unreadInterestsCount={unreadInterestsCount}
+                myOffers={myOffers}
+                onSelectRequest={handleSelectRequest}
+                userInterests={userInterests}
+              onUpdateInterests={setUserInterests}
+              hasMore={marketplaceHasMore}
+              isLoadingMore={marketplaceIsLoadingMore}
+              onLoadMore={loadMoreMarketplaceRequests}
+              onRefresh={reloadData}
+              loadError={requestsLoadError}
+              savedScrollPosition={marketplaceScrollPos}
+              onScrollPositionChange={setMarketplaceScrollPos}
+            />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <p className="text-muted-foreground">جاري تحميل الطلبات...</p>
+                </div>
+              </div>
+            )}
+          </div>
         );
       case "request-detail":
         return selectedRequest ? (
+          <div className="h-full flex flex-col overflow-hidden">
             <RequestDetail
               request={selectedRequest}
               mode={mode}
               myOffer={getMyOfferOnRequest(selectedRequest.id)}
-            onBack={() => {
-              setSelectedRequest(null);
-              setScrollToOfferSection(false);
-              setView("marketplace");
-            }}
-            isGuest={isGuest}
-            scrollToOfferSection={scrollToOfferSection}
-            onNavigateToMessages={async (conversationId, userId, requestId, offerId) => {
-              // Import getOrCreateConversation
-              const { getOrCreateConversation } = await import('./services/messagesService');
-              const { getCurrentUser } = await import('./services/authService');
-              
-              if (userId && requestId) {
-                const currentUser = await getCurrentUser();
-                if (currentUser) {
-                  const conv = await getOrCreateConversation(userId, requestId, offerId);
-                  if (conv) {
-                    setPreviousView(view);
-                    setView("messages");
-                    // TODO: Navigate to specific conversation
+              onBack={() => {
+                setSelectedRequest(null);
+                setScrollToOfferSection(false);
+                setView("marketplace");
+                // Marketplace will restore scroll position via savedScrollPosition prop
+              }}
+              isGuest={isGuest}
+              scrollToOfferSection={scrollToOfferSection}
+              onNavigateToMessages={async (conversationId, userId, requestId, offerId) => {
+                const { getOrCreateConversation } = await import('./services/messagesService');
+                const { getCurrentUser } = await import('./services/authService');
+                
+                if (userId && requestId) {
+                  const currentUser = await getCurrentUser();
+                  if (currentUser) {
+                    const conv = await getOrCreateConversation(userId, requestId, offerId);
+                    if (conv) {
+                      setPreviousView(view);
+                      setView("messages");
+                    }
                   }
+                } else {
+                  setPreviousView(view);
+                  setView("messages");
                 }
-              } else {
-                setPreviousView(view);
-                setView("messages");
-              }
-            }}
+              }}
+              savedOfferForm={savedOfferForms[selectedRequest.id]}
+              onOfferFormChange={(form) => {
+                setSavedOfferForms(prev => ({
+                  ...prev,
+                  [selectedRequest.id]: form
+                }));
+              }}
+              savedScrollPosition={requestDetailScrollPos}
+              onScrollPositionChange={setRequestDetailScrollPos}
             />
+          </div>
         ) : null;
       case "settings":
         return (
-          <Settings
-            isDarkMode={isDarkMode}
-            toggleTheme={() => setIsDarkMode(!isDarkMode)}
-            userPreferences={userPreferences}
-            onUpdatePreferences={(prefs) => {
-              setUserPreferences(prefs);
-              setUserInterests(prefs.interestedCategories);
-            }}
-            user={user}
-            onBack={() => {
-              if (previousView) {
-                setView(previousView);
-                setPreviousView(null);
-              } else {
-                handleNavigate(mode === "requests" ? "create-request" : "marketplace");
-              }
-            }}
-            onSignOut={handleSignOut}
-          />
+          <div className="h-full flex flex-col overflow-hidden">
+            <Settings
+              isDarkMode={isDarkMode}
+              toggleTheme={() => setIsDarkMode(!isDarkMode)}
+              userPreferences={userPreferences}
+              onUpdatePreferences={(prefs) => {
+                setUserPreferences(prefs);
+                setUserInterests(prefs.interestedCategories);
+              }}
+              user={user}
+              onBack={() => {
+                if (previousView) {
+                  setView(previousView);
+                  setPreviousView(null);
+                } else {
+                  handleNavigate(mode === "requests" ? "create-request" : "marketplace");
+                }
+              }}
+              onSignOut={handleSignOut}
+            />
+          </div>
         );
       case "profile":
-        return <Profile userReviews={reviews} userRating={userRating} />;
+        return (
+          <div className="h-full flex flex-col overflow-hidden">
+            <Profile userReviews={reviews} userRating={userRating} />
+          </div>
+        );
       case "messages":
         return (
-          <Messages
-            onBack={() => {
-              if (previousView) {
-                setView(previousView);
-                setPreviousView(null);
-              } else {
-                handleNavigate(mode === "requests" ? "create-request" : "marketplace");
-              }
-            }}
-            onSelectConversation={(conversationId) => {
-              setView("conversation");
-            }}
-          />
+          <div className="h-full flex flex-col overflow-hidden">
+            <Messages
+              onBack={() => {
+                if (previousView) {
+                  setView(previousView);
+                  setPreviousView(null);
+                } else {
+                  handleNavigate(mode === "requests" ? "create-request" : "marketplace");
+                }
+              }}
+              onSelectConversation={(conversationId) => {
+                setView("conversation");
+              }}
+            />
+          </div>
         );
       case "conversation":
         return (
-          <Messages
-            onBack={() => setView("messages")}
-            onSelectConversation={(conversationId) => {
-              // Already in conversation view
-            }}
-          />
+          <div className="h-full flex flex-col overflow-hidden">
+            <Messages
+              onBack={() => setView("messages")}
+              onSelectConversation={(conversationId) => {
+                // Already in conversation view
+              }}
+            />
+          </div>
         );
       default:
-        return <div className="p-8">View not found</div>;
+        return <div className="h-full flex flex-col overflow-hidden p-8">View not found</div>;
     }
   };
 
@@ -913,7 +1117,7 @@ const App: React.FC = () => {
                 {unreadCount > 0 && (
                   <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                    <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 bg-red-500 text-[10px] text-white font-bold">
+                    <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 bg-red-500 text-[11px] text-white font-bold">
                       {unreadCount}
                     </span>
                   </span>
@@ -946,19 +1150,19 @@ const App: React.FC = () => {
         <div
           id="main-scroll-container"
           ref={scrollContainerRef}
-          className="flex-1 flex flex-col min-h-0 bg-background relative overflow-auto"
+          className="flex-1 min-h-0 bg-background relative overflow-hidden"
         >
-          <AnimatePresence mode="sync">
+          <AnimatePresence mode="wait">
             <motion.div
               key={`${mode}-${view}-${selectedRequest?.id || 'list'}`}
-              initial={false}
+              initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ 
-                duration: 0.15, 
+                duration: 0.1, 
                 ease: "easeInOut"
               }}
-              className="h-full w-full flex flex-col"
+              className="absolute inset-0 flex flex-col overflow-auto"
             >
               {renderContent()}
             </motion.div>
@@ -989,6 +1193,66 @@ const App: React.FC = () => {
 
               {/* Content */}
               <div className="p-4 space-y-4">
+                {/* Language Options */}
+                <div className="space-y-2">
+                  {/* Arabic */}
+                  <button
+                    onClick={() => setCurrentLanguage('ar')}
+                    className={`w-full p-4 rounded-xl border-2 transition-all flex items-center justify-between ${
+                      currentLanguage === 'ar'
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border hover:border-primary/50 hover:bg-secondary/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 flex items-center justify-center bg-primary/10 rounded-xl text-primary font-bold text-lg shrink-0">
+                        AR
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold block">العربية</span>
+                        <span className="text-xs text-muted-foreground">اللغة الحالية</span>
+                      </div>
+                    </div>
+                    {currentLanguage === 'ar' && (
+                      <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                        <Check size={14} className="text-white" />
+                      </div>
+                    )}
+                  </button>
+
+                  {/* English */}
+                  <button
+                    disabled
+                    className="w-full p-4 rounded-xl border-2 border-border opacity-50 cursor-not-allowed flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 flex items-center justify-center bg-secondary rounded-xl text-muted-foreground font-bold text-lg shrink-0">
+                        EN
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold block">English</span>
+                        <span className="text-xs text-muted-foreground">قريباً</span>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Urdu */}
+                  <button
+                    disabled
+                    className="w-full p-4 rounded-xl border-2 border-border opacity-50 cursor-not-allowed flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 flex items-center justify-center bg-secondary rounded-xl text-muted-foreground font-bold text-lg shrink-0">
+                        UR
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold block">اردو</span>
+                        <span className="text-xs text-muted-foreground">قريباً</span>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
                 {/* Auto Translate Toggle */}
                 <div className="p-4 bg-secondary/50 rounded-lg border border-border">
                   <div className="flex items-center justify-between">
@@ -1009,60 +1273,6 @@ const App: React.FC = () => {
                       />
                     </button>
                   </div>
-                </div>
-
-                {/* Language Options */}
-                <div className="space-y-2">
-                  {/* Arabic */}
-                  <button
-                    onClick={() => setCurrentLanguage('ar')}
-                    className={`w-full p-4 rounded-xl border-2 transition-all flex items-center justify-between ${
-                      currentLanguage === 'ar'
-                        ? 'border-primary bg-primary/10'
-                        : 'border-border hover:border-primary/50 hover:bg-secondary/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">🇸🇦</span>
-                      <div className="text-right">
-                        <span className="font-bold block">العربية</span>
-                        <span className="text-xs text-muted-foreground">اللغة الحالية</span>
-                      </div>
-                    </div>
-                    {currentLanguage === 'ar' && (
-                      <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                        <Check size={14} className="text-white" />
-                      </div>
-                    )}
-                  </button>
-
-                  {/* English */}
-                  <button
-                    disabled
-                    className="w-full p-4 rounded-xl border-2 border-border opacity-50 cursor-not-allowed flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">🇬🇧</span>
-                      <div className="text-right">
-                        <span className="font-bold block">English</span>
-                        <span className="text-xs text-muted-foreground">قريباً</span>
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Urdu */}
-                  <button
-                    disabled
-                    className="w-full p-4 rounded-xl border-2 border-border opacity-50 cursor-not-allowed flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">🇵🇰</span>
-                      <div className="text-right">
-                        <span className="font-bold block">اردو</span>
-                        <span className="text-xs text-muted-foreground">قريباً</span>
-                      </div>
-                    </div>
-                  </button>
                 </div>
               </div>
 
