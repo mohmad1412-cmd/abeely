@@ -197,52 +197,74 @@ export function startOAuthFlow(
 
       // Also listen for storage events (when popup saves to localStorage)
       storageHandler = async (e: StorageEvent) => {
+        console.log('📦 Storage event:', e.key, e.newValue);
         if (e.key === 'abeely_auth_success' && e.newValue && !cancelled) {
           console.log('✅ Auth success detected via storage event!');
-          // Verify session exists
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            cleanup();
-            onSuccess();
-          }
+          localStorage.removeItem('abeely_auth_success');
+          // Wait for session to sync
+          await new Promise(r => setTimeout(r, 300));
+          cleanup();
+          onSuccess();
         }
       };
       window.addEventListener('storage', storageHandler);
 
-      // Poll for popup close and session
+      // Poll for popup close AND session changes (more aggressive)
+      let sessionCheckCount = 0;
       pollInterval = setInterval(async () => {
         if (cancelled) {
           cleanup();
           return;
         }
 
+        sessionCheckCount++;
+
+        // Check localStorage flag every poll (in case storage event missed)
+        const authSuccess = localStorage.getItem('abeely_auth_success');
+        if (authSuccess && !cancelled) {
+          console.log('✅ Auth success flag found in localStorage!');
+          localStorage.removeItem('abeely_auth_success');
+          await new Promise(r => setTimeout(r, 300));
+          cleanup();
+          onSuccess();
+          return;
+        }
+
+        // Every 2 seconds, also check session directly
+        if (sessionCheckCount % 4 === 0) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session && !cancelled) {
+            console.log('✅ Session found via polling!');
+            cleanup();
+            onSuccess();
+            return;
+          }
+        }
+
         // Check if popup closed
         if (popup?.closed) {
-          console.log('📭 Popup closed, checking session...');
+          console.log('📭 Popup closed, final session check...');
           clearInterval(pollInterval!);
           pollInterval = null;
           
           // Wait a bit for session to sync
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise(r => setTimeout(r, 800));
           
+          // Check flag one more time
+          const finalAuthSuccess = localStorage.getItem('abeely_auth_success');
+          if (finalAuthSuccess) {
+            localStorage.removeItem('abeely_auth_success');
+            cleanup();
+            onSuccess();
+            return;
+          }
+
           const { data: { session } } = await supabase.auth.getSession();
           if (session && !cancelled) {
             console.log('✅ Session found after popup closed!');
             cleanup();
             onSuccess();
           } else if (!cancelled) {
-            // Check localStorage flag
-            const authSuccess = localStorage.getItem('abeely_auth_success');
-            if (authSuccess) {
-              localStorage.removeItem('abeely_auth_success');
-              // Try getting session again
-              const { data: { session: retrySession } } = await supabase.auth.getSession();
-              if (retrySession) {
-                cleanup();
-                onSuccess();
-                return;
-              }
-            }
             cleanup();
             onError('تم إلغاء تسجيل الدخول');
           }

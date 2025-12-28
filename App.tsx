@@ -143,63 +143,55 @@ const OAuthPopupSuccess: React.FC = () => {
         // Process OAuth callback to store session
         const { data } = await supabase.auth.getSession();
 
+        console.log("📋 Session check:", data.session ? "Found" : "Not found");
+
+        // IMMEDIATELY signal main window (before waiting)
+        localStorage.removeItem("abeely_oauth_popup_active");
+        localStorage.setItem("abeely_auth_success", Date.now().toString());
+        console.log("📢 Auth success flag SET in localStorage");
+
         if (data.session) {
           console.log("✅ Session stored in popup");
 
-          // Wait a moment to ensure session is fully saved
-          await new Promise((resolve) => setTimeout(resolve, 300));
-
-          // Clear the popup flag - this signals main window
-          localStorage.removeItem("abeely_oauth_popup_active");
-
-          // Signal main window
-          localStorage.setItem("abeely_auth_success", Date.now().toString());
-
-          console.log("📢 Popup flag cleared, main window will check session");
-
-          // Try to notify parent window via postMessage (if same origin) and reload it as fallback
+          // Try to notify parent window via postMessage
           try {
             if (window.opener && !window.opener.closed) {
               window.opener.postMessage({
                 type: "oauth_success",
                 timestamp: Date.now(),
               }, window.location.origin);
-              // بعض المتصفحات لا تغلق النافذة تلقائياً، لذا نعيد تحميل النافذة الأصلية كنسخ احتياطي
-              window.opener.location.reload();
+              console.log("📨 postMessage sent to opener");
             }
           } catch (e) {
-            // Ignore cross-origin errors
+            console.log("⚠️ Could not send postMessage:", e);
           }
 
-          // Close window immediately after short delay to show success message
+          // Close window after short delay
           setTimeout(() => {
-            console.log("🚪 Closing popup automatically...");
+            console.log("🚪 Closing popup...");
             window.close();
-
-            // Retry closing multiple times (some browsers need multiple attempts)
             setTimeout(() => {
               window.close();
-              // After 1.5 more seconds, if still open, show manual close button
-              setTimeout(() => {
-                setShowManualClose(true);
-              }, 1500);
-            }, 200);
-          }, 1000); // Show success message for ~1s then close
+              setTimeout(() => setShowManualClose(true), 1500);
+            }, 300);
+          }, 500);
         } else {
-          // No session, clear flag anyway
-          localStorage.removeItem("abeely_oauth_popup_active");
+          // No session yet, but flag is set - close anyway
+          console.log("⚠️ No session yet, but flag is set");
           setTimeout(() => {
             window.close();
             setTimeout(() => setShowManualClose(true), 1500);
-          }, 1000);
+          }, 800);
         }
       } catch (err) {
         console.error("Error getting session:", err);
+        // Still set the flag even on error
         localStorage.removeItem("abeely_oauth_popup_active");
+        localStorage.setItem("abeely_auth_success", Date.now().toString());
         setTimeout(() => {
           window.close();
           setTimeout(() => setShowManualClose(true), 1500);
-        }, 1000);
+        }, 800);
       }
     };
 
