@@ -24,23 +24,33 @@ function isCapacitor(): boolean {
 
 /**
  * بدء تسجيل الدخول عبر OAuth (Google/Apple)
- * نستخدم redirect مباشرة بدلاً من popup لأنه أكثر موثوقية
+ * Supabase يتعامل مع الـ callback تلقائياً بسبب detectSessionInUrl: true
  */
 export async function signInWithOAuth(provider: 'google' | 'apple'): Promise<{ success: boolean; error?: string }> {
   try {
+    // مسح guest mode قبل بدء OAuth
+    localStorage.removeItem("abeely_guest_mode");
+    
+    // الحصول على الـ redirect URL الصحيح
+    // يجب أن يكون نفس الـ URL المسجل في Supabase Dashboard و Google Console
+    const redirectUrl = window.location.origin;
+    
+    console.log("🔐 Starting OAuth with redirect to:", redirectUrl);
+
     // Handle Capacitor (mobile)
     if (isCapacitor()) {
       const { Browser } = await import('@capacitor/browser');
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: window.location.origin,
+          redirectTo: redirectUrl,
           skipBrowserRedirect: true,
           queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
         },
       });
       
       if (error) {
+        console.error("❌ OAuth error (Capacitor):", error);
         return { success: false, error: error.message };
       }
       
@@ -52,49 +62,27 @@ export async function signInWithOAuth(provider: 'google' | 'apple'): Promise<{ s
       return { success: false, error: 'فشل الحصول على رابط الدخول' };
     }
 
-    // Web: استخدام redirect مباشرة (أكثر موثوقية من popup)
-    const { error } = await supabase.auth.signInWithOAuth({
+    // Web: استخدام redirect مباشرة
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: redirectUrl,
         queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
       },
     });
 
     if (error) {
+      console.error("❌ OAuth error:", error);
       return { success: false, error: error.message };
     }
 
-    // لن نصل هنا لأن المتصفح سيعيد التوجيه
+    console.log("✅ OAuth initiated, redirecting...", data);
+    // المتصفح سيعيد التوجيه تلقائياً
     return { success: true };
   } catch (err: any) {
-    console.error('OAuth error:', err);
+    console.error('❌ OAuth exception:', err);
     return { success: false, error: err.message || 'حدث خطأ أثناء تسجيل الدخول' };
   }
-}
-
-/**
- * Legacy function for backwards compatibility
- * @deprecated استخدم signInWithOAuth بدلاً منها
- */
-export function startOAuthFlow(
-  provider: 'google' | 'apple',
-  onSuccess: () => void,
-  onError: (error: string) => void
-): { cancel: () => void } {
-  // استخدام redirect مباشرة
-  signInWithOAuth(provider).then(result => {
-    if (!result.success && result.error) {
-      onError(result.error);
-    }
-    // لن نصل لـ onSuccess هنا لأن المتصفح سيعيد التوجيه
-  });
-
-  return { 
-    cancel: () => {
-      // لا يمكن إلغاء redirect
-    } 
-  };
 }
 
 export async function getCurrentUser(): Promise<UserProfile | null> {

@@ -15,15 +15,6 @@ import { SplashScreen } from "./components/SplashScreen";
 import { AuthPage } from "./components/AuthPage";
 import { Messages } from "./components/Messages";
 
-// ==========================================
-// OAuth Callback Detection - يكتشف إذا كان هذا redirect من OAuth
-// ==========================================
-const detectOAuthCallback = (): boolean => {
-  const hasCode = window.location.search.includes("code=");
-  const hasToken = window.location.hash.includes("access_token");
-  const hasError = window.location.search.includes("error=");
-  return hasCode || hasToken || hasError;
-};
 
 // Types & Data
 import {
@@ -81,11 +72,6 @@ import { App as CapacitorApp } from "@capacitor/app";
 type AppView = "splash" | "auth" | "main" | "connection-error";
 
 const App: React.FC = () => {
-  // ==========================================
-  // OAuth Callback Check - يكتشف إذا كان هذا redirect من OAuth
-  // ==========================================
-  const [isOAuthCallback] = useState(() => detectOAuthCallback());
-
   // ==========================================
   // Auth State
   // ==========================================
@@ -468,83 +454,24 @@ const App: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
 
+    // Supabase يتعامل مع OAuth callback تلقائياً بسبب detectSessionInUrl: true
+    // نحن فقط نستمع لتغييرات الـ session
+    
     const initializeAuth = async () => {
       try {
-        // 1. إذا كان هذا OAuth callback، نتعامل مع الـ code أولاً
-        if (isOAuthCallback) {
-          console.log("🔐 Processing OAuth callback...");
-          const urlParams = new URLSearchParams(window.location.search);
-          const authCode = urlParams.get("code");
-          const authError = urlParams.get("error");
-          
-          // تنظيف الـ URL فوراً
-          const cleanUrl = window.location.origin;
-          window.history.replaceState({}, document.title, cleanUrl);
-          
-          // إذا كان هناك خطأ من OAuth provider
-          if (authError) {
-            console.error("❌ OAuth error from provider:", authError);
-            if (isMounted) {
-              setAppView("auth");
-              setAuthLoading(false);
-            }
-            return;
-          }
-          
-          if (authCode) {
-            try {
-              const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
-              
-              if (exchangeError) {
-                console.error("❌ exchangeCodeForSession failed:", exchangeError);
-                // فشل OAuth → العودة لصفحة تسجيل الدخول (وليس guest!)
-                if (isMounted) {
-                  setAppView("auth");
-                  setAuthLoading(false);
-                }
-                return;
-              }
-              
-              if (exchangeData?.session?.user && isMounted) {
-                console.log("✅ Session created from OAuth code");
-                
-                // تحميل الـ profile
-                const profile = await getCurrentUser();
-                if (profile && isMounted) {
-                  setUser(profile);
-                }
-                
-                // مسح guest mode والدخول
-                setIsGuest(false);
-                localStorage.removeItem("abeely_guest_mode");
-                setAppView("main");
-                setAuthLoading(false);
-                return;
-              }
-            } catch (e) {
-              console.error("❌ exchangeCodeForSession error:", e);
-              // فشل OAuth → العودة لصفحة تسجيل الدخول
-              if (isMounted) {
-                setAppView("auth");
-                setAuthLoading(false);
-              }
-              return;
-            }
-          }
-          
-          // OAuth callback بدون code صالح → العودة لصفحة تسجيل الدخول
-          if (isMounted) {
-            setAppView("auth");
-            setAuthLoading(false);
-          }
-          return;
+        // انتظر قليلاً للسماح لـ Supabase بمعالجة أي OAuth callback
+        // هذا ضروري لأن getSession قد يُستدعى قبل أن يتم معالجة الـ URL
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // تحقق من وجود session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error("❌ getSession error:", error);
         }
-
-        // 2. تحقق من وجود session موجودة
-        const { data: { session } } = await supabase.auth.getSession();
         
         if (session?.user && isMounted) {
-          console.log("✅ Existing session found, loading profile...");
+          console.log("✅ Session found, loading profile...");
           const profile = await getCurrentUser();
           if (profile && isMounted) {
             setUser(profile);
@@ -553,10 +480,15 @@ const App: React.FC = () => {
           localStorage.removeItem("abeely_guest_mode");
           setAppView("main");
           setAuthLoading(false);
+          
+          // تنظيف URL إذا كان فيه OAuth params
+          if (window.location.search.includes("code=") || window.location.hash.includes("access_token")) {
+            window.history.replaceState({}, document.title, window.location.pathname || "/");
+          }
           return;
         }
 
-        // 3. تحقق من وجود guest mode محفوظ
+        // تحقق من وجود guest mode محفوظ
         const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
         if (isGuestSaved && isMounted) {
           setIsGuest(true);
@@ -565,7 +497,7 @@ const App: React.FC = () => {
           return;
         }
 
-        // 4. تحقق من نوع الرابط - الصفحات العامة تدخل كضيف
+        // تحقق من نوع الرابط - الصفحات العامة تدخل كضيف
         const route = parseRoute();
         const isPublicRoute = route.type === 'request' || 
                              route.type === 'marketplace' || 
@@ -589,13 +521,12 @@ const App: React.FC = () => {
       }
     };
 
-    initializeAuth();
-
-    // الاستماع لتغييرات حالة المصادقة
+    // الاستماع لتغييرات حالة المصادقة - هذا هو المكان الرئيسي لمعالجة OAuth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("🔐 Auth state changed:", event);
+      console.log("🔐 Auth state changed:", event, session?.user?.email);
       
-      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user && isMounted) {
+      if (event === "SIGNED_IN" && session?.user && isMounted) {
+        console.log("✅ User signed in:", session.user.email);
         const profile = await getCurrentUser();
         if (profile && isMounted) {
           setUser(profile);
@@ -603,17 +534,32 @@ const App: React.FC = () => {
         setIsGuest(false);
         localStorage.removeItem("abeely_guest_mode");
         setAppView("main");
+        setAuthLoading(false);
+        
+        // تنظيف URL
+        if (window.location.search.includes("code=") || window.location.hash.includes("access_token")) {
+          window.history.replaceState({}, document.title, window.location.pathname || "/");
+        }
+      } else if (event === "TOKEN_REFRESHED" && session?.user && isMounted) {
+        // تحديث الـ profile فقط
+        const profile = await getCurrentUser();
+        if (profile && isMounted) {
+          setUser(profile);
+        }
       } else if (event === "SIGNED_OUT" && isMounted) {
         setUser(null);
+        setIsGuest(false);
         setAppView("auth");
       }
     });
+
+    initializeAuth();
 
     return () => {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [isOAuthCallback]);
+  }, []);
 
   // ==========================================
   // Splash Screen Complete Handler
