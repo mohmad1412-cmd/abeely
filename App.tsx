@@ -689,7 +689,6 @@ const App: React.FC = () => {
       subscription.unsubscribe();
     };
   }, [isOAuthPopupMode, oauthState.isCallback]);
-  }, [isOAuthPopupMode, appView]);
 
   // ==========================================
   // Splash Screen Complete Handler
