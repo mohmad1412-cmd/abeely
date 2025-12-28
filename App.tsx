@@ -135,63 +135,79 @@ const OAuthPopupSuccess: React.FC = () => {
     console.log("🎉 OAuth Popup Success - Processing...");
 
     const closePopup = async () => {
-      // Clean URL from OAuth params
-      const cleanUrl = window.location.origin + window.location.pathname;
-      window.history.replaceState({}, document.title, cleanUrl);
-
       try {
-        // Process OAuth callback to store session
+        // PKCE: exchange "code" for a session (reliable for popups/tabs)
+        const urlParams = new URLSearchParams(window.location.search);
+        const authCode = urlParams.get("code");
+        const errorParam = urlParams.get("error");
+        const errorDescription = urlParams.get("error_description");
+
+        if (errorParam) {
+          console.error("❌ OAuth error in popup:", errorParam, errorDescription);
+          // End the flow so the main window can stop polling
+          localStorage.removeItem("abeely_oauth_popup_active");
+          localStorage.setItem("abeely_auth_success", Date.now().toString());
+          setTimeout(() => {
+            window.close();
+            setTimeout(() => setShowManualClose(true), 1500);
+          }, 600);
+          return;
+        }
+
+        if (authCode) {
+          try {
+            await supabase.auth.exchangeCodeForSession(authCode);
+          } catch (e) {
+            console.error("❌ exchangeCodeForSession failed:", e);
+          }
+        }
+
+        // Clean URL AFTER consuming OAuth params
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+
         const { data } = await supabase.auth.getSession();
 
-        console.log("📋 Session check:", data.session ? "Found" : "Not found");
-
-        // IMMEDIATELY signal main window (before waiting)
-        localStorage.removeItem("abeely_oauth_popup_active");
+        // Signal main window (do NOT clear popup_active here; main will clear it after it detects session)
         localStorage.setItem("abeely_auth_success", Date.now().toString());
-        console.log("📢 Auth success flag SET in localStorage");
 
         if (data.session) {
           console.log("✅ Session stored in popup");
 
-          // Try to notify parent window via postMessage
           try {
             if (window.opener && !window.opener.closed) {
-              window.opener.postMessage({
-                type: "oauth_success",
-                timestamp: Date.now(),
-              }, window.location.origin);
-              console.log("📨 postMessage sent to opener");
+              window.opener.postMessage(
+                { type: "oauth_success", timestamp: Date.now() },
+                window.location.origin
+              );
             }
-          } catch (e) {
-            console.log("⚠️ Could not send postMessage:", e);
+          } catch (_) {
+            // ignore
           }
 
           // Close window after short delay
           setTimeout(() => {
-            console.log("🚪 Closing popup...");
             window.close();
             setTimeout(() => {
               window.close();
               setTimeout(() => setShowManualClose(true), 1500);
-            }, 300);
-          }, 500);
+            }, 200);
+          }, 800);
         } else {
-          // No session yet, but flag is set - close anyway
-          console.log("⚠️ No session yet, but flag is set");
+          // Session not available yet, but keep popup_active so main window continues polling
           setTimeout(() => {
             window.close();
             setTimeout(() => setShowManualClose(true), 1500);
-          }, 800);
+          }, 900);
         }
       } catch (err) {
-        console.error("Error getting session:", err);
-        // Still set the flag even on error
-        localStorage.removeItem("abeely_oauth_popup_active");
+        console.error("Error processing OAuth in popup:", err);
+        // Keep popup_active so main window can keep polling; still signal a check
         localStorage.setItem("abeely_auth_success", Date.now().toString());
         setTimeout(() => {
           window.close();
           setTimeout(() => setShowManualClose(true), 1500);
-        }, 800);
+        }, 900);
       }
     };
 
@@ -701,10 +717,60 @@ const App: React.FC = () => {
     };
     window.addEventListener("storage", handleStorageChange);
 
+    // 4. Listen for postMessage from popup (most reliable when same-origin)
+    const handleMessage = async (event: MessageEvent) => {
+      if (!isMounted) return;
+      if (event.origin !== window.location.origin) return;
+      const msg = event.data as any;
+      if (msg?.type === "oauth_success") {
+        console.log("✅ App: Auth success detected via postMessage!");
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const profile = await getCurrentUser();
+          if (profile) setUser(profile);
+          setIsGuest(false);
+          localStorage.removeItem("abeely_guest_mode");
+          localStorage.removeItem("abeely_oauth_popup_active");
+          setAppView("main");
+        }
+      }
+    };
+    window.addEventListener("message", handleMessage);
+
+    // 5. Fallback: while popup flow is active, poll session periodically
+    const popupPollStartedAt = Date.now();
+    const popupPoll = setInterval(async () => {
+      if (!isMounted) return;
+      const active = localStorage.getItem("abeely_oauth_popup_active") === "true";
+      if (!active) return;
+
+      if (Date.now() - popupPollStartedAt > 2 * 60 * 1000) {
+        console.warn("⏱️ Popup auth poll timed out");
+        localStorage.removeItem("abeely_oauth_popup_active");
+        clearInterval(popupPoll);
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        console.log("✅ App: Session detected via popup polling!");
+        localStorage.removeItem("abeely_oauth_popup_active");
+        localStorage.removeItem("abeely_auth_success");
+        localStorage.removeItem("abeely_guest_mode");
+        const profile = await getCurrentUser();
+        if (profile) setUser(profile);
+        setIsGuest(false);
+        setAppView("main");
+        clearInterval(popupPoll);
+      }
+    }, 800);
+
     return () => {
       isMounted = false;
       subscription.unsubscribe();
       window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("message", handleMessage);
+      clearInterval(popupPoll);
     };
   }, [isOAuthPopupMode, oauthState.isCallback]);
 
