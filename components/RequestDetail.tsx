@@ -898,6 +898,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         title={request.title}
         isScrolled={isScrolled}
         currentView="request-detail"
+        showShareButton={true}
+        shareUrl={getRequestShareUrl(request.id)}
       />
 
       <div className="container mx-auto max-w-5xl flex-1 flex flex-col md:flex-row gap-6 min-h-0 px-4">

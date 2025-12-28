@@ -7,7 +7,10 @@ import {
   X, 
   LogOut, 
   LogIn,
-  ArrowRight 
+  ArrowRight,
+  Share2,
+  Check,
+  Link
 } from "lucide-react";
 import { NotificationsPopover } from "../NotificationsPopover";
 
@@ -37,6 +40,10 @@ interface UnifiedHeaderProps {
   hideModeToggle?: boolean; // Hide the mode toggle button
   showSidebarButton?: boolean; // Show sidebar button instead of back button (for pages accessed from sidebar)
   isGuest?: boolean; // Guest mode - show login button instead of sign out
+  // Share functionality
+  showShareButton?: boolean;
+  onShare?: () => void;
+  shareUrl?: string; // Optional: URL to copy directly
 }
 
 export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
@@ -60,9 +67,48 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   hideModeToggle = false,
   showSidebarButton = false,
   isGuest = false,
+  showShareButton = false,
+  onShare,
+  shareUrl,
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isLinkCopied, setIsLinkCopied] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  
+  // Handle share/copy link
+  const handleShare = async () => {
+    if (onShare) {
+      onShare();
+      return;
+    }
+    
+    // If shareUrl is provided, copy it directly
+    if (shareUrl) {
+      try {
+        // Try native share first (mobile)
+        if (navigator.share) {
+          await navigator.share({
+            title: title || 'عبيلي',
+            url: shareUrl,
+          });
+        } else {
+          // Fallback to clipboard
+          await navigator.clipboard.writeText(shareUrl);
+          setIsLinkCopied(true);
+          setTimeout(() => setIsLinkCopied(false), 2000);
+        }
+      } catch (err) {
+        // User cancelled or error, try clipboard
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          setIsLinkCopied(true);
+          setTimeout(() => setIsLinkCopied(false), 2000);
+        } catch (clipErr) {
+          console.error('Failed to copy:', clipErr);
+        }
+      }
+    }
+  };
 
   const headerContent = (
     <div className="h-16 flex items-center justify-between pt-[env(safe-area-inset-top,0px)]">
@@ -134,6 +180,44 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Share Button */}
+        {showShareButton && (shareUrl || onShare) && (
+          <motion.button
+            onClick={handleShare}
+            whileTap={{ scale: 0.95 }}
+            className={`flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group ${
+              isLinkCopied 
+                ? "bg-green-500/20 border border-green-500/40 text-green-500" 
+                : "bg-card border border-border hover:text-primary hover:border-primary/30"
+            }`}
+            title={isLinkCopied ? "تم نسخ الرابط!" : "مشاركة الرابط"}
+          >
+            <AnimatePresence mode="wait">
+              {isLinkCopied ? (
+                <motion.div
+                  key="check"
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  exit={{ scale: 0, rotate: 180 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <Check size={18} strokeWidth={2.5} className="text-green-500" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="share"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <Share2 size={18} strokeWidth={2} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.button>
+        )}
+
         {/* Mode Switch Button */}
         {!hideModeToggle && (
           <button
