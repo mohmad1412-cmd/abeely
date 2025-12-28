@@ -475,29 +475,43 @@ const App: React.FC = () => {
           console.log("🔐 Processing OAuth callback...");
           const urlParams = new URLSearchParams(window.location.search);
           const authCode = urlParams.get("code");
+          const authError = urlParams.get("error");
+          
+          // تنظيف الـ URL فوراً
+          const cleanUrl = window.location.origin;
+          window.history.replaceState({}, document.title, cleanUrl);
+          
+          // إذا كان هناك خطأ من OAuth provider
+          if (authError) {
+            console.error("❌ OAuth error from provider:", authError);
+            if (isMounted) {
+              setAppView("auth");
+              setAuthLoading(false);
+            }
+            return;
+          }
           
           if (authCode) {
             try {
-              // استخدام نتيجة exchangeCodeForSession مباشرة
               const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
               
               if (exchangeError) {
                 console.error("❌ exchangeCodeForSession failed:", exchangeError);
-              } else if (exchangeData?.session?.user && isMounted) {
+                // فشل OAuth → العودة لصفحة تسجيل الدخول (وليس guest!)
+                if (isMounted) {
+                  setAppView("auth");
+                  setAuthLoading(false);
+                }
+                return;
+              }
+              
+              if (exchangeData?.session?.user && isMounted) {
                 console.log("✅ Session created from OAuth code");
                 
-                // تنظيف الـ URL
-                const cleanUrl = window.location.origin + window.location.pathname;
-                window.history.replaceState({}, document.title, cleanUrl);
-                
                 // تحميل الـ profile
-                try {
-                  const profile = await getCurrentUser();
-                  if (profile && isMounted) {
-                    setUser(profile);
-                  }
-                } catch (profileErr) {
-                  console.warn("Profile fetch failed:", profileErr);
+                const profile = await getCurrentUser();
+                if (profile && isMounted) {
+                  setUser(profile);
                 }
                 
                 // مسح guest mode والدخول
@@ -509,12 +523,21 @@ const App: React.FC = () => {
               }
             } catch (e) {
               console.error("❌ exchangeCodeForSession error:", e);
+              // فشل OAuth → العودة لصفحة تسجيل الدخول
+              if (isMounted) {
+                setAppView("auth");
+                setAuthLoading(false);
+              }
+              return;
             }
           }
           
-          // تنظيف الـ URL حتى لو فشل
-          const cleanUrl = window.location.origin + window.location.pathname;
-          window.history.replaceState({}, document.title, cleanUrl);
+          // OAuth callback بدون code صالح → العودة لصفحة تسجيل الدخول
+          if (isMounted) {
+            setAppView("auth");
+            setAuthLoading(false);
+          }
+          return;
         }
 
         // 2. تحقق من وجود session موجودة
@@ -522,13 +545,9 @@ const App: React.FC = () => {
         
         if (session?.user && isMounted) {
           console.log("✅ Existing session found, loading profile...");
-          try {
-            const profile = await getCurrentUser();
-            if (profile && isMounted) {
-              setUser(profile);
-            }
-          } catch (profileErr) {
-            console.warn("Profile fetch failed:", profileErr);
+          const profile = await getCurrentUser();
+          if (profile && isMounted) {
+            setUser(profile);
           }
           setIsGuest(false);
           localStorage.removeItem("abeely_guest_mode");
@@ -537,15 +556,13 @@ const App: React.FC = () => {
           return;
         }
 
-        // 3. تحقق من وجود guest mode محفوظ (فقط إذا لم يكن هذا OAuth callback)
-        if (!isOAuthCallback) {
-          const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
-          if (isGuestSaved && isMounted) {
-            setIsGuest(true);
-            setAppView("main");
-            setAuthLoading(false);
-            return;
-          }
+        // 3. تحقق من وجود guest mode محفوظ
+        const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
+        if (isGuestSaved && isMounted) {
+          setIsGuest(true);
+          setAppView("main");
+          setAuthLoading(false);
+          return;
         }
 
         // 4. تحقق من نوع الرابط - الصفحات العامة تدخل كضيف
@@ -564,7 +581,6 @@ const App: React.FC = () => {
         }
       } catch (err) {
         console.error("Auth init error:", err);
-        // في حالة الخطأ، عرض صفحة تسجيل الدخول
         if (isMounted) {
           setAppView("auth");
         }
@@ -580,23 +596,13 @@ const App: React.FC = () => {
       console.log("🔐 Auth state changed:", event);
       
       if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user && isMounted) {
-        try {
-          const profile = await getCurrentUser();
-          if (profile && isMounted) {
-            setUser(profile);
-          }
-        } catch (e) {
-          console.warn("Profile fetch failed:", e);
+        const profile = await getCurrentUser();
+        if (profile && isMounted) {
+          setUser(profile);
         }
         setIsGuest(false);
         localStorage.removeItem("abeely_guest_mode");
         setAppView("main");
-        
-        // تنظيف الـ URL إذا كان فيه OAuth params
-        if (window.location.search.includes("code=") || window.location.hash.includes("access_token")) {
-          const cleanUrl = window.location.origin + window.location.pathname;
-          window.history.replaceState({}, document.title, cleanUrl);
-        }
       } else if (event === "SIGNED_OUT" && isMounted) {
         setUser(null);
         setAppView("auth");
@@ -693,20 +699,18 @@ const App: React.FC = () => {
     }
   }, [authLoading, appView, handleSplashComplete]);
 
-  // Failsafe: Force exit splash after maximum time (8 seconds)
+  // Failsafe: Force exit splash after maximum time (3 seconds)
   useEffect(() => {
     if (appView !== "splash") return;
     
     const failsafeTimer = setTimeout(() => {
       console.warn("⚠️ Splash failsafe triggered - forcing exit");
-      // Force guest mode if still stuck on splash
       if (appView === "splash") {
-        setIsGuest(true);
-        localStorage.setItem("abeely_guest_mode", "true");
         setAuthLoading(false);
-        setAppView("main");
+        // إذا لم يتم تحديد أي شيء بعد 3 ثواني، اذهب لصفحة تسجيل الدخول
+        setAppView("auth");
       }
-    }, 8000);
+    }, 3000);
 
     return () => clearTimeout(failsafeTimer);
   }, [appView]);
@@ -1801,58 +1805,32 @@ const App: React.FC = () => {
     return (
       <AuthPage
         onAuthenticated={async () => {
-          // Fetch session and user profile with retry logic
-          let retries = 0;
-          const maxRetries = 5;
-
-          while (retries < maxRetries) {
-            try {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (session?.user) {
-                // Wait a bit for profile to be ready
-                await new Promise((resolve) => setTimeout(resolve, 300));
-
-                const profile = await getCurrentUser();
-                if (profile) {
-                  setUser(profile);
-                  setIsGuest(false);
-                  localStorage.removeItem("abeely_guest_mode");
-                  localStorage.removeItem("abeely_oauth_popup_active");
-                  // إعادة تعيين الحالة للقيم الافتراضية عند تسجيل الدخول
-                  setView("create-request");
-                  setMode("requests");
-                  setSelectedRequest(null);
-                  setPreviousView(null);
-                  setAppView("main");
-                  return; // Success, exit
-                }
+          // محاولة واحدة سريعة لجلب الـ session والـ profile
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+              const profile = await getCurrentUser();
+              if (profile) {
+                setUser(profile);
               }
-
-              // If no session yet, wait and retry
-              if (retries < maxRetries - 1) {
-                await new Promise((resolve) => setTimeout(resolve, 500));
-              }
-            } catch (err) {
-              console.error(
-                `Error fetching user after auth (attempt ${retries + 1}):`,
-                err,
-              );
+              setIsGuest(false);
+              localStorage.removeItem("abeely_guest_mode");
+              setView("create-request");
+              setMode("requests");
+              setSelectedRequest(null);
+              setPreviousView(null);
+              setAppView("main");
+              return;
             }
-
-            retries++;
+          } catch (err) {
+            console.error("Error fetching user after auth:", err);
           }
-
-          // If we get here, session wasn't found after retries
-          // But still try to proceed - onAuthStateChange will handle it
-          console.warn(
-            "Session not found after retries, but proceeding anyway",
-          );
+          // إذا لم تنجح المحاولة، الـ onAuthStateChange سيتعامل مع الأمر
           setAppView("main");
         }}
         onGuestMode={() => {
           setIsGuest(true);
           localStorage.setItem("abeely_guest_mode", "true");
-          // إعادة تعيين الحالة للقيم الافتراضية عند الدخول كضيف
           setView("create-request");
           setMode("requests");
           setSelectedRequest(null);
