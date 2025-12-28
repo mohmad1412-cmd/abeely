@@ -173,3 +173,28 @@ export async function sendOTP(phone: string) {
 export async function verifyOTP(phone: string, token: string) {
   return await supabase.auth.verifyOtp({ phone, token, type: 'sms' });
 }
+
+// Guest phone verification functions
+export async function verifyGuestPhone(phone: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.auth.signInWithOtp({ phone });
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'حدث خطأ أثناء إرسال رمز التحقق' };
+  }
+}
+
+export async function confirmGuestPhone(phone: string, token: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.auth.verifyOtp({ phone, token, type: 'sms' });
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'رمز التحقق غير صحيح' };
+  }
+}
