@@ -307,23 +307,47 @@ export function onAuthStateChange(callback: (event: string, session: any) => voi
   return supabase.auth.onAuthStateChange(callback);
 }
 
-export async function signInWithEmail(email: string) {
-  return await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.origin }
-  });
+export async function signInWithEmail(email: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin }
+    });
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'حدث خطأ أثناء إرسال رابط الدخول' };
+  }
 }
 
 export function isValidSaudiPhone(phone: string) {
   return phone.length >= 9;
 }
 
-export async function sendOTP(phone: string) {
-  return await supabase.auth.signInWithOtp({ phone });
+export async function sendOTP(phone: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.auth.signInWithOtp({ phone });
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'حدث خطأ أثناء إرسال رمز التحقق' };
+  }
 }
 
-export async function verifyOTP(phone: string, token: string) {
-  return await supabase.auth.verifyOtp({ phone, token, type: 'sms' });
+export async function verifyOTP(phone: string, token: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.auth.verifyOtp({ phone, token, type: 'sms' });
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'رمز التحقق غير صحيح' };
+  }
 }
 
 // Guest phone verification functions

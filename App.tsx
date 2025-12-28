@@ -313,7 +313,7 @@ import {
 } from "./services/authService";
 import { FullScreenLoading } from "./components/ui/LoadingSkeleton";
 import { ConnectionError } from "./components/ui/ConnectionError";
-import { navigateTo, parseRoute } from "./services/routingService";
+import { parseRoute, updateUrl, routeTypeToViewState, ParsedRoute } from "./services/routingService";
 import { App as CapacitorApp } from "@capacitor/app";
 
 // Auth Views
@@ -529,17 +529,80 @@ const App: React.FC = () => {
   >({});
 
   // ==========================================
-  // Deep Linking Handler
+  // Deep Linking Handler - معالجة جميع الروابط
   // ==========================================
+  
+  // Ref لتتبع الرابط الذي ننتظره (للطلبات التي لم تُحمل بعد)
+  const pendingDeepLinkRef = useRef<{ requestId?: string } | null>(null);
+  
+  // معالجة route بناءً على نوعه
+  const handleRouteNavigation = (route: ParsedRoute) => {
+    // تجاهل الروابط الفارغة
+    if (!route.type) return;
+    
+    switch (route.type) {
+      case 'request':
+        if (route.params.requestId) {
+          const request = allRequests.find((r) => r.id === route.params.requestId);
+          if (request) {
+            setSelectedRequest(request);
+            setView("request-detail");
+            setMode("offers");
+            pendingDeepLinkRef.current = null;
+          } else {
+            // احفظ الرابط للمعالجة لاحقاً عندما تُحمل الطلبات
+            pendingDeepLinkRef.current = { requestId: route.params.requestId };
+          }
+        }
+        break;
+        
+      case 'marketplace':
+        setView("marketplace");
+        setMode("offers");
+        break;
+        
+      case 'create':
+        setView("create-request");
+        setMode("requests");
+        break;
+        
+      case 'profile':
+        setPreviousView(view);
+        setView("profile");
+        break;
+        
+      case 'messages':
+        setPreviousView(view);
+        setView("messages");
+        break;
+        
+      case 'conversation':
+        setPreviousView(view);
+        setView("conversation");
+        break;
+        
+      case 'settings':
+        setPreviousView(view);
+        setView("settings");
+        break;
+        
+      case 'home':
+      default:
+        setView("create-request");
+        setMode("requests");
+        break;
+    }
+  };
+  
   useEffect(() => {
     // معالجة الروابط عند فتح التطبيق
     const handleInitialUrl = async () => {
       try {
         // في التطبيق المحمول
         if (typeof window !== "undefined" && (window as any).Capacitor) {
-          const { url } = await CapacitorApp.getLaunchUrl();
-          if (url) {
-            handleDeepLink(url);
+          const result = await CapacitorApp.getLaunchUrl();
+          if (result?.url) {
+            handleDeepLink(result.url);
           }
 
           // الاستماع للروابط عند فتح التطبيق
@@ -549,17 +612,7 @@ const App: React.FC = () => {
         } else {
           // في المتصفح - معالجة الرابط الحالي
           const route = parseRoute();
-          if (route.type === "request" && route.params.requestId) {
-            // البحث عن الطلب وفتحه
-            const request = allRequests.find((r) =>
-              r.id === route.params.requestId
-            );
-            if (request) {
-              setSelectedRequest(request);
-              setView("request-detail");
-              setMode("offers");
-            }
-          }
+          handleRouteNavigation(route);
         }
       } catch (err) {
         console.error("Error handling deep link:", err);
@@ -568,49 +621,32 @@ const App: React.FC = () => {
 
     const handleDeepLink = (url: string) => {
       try {
+        // تحليل URL وتحويله لـ route
         const urlObj = new URL(url);
-        const path = urlObj.pathname;
-
-        // معالجة /request/:id
-        if (path.startsWith("/request/")) {
-          const requestId = path.split("/request/")[1]?.split("/")[0];
-          if (requestId) {
-            const request = allRequests.find((r) => r.id === requestId);
-            if (request) {
-              setSelectedRequest(request);
-              setView("request-detail");
-              setMode("offers");
-            } else {
-              // إذا لم يكن الطلب محملاً، انتظر قليلاً
-              setTimeout(() => {
-                const request = allRequests.find((r) => r.id === requestId);
-                if (request) {
-                  setSelectedRequest(request);
-                  setView("request-detail");
-                  setMode("offers");
-                }
-              }, 1000);
-            }
-          }
-        }
+        // استخدم pathname للتحليل
+        const originalPath = window.location.pathname;
+        // تغيير pathname مؤقتاً للتحليل
+        Object.defineProperty(window.location, 'pathname', {
+          value: urlObj.pathname,
+          configurable: true
+        });
+        const route = parseRoute();
+        // إعادة pathname الأصلي
+        Object.defineProperty(window.location, 'pathname', {
+          value: originalPath,
+          configurable: true
+        });
+        
+        handleRouteNavigation(route);
       } catch (err) {
         console.error("Error parsing deep link:", err);
       }
     };
 
-    // معالجة الروابط عند تغيير URL في المتصفح
+    // معالجة الروابط عند تغيير URL في المتصفح (زر Back/Forward)
     const handlePopState = () => {
       const route = parseRoute();
-      if (route.type === "request" && route.params.requestId) {
-        const request = allRequests.find((r) =>
-          r.id === route.params.requestId
-        );
-        if (request) {
-          setSelectedRequest(request);
-          setView("request-detail");
-          setMode("offers");
-        }
-      }
+      handleRouteNavigation(route);
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -619,7 +655,56 @@ const App: React.FC = () => {
     return () => {
       window.removeEventListener("popstate", handlePopState);
     };
+  }, []);
+  
+  // معالجة الروابط المعلقة عندما تُحمل الطلبات
+  useEffect(() => {
+    if (pendingDeepLinkRef.current?.requestId && allRequests.length > 0) {
+      const requestId = pendingDeepLinkRef.current.requestId;
+      const request = allRequests.find((r) => r.id === requestId);
+      if (request) {
+        setSelectedRequest(request);
+        setView("request-detail");
+        setMode("offers");
+        pendingDeepLinkRef.current = null;
+      }
+    }
   }, [allRequests]);
+  
+  // ==========================================
+  // URL Sync - تحديث URL عند تغيير الـ view
+  // ==========================================
+  useEffect(() => {
+    // لا تحدث URL في حالات معينة
+    if (appView !== 'main') return;
+    
+    // تحديث URL حسب الـ view الحالي
+    switch (view) {
+      case 'request-detail':
+        if (selectedRequest?.id) {
+          updateUrl('request-detail', { requestId: selectedRequest.id });
+        }
+        break;
+      case 'marketplace':
+        updateUrl('marketplace');
+        break;
+      case 'create-request':
+        updateUrl('create-request');
+        break;
+      case 'profile':
+        updateUrl('profile', user?.id ? { userId: user.id } : undefined);
+        break;
+      case 'messages':
+        updateUrl('messages');
+        break;
+      case 'conversation':
+        updateUrl('conversation');
+        break;
+      case 'settings':
+        updateUrl('settings');
+        break;
+    }
+  }, [view, selectedRequest?.id, appView]);
 
   // ==========================================
   // Auth Initialization & State Listener
