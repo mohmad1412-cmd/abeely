@@ -659,6 +659,7 @@ const App: React.FC = () => {
 
     // 2. Continuous Auth Listener (Crucial for Popup)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("🔐 App: Auth state changed:", event);
       if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user) {
         const profile = await getCurrentUser();
         if (profile && isMounted) {
@@ -684,9 +685,34 @@ const App: React.FC = () => {
       }
     });
 
+    // 3. Listen for storage events from popup (backup mechanism)
+    const handleStorageChange = async (e: StorageEvent) => {
+      if (e.key === "abeely_auth_success" && e.newValue && isMounted) {
+        console.log("✅ App: Auth success detected via storage event!");
+        localStorage.removeItem("abeely_auth_success");
+        
+        // Check session
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const profile = await getCurrentUser();
+          if (profile) {
+            setUser(profile);
+            setIsGuest(false);
+            localStorage.removeItem("abeely_guest_mode");
+            localStorage.removeItem("abeely_oauth_popup_active");
+            setAppView("main");
+          } else {
+            setAppView("main");
+          }
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+      window.removeEventListener("storage", handleStorageChange);
     };
   }, [isOAuthPopupMode, oauthState.isCallback]);
 
