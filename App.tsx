@@ -738,11 +738,35 @@ const App: React.FC = () => {
             setAppView("main");
           }
         } else if (!oauthState.isCallback) {
-          setAppView("auth");
+          // تحقق من وجود deep link لطلب أو صفحة عامة
+          // إذا كان هناك رابط لطلب أو سوق الطلبات، ادخل كضيف تلقائياً
+          const route = parseRoute();
+          const isPublicRoute = route.type === 'request' || 
+                               route.type === 'marketplace' || 
+                               route.type === 'home' ||
+                               route.type === 'create';
+          
+          if (isPublicRoute) {
+            // الدخول كضيف تلقائياً للصفحات العامة
+            setIsGuest(true);
+            localStorage.setItem("abeely_guest_mode", "true");
+            setAppView("main");
+          } else {
+            // الصفحات الخاصة تتطلب تسجيل دخول
+            setAppView("auth");
+          }
         }
       } catch (err) {
         console.error("Auth init error:", err);
-        setAppView("auth");
+        // في حالة الخطأ، ادخل كضيف بدلاً من عرض صفحة الخطأ
+        const route = parseRoute();
+        if (route.type === 'request' || route.type === 'marketplace') {
+          setIsGuest(true);
+          localStorage.setItem("abeely_guest_mode", "true");
+          setAppView("main");
+        } else {
+          setAppView("auth");
+        }
       } finally {
         if (isMounted) setAuthLoading(false);
       }
