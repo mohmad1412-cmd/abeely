@@ -6,14 +6,20 @@ interface SplashScreenProps {
 }
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
+  // Use ref to avoid resetting timer when callback changes
+  const onCompleteRef = React.useRef(onComplete);
+  React.useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
   React.useEffect(() => {
     // Fast auto-complete - 1.2 seconds
     const timer = setTimeout(() => {
-      onComplete?.();
+      onCompleteRef.current?.();
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [onComplete]);
+  }, []); // Empty deps - timer runs once
 
   return (
     <motion.div

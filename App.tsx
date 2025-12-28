@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, CheckCircle, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { UnifiedHeader } from "./components/ui/UnifiedHeader";
 
 // Components
@@ -16,252 +16,13 @@ import { AuthPage } from "./components/AuthPage";
 import { Messages } from "./components/Messages";
 
 // ==========================================
-// OAuth & Magic Link Callback Handler - Process OAuth codes/tokens and Magic Links
+// OAuth Callback Detection - يكتشف إذا كان هذا redirect من OAuth
 // ==========================================
-const detectOAuthCallback = (): {
-  isCallback: boolean;
-  isPopup: boolean;
-  isMagicLink: boolean;
-} => {
-  // Check if we have OAuth callback params or Magic Link params
-  const hasOAuthParams = window.location.hash.includes("access_token") ||
-    window.location.search.includes("code=");
-
-  // Magic Link uses hash with access_token (no code= param)
-  const isMagicLink = window.location.hash.includes("access_token") &&
-    !window.location.search.includes("code=");
-
-  if (!hasOAuthParams) {
-    return { isCallback: false, isPopup: false, isMagicLink: false };
-  }
-
-  // Check multiple indicators that we might be in a popup:
-  // 1. ⭐ URL has popup=true query param (MOST RELIABLE - travels with redirect)
-  const urlParams = new URLSearchParams(window.location.search);
-  const hasPopupParam = urlParams.get("popup") === "true";
-  // 2. Window name contains our popup identifier
-  const windowName = window.name || "";
-  const hasPopupName = windowName.includes("-auth-popup") ||
-    windowName.includes("auth-popup");
-  // 3. Window has an opener (parent window)
-  const hasOpener = window.opener !== null && window.opener !== window;
-  // 4. Check localStorage flag that was set when popup was opened
-  const popupFlag = localStorage.getItem("abeely_oauth_popup_active");
-  const isMarkedAsPopup = popupFlag === "true";
-  // 5. Check if window dimensions suggest a popup (small window)
-  const isSmallWindow = window.innerWidth <= 600 && window.innerHeight <= 800;
-
-  // Magic Links are never popups (they open in the same window/tab)
-  // If we have OAuth params and ANY of the popup indicators, treat as popup
-  // Priority: URL param is most reliable, then localStorage, then others
-  const isPopup = !isMagicLink &&
-    (hasPopupParam || isMarkedAsPopup || hasPopupName || hasOpener ||
-      isSmallWindow);
-
-  // Debug log (only in development)
-  if (import.meta.env?.DEV) {
-    console.warn("🔍 Auth Callback Detection:", {
-      hasOAuthParams,
-      isMagicLink,
-      hasPopupParam,
-      windowName,
-      hasPopupName,
-      hasOpener,
-      isMarkedAsPopup,
-      isSmallWindow,
-      isPopup,
-    });
-  }
-
-  return { isCallback: true, isPopup, isMagicLink };
-};
-
-// Legacy function for backwards compatibility
-const isOAuthPopup = (): boolean => {
-  const { isCallback, isPopup } = detectOAuthCallback();
-  return isCallback && isPopup;
-};
-
-// Process OAuth/Magic Link callback in main window - run immediately
-const processMainWindowOAuthCallback = async (): Promise<boolean> => {
+const detectOAuthCallback = (): boolean => {
   const hasCode = window.location.search.includes("code=");
   const hasToken = window.location.hash.includes("access_token");
-
-  if (!hasCode && !hasToken) return false;
-
-  // Check if this is a popup - use same logic as detectOAuthCallback
-  const urlParams = new URLSearchParams(window.location.search);
-  const hasPopupParam = urlParams.get("popup") === "true";
-  const windowName = window.name || "";
-  const isSmallWindow = window.innerWidth <= 600 && window.innerHeight <= 800;
-  const isMagicLink = window.location.hash.includes("access_token") && !hasCode;
-  const isPopup = !isMagicLink && (hasPopupParam ||
-    windowName.includes("-auth-popup") ||
-    windowName.includes("auth-popup") ||
-    window.opener !== null ||
-    localStorage.getItem("abeely_oauth_popup_active") === "true" ||
-    isSmallWindow);
-
-  // If popup, let it handle itself
-  if (isPopup) return false;
-
-  // This is the main window with OAuth/Magic Link callback - let Supabase process it
-  try {
-    // Import supabase here to avoid circular dependency issues
-    const { supabase } = await import("./services/supabaseClient");
-
-    // Supabase will automatically process the code/token from URL
-    // For Magic Links, the token is in the hash, Supabase handles it automatically
-    const { data } = await supabase.auth.getSession();
-
-    // Clean up URL after processing
-    if (data.session) {
-      const cleanUrl = window.location.origin + window.location.pathname;
-      window.history.replaceState({}, document.title, cleanUrl);
-      return true;
-    }
-  } catch (err) {
-    console.error("Auth callback processing error:", err);
-  }
-
-  return false;
-};
-
-// OAuth Popup Success Screen Component
-const OAuthPopupSuccess: React.FC = () => {
-  const [showManualClose, setShowManualClose] = useState(false);
-
-  useEffect(() => {
-    console.log("🎉 OAuth Popup Success - Processing...");
-
-    const closePopup = async () => {
-      try {
-        // PKCE: exchange "code" for a session (reliable for popups/tabs)
-        const urlParams = new URLSearchParams(window.location.search);
-        const authCode = urlParams.get("code");
-        const errorParam = urlParams.get("error");
-        const errorDescription = urlParams.get("error_description");
-
-        if (errorParam) {
-          console.error("❌ OAuth error in popup:", errorParam, errorDescription);
-          // End the flow so the main window can stop polling
-          localStorage.removeItem("abeely_oauth_popup_active");
-          localStorage.setItem("abeely_auth_success", Date.now().toString());
-          setTimeout(() => {
-            window.close();
-            setTimeout(() => setShowManualClose(true), 1500);
-          }, 600);
-          return;
-        }
-
-        if (authCode) {
-          try {
-            await supabase.auth.exchangeCodeForSession(authCode);
-          } catch (e) {
-            console.error("❌ exchangeCodeForSession failed:", e);
-          }
-        }
-
-        // Clean URL AFTER consuming OAuth params
-        const cleanUrl = window.location.origin + window.location.pathname;
-        window.history.replaceState({}, document.title, cleanUrl);
-
-        const { data } = await supabase.auth.getSession();
-
-        // Signal main window (do NOT clear popup_active here; main will clear it after it detects session)
-        localStorage.setItem("abeely_auth_success", Date.now().toString());
-
-        if (data.session) {
-          console.log("✅ Session stored in popup");
-
-          try {
-            if (window.opener && !window.opener.closed) {
-              window.opener.postMessage(
-                { type: "oauth_success", timestamp: Date.now() },
-                window.location.origin
-              );
-            }
-          } catch (_) {
-            // ignore
-          }
-
-          // Close window after short delay
-          setTimeout(() => {
-            window.close();
-            setTimeout(() => {
-              window.close();
-              setTimeout(() => setShowManualClose(true), 1500);
-            }, 200);
-          }, 800);
-        } else {
-          // Session not available yet, but keep popup_active so main window continues polling
-          setTimeout(() => {
-            window.close();
-            setTimeout(() => setShowManualClose(true), 1500);
-          }, 900);
-        }
-      } catch (err) {
-        console.error("Error processing OAuth in popup:", err);
-        // Keep popup_active so main window can keep polling; still signal a check
-        localStorage.setItem("abeely_auth_success", Date.now().toString());
-        setTimeout(() => {
-          window.close();
-          setTimeout(() => setShowManualClose(true), 1500);
-        }, 900);
-      }
-    };
-
-    closePopup();
-  }, []);
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-[#153659] via-[#0d9488] to-[#153659] flex items-center justify-center">
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="text-center p-8"
-      >
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
-          className="w-24 h-24 mx-auto mb-6 bg-green-500/20 rounded-full flex items-center justify-center"
-        >
-          <CheckCircle className="w-14 h-14 text-green-400" />
-        </motion.div>
-        <motion.h1
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="text-2xl font-bold text-white mb-3"
-        >
-          تم تسجيل الدخول بنجاح!
-        </motion.h1>
-        <motion.p
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="text-white/70 mb-4"
-        >
-          {showManualClose
-            ? "يمكنك إغلاق هذه النافذة الآن"
-            : "جاري إغلاق هذه النافذة..."}
-        </motion.p>
-
-        {showManualClose && (
-          <motion.button
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            onClick={() => window.close()}
-            className="px-6 py-3 bg-white/20 hover:bg-white/30 text-white font-medium rounded-xl transition-colors"
-          >
-            إغلاق النافذة
-          </motion.button>
-        )}
-      </motion.div>
-    </div>
-  );
+  const hasError = window.location.search.includes("error=");
+  return hasCode || hasToken || hasError;
 };
 
 // Types & Data
@@ -317,23 +78,18 @@ import { parseRoute, updateUrl, routeTypeToViewState, ParsedRoute } from "./serv
 import { App as CapacitorApp } from "@capacitor/app";
 
 // Auth Views
-type AppView = "splash" | "auth" | "main" | "connection-error" | "oauth-popup";
+type AppView = "splash" | "auth" | "main" | "connection-error";
 
 const App: React.FC = () => {
   // ==========================================
-  // OAuth & Magic Link Callback Check - Run FIRST
+  // OAuth Callback Check - يكتشف إذا كان هذا redirect من OAuth
   // ==========================================
-  const [oauthState] = useState(() => detectOAuthCallback());
-  const isOAuthPopupMode = oauthState.isCallback && oauthState.isPopup;
-  const isMagicLinkCallback = oauthState.isCallback && oauthState.isMagicLink;
+  const [isOAuthCallback] = useState(() => detectOAuthCallback());
 
   // ==========================================
   // Auth State
   // ==========================================
-  const [appView, setAppView] = useState<AppView>(() => {
-    if (oauthState.isCallback && oauthState.isPopup) return "oauth-popup";
-    return "splash";
-  });
+  const [appView, setAppView] = useState<AppView>("splash");
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isGuest, setIsGuest] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
@@ -712,59 +468,75 @@ const App: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Initial Session Check
-    const checkInitialSession = async () => {
+    const initializeAuth = async () => {
       try {
-        if (isOAuthPopupMode) {
+        // 1. إذا كان هذا OAuth callback، نتعامل مع الـ code أولاً
+        if (isOAuthCallback) {
+          console.log("🔐 Processing OAuth callback...");
+          const urlParams = new URLSearchParams(window.location.search);
+          const authCode = urlParams.get("code");
+          
+          if (authCode) {
+            try {
+              await supabase.auth.exchangeCodeForSession(authCode);
+              console.log("✅ Code exchanged for session");
+            } catch (e) {
+              console.error("❌ exchangeCodeForSession failed:", e);
+            }
+          }
+          
+          // تنظيف الـ URL من الـ OAuth params
+          const cleanUrl = window.location.origin + window.location.pathname;
+          window.history.replaceState({}, document.title, cleanUrl);
+        }
+
+        // 2. تحقق من وجود session
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user && isMounted) {
+          console.log("✅ Session found, loading profile...");
+          try {
+            const profile = await getCurrentUser();
+            if (profile && isMounted) {
+              setUser(profile);
+            }
+          } catch (profileErr) {
+            console.warn("Profile fetch failed:", profileErr);
+          }
+          setIsGuest(false);
+          localStorage.removeItem("abeely_guest_mode");
+          setAppView("main");
           setAuthLoading(false);
           return;
         }
 
+        // 3. تحقق من وجود guest mode محفوظ
         const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
-        if (isGuestSaved) {
+        if (isGuestSaved && isMounted) {
           setIsGuest(true);
           setAppView("main");
           setAuthLoading(false);
           return;
         }
 
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user && isMounted) {
-          const profile = await getCurrentUser();
-          if (profile) {
-            setUser(profile);
-            setAppView("main");
-          } else {
-            setAppView("main");
-          }
-        } else if (!oauthState.isCallback) {
-          // تحقق من وجود deep link لطلب أو صفحة عامة
-          // إذا كان هناك رابط لطلب أو سوق الطلبات، ادخل كضيف تلقائياً
-          const route = parseRoute();
-          const isPublicRoute = route.type === 'request' || 
-                               route.type === 'marketplace' || 
-                               route.type === 'home' ||
-                               route.type === 'create';
-          
-          if (isPublicRoute) {
-            // الدخول كضيف تلقائياً للصفحات العامة
-            setIsGuest(true);
-            localStorage.setItem("abeely_guest_mode", "true");
-            setAppView("main");
-          } else {
-            // الصفحات الخاصة تتطلب تسجيل دخول
-            setAppView("auth");
-          }
-        }
-      } catch (err) {
-        console.error("Auth init error:", err);
-        // في حالة الخطأ، ادخل كضيف بدلاً من عرض صفحة الخطأ
+        // 4. تحقق من نوع الرابط - الصفحات العامة تدخل كضيف
         const route = parseRoute();
-        if (route.type === 'request' || route.type === 'marketplace') {
+        const isPublicRoute = route.type === 'request' || 
+                             route.type === 'marketplace' || 
+                             route.type === 'home' ||
+                             route.type === 'create';
+        
+        if (isPublicRoute && isMounted) {
           setIsGuest(true);
           localStorage.setItem("abeely_guest_mode", "true");
           setAppView("main");
-        } else {
+        } else if (isMounted) {
+          setAppView("auth");
+        }
+      } catch (err) {
+        console.error("Auth init error:", err);
+        // في حالة الخطأ، عرض صفحة تسجيل الدخول
+        if (isMounted) {
           setAppView("auth");
         }
       } finally {
@@ -772,121 +544,46 @@ const App: React.FC = () => {
       }
     };
 
-    checkInitialSession();
+    initializeAuth();
 
-    // 2. Continuous Auth Listener (Crucial for Popup)
+    // الاستماع لتغييرات حالة المصادقة
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("🔐 App: Auth state changed:", event);
-      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user) {
-        const profile = await getCurrentUser();
-        if (profile && isMounted) {
-          setUser(profile);
-          setIsGuest(false);
-          localStorage.removeItem("abeely_guest_mode");
-          localStorage.removeItem("abeely_oauth_popup_active");
-          setAppView("main");
-          
-          if (window.location.search.includes("code=") || window.location.hash.includes("access_token")) {
-            const cleanUrl = window.location.origin + window.location.pathname;
-            window.history.replaceState({}, document.title, cleanUrl);
+      console.log("🔐 Auth state changed:", event);
+      
+      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user && isMounted) {
+        try {
+          const profile = await getCurrentUser();
+          if (profile && isMounted) {
+            setUser(profile);
           }
-        } else if (session?.user && isMounted) {
-          setIsGuest(false);
-          setAppView("main");
+        } catch (e) {
+          console.warn("Profile fetch failed:", e);
         }
-      } else if (event === "SIGNED_OUT") {
-        if (isMounted) {
-          setUser(null);
-          setAppView("auth");
+        setIsGuest(false);
+        localStorage.removeItem("abeely_guest_mode");
+        setAppView("main");
+        
+        // تنظيف الـ URL إذا كان فيه OAuth params
+        if (window.location.search.includes("code=") || window.location.hash.includes("access_token")) {
+          const cleanUrl = window.location.origin + window.location.pathname;
+          window.history.replaceState({}, document.title, cleanUrl);
         }
+      } else if (event === "SIGNED_OUT" && isMounted) {
+        setUser(null);
+        setAppView("auth");
       }
     });
-
-    // 3. Listen for storage events from popup (backup mechanism)
-    const handleStorageChange = async (e: StorageEvent) => {
-      if (e.key === "abeely_auth_success" && e.newValue && isMounted) {
-        console.log("✅ App: Auth success detected via storage event!");
-        localStorage.removeItem("abeely_auth_success");
-        
-        // Check session
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const profile = await getCurrentUser();
-          if (profile) {
-            setUser(profile);
-            setIsGuest(false);
-            localStorage.removeItem("abeely_guest_mode");
-            localStorage.removeItem("abeely_oauth_popup_active");
-            setAppView("main");
-          } else {
-            setAppView("main");
-          }
-        }
-      }
-    };
-    window.addEventListener("storage", handleStorageChange);
-
-    // 4. Listen for postMessage from popup (most reliable when same-origin)
-    const handleMessage = async (event: MessageEvent) => {
-      if (!isMounted) return;
-      if (event.origin !== window.location.origin) return;
-      const msg = event.data as any;
-      if (msg?.type === "oauth_success") {
-        console.log("✅ App: Auth success detected via postMessage!");
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const profile = await getCurrentUser();
-          if (profile) setUser(profile);
-          setIsGuest(false);
-          localStorage.removeItem("abeely_guest_mode");
-          localStorage.removeItem("abeely_oauth_popup_active");
-          setAppView("main");
-        }
-      }
-    };
-    window.addEventListener("message", handleMessage);
-
-    // 5. Fallback: while popup flow is active, poll session periodically
-    const popupPollStartedAt = Date.now();
-    const popupPoll = setInterval(async () => {
-      if (!isMounted) return;
-      const active = localStorage.getItem("abeely_oauth_popup_active") === "true";
-      if (!active) return;
-
-      if (Date.now() - popupPollStartedAt > 2 * 60 * 1000) {
-        console.warn("⏱️ Popup auth poll timed out");
-        localStorage.removeItem("abeely_oauth_popup_active");
-        clearInterval(popupPoll);
-        return;
-      }
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        console.log("✅ App: Session detected via popup polling!");
-        localStorage.removeItem("abeely_oauth_popup_active");
-        localStorage.removeItem("abeely_auth_success");
-        localStorage.removeItem("abeely_guest_mode");
-        const profile = await getCurrentUser();
-        if (profile) setUser(profile);
-        setIsGuest(false);
-        setAppView("main");
-        clearInterval(popupPoll);
-      }
-    }, 800);
 
     return () => {
       isMounted = false;
       subscription.unsubscribe();
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("message", handleMessage);
-      clearInterval(popupPoll);
     };
-  }, [isOAuthPopupMode, oauthState.isCallback]);
+  }, [isOAuthCallback]);
 
   // ==========================================
   // Splash Screen Complete Handler
   // ==========================================
-  const handleSplashComplete = () => {
+  const handleSplashComplete = useCallback(() => {
     if (authLoading) {
       // Still loading auth, wait
       return;
@@ -899,7 +596,7 @@ const App: React.FC = () => {
     } else {
       setAppView("auth");
     }
-  };
+  }, [authLoading, user, isGuest]);
 
   // ==========================================
   // Connection Retry Handler
@@ -965,7 +662,25 @@ const App: React.FC = () => {
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [authLoading, appView, user, isGuest]);
+  }, [authLoading, appView, handleSplashComplete]);
+
+  // Failsafe: Force exit splash after maximum time (8 seconds)
+  useEffect(() => {
+    if (appView !== "splash") return;
+    
+    const failsafeTimer = setTimeout(() => {
+      console.warn("⚠️ Splash failsafe triggered - forcing exit");
+      // Force guest mode if still stuck on splash
+      if (appView === "splash") {
+        setIsGuest(true);
+        localStorage.setItem("abeely_guest_mode", "true");
+        setAuthLoading(false);
+        setAppView("main");
+      }
+    }, 8000);
+
+    return () => clearTimeout(failsafeTimer);
+  }, [appView]);
 
   // ==========================================
   // Theme Handling
@@ -2034,11 +1749,6 @@ const App: React.FC = () => {
   // ==========================================
   // App View Rendering
   // ==========================================
-
-  // OAuth Popup Success Screen - Show success and close
-  if (appView === "oauth-popup" || isOAuthPopupMode) {
-    return <OAuthPopupSuccess />;
-  }
 
   // Splash Screen
   if (appView === "splash") {
