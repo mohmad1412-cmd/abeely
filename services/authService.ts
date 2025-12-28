@@ -74,6 +74,8 @@ export function startOAuthFlow(
       }
 
       // Web: Popup Flow
+      console.log('🚀 Starting OAuth flow for:', provider);
+      
       const width = 500;
       const height = 650;
       const left = window.screenX + (window.outerWidth - width) / 2;
@@ -88,16 +90,41 @@ export function startOAuthFlow(
         },
       });
 
-      if (error || !data?.url) {
-        onError(error?.message || 'فشل البدء');
+      if (error) {
+        console.error('❌ OAuth error:', error);
+        onError(error.message || 'فشل البدء');
         return;
       }
 
+      if (!data?.url) {
+        console.error('❌ No OAuth URL returned');
+        onError('فشل الحصول على رابط الدخول');
+        return;
+      }
+
+      console.log('✅ Got OAuth URL, opening popup...');
       localStorage.setItem('abeely_oauth_popup_active', 'true');
-      popup = window.open(data.url, 'auth-popup', `width=${width},height=${height},left=${left},top=${top}`);
+      
+      popup = window.open(
+        data.url,
+        'auth-popup',
+        `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
+      );
+
+      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+        console.error('❌ Popup was blocked or failed to open');
+        localStorage.removeItem('abeely_oauth_popup_active');
+        onError('تم حظر النافذة المنبثقة. يرجى السماح بالنوافذ المنبثقة في المتصفح');
+        return;
+      }
+
+      console.log('✅ Popup opened successfully');
+      popup.focus();
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        console.log('🔐 Auth state changed:', event, session?.user?.id);
         if (event === 'SIGNED_IN' && session) {
+          console.log('✅ User signed in, cleaning up...');
           cleanup();
           onSuccess();
         }
