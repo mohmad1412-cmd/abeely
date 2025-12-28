@@ -108,6 +108,15 @@ function isCapacitor(): boolean {
   return typeof (window as any)?.Capacitor !== 'undefined';
 }
 
+// Import Browser plugin for Capacitor (lazy load)
+let Browser: any = null;
+const getBrowser = async () => {
+  if (!Browser && isCapacitor()) {
+    Browser = (await import('@capacitor/browser')).Browser;
+  }
+  return Browser;
+};
+
 /**
  * OAuth flow result with popup reference for cancellation
  */
@@ -165,20 +174,67 @@ export function startOAuthFlow(
         return;
       }
 
-      // Mobile: Use redirect flow
+      // Mobile: Use Browser plugin (WebView) for OAuth
       if (isCapacitor()) {
-        const { error } = await supabase.auth.signInWithOAuth({
+        const BrowserPlugin = await getBrowser();
+        
+        if (!BrowserPlugin) {
+          onError('Browser plugin غير متاح');
+          return;
+        }
+
+        // Get OAuth URL
+        const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
           provider,
           options: {
-            redirectTo: window.location.origin,
+            redirectTo: `${window.location.origin}?oauth_callback=true`,
+            skipBrowserRedirect: true,
             queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
           },
         });
-        
-        if (error) {
-          onError(error.message || `فشل الدخول بحساب ${provider === 'google' ? 'Google' : 'Apple'}`);
+
+        if (oauthError || !data?.url) {
+          onError(oauthError?.message || `فشل الدخول بحساب ${provider === 'google' ? 'Google' : 'Apple'}`);
+          return;
         }
-        // Redirect will happen, no need to call onSuccess
+
+        // Open OAuth URL in Capacitor Browser (WebView)
+        await BrowserPlugin.open({
+          url: data.url,
+          windowName: '_self',
+          toolbarColor: '#153659',
+        });
+
+        // Listen for auth state changes
+        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+          if (event === 'SIGNED_IN' && session && !cancelled) {
+            // Close browser when auth succeeds
+            try {
+              await BrowserPlugin.close();
+            } catch (err) {
+              console.log('Browser already closed');
+            }
+            
+            cleanup();
+            onSuccess();
+          }
+        });
+        authSubscription = authListener.subscription;
+
+        // Also listen for browser close event
+        BrowserPlugin.addListener('browserFinished', () => {
+          // Check if auth succeeded
+          supabase.auth.getSession().then(({ data: sessionData }) => {
+            if (sessionData?.session) {
+              cleanup();
+              onSuccess();
+            } else if (!cancelled) {
+              cleanup();
+              onError('تم إلغاء تسجيل الدخول');
+            }
+          });
+        });
+
         return;
       }
 

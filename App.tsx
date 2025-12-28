@@ -129,6 +129,8 @@ const processMainWindowOAuthCallback = async (): Promise<boolean> => {
 
 // OAuth Popup Success Screen Component
 const OAuthPopupSuccess: React.FC = () => {
+  const [showManualClose, setShowManualClose] = useState(false);
+
   useEffect(() => {
     console.log("🎉 OAuth Popup Success - Processing...");
 
@@ -231,10 +233,24 @@ const OAuthPopupSuccess: React.FC = () => {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="text-white/70"
+          className="text-white/70 mb-4"
         >
-          جاري إغلاق هذه النافذة...
+          {showManualClose
+            ? "يمكنك إغلاق هذه النافذة الآن"
+            : "جاري إغلاق هذه النافذة..."}
         </motion.p>
+
+        {showManualClose && (
+          <motion.button
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            onClick={() => window.close()}
+            className="px-6 py-3 bg-white/20 hover:bg-white/30 text-white font-medium rounded-xl transition-colors"
+          >
+            إغلاق النافذة
+          </motion.button>
+        )}
       </motion.div>
     </div>
   );
@@ -250,7 +266,7 @@ import {
   UserPreferences,
   ViewState,
 } from "./types";
-import { MOCK_REQUESTS, MOCK_REVIEWS } from "./data";
+import { MOCK_REQUESTS, MOCK_REVIEWS, AVAILABLE_CATEGORIES } from "./data";
 import {
   clearAllNotifications,
   getNotifications,
@@ -609,6 +625,35 @@ const App: React.FC = () => {
     }
 
     const initAuth = async () => {
+      // Handle OAuth callback from Capacitor Browser
+      const urlParams = new URLSearchParams(window.location.search);
+      const isOAuthCallback = urlParams.get('oauth_callback') === 'true';
+      
+      if (isOAuthCallback) {
+        // This is OAuth callback from Capacitor Browser
+        // Clean URL immediately
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+        
+        // Wait for session to be established
+        const maxRetries = 5;
+        for (let i = 0; i < maxRetries; i++) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            const profile = await getCurrentUser();
+            if (profile) {
+              setUser(profile);
+              setIsGuest(false);
+              localStorage.removeItem('abeely_guest_mode');
+              setAppView('main');
+              setAuthLoading(false);
+              return;
+            }
+          }
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
       // If we have OAuth/Magic Link callback params in main window
       // Let Supabase's detectSessionInUrl handle the code/token exchange automatically
       // We just need to wait for the session and clean the URL
@@ -1765,6 +1810,22 @@ const App: React.FC = () => {
                 savedScrollPosition={chatAreaScrollPos}
                 onScrollPositionChange={setChatAreaScrollPos}
                 aiStatus={connectionStatus?.ai}
+                // Unified Header Props
+                isSidebarOpen={isSidebarOpen}
+                setIsSidebarOpen={setIsSidebarOpen}
+                mode={mode}
+                toggleMode={toggleMode}
+                isModeSwitching={isModeSwitching}
+                unreadCount={unreadCount}
+                hasUnreadMessages={hasUnreadMessages}
+                user={user}
+                setView={setView}
+                setPreviousView={setPreviousView}
+                titleKey={titleKey}
+                notifications={notifications}
+                onMarkAsRead={handleMarkAsRead}
+                onClearAll={handleClearNotifications}
+                onSignOut={isGuest ? handleGoToLogin : handleSignOut}
               />
             </div>
           </div>

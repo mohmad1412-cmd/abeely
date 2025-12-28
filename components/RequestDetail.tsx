@@ -516,7 +516,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     
     // تحديث URL في المتصفح
     window.history.pushState({}, '', shareUrl);
-    const shareUrl = window.location.href;
     
     try {
       // Try to generate share image
