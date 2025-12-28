@@ -32,8 +32,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { prompt, mode = "chat", history = [] } = body;
+    const { prompt, mode = "chat", history = [], chatHistory = [] } = body;
     if (!prompt) return res({ error: "prompt required" }, 400);
+    
+    // استخدام chatHistory إذا كان متوفراً، وإلا history (للتوافق مع الكود القديم)
+    const conversationHistory = chatHistory.length > 0 ? chatHistory : history;
 
     if (!GEMINI_API_KEY) {
       return res({ error: "GEMINI_API_KEY is not configured in Supabase Edge Functions" }, 500);
@@ -43,9 +46,26 @@ Deno.serve(async (req) => {
     let responseSchema: any = null;
 
     if (mode === "draft") {
+      // بناء نص تاريخ المحادثة إذا كان موجوداً
+      const historyText = conversationHistory && conversationHistory.length > 0
+        ? conversationHistory.map((msg: any) => {
+            const role = msg.role === 'user' ? '👤 العميل' : '🤖 المساعد';
+            const text = msg.text || msg.parts?.[0]?.text || '';
+            return `${role}: ${text}`;
+          }).join('\n\n')
+        : '';
+      
       systemInstruction = `
 أنت مساعد ذكي متخصص في منصة "أبيلي" - منصة سعودية لربط طالبي الخدمات بمقدميها.
 هدفك: فهم احتياج العميل بدقة ومساعدته في صياغة طلب واضح ومفصل.
+
+${historyText ? `
+═══════════════════════════════════════════════════════════════
+📜 تاريخ المحادثة السابقة (استخدمه لفهم السياق الكامل):
+═══════════════════════════════════════════════════════════════
+${historyText}
+═══════════════════════════════════════════════════════════════
+` : ''}
 
 تعليمات مهمة:
 1. كن ذكياً، طبيعياً، وعفوياً - تحدث كإنسان حقيقي وليس كروبوت مبرمج على كلمات محددة
@@ -91,12 +111,18 @@ Deno.serve(async (req) => {
       };
     }
 
+    // تحويل chatHistory إلى تنسيق Gemini (role + parts)
+    const geminiHistory = conversationHistory.map((msg: any) => ({
+      role: msg.role === 'ai' ? 'model' : 'user',
+      parts: [{ text: msg.text || msg.parts?.[0]?.text || '' }]
+    }));
+    
     const payload: any = {
       system_instruction: {
         parts: [{ text: systemInstruction }],
       },
       contents: [
-        ...history,
+        ...geminiHistory,
         { role: "user", parts: [{ text: prompt }] }
       ],
       generationConfig: {

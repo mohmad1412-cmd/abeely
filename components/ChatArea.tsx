@@ -1733,6 +1733,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           text: msg.text,
         }));
       
+      console.log('📜 تاريخ المحادثة المرسل للذكاء:', chatHistory);
+      
       const draft = await generateDraftWithCta(
         finalText || (imageAttachments.length > 0 || audioBlob ? "وصف قصير مع مرفقات" : ""),
         imageAttachments.length > 0 ? imageAttachments : undefined,
