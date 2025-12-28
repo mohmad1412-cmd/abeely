@@ -227,12 +227,19 @@ export function startOAuthFlow(
       popup.focus();
 
       // Listen for successful auth
-      const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session && !cancelled) {
-          // Don't clear popup flag here - let the popup clear it after showing success
-          // This ensures the popup can detect itself correctly
-          cleanup();
-          onSuccess();
+          // Wait a moment to ensure session is fully saved
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Double-check session exists before calling onSuccess
+          const { data: { session: verifiedSession } } = await supabase.auth.getSession();
+          if (verifiedSession && verifiedSession.user) {
+            // Don't clear popup flag here - let the popup clear it after showing success
+            // This ensures the popup can detect itself correctly
+            cleanup();
+            onSuccess();
+          }
         }
       });
       authSubscription = authListener.subscription;
@@ -310,10 +317,17 @@ export async function signInWithEmail(email: string): Promise<{ success: boolean
     // استخدم الرابط الحالي للموقع (يعمل مع localhost و Vercel)
     const redirectUrl = window.location.origin;
     
+    // استخدام رابط Vercel للإنتاج أو localhost للتطوير
+    const isProduction = window.location.hostname.includes('vercel.app') || 
+                         window.location.hostname.includes('abeely');
+    const baseUrl = isProduction 
+      ? 'https://copy-of-copy-of-servicelink-ai-platform-r1q77wvmr.vercel.app'
+      : redirectUrl;
+    
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
       options: {
-        emailRedirectTo: redirectUrl,
+        emailRedirectTo: baseUrl,
       },
     });
 

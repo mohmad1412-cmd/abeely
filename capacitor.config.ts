@@ -10,6 +10,22 @@ const config: CapacitorConfig = {
   appId: 'com.servicelink.app',
   appName: 'ServiceLink',
   webDir: 'dist',
+  // App Links Configuration
+  app: {
+    // Deep linking URLs
+    customUrlScheme: 'abeely',
+  },
+  // Android App Links
+  android: {
+    allowMixedContent: true,
+    // App Links domain verification
+    // ستحتاج إضافة assetlinks.json في موقعك
+  },
+  // iOS Universal Links
+  ios: {
+    // Universal Links configuration
+    // ستحتاج إضافة apple-app-site-association في موقعك
+  },
   // فعّل Live Reload دائماً - احذف الشرط إذا أردت تفعيله دائماً
   ...(liveReload || true  // ← غيّر true إلى false لإيقاف Live Reload
     ? {

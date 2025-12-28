@@ -45,6 +45,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { AVAILABLE_CATEGORIES } from "../data";
 import { verifyGuestPhone, confirmGuestPhone } from "../services/authService";
 import { markRequestAsViewed, markRequestAsRead, incrementRequestViews } from "../services/requestViewsService";
+import { getRequestShareUrl, copyShareUrl } from "../services/routingService";
 import ReactDOM from "react-dom";
 import html2canvas from "html2canvas";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
@@ -510,6 +511,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   };
 
   const handleShare = async () => {
+    // استخدام رابط المشاركة الجديد
+    const shareUrl = getRequestShareUrl(request.id);
+    
+    // تحديث URL في المتصفح
+    window.history.pushState({}, '', shareUrl);
     const shareUrl = window.location.href;
     
     try {
@@ -552,10 +558,12 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         
         await navigator.share(shareData);
       } else {
-        // Fallback: copy URL
-        await navigator.clipboard.writeText(shareUrl);
-        setIsShared(true);
-        setTimeout(() => setIsShared(false), 2000);
+        // Fallback: copy URL using routing service
+        const copied = await copyShareUrl('request', { requestId: request.id });
+        if (copied) {
+          setIsShared(true);
+          setTimeout(() => setIsShared(false), 2000);
+        }
       }
     } catch (err) {
       // User cancelled or error

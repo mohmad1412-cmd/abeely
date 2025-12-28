@@ -36,6 +36,13 @@ import { createRequestFromChat } from "../services/requestsService";
 import { supabase } from "../services/supabaseClient";
 import { generateDraftWithCta, checkAIConnection } from "../services/aiService";
 import { verifyGuestPhone, confirmGuestPhone } from "../services/authService";
+import { 
+  loadUserConversation, 
+  saveConversation, 
+  deactivateConversation,
+  updateConversationTitle,
+  getActiveConversation
+} from "../services/chatConversationsService";
 import { AnimatePresence, motion, LayoutGroup } from "framer-motion";
 import { NotificationsPopover } from "./NotificationsPopover";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
@@ -638,19 +645,84 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const lastScrollPosRef = useRef<number>(0);
   const prevMessagesLengthRef = useRef<number>((savedMessages || []).length);
 
-  // Update messages when savedMessages prop changes (from parent)
+  // Load conversation from Supabase for logged-in users
   useEffect(() => {
-    if (savedMessages && savedMessages.length > 0 && messages.length === 0) {
+    if (!isGuest && userId && messages.length === 0) {
+      const loadConversation = async () => {
+        try {
+          const savedMessages = await loadUserConversation(userId);
+          if (savedMessages && savedMessages.length > 0) {
+            const formattedMessages = savedMessages.map(msg => ({
+              id: msg.id,
+              role: msg.role,
+              text: msg.text,
+              isDraftPreview: false,
+            }));
+            setMessages(formattedMessages);
+            // Also update parent state
+            if (onMessagesChange) {
+              onMessagesChange(formattedMessages);
+            }
+          } else if (savedMessages && savedMessages.length === 0 && savedMessages.length === 0) {
+            // Try loading from localStorage as fallback
+            if (savedMessages && savedMessages.length > 0) {
+              setMessages(savedMessages);
+            }
+          }
+        } catch (err) {
+          console.error('Error loading conversation:', err);
+          // Fallback to localStorage
+          if (savedMessages && savedMessages.length > 0) {
+            setMessages(savedMessages);
+          }
+        }
+      };
+      loadConversation();
+    } else if (savedMessages && savedMessages.length > 0 && messages.length === 0) {
+      // For guests or when no Supabase data, use localStorage
       setMessages(savedMessages);
     }
-  }, [savedMessages]);
+  }, [userId, isGuest, savedMessages]);
 
-  // Save messages when they change (but avoid infinite loop)
+  // Save messages to Supabase (for logged-in users) or localStorage (for guests)
   useEffect(() => {
-    if (onMessagesChange && messages.length > 0) {
+    if (messages.length === 0) return;
+
+    // Save to parent state (for localStorage)
+    if (onMessagesChange) {
       onMessagesChange(messages);
     }
-  }, [messages, onMessagesChange]);
+
+    // Save to Supabase for logged-in users
+    if (!isGuest && userId) {
+      const saveToSupabase = async () => {
+        try {
+          const messagesToSave = messages.map(msg => ({
+            id: msg.id,
+            role: msg.role,
+            text: msg.text,
+            metadata: {
+              isDraftPreview: msg.isDraftPreview || false,
+              draftData: msg.draftData,
+            },
+          }));
+          
+          await saveConversation(
+            userId,
+            messagesToSave,
+            conversationTitle !== "أبيلي" ? conversationTitle : undefined
+          );
+        } catch (err) {
+          console.error('Error saving conversation to Supabase:', err);
+          // Continue silently - localStorage backup is already saved
+        }
+      };
+      
+      // Debounce saves to avoid too many database calls
+      const timeoutId = setTimeout(saveToSupabase, 1000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [messages, userId, isGuest, conversationTitle, onMessagesChange]);
 
   // Restore scroll position on mount - use useLayoutEffect to restore before paint
   useLayoutEffect(() => {
@@ -1344,6 +1416,18 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         
         setMessages((prev) => [...prev, publishedCard]);
         
+        // Deactivate conversation in Supabase for logged-in users
+        if (!isGuest && userId && result?.id) {
+          try {
+            const conversationId = await getActiveConversation(userId);
+            if (conversationId) {
+              await deactivateConversation(conversationId, result.id);
+            }
+          } catch (err) {
+            console.error('Error deactivating conversation:', err);
+          }
+        }
+        
         // Reload data in parent component
         if (onRequestPublished) {
           onRequestPublished();
@@ -1574,6 +1658,18 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         
         setMessages((prev) => [...prev, publishedCard]);
         
+        // Deactivate conversation in Supabase for logged-in users
+        if (!isGuest && userId && result?.id) {
+          try {
+            const conversationId = await getActiveConversation(userId);
+            if (conversationId) {
+              await deactivateConversation(conversationId, result.id);
+            }
+          } catch (err) {
+            console.error('Error deactivating conversation:', err);
+          }
+        }
+        
         // Reload data in parent component
         if (onRequestPublished) {
           onRequestPublished();
@@ -1746,7 +1842,15 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       // Let AI decide when to create a meaningful title (like ChatGPT/Gemini)
       // Only update if AI provides a clear title (not "طلب جديد" or empty)
       if (draft.title && draft.title.trim() && draft.title !== "طلب جديد") {
-        setConversationTitle(draft.title.trim());
+        const newTitle = draft.title.trim();
+        setConversationTitle(newTitle);
+        // Update title in Supabase for logged-in users
+        if (!isGuest && userId) {
+          const conversationId = await getActiveConversation(userId);
+          if (conversationId) {
+            updateConversationTitle(conversationId, newTitle).catch(console.error);
+          }
+        }
       }
 
       // AI Discussion Before

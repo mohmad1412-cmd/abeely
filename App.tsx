@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, X, CheckCircle } from "lucide-react";
+import { Check, CheckCircle, X } from "lucide-react";
 import { UnifiedHeader } from "./components/ui/UnifiedHeader";
 
 // Components
@@ -18,52 +18,61 @@ import { Messages } from "./components/Messages";
 // ==========================================
 // OAuth & Magic Link Callback Handler - Process OAuth codes/tokens and Magic Links
 // ==========================================
-const detectOAuthCallback = (): { isCallback: boolean; isPopup: boolean; isMagicLink: boolean } => {
+const detectOAuthCallback = (): {
+  isCallback: boolean;
+  isPopup: boolean;
+  isMagicLink: boolean;
+} => {
   // Check if we have OAuth callback params or Magic Link params
-  const hasOAuthParams = window.location.hash.includes('access_token') || 
-                         window.location.search.includes('code=');
-  
+  const hasOAuthParams = window.location.hash.includes("access_token") ||
+    window.location.search.includes("code=");
+
   // Magic Link uses hash with access_token (no code= param)
-  const isMagicLink = window.location.hash.includes('access_token') && 
-                      !window.location.search.includes('code=');
-  
-  if (!hasOAuthParams) return { isCallback: false, isPopup: false, isMagicLink: false };
-  
+  const isMagicLink = window.location.hash.includes("access_token") &&
+    !window.location.search.includes("code=");
+
+  if (!hasOAuthParams) {
+    return { isCallback: false, isPopup: false, isMagicLink: false };
+  }
+
   // Check multiple indicators that we might be in a popup:
   // 1. ⭐ URL has popup=true query param (MOST RELIABLE - travels with redirect)
   const urlParams = new URLSearchParams(window.location.search);
-  const hasPopupParam = urlParams.get('popup') === 'true';
+  const hasPopupParam = urlParams.get("popup") === "true";
   // 2. Window name contains our popup identifier
-  const windowName = window.name || '';
-  const hasPopupName = windowName.includes('-auth-popup') || windowName.includes('auth-popup');
+  const windowName = window.name || "";
+  const hasPopupName = windowName.includes("-auth-popup") ||
+    windowName.includes("auth-popup");
   // 3. Window has an opener (parent window)
   const hasOpener = window.opener !== null && window.opener !== window;
   // 4. Check localStorage flag that was set when popup was opened
-  const popupFlag = localStorage.getItem('abeely_oauth_popup_active');
-  const isMarkedAsPopup = popupFlag === 'true';
+  const popupFlag = localStorage.getItem("abeely_oauth_popup_active");
+  const isMarkedAsPopup = popupFlag === "true";
   // 5. Check if window dimensions suggest a popup (small window)
   const isSmallWindow = window.innerWidth <= 600 && window.innerHeight <= 800;
-  
+
   // Magic Links are never popups (they open in the same window/tab)
   // If we have OAuth params and ANY of the popup indicators, treat as popup
   // Priority: URL param is most reliable, then localStorage, then others
-  const isPopup = !isMagicLink && (hasPopupParam || isMarkedAsPopup || hasPopupName || hasOpener || isSmallWindow);
-  
+  const isPopup = !isMagicLink &&
+    (hasPopupParam || isMarkedAsPopup || hasPopupName || hasOpener ||
+      isSmallWindow);
+
   // Debug log (only in development)
   if (import.meta.env?.DEV) {
-    console.warn('🔍 Auth Callback Detection:', { 
-      hasOAuthParams, 
+    console.warn("🔍 Auth Callback Detection:", {
+      hasOAuthParams,
       isMagicLink,
       hasPopupParam,
-      windowName, 
-      hasPopupName, 
-      hasOpener, 
-      isMarkedAsPopup, 
+      windowName,
+      hasPopupName,
+      hasOpener,
+      isMarkedAsPopup,
       isSmallWindow,
-      isPopup 
+      isPopup,
     });
   }
-  
+
   return { isCallback: true, isPopup, isMagicLink };
 };
 
@@ -75,36 +84,36 @@ const isOAuthPopup = (): boolean => {
 
 // Process OAuth/Magic Link callback in main window - run immediately
 const processMainWindowOAuthCallback = async (): Promise<boolean> => {
-  const hasCode = window.location.search.includes('code=');
-  const hasToken = window.location.hash.includes('access_token');
-  
+  const hasCode = window.location.search.includes("code=");
+  const hasToken = window.location.hash.includes("access_token");
+
   if (!hasCode && !hasToken) return false;
-  
+
   // Check if this is a popup - use same logic as detectOAuthCallback
   const urlParams = new URLSearchParams(window.location.search);
-  const hasPopupParam = urlParams.get('popup') === 'true';
-  const windowName = window.name || '';
+  const hasPopupParam = urlParams.get("popup") === "true";
+  const windowName = window.name || "";
   const isSmallWindow = window.innerWidth <= 600 && window.innerHeight <= 800;
-  const isMagicLink = window.location.hash.includes('access_token') && !hasCode;
+  const isMagicLink = window.location.hash.includes("access_token") && !hasCode;
   const isPopup = !isMagicLink && (hasPopupParam ||
-                  windowName.includes('-auth-popup') || 
-                  windowName.includes('auth-popup') ||
-                  window.opener !== null ||
-                  localStorage.getItem('abeely_oauth_popup_active') === 'true' ||
-                  isSmallWindow);
-  
+    windowName.includes("-auth-popup") ||
+    windowName.includes("auth-popup") ||
+    window.opener !== null ||
+    localStorage.getItem("abeely_oauth_popup_active") === "true" ||
+    isSmallWindow);
+
   // If popup, let it handle itself
   if (isPopup) return false;
-  
+
   // This is the main window with OAuth/Magic Link callback - let Supabase process it
   try {
     // Import supabase here to avoid circular dependency issues
-    const { supabase } = await import('./services/supabaseClient');
-    
+    const { supabase } = await import("./services/supabaseClient");
+
     // Supabase will automatically process the code/token from URL
     // For Magic Links, the token is in the hash, Supabase handles it automatically
     const { data } = await supabase.auth.getSession();
-    
+
     // Clean up URL after processing
     if (data.session) {
       const cleanUrl = window.location.origin + window.location.pathname;
@@ -112,80 +121,89 @@ const processMainWindowOAuthCallback = async (): Promise<boolean> => {
       return true;
     }
   } catch (err) {
-    console.error('Auth callback processing error:', err);
+    console.error("Auth callback processing error:", err);
   }
-  
+
   return false;
 };
 
 // OAuth Popup Success Screen Component
 const OAuthPopupSuccess: React.FC = () => {
-  const [showManualClose, setShowManualClose] = useState(false);
-  
   useEffect(() => {
-    console.log('🎉 OAuth Popup Success - Processing...');
-    
-    // Clean URL from OAuth params
-    const cleanUrl = window.location.origin + window.location.pathname;
-    window.history.replaceState({}, document.title, cleanUrl);
-    
-    // Process OAuth callback to store session
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (data.session) {
-        console.log('✅ Session stored in popup');
-        
-        // Wait a moment to ensure session is fully saved
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // NOW clear the popup flag - this signals main window
-        localStorage.removeItem('abeely_oauth_popup_active');
-        
-        // Signal main window
-        localStorage.setItem('abeely_auth_success', Date.now().toString());
-        
-        console.log('📢 Popup flag cleared, main window will check session');
-        
-        // Try to close window after showing success message
-        setTimeout(() => {
-          console.log('🚪 Attempting to close popup...');
-          window.close();
+    console.log("🎉 OAuth Popup Success - Processing...");
+
+    const closePopup = async () => {
+      // Clean URL from OAuth params
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+
+      try {
+        // Process OAuth callback to store session
+        const { data } = await supabase.auth.getSession();
+
+        if (data.session) {
+          console.log("✅ Session stored in popup");
+
+          // Wait a moment to ensure session is fully saved
+          await new Promise((resolve) => setTimeout(resolve, 300));
+
+          // Clear the popup flag - this signals main window
+          localStorage.removeItem("abeely_oauth_popup_active");
+
+          // Signal main window
+          localStorage.setItem("abeely_auth_success", Date.now().toString());
+
+          console.log("📢 Popup flag cleared, main window will check session");
+
+          // Try to notify parent window via postMessage (if same origin) and reload it as fallback
+          try {
+            if (window.opener && !window.opener.closed) {
+              window.opener.postMessage({
+                type: "oauth_success",
+                timestamp: Date.now(),
+              }, window.location.origin);
+              // بعض المتصفحات لا تغلق النافذة تلقائياً، لذا نعيد تحميل النافذة الأصلية كنسخ احتياطي
+              window.opener.location.reload();
+            }
+          } catch (e) {
+            // Ignore cross-origin errors
+          }
+
+          // Close window immediately after short delay to show success message
           setTimeout(() => {
-            setShowManualClose(true);
-          }, 500);
-        }, 800);
-      } else {
-        // No session, clear flag anyway
-        localStorage.removeItem('abeely_oauth_popup_active');
-        setShowManualClose(true);
+            console.log("🚪 Closing popup automatically...");
+            window.close();
+
+            // Retry closing multiple times (some browsers need multiple attempts)
+            setTimeout(() => {
+              window.close();
+              // After 1.5 more seconds, if still open, show manual close button
+              setTimeout(() => {
+                setShowManualClose(true);
+              }, 1500);
+            }, 200);
+          }, 1000); // Show success message for ~1s then close
+        } else {
+          // No session, clear flag anyway
+          localStorage.removeItem("abeely_oauth_popup_active");
+          setTimeout(() => {
+            window.close();
+            setTimeout(() => setShowManualClose(true), 1500);
+          }, 1000);
+        }
+      } catch (err) {
+        console.error("Error getting session:", err);
+        localStorage.removeItem("abeely_oauth_popup_active");
+        setTimeout(() => {
+          window.close();
+          setTimeout(() => setShowManualClose(true), 1500);
+        }, 1000);
       }
-    }).catch((err) => {
-      console.error('Error getting session:', err);
-      localStorage.removeItem('abeely_oauth_popup_active');
-      setShowManualClose(true);
-    });
+    };
+
+    closePopup();
   }, []);
 
-  const handleManualClose = () => {
-    // Signal main window before closing
-    localStorage.setItem('abeely_auth_success', Date.now().toString());
-    
-    // Try to reload opener
-    try {
-      if (window.opener && !window.opener.closed) {
-        window.opener.location.reload();
-      }
-    } catch (e) {
-      // Ignore cross-origin errors
-    }
-    
-    // Try to close first
-    window.close();
-    // If still here, redirect to home (main window)
-    setTimeout(() => {
-      window.location.href = window.location.origin;
-    }, 100);
-  };
-  
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#153659] via-[#0d9488] to-[#153659] flex items-center justify-center">
       <motion.div
@@ -196,7 +214,7 @@ const OAuthPopupSuccess: React.FC = () => {
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
-          transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+          transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
           className="w-24 h-24 mx-auto mb-6 bg-green-500/20 rounded-full flex items-center justify-center"
         >
           <CheckCircle className="w-14 h-14 text-green-400" />
@@ -204,43 +222,19 @@ const OAuthPopupSuccess: React.FC = () => {
         <motion.h1
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.2 }}
           className="text-2xl font-bold text-white mb-3"
         >
           تم تسجيل الدخول بنجاح!
         </motion.h1>
-        <AnimatePresence mode="wait">
-          {showManualClose ? (
-            <motion.div
-              key="manual-close"
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              className="space-y-4"
-            >
-              <p className="text-white/70 text-sm">
-                يمكنك الآن إغلاق هذه النافذة والعودة للتطبيق
-              </p>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleManualClose}
-                className="px-8 py-3 bg-white/20 hover:bg-white/30 text-white font-bold rounded-xl backdrop-blur-sm transition-colors"
-              >
-                انطلق ✨
-              </motion.button>
-            </motion.div>
-          ) : (
-            <motion.p
-              key="auto-close"
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.4 }}
-              className="text-white/70"
-            >
-              جاري إغلاق هذه النافذة...
-            </motion.p>
-          )}
-        </AnimatePresence>
+        <motion.p
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="text-white/70"
+        >
+          جاري إغلاق هذه النافذة...
+        </motion.p>
       </motion.div>
     </div>
   );
@@ -256,39 +250,50 @@ import {
   UserPreferences,
   ViewState,
 } from "./types";
-import { MOCK_REVIEWS, MOCK_REQUESTS } from "./data";
-import { 
-  getNotifications, 
-  markNotificationAsRead, 
-  markAllNotificationsAsRead,
+import { MOCK_REQUESTS, MOCK_REVIEWS } from "./data";
+import {
   clearAllNotifications,
+  getNotifications,
+  getUnreadNotificationsCount,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
   subscribeToNotifications,
-  getUnreadNotificationsCount
 } from "./services/notificationsService";
 
 // Services
 import {
-  fetchRequestsPaginated,
-  fetchMyRequests, 
-  fetchMyOffers,
-  fetchArchivedRequests,
-  fetchArchivedOffers,
-  archiveRequest,
-  unarchiveRequest,
   archiveOffer,
-  unarchiveOffer,
+  archiveRequest,
   checkSupabaseConnection,
-  subscribeToNewRequests
+  fetchArchivedOffers,
+  fetchArchivedRequests,
+  fetchMyOffers,
+  fetchMyRequests,
+  fetchRequestsPaginated,
+  subscribeToNewRequests,
+  unarchiveOffer,
+  unarchiveRequest,
 } from "./services/requestsService";
-import { getUnreadInterestsCount, getViewedRequestIds, subscribeToViewedRequests } from "./services/requestViewsService";
+import {
+  getUnreadInterestsCount,
+  getViewedRequestIds,
+  subscribeToViewedRequests,
+} from "./services/requestViewsService";
 import { checkAIConnection } from "./services/aiService";
 import { supabase } from "./services/supabaseClient";
-import { signOut as authSignOut, getCurrentUser, UserProfile, onAuthStateChange } from "./services/authService";
+import {
+  getCurrentUser,
+  onAuthStateChange,
+  signOut as authSignOut,
+  UserProfile,
+} from "./services/authService";
 import { FullScreenLoading } from "./components/ui/LoadingSkeleton";
 import { ConnectionError } from "./components/ui/ConnectionError";
+import { navigateTo, parseRoute } from "./services/routingService";
+import { App as CapacitorApp } from "@capacitor/app";
 
 // Auth Views
-type AppView = 'splash' | 'auth' | 'main' | 'connection-error' | 'oauth-popup';
+type AppView = "splash" | "auth" | "main" | "connection-error" | "oauth-popup";
 
 const App: React.FC = () => {
   // ==========================================
@@ -297,13 +302,13 @@ const App: React.FC = () => {
   const [oauthState] = useState(() => detectOAuthCallback());
   const isOAuthPopupMode = oauthState.isCallback && oauthState.isPopup;
   const isMagicLinkCallback = oauthState.isCallback && oauthState.isMagicLink;
-  
+
   // ==========================================
   // Auth State
   // ==========================================
   const [appView, setAppView] = useState<AppView>(() => {
-    if (oauthState.isCallback && oauthState.isPopup) return 'oauth-popup';
-    return 'splash';
+    if (oauthState.isCallback && oauthState.isPopup) return "oauth-popup";
+    return "splash";
   });
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isGuest, setIsGuest] = useState(false);
@@ -321,7 +326,9 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isLanguagePopupOpen, setIsLanguagePopupOpen] = useState(false);
-  const [currentLanguage, setCurrentLanguage] = useState<'ar' | 'en' | 'ur'>('ar');
+  const [currentLanguage, setCurrentLanguage] = useState<"ar" | "en" | "ur">(
+    "ar",
+  );
   const [autoTranslateRequests, setAutoTranslateRequests] = useState(false);
   const [userPreferences, setUserPreferences] = useState<UserPreferences>({
     interestedCategories: ["tech", "writing"],
@@ -339,21 +346,29 @@ const App: React.FC = () => {
   const [allRequests, setAllRequests] = useState<Request[]>([]);
   const [interestsRequests, setInterestsRequests] = useState<Request[]>([]); // طلبات اهتماماتي فقط
   const [unreadInterestsCount, setUnreadInterestsCount] = useState<number>(0); // عدد الطلبات غير المقروءة في اهتماماتي
-  const [viewedRequestIds, setViewedRequestIds] = useState<Set<string>>(new Set()); // الطلبات المشاهدة من قاعدة البيانات
+  const [viewedRequestIds, setViewedRequestIds] = useState<Set<string>>(
+    new Set(),
+  ); // الطلبات المشاهدة من قاعدة البيانات
   const [myOffers, setMyOffers] = useState<Offer[]>([]);
   const [archivedRequests, setArchivedRequests] = useState<Request[]>([]);
   const [archivedOffers, setArchivedOffers] = useState<Offer[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
-  const [requestsLoadError, setRequestsLoadError] = useState<string | null>(null);
+  const [requestsLoadError, setRequestsLoadError] = useState<string | null>(
+    null,
+  );
   const MARKETPLACE_PAGE_SIZE = 10;
   const [marketplacePage, setMarketplacePage] = useState(0);
   const [marketplaceHasMore, setMarketplaceHasMore] = useState(true);
-  const [marketplaceIsLoadingMore, setMarketplaceIsLoadingMore] = useState(false);
+  const [marketplaceIsLoadingMore, setMarketplaceIsLoadingMore] = useState(
+    false,
+  );
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<{
-    supabase: { connected: boolean; error?: string };
-    ai: { connected: boolean; error?: string };
-  } | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<
+    {
+      supabase: { connected: boolean; error?: string };
+      ai: { connected: boolean; error?: string };
+    } | null
+  >(null);
 
   // Unify userInterests with userPreferences.interestedCategories to prevent desync
   const userInterests = userPreferences.interestedCategories;
@@ -364,7 +379,8 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [reviews] = useState<Review[]>(MOCK_REVIEWS);
-  const userRating = (reviews || []).reduce((acc, r) => acc + r.rating, 0) / ((reviews || []).length || 1);
+  const userRating = (reviews || []).reduce((acc, r) => acc + r.rating, 0) /
+    ((reviews || []).length || 1);
 
   // ==========================================
   // Selection State
@@ -372,16 +388,20 @@ const App: React.FC = () => {
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [scrollToOfferSection, setScrollToOfferSection] = useState(false);
   const [navigatedFromSidebar, setNavigatedFromSidebar] = useState(false); // لتتبع مصدر التنقل
-  
+
   // Save state when switching modes to restore when coming back
-  const [savedOffersModeState, setSavedOffersModeState] = useState<{
-    view: ViewState;
-    selectedRequest: Request | null;
-    scrollToOfferSection: boolean;
-  } | null>(null);
-  const [savedRequestsModeState, setSavedRequestsModeState] = useState<{
-    view: ViewState;
-  } | null>(null);
+  const [savedOffersModeState, setSavedOffersModeState] = useState<
+    {
+      view: ViewState;
+      selectedRequest: Request | null;
+      scrollToOfferSection: boolean;
+    } | null
+  >(null);
+  const [savedRequestsModeState, setSavedRequestsModeState] = useState<
+    {
+      view: ViewState;
+    } | null
+  >(null);
 
   // ==========================================
   // Scroll Persistence
@@ -390,38 +410,50 @@ const App: React.FC = () => {
   // Separate scroll positions for each mode
   // Load from localStorage on mount
   const [marketplaceScrollPos, setMarketplaceScrollPos] = useState(() => {
-    const saved = localStorage.getItem('abeely_marketplace_scroll');
+    const saved = localStorage.getItem("abeely_marketplace_scroll");
     return saved ? parseInt(saved, 10) : 0;
   });
   const [requestsModeScrollPos, setRequestsModeScrollPos] = useState(() => {
-    const saved = localStorage.getItem('abeely_requests_scroll');
+    const saved = localStorage.getItem("abeely_requests_scroll");
     return saved ? parseInt(saved, 10) : 0;
   });
   const [chatAreaScrollPos, setChatAreaScrollPos] = useState(() => {
-    const saved = localStorage.getItem('abeely_chatarea_scroll');
+    const saved = localStorage.getItem("abeely_chatarea_scroll");
     return saved ? parseInt(saved, 10) : 0;
   });
   const [requestDetailScrollPos, setRequestDetailScrollPos] = useState(() => {
-    const saved = localStorage.getItem('abeely_requestdetail_scroll');
+    const saved = localStorage.getItem("abeely_requestdetail_scroll");
     return saved ? parseInt(saved, 10) : 0;
   });
   const notifRef = useRef<HTMLDivElement>(null);
 
   // Save to localStorage whenever scroll positions change
   useEffect(() => {
-    localStorage.setItem('abeely_marketplace_scroll', marketplaceScrollPos.toString());
+    localStorage.setItem(
+      "abeely_marketplace_scroll",
+      marketplaceScrollPos.toString(),
+    );
   }, [marketplaceScrollPos]);
 
   useEffect(() => {
-    localStorage.setItem('abeely_requests_scroll', requestsModeScrollPos.toString());
+    localStorage.setItem(
+      "abeely_requests_scroll",
+      requestsModeScrollPos.toString(),
+    );
   }, [requestsModeScrollPos]);
 
   useEffect(() => {
-    localStorage.setItem('abeely_chatarea_scroll', chatAreaScrollPos.toString());
+    localStorage.setItem(
+      "abeely_chatarea_scroll",
+      chatAreaScrollPos.toString(),
+    );
   }, [chatAreaScrollPos]);
 
   useEffect(() => {
-    localStorage.setItem('abeely_requestdetail_scroll', requestDetailScrollPos.toString());
+    localStorage.setItem(
+      "abeely_requestdetail_scroll",
+      requestDetailScrollPos.toString(),
+    );
   }, [requestDetailScrollPos]);
 
   // ==========================================
@@ -430,14 +462,14 @@ const App: React.FC = () => {
   // Load saved messages from localStorage on mount
   const [savedChatMessages, setSavedChatMessages] = useState<any[]>(() => {
     try {
-      const saved = localStorage.getItem('abeely_chat_messages');
+      const saved = localStorage.getItem("abeely_chat_messages");
       if (saved) {
         const parsed = JSON.parse(saved);
         // Keep only last 50 messages to prevent localStorage overflow
         return Array.isArray(parsed) ? parsed.slice(-50) : [];
       }
     } catch (e) {
-      console.error('Error loading chat messages:', e);
+      console.error("Error loading chat messages:", e);
     }
     return [];
   });
@@ -448,9 +480,9 @@ const App: React.FC = () => {
       try {
         // Keep only last 50 messages
         const toSave = savedChatMessages.slice(-50);
-        localStorage.setItem('abeely_chat_messages', JSON.stringify(toSave));
+        localStorage.setItem("abeely_chat_messages", JSON.stringify(toSave));
       } catch (e) {
-        console.error('Error saving chat messages:', e);
+        console.error("Error saving chat messages:", e);
       }
     }
   }, [savedChatMessages]);
@@ -458,17 +490,112 @@ const App: React.FC = () => {
   // ==========================================
   // State Persistence for RequestDetail
   // ==========================================
-  const [savedOfferForms, setSavedOfferForms] = useState<Record<string, {
-    price: string;
-    duration: string;
-    city: string;
-    title: string;
-    description: string;
-    attachments: any[];
-    guestVerificationStep?: 'none' | 'phone' | 'otp';
-    guestPhone?: string;
-    guestOTP?: string;
-  }>>({});
+  const [savedOfferForms, setSavedOfferForms] = useState<
+    Record<string, {
+      price: string;
+      duration: string;
+      city: string;
+      title: string;
+      description: string;
+      attachments: any[];
+      guestVerificationStep?: "none" | "phone" | "otp";
+      guestPhone?: string;
+      guestOTP?: string;
+    }>
+  >({});
+
+  // ==========================================
+  // Deep Linking Handler
+  // ==========================================
+  useEffect(() => {
+    // معالجة الروابط عند فتح التطبيق
+    const handleInitialUrl = async () => {
+      try {
+        // في التطبيق المحمول
+        if (typeof window !== "undefined" && (window as any).Capacitor) {
+          const { url } = await CapacitorApp.getLaunchUrl();
+          if (url) {
+            handleDeepLink(url);
+          }
+
+          // الاستماع للروابط عند فتح التطبيق
+          CapacitorApp.addListener("appUrlOpen", (event) => {
+            handleDeepLink(event.url);
+          });
+        } else {
+          // في المتصفح - معالجة الرابط الحالي
+          const route = parseRoute();
+          if (route.type === "request" && route.params.requestId) {
+            // البحث عن الطلب وفتحه
+            const request = allRequests.find((r) =>
+              r.id === route.params.requestId
+            );
+            if (request) {
+              setSelectedRequest(request);
+              setView("request-detail");
+              setMode("offers");
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error handling deep link:", err);
+      }
+    };
+
+    const handleDeepLink = (url: string) => {
+      try {
+        const urlObj = new URL(url);
+        const path = urlObj.pathname;
+
+        // معالجة /request/:id
+        if (path.startsWith("/request/")) {
+          const requestId = path.split("/request/")[1]?.split("/")[0];
+          if (requestId) {
+            const request = allRequests.find((r) => r.id === requestId);
+            if (request) {
+              setSelectedRequest(request);
+              setView("request-detail");
+              setMode("offers");
+            } else {
+              // إذا لم يكن الطلب محملاً، انتظر قليلاً
+              setTimeout(() => {
+                const request = allRequests.find((r) => r.id === requestId);
+                if (request) {
+                  setSelectedRequest(request);
+                  setView("request-detail");
+                  setMode("offers");
+                }
+              }, 1000);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error parsing deep link:", err);
+      }
+    };
+
+    // معالجة الروابط عند تغيير URL في المتصفح
+    const handlePopState = () => {
+      const route = parseRoute();
+      if (route.type === "request" && route.params.requestId) {
+        const request = allRequests.find((r) =>
+          r.id === route.params.requestId
+        );
+        if (request) {
+          setSelectedRequest(request);
+          setView("request-detail");
+          setMode("offers");
+        }
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    handleInitialUrl();
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [allRequests]);
 
   // ==========================================
   // Auth Initialization (Fast - 3s timeout)
@@ -487,130 +614,153 @@ const App: React.FC = () => {
       // We just need to wait for the session and clean the URL
       if (oauthState.isCallback && !oauthState.isPopup) {
         // Clear the popup flag if it exists
-        localStorage.removeItem('abeely_oauth_popup_active');
-        
+        localStorage.removeItem("abeely_oauth_popup_active");
+
         if (isMagicLinkCallback) {
-          console.log('📧 Magic Link callback detected, waiting for Supabase to process...');
+          console.log(
+            "📧 Magic Link callback detected, waiting for Supabase to process...",
+          );
         } else {
-          console.log('📝 OAuth callback detected, waiting for Supabase to process...');
+          console.log(
+            "📝 OAuth callback detected, waiting for Supabase to process...",
+          );
         }
-        
+
         // Clean URL AFTER giving Supabase a moment to extract the code/token
         // Supabase should have already extracted it during initialization
         setTimeout(() => {
-          if (window.location.search.includes('code=') || window.location.hash.includes('access_token')) {
+          if (
+            window.location.search.includes("code=") ||
+            window.location.hash.includes("access_token")
+          ) {
             const cleanUrl = window.location.origin + window.location.pathname;
             window.history.replaceState({}, document.title, cleanUrl);
-            console.log('🧹 Cleaned auth params from URL');
+            console.log("🧹 Cleaned auth params from URL");
           }
         }, 100);
-        
+
         // Try to get session with retry logic (Supabase may still be exchanging the code)
         const maxRetries = 3;
         let session = null;
-        
+
         for (let i = 0; i < maxRetries && !session; i++) {
           try {
-            console.log(`⏳ Checking session... attempt ${i + 1}/${maxRetries}`);
-            
+            console.log(
+              `⏳ Checking session... attempt ${i + 1}/${maxRetries}`,
+            );
+
             // Add 3-second timeout to each attempt
             const sessionPromise = supabase.auth.getSession();
-            const timeoutPromise = new Promise<{data: {session: null}}>((resolve) => 
-              setTimeout(() => resolve({data: {session: null}}), 3000)
-            );
-            
-            const { data } = await Promise.race([sessionPromise, timeoutPromise]);
+            const timeoutPromise = new Promise<{ data: { session: null } }>((
+              resolve,
+            ) => setTimeout(() => resolve({ data: { session: null } }), 3000));
+
+            const { data } = await Promise.race([
+              sessionPromise,
+              timeoutPromise,
+            ]);
             session = data?.session;
-            
+
             if (session) {
               console.log(`✅ OAuth session found on attempt ${i + 1}`);
               break;
             }
-            
+
             // Short wait between retries
             if (i < maxRetries - 1) {
-              await new Promise(resolve => setTimeout(resolve, 500));
+              await new Promise((resolve) => setTimeout(resolve, 500));
             }
           } catch (err) {
             console.error(`Session check attempt ${i + 1} failed:`, err);
           }
         }
-        
+
         if (session?.user) {
           if (isMagicLinkCallback) {
-            console.log('✅ Magic Link session established via Supabase auto-detection!');
+            console.log(
+              "✅ Magic Link session established via Supabase auto-detection!",
+            );
           } else {
-            console.log('✅ OAuth session established via Supabase auto-detection!');
+            console.log(
+              "✅ OAuth session established via Supabase auto-detection!",
+            );
           }
-          
+
           // Get user profile with timeout (3 seconds)
           const profilePromise = getCurrentUser();
-          const profileTimeout = new Promise<null>((resolve) => 
+          const profileTimeout = new Promise<null>((resolve) =>
             setTimeout(() => resolve(null), 3000)
           );
-          
+
           const profile = await Promise.race([profilePromise, profileTimeout]);
-          
+
           if (profile) {
             setUser(profile);
             setIsGuest(false);
-            localStorage.removeItem('abeely_guest_mode');
-            setAppView('main');
+            localStorage.removeItem("abeely_guest_mode");
+            setAppView("main");
             setAuthLoading(false);
             return; // Exit early, we're done
           } else {
             // Profile not ready, but user is authenticated - proceed anyway
-            console.log('⚠️ Profile not ready, user auth OK, proceeding to main...');
-            setAppView('main');
+            console.log(
+              "⚠️ Profile not ready, user auth OK, proceeding to main...",
+            );
+            setAppView("main");
             setAuthLoading(false);
             return;
           }
         } else {
           if (isMagicLinkCallback) {
-            console.log('⚠️ No session after Magic Link callback retries, showing auth page');
+            console.log(
+              "⚠️ No session after Magic Link callback retries, showing auth page",
+            );
           } else {
-            console.log('⚠️ No session after OAuth callback retries, showing auth page');
+            console.log(
+              "⚠️ No session after OAuth callback retries, showing auth page",
+            );
           }
           // Fallback to auth page immediately
           setAuthLoading(false);
-          setAppView('auth');
+          setAppView("auth");
           return;
         }
       }
       try {
         // Fast timeout - 3 seconds max
         const authPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Auth timeout')), 3000)
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Auth timeout")), 3000)
         );
-        
+
         const result = await Promise.race([authPromise, timeoutPromise]) as any;
         const session = result?.data?.session;
-        
+
         if (session?.user) {
           // Try to get profile with 2s timeout
           const profilePromise = getCurrentUser();
-          const profileTimeout = new Promise<null>((resolve) => 
+          const profileTimeout = new Promise<null>((resolve) =>
             setTimeout(() => resolve(null), 2000)
           );
-          
+
           const profile = await Promise.race([profilePromise, profileTimeout]);
-          
+
           if (profile) {
             setUser(profile);
             setIsGuest(false);
           } else {
             // Profile not ready - will be fetched by onAuthStateChange
-            const wasGuest = localStorage.getItem('abeely_guest_mode') === 'true';
+            const wasGuest =
+              localStorage.getItem("abeely_guest_mode") === "true";
             setIsGuest(wasGuest);
           }
         } else {
-          const wasGuest = localStorage.getItem('abeely_guest_mode') === 'true';
+          const wasGuest = localStorage.getItem("abeely_guest_mode") === "true";
           setIsGuest(wasGuest);
         }
       } catch (err: any) {
         // On any error, proceed to auth/guest - don't block the app
-        const wasGuest = localStorage.getItem('abeely_guest_mode') === 'true';
+        const wasGuest = localStorage.getItem("abeely_guest_mode") === "true";
         setIsGuest(wasGuest);
       } finally {
         setAuthLoading(false);
@@ -625,32 +775,35 @@ const App: React.FC = () => {
       try {
         if (authUser) {
           // Add a small delay to ensure OAuth/Magic Link redirect is complete
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
+          await new Promise((resolve) => setTimeout(resolve, 100));
+
           // Clean up URL if we have OAuth/Magic Link params (after successful auth)
-          if (window.location.search.includes('code=') || window.location.hash.includes('access_token')) {
+          if (
+            window.location.search.includes("code=") ||
+            window.location.hash.includes("access_token")
+          ) {
             const cleanUrl = window.location.origin + window.location.pathname;
             window.history.replaceState({}, document.title, cleanUrl);
           }
-          
+
           const profile = await getCurrentUser();
           if (profile) {
             setUser(profile);
             setIsGuest(false);
-            localStorage.removeItem('abeely_guest_mode');
-            localStorage.removeItem('abeely_oauth_popup_active');
-            setAppView('main');
+            localStorage.removeItem("abeely_guest_mode");
+            localStorage.removeItem("abeely_oauth_popup_active");
+            setAppView("main");
           } else {
-            console.warn('Failed to get user profile after auth');
+            console.warn("Failed to get user profile after auth");
             // Retry once after a delay
             setTimeout(async () => {
               const retryProfile = await getCurrentUser();
               if (retryProfile) {
                 setUser(retryProfile);
                 setIsGuest(false);
-                localStorage.removeItem('abeely_guest_mode');
-                localStorage.removeItem('abeely_oauth_popup_active');
-                setAppView('main');
+                localStorage.removeItem("abeely_guest_mode");
+                localStorage.removeItem("abeely_oauth_popup_active");
+                setAppView("main");
               }
             }, 1000);
           }
@@ -658,7 +811,7 @@ const App: React.FC = () => {
           setUser(null);
         }
       } catch (err) {
-        console.error('Auth state change error:', err);
+        console.error("Auth state change error:", err);
         // Don't crash the app, just log the error
       }
     });
@@ -673,58 +826,114 @@ const App: React.FC = () => {
   // ==========================================
   useEffect(() => {
     if (isOAuthPopupMode) return;
-    
-    let lastPopupState = localStorage.getItem('abeely_oauth_popup_active') === 'true';
-    
+
+    let lastPopupState =
+      localStorage.getItem("abeely_oauth_popup_active") === "true";
+
     const checkSession = async () => {
       try {
+        // Wait a bit for session to be saved
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
         const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user && appView === 'auth') {
-          console.log('✅ Session found! Loading profile...');
-          const profile = await getCurrentUser();
+        if (session?.user && appView === "auth") {
+          console.log("✅ Session found! Loading profile...");
+
+          // Try to get profile with retry
+          let profile = null;
+          for (let i = 0; i < 3; i++) {
+            profile = await getCurrentUser();
+            if (profile) break;
+            await new Promise((resolve) => setTimeout(resolve, 300));
+          }
+
           if (profile) {
             setUser(profile);
             setIsGuest(false);
-            localStorage.removeItem('abeely_guest_mode');
+            localStorage.removeItem("abeely_guest_mode");
+            localStorage.removeItem("abeely_oauth_popup_active");
             setAuthLoading(false);
-            setAppView('main');
-            console.log('🚀 Navigated to main app!');
+            // إعادة تعيين الحالة للقيم الافتراضية عند تسجيل الدخول
+            setView("create-request");
+            setMode("requests");
+            setSelectedRequest(null);
+            setPreviousView(null);
+            setAppView("main");
+            console.log("🚀 Navigated to main app!");
           } else {
+            // Even without profile, if session exists, proceed
             setAuthLoading(false);
-            setAppView('main');
+            setView("create-request");
+            setMode("requests");
+            setSelectedRequest(null);
+            setPreviousView(null);
+            setAppView("main");
           }
         }
       } catch (err) {
-        console.error('Session check error:', err);
+        console.error("Session check error:", err);
       }
     };
-    
+
     // Check every 500ms if popup was closed
     const checkPopupClosed = setInterval(() => {
-      const currentPopupState = localStorage.getItem('abeely_oauth_popup_active') === 'true';
-      
+      const currentPopupState =
+        localStorage.getItem("abeely_oauth_popup_active") === "true";
+
       // If popup was active and now it's closed, check for session
       if (lastPopupState && !currentPopupState) {
-        console.log('🔍 Popup closed, checking session...');
-        setTimeout(checkSession, 500);
+        console.log("🔍 Popup closed, checking session...");
+        checkSession();
       }
-      
+
       lastPopupState = currentPopupState;
     }, 500);
-    
+
     // Also check when window gets focus (user returns from popup)
     const handleFocus = () => {
-      if (appView === 'auth' && !localStorage.getItem('abeely_oauth_popup_active')) {
-        console.log('👁️ Window focused, checking session...');
-        setTimeout(checkSession, 300);
+      if (
+        appView === "auth" && !localStorage.getItem("abeely_oauth_popup_active")
+      ) {
+        console.log("👁️ Window focused, checking session...");
+        checkSession();
       }
     };
-    
-    window.addEventListener('focus', handleFocus);
-    
+
+    // Also listen for auth success signal from popup
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "abeely_auth_success" && appView === "auth") {
+        console.log(
+          "📢 Auth success signal received via storage, checking session...",
+        );
+        checkSession();
+      }
+    };
+
+    // Listen for postMessage from popup (more reliable than storage events)
+    const handleMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === "oauth_success" && appView === "auth") {
+        console.log(
+          "📢 Auth success signal received via postMessage, checking session...",
+        );
+        checkSession();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("message", handleMessage);
+
+    // Check immediately if popup flag was just cleared
+    if (!lastPopupState && localStorage.getItem("abeely_auth_success")) {
+      checkSession();
+    }
+
     return () => {
       clearInterval(checkPopupClosed);
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("message", handleMessage);
     };
   }, [isOAuthPopupMode, appView]);
 
@@ -736,13 +945,13 @@ const App: React.FC = () => {
       // Still loading auth, wait
       return;
     }
-    
+
     if (user) {
-      setAppView('main');
+      setAppView("main");
     } else if (isGuest) {
-      setAppView('main');
+      setAppView("main");
     } else {
-      setAppView('auth');
+      setAppView("auth");
     }
   };
 
@@ -752,42 +961,42 @@ const App: React.FC = () => {
   const handleConnectionRetry = async () => {
     setIsRetrying(true);
     setConnectionError(null);
-    
+
     try {
       // Try to check connection first
       const isConnected = await checkSupabaseConnection();
-      
+
       if (isConnected) {
         // Connection restored, try to get session again
         const { data: { session } } = await supabase.auth.getSession();
-        
+
         if (session?.user) {
           const profile = await getCurrentUser();
           if (profile) {
             setUser(profile);
             setIsGuest(false);
-            setAppView('main');
+            setAppView("main");
           } else {
-            setAppView('auth');
+            setAppView("auth");
           }
         } else {
           // Check if was guest before
-          const wasGuest = localStorage.getItem('abeely_guest_mode') === 'true';
+          const wasGuest = localStorage.getItem("abeely_guest_mode") === "true";
           if (wasGuest) {
             setIsGuest(true);
-            setAppView('main');
+            setAppView("main");
           } else {
-            setAppView('auth');
+            setAppView("auth");
           }
         }
       } else {
-        setConnectionError('الخدمة غير متاحة حالياً. يرجى المحاولة بعد قليل.');
-        setAppView('connection-error');
+        setConnectionError("الخدمة غير متاحة حالياً. يرجى المحاولة بعد قليل.");
+        setAppView("connection-error");
       }
     } catch (err: any) {
-      console.error('Retry connection error:', err);
-      setConnectionError('لم نتمكن من الاتصال. تأكد من اتصالك بالإنترنت.');
-      setAppView('connection-error');
+      console.error("Retry connection error:", err);
+      setConnectionError("لم نتمكن من الاتصال. تأكد من اتصالك بالإنترنت.");
+      setAppView("connection-error");
     } finally {
       setIsRetrying(false);
     }
@@ -796,14 +1005,14 @@ const App: React.FC = () => {
   // Handle entering guest mode from connection error
   const handleGuestModeFromError = () => {
     setIsGuest(true);
-    localStorage.setItem('abeely_guest_mode', 'true');
+    localStorage.setItem("abeely_guest_mode", "true");
     setConnectionError(null);
-    setAppView('main');
+    setAppView("main");
   };
 
   // Watch for auth loading completion after splash
   useEffect(() => {
-    if (appView === 'splash' && !authLoading) {
+    if (appView === "splash" && !authLoading) {
       // Minimal delay - just enough for smooth transition
       const timer = setTimeout(() => {
         handleSplashComplete();
@@ -827,17 +1036,18 @@ const App: React.FC = () => {
   // Data Loading
   // ==========================================
   const loadingRef = useRef(false);
-  
+
   useEffect(() => {
     // Start loading public data immediately
     const loadPublicData = async () => {
       if (loadingRef.current) return;
       loadingRef.current = true;
-      
+
       try {
         setIsLoadingData(true);
-        const { data: firstPage, count: totalCount } = await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
-        
+        const { data: firstPage, count: totalCount } =
+          await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
+
         if (Array.isArray(firstPage)) {
           setAllRequests(firstPage);
           setMarketplacePage(0);
@@ -856,7 +1066,7 @@ const App: React.FC = () => {
     // Background connection checks
     Promise.all([
       checkSupabaseConnection(),
-      checkAIConnection()
+      checkAIConnection(),
     ]).then(([supabaseStatus, aiStatus]) => {
       setConnectionStatus({
         supabase: supabaseStatus,
@@ -878,10 +1088,14 @@ const App: React.FC = () => {
     const loadUserData = async () => {
       try {
         await Promise.all([
-          fetchMyRequests(user.id).then(reqs => setMyRequests(reqs.filter(r => r.status !== 'archived'))),
-          fetchMyOffers(user.id).then(offers => setMyOffers(offers.filter(o => o.status !== 'archived'))),
+          fetchMyRequests(user.id).then((reqs) =>
+            setMyRequests(reqs.filter((r) => r.status !== "archived"))
+          ),
+          fetchMyOffers(user.id).then((offers) =>
+            setMyOffers(offers.filter((o) => o.status !== "archived"))
+          ),
           fetchArchivedRequests(user.id).then(setArchivedRequests),
-          fetchArchivedOffers(user.id).then(setArchivedOffers)
+          fetchArchivedOffers(user.id).then(setArchivedOffers),
         ]);
       } catch (error) {
         console.error("Error loading user data:", error);
@@ -921,7 +1135,7 @@ const App: React.FC = () => {
   // Reload Data When Opening Marketplace
   // ==========================================
   useEffect(() => {
-    if (appView !== 'main' || view !== 'marketplace') return;
+    if (appView !== "main" || view !== "marketplace") return;
     if (loadingRef.current) return;
     if (allRequests.length === 0 || requestsLoadError) {
       // Trigger reload if no data or error
@@ -930,18 +1144,21 @@ const App: React.FC = () => {
         try {
           setIsLoadingData(true);
           setRequestsLoadError(null);
-          const { data: firstPage, count: totalCount } = await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
+          const { data: firstPage, count: totalCount } =
+            await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
           if (Array.isArray(firstPage)) {
             setAllRequests(firstPage);
             setMarketplacePage(0);
-            const more = typeof totalCount === 'number'
+            const more = typeof totalCount === "number"
               ? firstPage.length < totalCount
               : firstPage.length === MARKETPLACE_PAGE_SIZE;
             setMarketplaceHasMore(more);
           }
         } catch (error) {
           console.error("Error reloading marketplace data:", error);
-          setRequestsLoadError("حدث خطأ في تحميل الطلبات. يرجى المحاولة مرة أخرى.");
+          setRequestsLoadError(
+            "حدث خطأ في تحميل الطلبات. يرجى المحاولة مرة أخرى.",
+          );
         } finally {
           setIsLoadingData(false);
           loadingRef.current = false;
@@ -956,44 +1173,50 @@ const App: React.FC = () => {
   // ==========================================
   useEffect(() => {
     // Only run when in main view, loading, and no data yet
-    if (appView !== 'main') return;
+    if (appView !== "main") return;
     if (!isLoadingData && allRequests.length > 0) return;
     if (loadingRef.current) return;
 
     let retryCount = 0;
     const maxRetries = 60; // Max 5 minutes (60 * 5s)
-    
+
     const checkAndReload = async () => {
       if (retryCount >= maxRetries) {
-        console.log('[Auto-Retry] Max retries reached, stopping auto-check');
+        console.log("[Auto-Retry] Max retries reached, stopping auto-check");
         return;
       }
-      
+
       retryCount++;
-      console.log(`[Auto-Retry] Checking connection (attempt ${retryCount})...`);
-      
+      console.log(
+        `[Auto-Retry] Checking connection (attempt ${retryCount})...`,
+      );
+
       try {
         const status = await checkSupabaseConnection();
-        
+
         if (status.connected) {
-          console.log('[Auto-Retry] Connection restored! Reloading data...');
+          console.log("[Auto-Retry] Connection restored! Reloading data...");
           loadingRef.current = true;
           setIsLoadingData(true);
           setRequestsLoadError(null);
-          
+
           try {
-            const { data: firstPage, count: totalCount } = await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
+            const { data: firstPage, count: totalCount } =
+              await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
             if (Array.isArray(firstPage) && firstPage.length > 0) {
               setAllRequests(firstPage);
               setMarketplacePage(0);
-              const more = typeof totalCount === 'number'
+              const more = typeof totalCount === "number"
                 ? firstPage.length < totalCount
                 : firstPage.length === MARKETPLACE_PAGE_SIZE;
               setMarketplaceHasMore(more);
-              console.log('[Auto-Retry] Data loaded successfully!');
+              console.log("[Auto-Retry] Data loaded successfully!");
             }
           } catch (loadError) {
-            console.error('[Auto-Retry] Failed to load data after connection restored:', loadError);
+            console.error(
+              "[Auto-Retry] Failed to load data after connection restored:",
+              loadError,
+            );
           } finally {
             setIsLoadingData(false);
             loadingRef.current = false;
@@ -1002,16 +1225,16 @@ const App: React.FC = () => {
           console.log(`[Auto-Retry] Still disconnected: ${status.error}`);
         }
       } catch (err) {
-        console.log('[Auto-Retry] Connection check failed:', err);
+        console.log("[Auto-Retry] Connection check failed:", err);
       }
     };
 
     // Start checking every 5 seconds
     const intervalId = setInterval(checkAndReload, 5000);
-    
+
     // Also check immediately
     checkAndReload();
-    
+
     return () => {
       clearInterval(intervalId);
     };
@@ -1021,14 +1244,14 @@ const App: React.FC = () => {
   // Loading Timeout: Show friendly error after 10s
   // ==========================================
   useEffect(() => {
-    if (appView !== 'main') return;
+    if (appView !== "main") return;
     if (allRequests.length > 0) return;
     if (!isLoadingData) return;
     if (requestsLoadError) return;
 
     const timeoutId = setTimeout(() => {
       if (isLoadingData && allRequests.length === 0) {
-        setRequestsLoadError('قد يكون هناك مشكلة مؤقتة في الاتصال');
+        setRequestsLoadError("قد يكون هناك مشكلة مؤقتة في الاتصال");
         setIsLoadingData(false);
       }
     }, 10000);
@@ -1040,14 +1263,14 @@ const App: React.FC = () => {
   // Load Notifications from Supabase
   // ==========================================
   useEffect(() => {
-    if (appView !== 'main' || !user?.id) return;
+    if (appView !== "main" || !user?.id) return;
 
     const loadNotifications = async () => {
       try {
         const notifs = await getNotifications(50);
         setNotifications(notifs);
       } catch (error) {
-        console.error('Error loading notifications:', error);
+        console.error("Error loading notifications:", error);
       }
     };
 
@@ -1068,9 +1291,10 @@ const App: React.FC = () => {
     try {
       setMarketplaceIsLoadingMore(true);
       const nextPage = marketplacePage + 1;
-      const { data: pageData, count: totalCount } = await fetchRequestsPaginated(nextPage, MARKETPLACE_PAGE_SIZE);
+      const { data: pageData, count: totalCount } =
+        await fetchRequestsPaginated(nextPage, MARKETPLACE_PAGE_SIZE);
       setAllRequests((prev) => {
-        const seen = new Set(prev.map(r => r.id));
+        const seen = new Set(prev.map((r) => r.id));
         const merged = [...prev];
         for (const r of pageData) {
           if (!seen.has(r.id)) merged.push(r);
@@ -1079,12 +1303,12 @@ const App: React.FC = () => {
       });
       setMarketplacePage(nextPage);
       const loadedSoFar = allRequests.length + (pageData?.length || 0);
-      const more = typeof totalCount === 'number'
+      const more = typeof totalCount === "number"
         ? loadedSoFar < totalCount
         : (pageData?.length || 0) === MARKETPLACE_PAGE_SIZE;
       setMarketplaceHasMore(more);
     } catch (e) {
-      console.error('Error loading more requests:', e);
+      console.error("Error loading more requests:", e);
       setMarketplaceHasMore(false);
     } finally {
       setMarketplaceIsLoadingMore(false);
@@ -1095,7 +1319,7 @@ const App: React.FC = () => {
   // Load Interests Requests and Unread Count
   // ==========================================
   useEffect(() => {
-    if (appView !== 'main' || (!user?.id && !isGuest)) return;
+    if (appView !== "main" || (!user?.id && !isGuest)) return;
 
     const loadInterestsData = async () => {
       try {
@@ -1103,19 +1327,22 @@ const App: React.FC = () => {
         const activeCities = userPreferences.interestedCities;
 
         // Filter all requests by interests
-        const hasInterests = activeCategories.length > 0 || activeCities.length > 0;
-        
+        const hasInterests = activeCategories.length > 0 ||
+          activeCities.length > 0;
+
         if (hasInterests) {
-          const filtered = allRequests.filter(req => {
+          const filtered = allRequests.filter((req) => {
             // Check categories match
             const catMatch = activeCategories.length === 0 ||
-              (req.categories || []).some(catLabel => {
-                return activeCategories.some(interestId => {
-                  const categoryObj = AVAILABLE_CATEGORIES.find(c => c.id === interestId);
+              (req.categories || []).some((catLabel) => {
+                return activeCategories.some((interestId) => {
+                  const categoryObj = AVAILABLE_CATEGORIES.find((c) =>
+                    c.id === interestId
+                  );
                   const interestLabels = [interestId];
                   if (categoryObj) interestLabels.push(categoryObj.label);
-                  
-                  return interestLabels.some(label => 
+
+                  return interestLabels.some((label) =>
                     catLabel.toLowerCase().includes(label.toLowerCase()) ||
                     label.toLowerCase().includes(catLabel.toLowerCase())
                   );
@@ -1124,10 +1351,11 @@ const App: React.FC = () => {
 
             // Check city match
             const cityMatch = activeCities.length === 0 ||
-              (req.location && activeCities.some(city =>
-                req.location.toLowerCase().includes(city.toLowerCase()) || 
-                city.toLowerCase().includes(req.location.toLowerCase())
-              ));
+              (req.location &&
+                activeCities.some((city) =>
+                  req.location.toLowerCase().includes(city.toLowerCase()) ||
+                  city.toLowerCase().includes(req.location.toLowerCase())
+                ));
 
             return catMatch && cityMatch;
           });
@@ -1140,22 +1368,29 @@ const App: React.FC = () => {
           setUnreadInterestsCount(0);
         }
       } catch (error) {
-        console.error('Error loading interests data:', error);
+        console.error("Error loading interests data:", error);
       }
     };
 
     loadInterestsData();
-  }, [appView, user?.id, isGuest, allRequests, userPreferences.interestedCategories, userPreferences.interestedCities]);
+  }, [
+    appView,
+    user?.id,
+    isGuest,
+    allRequests,
+    userPreferences.interestedCategories,
+    userPreferences.interestedCities,
+  ]);
 
   // ==========================================
   // Subscribe to New Requests (Interests Only)
   // ==========================================
   useEffect(() => {
-    if (appView !== 'main') return;
+    if (appView !== "main") return;
 
     // Only subscribe if user has interests configured
-    const hasInterests = userPreferences.interestedCategories.length > 0 || 
-                        userPreferences.interestedCities.length > 0;
+    const hasInterests = userPreferences.interestedCategories.length > 0 ||
+      userPreferences.interestedCities.length > 0;
 
     if (!hasInterests) {
       setInterestsRequests([]);
@@ -1170,7 +1405,7 @@ const App: React.FC = () => {
       async (newRequest) => {
         // Add new request to interests list (only if not exists)
         setInterestsRequests((prev) => {
-          const exists = prev.some(r => r.id === newRequest.id);
+          const exists = prev.some((r) => r.id === newRequest.id);
           if (exists) return prev;
           return [newRequest, ...prev];
         });
@@ -1180,15 +1415,20 @@ const App: React.FC = () => {
 
         // Show notification if enabled (will be handled by database trigger)
         if (userPreferences.notifyOnInterest) {
-          console.log('🎯 طلب جديد يطابق اهتماماتك:', newRequest.title);
+          console.log("🎯 طلب جديد يطابق اهتماماتك:", newRequest.title);
         }
-      }
+      },
     );
 
     return () => {
       unsubscribe();
     };
-  }, [appView, userPreferences.interestedCategories, userPreferences.interestedCities, userPreferences.notifyOnInterest]);
+  }, [
+    appView,
+    userPreferences.interestedCategories,
+    userPreferences.interestedCities,
+    userPreferences.notifyOnInterest,
+  ]);
 
   // ==========================================
   // Navigation Helpers
@@ -1203,11 +1443,16 @@ const App: React.FC = () => {
         setMarketplaceScrollPos(currentScroll);
       }
     }
-    
+
     // الصفحات العامة التي لا يجب حفظها كجزء من حالة الوضع
-    const globalViews: ViewState[] = ["settings", "profile", "messages", "conversation"];
+    const globalViews: ViewState[] = [
+      "settings",
+      "profile",
+      "messages",
+      "conversation",
+    ];
     const isGlobalView = globalViews.includes(view);
-    
+
     // Save current state before switching modes (تجاهل الصفحات العامة)
     if (!isGlobalView) {
       if (mode === "offers") {
@@ -1224,18 +1469,20 @@ const App: React.FC = () => {
         });
       }
     }
-    
+
     setMode(newMode);
-    
+
     // إذا كنا في صفحة عامة، ننتقل للصفحة الافتراضية للوضع الجديد
     if (isGlobalView) {
-      const defaultView = newMode === "requests" ? "create-request" : "marketplace";
+      const defaultView = newMode === "requests"
+        ? "create-request"
+        : "marketplace";
       setView(defaultView);
       setSelectedRequest(null);
       setScrollToOfferSection(false);
       return;
     }
-    
+
     // Restore saved state if available, otherwise use default view
     if (newMode === "offers" && savedOffersModeState) {
       // Restore offers mode state
@@ -1249,7 +1496,9 @@ const App: React.FC = () => {
       setScrollToOfferSection(false);
     } else {
       // No saved state, use default view
-      const defaultView = newMode === "requests" ? "create-request" : "marketplace";
+      const defaultView = newMode === "requests"
+        ? "create-request"
+        : "marketplace";
       setView(defaultView);
       if (newMode === "offers") {
         setSelectedRequest(null);
@@ -1262,13 +1511,13 @@ const App: React.FC = () => {
     if (navigator.vibrate) {
       navigator.vibrate([10, 20, 10]);
     }
-    
+
     // Start animation
     setIsModeSwitching(true);
-    
+
     setTitleKey((prev) => prev + 1);
     handleModeSwitch(mode === "requests" ? "offers" : "requests");
-    
+
     // Reset animation state after a short delay
     setTimeout(() => {
       setIsModeSwitching(false);
@@ -1310,7 +1559,7 @@ const App: React.FC = () => {
       // Use requestAnimationFrame to ensure DOM is ready
       requestAnimationFrame(() => {
         if (!scrollContainerRef.current) return;
-        
+
         if (view === "create-request" && mode === "requests") {
           // Restore scroll position for requests mode
           scrollContainerRef.current.scrollTop = requestsModeScrollPos;
@@ -1321,7 +1570,11 @@ const App: React.FC = () => {
     }
   }, [view, mode, requestsModeScrollPos]);
 
-  const handleSelectRequest = (req: Request, scrollToOffer = false, fromSidebar = false) => {
+  const handleSelectRequest = (
+    req: Request,
+    scrollToOffer = false,
+    fromSidebar = false,
+  ) => {
     // Marketplace component already saves scroll position via onScrollPositionChange
     // No need to manually save it here - marketplaceScrollPos is already up to date
     setSelectedRequest(req);
@@ -1329,11 +1582,11 @@ const App: React.FC = () => {
     setNavigatedFromSidebar(fromSidebar); // تتبع مصدر التنقل
     setView("request-detail");
     if (window.innerWidth < 768) setIsSidebarOpen(false);
-    
+
     // Update viewed requests immediately for optimistic UI
     // Backend will be updated by RequestDetail component via markRequestAsViewed
     if (user?.id && !isGuest) {
-      setViewedRequestIds(prev => {
+      setViewedRequestIds((prev) => {
         const newSet = new Set(prev);
         newSet.add(req.id);
         return newSet;
@@ -1377,26 +1630,27 @@ const App: React.FC = () => {
     try {
       setIsLoadingData(true);
       setRequestsLoadError(null);
-      
-      const { data: firstPage, count: totalCount } = await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
+
+      const { data: firstPage, count: totalCount } =
+        await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
       setAllRequests(firstPage);
       setMarketplacePage(0);
-      const more = typeof totalCount === 'number'
+      const more = typeof totalCount === "number"
         ? firstPage.length < totalCount
         : firstPage.length === MARKETPLACE_PAGE_SIZE;
       setMarketplaceHasMore(more);
 
       if (user?.id) {
         const myReqs = await fetchMyRequests(user.id);
-        setMyRequests(myReqs.filter(r => r.status !== 'archived'));
+        setMyRequests(myReqs.filter((r) => r.status !== "archived"));
 
         const offers = await fetchMyOffers(user.id);
-        setMyOffers(offers.filter(o => o.status !== 'archived'));
-        
+        setMyOffers(offers.filter((o) => o.status !== "archived"));
+
         // Reload archived items
         const archivedReqs = await fetchArchivedRequests(user.id);
         setArchivedRequests(archivedReqs);
-        
+
         const archivedOffs = await fetchArchivedOffers(user.id);
         setArchivedOffers(archivedOffs);
       }
@@ -1411,7 +1665,7 @@ const App: React.FC = () => {
   // Archive handlers
   const handleArchiveRequest = async (requestId: string) => {
     if (!user?.id) return;
-    
+
     try {
       const success = await archiveRequest(requestId, user.id);
       if (success) {
@@ -1424,7 +1678,7 @@ const App: React.FC = () => {
 
   const handleUnarchiveRequest = async (requestId: string) => {
     if (!user?.id) return;
-    
+
     try {
       const success = await unarchiveRequest(requestId, user.id);
       if (success) {
@@ -1437,7 +1691,7 @@ const App: React.FC = () => {
 
   const handleArchiveOffer = async (offerId: string) => {
     if (!user?.id) return;
-    
+
     try {
       const success = await archiveOffer(offerId, user.id);
       if (success) {
@@ -1450,7 +1704,7 @@ const App: React.FC = () => {
 
   const handleUnarchiveOffer = async (offerId: string) => {
     if (!user?.id) return;
-    
+
     try {
       const success = await unarchiveOffer(offerId, user.id);
       if (success) {
@@ -1468,7 +1722,7 @@ const App: React.FC = () => {
     await authSignOut();
     setUser(null);
     setIsGuest(false);
-    localStorage.removeItem('abeely_guest_mode');
+    localStorage.removeItem("abeely_guest_mode");
     // إعادة تعيين الحالة للقيم الافتراضية لمنع بقاء آثار الجلسة السابقة
     setView("create-request");
     setMode("requests");
@@ -1476,7 +1730,7 @@ const App: React.FC = () => {
     setPreviousView(null);
     setSavedOffersModeState(null);
     setSavedRequestsModeState(null);
-    setAppView('auth');
+    setAppView("auth");
   };
 
   // ==========================================
@@ -1484,8 +1738,8 @@ const App: React.FC = () => {
   // ==========================================
   const handleGoToLogin = () => {
     setIsGuest(false);
-    localStorage.removeItem('abeely_guest_mode');
-    setAppView('auth');
+    localStorage.removeItem("abeely_guest_mode");
+    setAppView("auth");
   };
 
   // ==========================================
@@ -1497,13 +1751,13 @@ const App: React.FC = () => {
         return (
           <div className="h-full p-0 flex flex-col items-center justify-start pb-[env(safe-area-inset-bottom,0px)] overflow-x-hidden">
             <div className="w-full max-w-4xl h-full flex flex-col overflow-x-hidden">
-              <ChatArea 
+              <ChatArea
                 onRequestPublished={() => {
                   reloadData();
                   // مسح المحادثة بعد نشر الطلب بنجاح
                   setSavedChatMessages([]);
-                  localStorage.removeItem('abeely_chat_messages');
-                }} 
+                  localStorage.removeItem("abeely_chat_messages");
+                }}
                 isGuest={isGuest}
                 userId={user?.id}
                 savedMessages={savedChatMessages}
@@ -1518,41 +1772,141 @@ const App: React.FC = () => {
       case "marketplace":
         return (
           <div className="h-full flex flex-col overflow-hidden relative">
-            {allRequests && Array.isArray(allRequests) ? (
-              <Marketplace
-                requests={allRequests}
-                interestsRequests={interestsRequests}
-                unreadInterestsCount={unreadInterestsCount}
-                myOffers={myOffers}
-                onSelectRequest={handleSelectRequest}
-                userInterests={userInterests}
-                onUpdateInterests={(interests) => {
-                  setUserPreferences(prev => ({ ...prev, interestedCategories: interests }));
+            {allRequests && Array.isArray(allRequests)
+              ? (
+                <Marketplace
+                  requests={allRequests}
+                  interestsRequests={interestsRequests}
+                  unreadInterestsCount={unreadInterestsCount}
+                  myOffers={myOffers}
+                  onSelectRequest={handleSelectRequest}
+                  userInterests={userInterests}
+                  onUpdateInterests={(interests) => {
+                    setUserPreferences((prev) => ({
+                      ...prev,
+                      interestedCategories: interests,
+                    }));
+                  }}
+                  interestedCities={userPreferences.interestedCities}
+                  onUpdateCities={(cities) => {
+                    setUserPreferences((prev) => ({
+                      ...prev,
+                      interestedCities: cities,
+                    }));
+                  }}
+                  hasMore={marketplaceHasMore}
+                  isLoadingMore={marketplaceIsLoadingMore}
+                  isLoading={isLoadingData}
+                  onLoadMore={loadMoreMarketplaceRequests}
+                  onRefresh={reloadData}
+                  loadError={requestsLoadError}
+                  savedScrollPosition={marketplaceScrollPos}
+                  onScrollPositionChange={setMarketplaceScrollPos}
+                  // Viewed requests from Backend
+                  viewedRequestIds={viewedRequestIds}
+                  // Header integration props
+                  isSidebarOpen={isSidebarOpen}
+                  setIsSidebarOpen={setIsSidebarOpen}
+                  mode={mode}
+                  toggleMode={toggleMode}
+                  isModeSwitching={isModeSwitching}
+                  unreadCount={unreadCount}
+                  hasUnreadMessages={hasUnreadMessages}
+                  user={user}
+                  isGuest={isGuest}
+                  setView={setView}
+                  setPreviousView={setPreviousView}
+                  titleKey={titleKey}
+                  notifications={notifications}
+                  onMarkAsRead={handleMarkAsRead}
+                  onClearAll={handleClearNotifications}
+                  onSignOut={handleSignOut}
+                />
+              )
+              : (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <p className="text-muted-foreground">
+                      جاري تحميل الطلبات...
+                    </p>
+                  </div>
+                </div>
+              )}
+          </div>
+        );
+      case "request-detail":
+        return selectedRequest
+          ? (
+            <div className="h-full flex flex-col overflow-hidden">
+              <RequestDetail
+                request={selectedRequest}
+                mode={mode}
+                myOffer={getMyOfferOnRequest(selectedRequest.id)}
+                onBack={() => {
+                  setSelectedRequest(null);
+                  setScrollToOfferSection(false);
+                  setNavigatedFromSidebar(false);
+                  // إذا جاء من الـ Sidebar، ارجع للصفحة الافتراضية حسب الوضع
+                  if (navigatedFromSidebar) {
+                    setView(
+                      mode === "requests" ? "create-request" : "marketplace",
+                    );
+                  } else {
+                    setView("marketplace");
+                  }
+                  // Marketplace will restore scroll position via savedScrollPosition prop
                 }}
-                interestedCities={userPreferences.interestedCities}
-                onUpdateCities={(cities) => {
-                  setUserPreferences(prev => ({ ...prev, interestedCities: cities }));
+                isGuest={isGuest}
+                scrollToOfferSection={scrollToOfferSection}
+                navigatedFromSidebar={navigatedFromSidebar}
+                onNavigateToMessages={async (
+                  conversationId,
+                  userId,
+                  requestId,
+                  offerId,
+                ) => {
+                  const { getOrCreateConversation } = await import(
+                    "./services/messagesService"
+                  );
+                  const { getCurrentUser } = await import(
+                    "./services/authService"
+                  );
+
+                  if (userId && requestId) {
+                    const currentUser = await getCurrentUser();
+                    if (currentUser) {
+                      const conv = await getOrCreateConversation(
+                        userId,
+                        requestId,
+                        offerId,
+                      );
+                      if (conv) {
+                        setPreviousView(view);
+                        setView("messages");
+                      }
+                    }
+                  } else {
+                    setPreviousView(view);
+                    setView("messages");
+                  }
                 }}
-                hasMore={marketplaceHasMore}
-                isLoadingMore={marketplaceIsLoadingMore}
-                isLoading={isLoadingData}
-                onLoadMore={loadMoreMarketplaceRequests}
-                onRefresh={reloadData}
-                loadError={requestsLoadError}
-                savedScrollPosition={marketplaceScrollPos}
-                onScrollPositionChange={setMarketplaceScrollPos}
-                // Viewed requests from Backend
-                viewedRequestIds={viewedRequestIds}
+                savedOfferForm={savedOfferForms[selectedRequest.id]}
+                onOfferFormChange={(form) => {
+                  setSavedOfferForms((prev) => ({
+                    ...prev,
+                    [selectedRequest.id]: form,
+                  }));
+                }}
+                savedScrollPosition={requestDetailScrollPos}
+                onScrollPositionChange={setRequestDetailScrollPos}
                 // Header integration props
                 isSidebarOpen={isSidebarOpen}
                 setIsSidebarOpen={setIsSidebarOpen}
-                mode={mode}
                 toggleMode={toggleMode}
                 isModeSwitching={isModeSwitching}
                 unreadCount={unreadCount}
                 hasUnreadMessages={hasUnreadMessages}
                 user={user}
-                isGuest={isGuest}
                 setView={setView}
                 setPreviousView={setPreviousView}
                 titleKey={titleKey}
@@ -1560,84 +1914,11 @@ const App: React.FC = () => {
                 onMarkAsRead={handleMarkAsRead}
                 onClearAll={handleClearNotifications}
                 onSignOut={handleSignOut}
+                onMarkRequestAsRead={handleRequestRead}
               />
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <p className="text-muted-foreground">جاري تحميل الطلبات...</p>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      case "request-detail":
-        return selectedRequest ? (
-          <div className="h-full flex flex-col overflow-hidden">
-            <RequestDetail
-              request={selectedRequest}
-              mode={mode}
-              myOffer={getMyOfferOnRequest(selectedRequest.id)}
-              onBack={() => {
-                setSelectedRequest(null);
-                setScrollToOfferSection(false);
-                setNavigatedFromSidebar(false);
-                // إذا جاء من الـ Sidebar، ارجع للصفحة الافتراضية حسب الوضع
-                if (navigatedFromSidebar) {
-                  setView(mode === "requests" ? "create-request" : "marketplace");
-                } else {
-                  setView("marketplace");
-                }
-                // Marketplace will restore scroll position via savedScrollPosition prop
-              }}
-              isGuest={isGuest}
-              scrollToOfferSection={scrollToOfferSection}
-              navigatedFromSidebar={navigatedFromSidebar}
-              onNavigateToMessages={async (conversationId, userId, requestId, offerId) => {
-                const { getOrCreateConversation } = await import('./services/messagesService');
-                const { getCurrentUser } = await import('./services/authService');
-                
-                if (userId && requestId) {
-                  const currentUser = await getCurrentUser();
-                  if (currentUser) {
-                    const conv = await getOrCreateConversation(userId, requestId, offerId);
-                    if (conv) {
-                      setPreviousView(view);
-                      setView("messages");
-                    }
-                  }
-                } else {
-                  setPreviousView(view);
-                  setView("messages");
-                }
-              }}
-              savedOfferForm={savedOfferForms[selectedRequest.id]}
-              onOfferFormChange={(form) => {
-                setSavedOfferForms(prev => ({
-                  ...prev,
-                  [selectedRequest.id]: form
-                }));
-              }}
-              savedScrollPosition={requestDetailScrollPos}
-              onScrollPositionChange={setRequestDetailScrollPos}
-              // Header integration props
-              isSidebarOpen={isSidebarOpen}
-              setIsSidebarOpen={setIsSidebarOpen}
-              toggleMode={toggleMode}
-              isModeSwitching={isModeSwitching}
-              unreadCount={unreadCount}
-              hasUnreadMessages={hasUnreadMessages}
-              user={user}
-              setView={setView}
-              setPreviousView={setPreviousView}
-              titleKey={titleKey}
-              notifications={notifications}
-              onMarkAsRead={handleMarkAsRead}
-              onClearAll={handleClearNotifications}
-              onSignOut={handleSignOut}
-              onMarkRequestAsRead={handleRequestRead}
-            />
-          </div>
-        ) : null;
+            </div>
+          )
+          : null;
       case "settings":
         return (
           <div className="h-full flex flex-col overflow-hidden">
@@ -1654,7 +1935,9 @@ const App: React.FC = () => {
                   setView(previousView);
                   setPreviousView(null);
                 } else {
-                  handleNavigate(mode === "requests" ? "create-request" : "marketplace");
+                  handleNavigate(
+                    mode === "requests" ? "create-request" : "marketplace",
+                  );
                 }
               }}
               onSignOut={isGuest ? handleGoToLogin : handleSignOut}
@@ -1679,8 +1962,8 @@ const App: React.FC = () => {
       case "profile":
         return (
           <div className="h-full flex flex-col overflow-hidden">
-            <Profile 
-              userReviews={reviews} 
+            <Profile
+              userReviews={reviews}
               userRating={userRating}
               // Header integration props
               isSidebarOpen={isSidebarOpen}
@@ -1703,7 +1986,9 @@ const App: React.FC = () => {
                   setView(previousView);
                   setPreviousView(null);
                 } else {
-                  handleNavigate(mode === "requests" ? "create-request" : "marketplace");
+                  handleNavigate(
+                    mode === "requests" ? "create-request" : "marketplace",
+                  );
                 }
               }}
               isGuest={isGuest}
@@ -1719,7 +2004,9 @@ const App: React.FC = () => {
                   setView(previousView);
                   setPreviousView(null);
                 } else {
-                  handleNavigate(mode === "requests" ? "create-request" : "marketplace");
+                  handleNavigate(
+                    mode === "requests" ? "create-request" : "marketplace",
+                  );
                 }
               }}
               onSelectConversation={(conversationId) => {
@@ -1772,7 +2059,11 @@ const App: React.FC = () => {
           </div>
         );
       default:
-        return <div className="h-full flex flex-col overflow-hidden p-8">View not found</div>;
+        return (
+          <div className="h-full flex flex-col overflow-hidden p-8">
+            View not found
+          </div>
+        );
     }
   };
 
@@ -1783,17 +2074,17 @@ const App: React.FC = () => {
   // ==========================================
 
   // OAuth Popup Success Screen - Show success and close
-  if (appView === 'oauth-popup' || isOAuthPopupMode) {
+  if (appView === "oauth-popup" || isOAuthPopupMode) {
     return <OAuthPopupSuccess />;
   }
 
   // Splash Screen
-  if (appView === 'splash') {
+  if (appView === "splash") {
     return <SplashScreen onComplete={handleSplashComplete} />;
   }
 
   // Connection Error Screen
-  if (appView === 'connection-error') {
+  if (appView === "connection-error") {
     return (
       <ConnectionError
         onRetry={handleConnectionRetry}
@@ -1805,40 +2096,67 @@ const App: React.FC = () => {
   }
 
   // Auth Screen
-  if (appView === 'auth') {
+  if (appView === "auth") {
     return (
       <AuthPage
         onAuthenticated={async () => {
-          // Fetch session and user profile
-          try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-              const profile = await getCurrentUser();
-              if (profile) {
-                setUser(profile);
-                setIsGuest(false);
-                localStorage.removeItem('abeely_guest_mode');
+          // Fetch session and user profile with retry logic
+          let retries = 0;
+          const maxRetries = 5;
+
+          while (retries < maxRetries) {
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.user) {
+                // Wait a bit for profile to be ready
+                await new Promise((resolve) => setTimeout(resolve, 300));
+
+                const profile = await getCurrentUser();
+                if (profile) {
+                  setUser(profile);
+                  setIsGuest(false);
+                  localStorage.removeItem("abeely_guest_mode");
+                  localStorage.removeItem("abeely_oauth_popup_active");
+                  // إعادة تعيين الحالة للقيم الافتراضية عند تسجيل الدخول
+                  setView("create-request");
+                  setMode("requests");
+                  setSelectedRequest(null);
+                  setPreviousView(null);
+                  setAppView("main");
+                  return; // Success, exit
+                }
               }
+
+              // If no session yet, wait and retry
+              if (retries < maxRetries - 1) {
+                await new Promise((resolve) => setTimeout(resolve, 500));
+              }
+            } catch (err) {
+              console.error(
+                `Error fetching user after auth (attempt ${retries + 1}):`,
+                err,
+              );
             }
-          } catch (err) {
-            console.error('Error fetching user after auth:', err);
+
+            retries++;
           }
-          // إعادة تعيين الحالة للقيم الافتراضية عند تسجيل الدخول
-          setView("create-request");
-          setMode("requests");
-          setSelectedRequest(null);
-          setPreviousView(null);
-          setAppView('main');
+
+          // If we get here, session wasn't found after retries
+          // But still try to proceed - onAuthStateChange will handle it
+          console.warn(
+            "Session not found after retries, but proceeding anyway",
+          );
+          setAppView("main");
         }}
         onGuestMode={() => {
           setIsGuest(true);
-          localStorage.setItem('abeely_guest_mode', 'true');
+          localStorage.setItem("abeely_guest_mode", "true");
           // إعادة تعيين الحالة للقيم الافتراضية عند الدخول كضيف
           setView("create-request");
           setMode("requests");
           setSelectedRequest(null);
           setPreviousView(null);
-          setAppView('main');
+          setAppView("main");
         }}
       />
     );
@@ -1958,11 +2276,11 @@ const App: React.FC = () => {
                 {/* Language Options */}
                 <div className="space-y-2">
                   <button
-                    onClick={() => setCurrentLanguage('ar')}
+                    onClick={() => setCurrentLanguage("ar")}
                     className={`w-full p-4 rounded-xl border-2 transition-all flex items-center justify-between ${
-                      currentLanguage === 'ar'
-                        ? 'border-primary bg-primary/10'
-                        : 'border-border hover:border-primary/50 hover:bg-secondary/50'
+                      currentLanguage === "ar"
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:border-primary/50 hover:bg-secondary/50"
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -1971,10 +2289,12 @@ const App: React.FC = () => {
                       </div>
                       <div className="text-right">
                         <span className="font-bold block">العربية</span>
-                        <span className="text-xs text-muted-foreground">اللغة الحالية</span>
+                        <span className="text-xs text-muted-foreground">
+                          اللغة الحالية
+                        </span>
                       </div>
                     </div>
-                    {currentLanguage === 'ar' && (
+                    {currentLanguage === "ar" && (
                       <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
                         <Check size={14} className="text-white" />
                       </div>
@@ -1991,7 +2311,9 @@ const App: React.FC = () => {
                       </div>
                       <div className="text-right">
                         <span className="font-bold block">English</span>
-                        <span className="text-xs text-muted-foreground">قريباً</span>
+                        <span className="text-xs text-muted-foreground">
+                          قريباً
+                        </span>
                       </div>
                     </div>
                   </button>
@@ -2006,7 +2328,9 @@ const App: React.FC = () => {
                       </div>
                       <div className="text-right">
                         <span className="font-bold block">اردو</span>
-                        <span className="text-xs text-muted-foreground">قريباً</span>
+                        <span className="text-xs text-muted-foreground">
+                          قريباً
+                        </span>
                       </div>
                     </div>
                   </button>
@@ -2015,18 +2339,27 @@ const App: React.FC = () => {
                 <div className="p-4 bg-secondary/50 rounded-lg border border-border">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
-                      <h4 className="font-bold text-sm">ترجمة جميع الطلبات تلقائياً</h4>
-                      <p className="text-xs text-muted-foreground mt-1">ترجمة الطلبات للغة المحددة تلقائياً</p>
+                      <h4 className="font-bold text-sm">
+                        ترجمة جميع الطلبات تلقائياً
+                      </h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        ترجمة الطلبات للغة المحددة تلقائياً
+                      </p>
                     </div>
                     <button
-                      onClick={() => setAutoTranslateRequests(!autoTranslateRequests)}
+                      onClick={() =>
+                        setAutoTranslateRequests(!autoTranslateRequests)}
                       className={`w-14 h-7 rounded-full p-1 transition-all relative flex items-center shrink-0 ${
                         autoTranslateRequests ? "bg-primary" : "bg-gray-300"
                       }`}
                     >
                       <motion.div
                         animate={{ x: autoTranslateRequests ? -28 : 0 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 500,
+                          damping: 30,
+                        }}
                         className="w-5 h-5 bg-white rounded-full shadow-lg"
                       />
                     </button>
