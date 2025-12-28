@@ -625,35 +625,6 @@ const App: React.FC = () => {
     }
 
     const initAuth = async () => {
-      // Handle OAuth callback from Capacitor Browser
-      const urlParams = new URLSearchParams(window.location.search);
-      const isOAuthCallback = urlParams.get('oauth_callback') === 'true';
-      
-      if (isOAuthCallback) {
-        // This is OAuth callback from Capacitor Browser
-        // Clean URL immediately
-        const cleanUrl = window.location.origin + window.location.pathname;
-        window.history.replaceState({}, document.title, cleanUrl);
-        
-        // Wait for session to be established
-        const maxRetries = 5;
-        for (let i = 0; i < maxRetries; i++) {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) {
-            const profile = await getCurrentUser();
-            if (profile) {
-              setUser(profile);
-              setIsGuest(false);
-              localStorage.removeItem('abeely_guest_mode');
-              setAppView('main');
-              setAuthLoading(false);
-              return;
-            }
-          }
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      }
-
       // If we have OAuth/Magic Link callback params in main window
       // Let Supabase's detectSessionInUrl handle the code/token exchange automatically
       // We just need to wait for the session and clean the URL

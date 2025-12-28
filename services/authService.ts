@@ -108,15 +108,6 @@ function isCapacitor(): boolean {
   return typeof (window as any)?.Capacitor !== 'undefined';
 }
 
-// Import Browser plugin for Capacitor (lazy load)
-let Browser: any = null;
-const getBrowser = async () => {
-  if (!Browser && isCapacitor()) {
-    Browser = (await import('@capacitor/browser')).Browser;
-  }
-  return Browser;
-};
-
 /**
  * OAuth flow result with popup reference for cancellation
  */
@@ -174,57 +165,57 @@ export function startOAuthFlow(
         return;
       }
 
-      // Mobile: Use Browser plugin (WebView) for OAuth
+      // Mobile: Use In-App Browser (WebView) for OAuth
       if (isCapacitor()) {
-        const BrowserPlugin = await getBrowser();
-        
-        if (!BrowserPlugin) {
-          onError('Browser plugin غير متاح');
-          return;
-        }
-
-        // Get OAuth URL
-        const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
-          provider,
-          options: {
-            redirectTo: `${window.location.origin}?oauth_callback=true`,
-            skipBrowserRedirect: true,
-            queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
-          },
-        });
-
-        if (oauthError || !data?.url) {
-          onError(oauthError?.message || `فشل الدخول بحساب ${provider === 'google' ? 'Google' : 'Apple'}`);
-          return;
-        }
-
-        // Open OAuth URL in Capacitor Browser (WebView)
-        await BrowserPlugin.open({
-          url: data.url,
-          windowName: '_self',
-          toolbarColor: '#153659',
-        });
-
-        // Listen for auth state changes
-        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-          if (event === 'SIGNED_IN' && session && !cancelled) {
-            // Close browser when auth succeeds
-            try {
-              await BrowserPlugin.close();
-            } catch (err) {
-              console.log('Browser already closed');
-            }
-            
-            cleanup();
-            onSuccess();
+        try {
+          // Dynamically import Browser plugin
+          const { Browser } = await import('@capacitor/browser');
+          
+          // Get OAuth URL from Supabase
+          const { data: oauthData, error: oauthError } = await supabase.auth.signInWithOAuth({
+            provider,
+            options: {
+              redirectTo: window.location.origin,
+              skipBrowserRedirect: true, // نحصل على URL فقط بدون إعادة توجيه
+              queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
+            },
+          });
+          
+          if (oauthError || !oauthData?.url) {
+            onError(oauthError?.message || `فشل الدخول بحساب ${provider === 'google' ? 'Google' : 'Apple'}`);
+            return;
           }
-        });
-        authSubscription = authListener.subscription;
-
-        // Also listen for browser close event
-        BrowserPlugin.addListener('browserFinished', () => {
-          // Check if auth succeeded
-          supabase.auth.getSession().then(({ data: sessionData }) => {
+          
+          // Open OAuth URL in In-App Browser (WebView)
+          await Browser.open({
+            url: oauthData.url,
+            windowName: '_blank',
+            presentationStyle: 'popover',
+          });
+          
+          // Listen for auth state changes
+          const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' && session && !cancelled) {
+              // Close the browser
+              try {
+                await Browser.close();
+              } catch (e) {
+                console.log('Browser already closed');
+              }
+              
+              cleanup();
+              onSuccess();
+            }
+          });
+          authSubscription = authListener.subscription;
+          
+          // Listen for browser close event
+          const browserCloseListener = await Browser.addListener('browserFinished', async () => {
+            // Wait a moment for auth to complete
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Check if auth succeeded
+            const { data: sessionData } = await supabase.auth.getSession();
             if (sessionData?.session) {
               cleanup();
               onSuccess();
@@ -232,9 +223,27 @@ export function startOAuthFlow(
               cleanup();
               onError('تم إلغاء تسجيل الدخول');
             }
+            
+            browserCloseListener.remove();
           });
-        });
-
+          
+        } catch (browserError: any) {
+          console.error('Browser plugin error:', browserError);
+          
+          // Fallback: Use redirect flow if Browser plugin fails
+          const { error } = await supabase.auth.signInWithOAuth({
+            provider,
+            options: {
+              redirectTo: window.location.origin,
+              queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
+            },
+          });
+          
+          if (error) {
+            onError(error.message || `فشل الدخول بحساب ${provider === 'google' ? 'Google' : 'Apple'}`);
+          }
+        }
+        
         return;
       }
 
