@@ -478,23 +478,50 @@ const App: React.FC = () => {
           
           if (authCode) {
             try {
-              await supabase.auth.exchangeCodeForSession(authCode);
-              console.log("✅ Code exchanged for session");
+              // استخدام نتيجة exchangeCodeForSession مباشرة
+              const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
+              
+              if (exchangeError) {
+                console.error("❌ exchangeCodeForSession failed:", exchangeError);
+              } else if (exchangeData?.session?.user && isMounted) {
+                console.log("✅ Session created from OAuth code");
+                
+                // تنظيف الـ URL
+                const cleanUrl = window.location.origin + window.location.pathname;
+                window.history.replaceState({}, document.title, cleanUrl);
+                
+                // تحميل الـ profile
+                try {
+                  const profile = await getCurrentUser();
+                  if (profile && isMounted) {
+                    setUser(profile);
+                  }
+                } catch (profileErr) {
+                  console.warn("Profile fetch failed:", profileErr);
+                }
+                
+                // مسح guest mode والدخول
+                setIsGuest(false);
+                localStorage.removeItem("abeely_guest_mode");
+                setAppView("main");
+                setAuthLoading(false);
+                return;
+              }
             } catch (e) {
-              console.error("❌ exchangeCodeForSession failed:", e);
+              console.error("❌ exchangeCodeForSession error:", e);
             }
           }
           
-          // تنظيف الـ URL من الـ OAuth params
+          // تنظيف الـ URL حتى لو فشل
           const cleanUrl = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, cleanUrl);
         }
 
-        // 2. تحقق من وجود session
+        // 2. تحقق من وجود session موجودة
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session?.user && isMounted) {
-          console.log("✅ Session found, loading profile...");
+          console.log("✅ Existing session found, loading profile...");
           try {
             const profile = await getCurrentUser();
             if (profile && isMounted) {
@@ -510,13 +537,15 @@ const App: React.FC = () => {
           return;
         }
 
-        // 3. تحقق من وجود guest mode محفوظ
-        const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
-        if (isGuestSaved && isMounted) {
-          setIsGuest(true);
-          setAppView("main");
-          setAuthLoading(false);
-          return;
+        // 3. تحقق من وجود guest mode محفوظ (فقط إذا لم يكن هذا OAuth callback)
+        if (!isOAuthCallback) {
+          const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
+          if (isGuestSaved && isMounted) {
+            setIsGuest(true);
+            setAppView("main");
+            setAuthLoading(false);
+            return;
+          }
         }
 
         // 4. تحقق من نوع الرابط - الصفحات العامة تدخل كضيف
