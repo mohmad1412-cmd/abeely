@@ -185,9 +185,9 @@ export async function fetchAllRequests(): Promise<Request[]> {
  */
 export async function checkSupabaseConnection(): Promise<{connected: boolean; error?: string}> {
   try {
-    // Add 5 second timeout to prevent hanging
+    // Add 15 second timeout to prevent hanging (increased for slow connections)
     const timeoutPromise = new Promise<{connected: false; error: string}>((_, reject) => {
-      setTimeout(() => reject(new Error("Connection timeout (5s)")), 5000);
+      setTimeout(() => reject(new Error("Connection timeout (15s)")), 15000);
     });
     
     const queryPromise = (async () => {
@@ -276,6 +276,7 @@ export async function fetchMyOffers(providerId: string): Promise<Offer[]> {
   return (data || []).map((offer: any) => ({
     id: offer.id,
     requestId: offer.request_id,
+    providerId: offer.provider_id,
     providerName: offer.provider_name,
     title: offer.title,
     description: offer.description || "",
@@ -307,6 +308,7 @@ export async function fetchOffersForRequest(requestId: string): Promise<Offer[]>
   return (data || []).map((offer: any) => ({
     id: offer.id,
     requestId: offer.request_id,
+    providerId: offer.provider_id,
     providerName: offer.provider_name,
     title: offer.title,
     description: offer.description || "",
@@ -519,6 +521,7 @@ export async function fetchArchivedOffers(providerId: string): Promise<Offer[]> 
   return (data || []).map((offer: any) => ({
     id: offer.id,
     requestId: offer.request_id,
+    providerId: offer.provider_id,
     providerName: offer.provider_name,
     title: offer.title,
     description: offer.description || "",
@@ -683,4 +686,75 @@ export function subscribeToNewRequests(
   return () => {
     supabase.removeChannel(channel);
   };
+}
+
+/**
+ * قبول عرض معين على طلب
+ * - يغير حالة العرض إلى "accepted"
+ * - يغير حالة الطلب إلى "assigned"
+ * - يرفض العروض الأخرى
+ */
+export async function acceptOffer(
+  requestId: string,
+  offerId: string,
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // 1. التحقق من أن المستخدم هو صاحب الطلب
+    const { data: request, error: requestError } = await supabase
+      .from('requests')
+      .select('author_id')
+      .eq('id', requestId)
+      .single();
+
+    if (requestError || !request) {
+      return { success: false, error: 'الطلب غير موجود' };
+    }
+
+    if (request.author_id !== userId) {
+      return { success: false, error: 'غير مصرح لك بقبول هذا العرض' };
+    }
+
+    // 2. تحديث حالة العرض المقبول إلى "accepted"
+    const { error: acceptError } = await supabase
+      .from('offers')
+      .update({ status: 'accepted' })
+      .eq('id', offerId)
+      .eq('request_id', requestId);
+
+    if (acceptError) {
+      console.error('خطأ في قبول العرض:', acceptError);
+      return { success: false, error: 'فشل في قبول العرض' };
+    }
+
+    // 3. رفض العروض الأخرى على نفس الطلب
+    const { error: rejectError } = await supabase
+      .from('offers')
+      .update({ status: 'rejected' })
+      .eq('request_id', requestId)
+      .neq('id', offerId)
+      .in('status', ['pending', 'negotiating']);
+
+    if (rejectError) {
+      console.warn('تحذير: فشل في رفض العروض الأخرى:', rejectError);
+    }
+
+    // 4. تحديث حالة الطلب إلى "assigned"
+    const { error: updateRequestError } = await supabase
+      .from('requests')
+      .update({ 
+        status: 'assigned',
+        accepted_offer_id: offerId
+      })
+      .eq('id', requestId);
+
+    if (updateRequestError) {
+      console.warn('تحذير: فشل في تحديث حالة الطلب:', updateRequestError);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('خطأ في قبول العرض:', error);
+    return { success: false, error: 'حدث خطأ غير متوقع' };
+  }
 }

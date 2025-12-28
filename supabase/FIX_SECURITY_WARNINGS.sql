@@ -652,3 +652,212 @@ BEGIN
 END;
 $$;
 
+-- ==========================================
+-- update_updated_at_column Function (مختلف عن update_updated_at)
+-- ==========================================
+
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$;
+
+-- ==========================================
+-- User Management Functions
+-- ==========================================
+
+-- Function to update profile when user data changes
+CREATE OR REPLACE FUNCTION handle_user_update()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  user_display_name TEXT;
+  user_avatar_url TEXT;
+BEGIN
+  IF OLD.phone IS DISTINCT FROM NEW.phone OR
+     OLD.email IS DISTINCT FROM NEW.email OR
+     OLD.raw_user_meta_data IS DISTINCT FROM NEW.raw_user_meta_data OR
+     OLD.email_confirmed_at IS DISTINCT FROM NEW.email_confirmed_at OR
+     OLD.phone_confirmed_at IS DISTINCT FROM NEW.phone_confirmed_at THEN
+    
+    user_display_name := COALESCE(
+      NEW.raw_user_meta_data->>'display_name',
+      NEW.raw_user_meta_data->>'full_name',
+      NEW.raw_user_meta_data->>'name',
+      NULL
+    );
+    
+    user_avatar_url := COALESCE(
+      NEW.raw_user_meta_data->>'avatar_url',
+      NEW.raw_user_meta_data->>'picture',
+      NULL
+    );
+    
+    UPDATE public.profiles
+    SET
+      phone = NEW.phone,
+      email = NEW.email,
+      display_name = COALESCE(user_display_name, display_name),
+      avatar_url = COALESCE(user_avatar_url, avatar_url),
+      is_verified = CASE 
+        WHEN NEW.email_confirmed_at IS NOT NULL OR NEW.phone_confirmed_at IS NOT NULL 
+        THEN TRUE 
+        ELSE is_verified 
+      END,
+      updated_at = NOW()
+    WHERE id = NEW.id;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+-- Function to manually create profile (for existing users)
+CREATE OR REPLACE FUNCTION create_profile_for_user(user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  user_record auth.users%ROWTYPE;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.profiles WHERE id = user_id) THEN
+    RETURN FALSE;
+  END IF;
+  
+  SELECT * INTO user_record FROM auth.users WHERE id = user_id;
+  
+  IF NOT FOUND THEN
+    RETURN FALSE;
+  END IF;
+  
+  INSERT INTO public.profiles (
+    id,
+    phone,
+    email,
+    display_name,
+    avatar_url,
+    role,
+    is_guest,
+    is_verified,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    user_record.id,
+    user_record.phone,
+    user_record.email,
+    COALESCE(
+      user_record.raw_user_meta_data->>'display_name',
+      user_record.raw_user_meta_data->>'full_name',
+      user_record.raw_user_meta_data->>'name',
+      NULL
+    ),
+    COALESCE(
+      user_record.raw_user_meta_data->>'avatar_url',
+      user_record.raw_user_meta_data->>'picture',
+      NULL
+    ),
+    'user',
+    FALSE,
+    CASE 
+      WHEN user_record.email_confirmed_at IS NOT NULL OR user_record.phone_confirmed_at IS NOT NULL 
+      THEN TRUE 
+      ELSE FALSE 
+    END,
+    NOW(),
+    NOW()
+  );
+  
+  RETURN TRUE;
+END;
+$$;
+
+-- ==========================================
+-- Guest Verification Functions
+-- ==========================================
+
+-- Function to verify guest phone
+CREATE OR REPLACE FUNCTION verify_guest_phone(
+  phone_number TEXT,
+  verification_code TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  guest_record verified_guests%ROWTYPE;
+BEGIN
+  -- Find matching record
+  SELECT * INTO guest_record
+  FROM verified_guests
+  WHERE phone = phone_number
+    AND verification_code = verification_code
+    AND code_expires_at > NOW()
+    AND is_verified = FALSE;
+  
+  IF NOT FOUND THEN
+    RETURN FALSE; -- Invalid or expired code
+  END IF;
+  
+  -- Mark as verified
+  UPDATE verified_guests
+  SET
+    is_verified = TRUE,
+    verified_at = NOW(),
+    updated_at = NOW()
+  WHERE phone = phone_number
+    AND verification_code = verification_code;
+  
+  RETURN TRUE;
+END;
+$$;
+
+-- Function to clean expired guest records
+CREATE OR REPLACE FUNCTION clean_expired_guest_records()
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  deleted_count INTEGER;
+BEGIN
+  -- Delete records that expired more than 24 hours ago
+  DELETE FROM verified_guests
+  WHERE code_expires_at < NOW() - INTERVAL '24 hours';
+  
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RETURN deleted_count;
+END;
+$$;
+
+-- ==========================================
+-- ⚠️ LEAKED PASSWORD PROTECTION (تحذير: يتطلب إعداد من Dashboard)
+-- ==========================================
+-- 
+-- هذا التحذير لا يمكن إصلاحه عن طريق SQL.
+-- يجب تفعيله من Supabase Dashboard:
+--
+-- 1. اذهب إلى Supabase Dashboard
+-- 2. اختر مشروعك
+-- 3. اذهب إلى: Authentication → Providers → Email
+-- 4. فعّل خيار: "Leaked password protection"
+--
+-- أو استخدم هذا الرابط المباشر:
+-- https://supabase.com/dashboard/project/YOUR_PROJECT_ID/auth/providers
+--
+-- هذه الميزة تمنع المستخدمين من استخدام كلمات مرور تم تسريبها
+-- عن طريق فحصها ضد قاعدة بيانات HaveIBeenPwned.org
+-- ==========================================

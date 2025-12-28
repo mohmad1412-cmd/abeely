@@ -16,7 +16,7 @@ export const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({
   height,
   count = 1,
 }) => {
-  const baseStyles = 'relative overflow-hidden bg-muted';
+  const baseStyles = 'relative overflow-hidden bg-gradient-to-r from-muted via-muted to-muted';
   
   const variantStyles = {
     text: 'h-4 rounded',
@@ -30,40 +30,14 @@ export const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({
   return (
     <>
       {items.map((i) => (
-        <motion.div
+        <div
           key={i}
-          className={`${baseStyles} ${variantStyles[variant]} ${className}`}
+          className={`${baseStyles} ${variantStyles[variant]} ${className} skeleton-shimmer`}
           style={{
             width: width || '100%',
             height: height || (variant === 'text' ? '1rem' : variant === 'circular' ? '3rem' : '6rem'),
           }}
-          animate={{
-            opacity: [0.6, 0.8, 0.6],
-          }}
-          transition={{
-            duration: 3,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        >
-          {/* Diagonal Shimmer Effect - Top Left to Bottom Right */}
-          {/* Reduced opacity to 0.1 for subtle effect as requested */}
-          {/* Slowed duration to 3s for smoother animation */}
-          <motion.div
-            className="absolute inset-0 -translate-x-full"
-            style={{
-              background: 'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.05) 50%, transparent 70%)',
-            }}
-            animate={{
-              x: ['-100%', '200%'],
-            }}
-            transition={{
-              duration: 3,
-              repeat: Infinity,
-              ease: 'linear',
-            }}
-          />
-        </motion.div>
+        />
       ))}
     </>
   );
@@ -136,16 +110,22 @@ export const FullScreenLoading: React.FC<{ message?: string }> = ({ message = 'Ø
 // Preset skeletons for common use cases
 export const CardSkeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
   <div 
-    className={`bg-card border border-border rounded-2xl overflow-hidden ${className}`}
+    className={`bg-card border border-border rounded-2xl overflow-hidden skeleton-card ${className}`}
   >
-    <LoadingSkeleton variant="rectangular" height={160} className="rounded-none" />
+    {/* Image placeholder */}
+    <div className="h-40 bg-muted skeleton-shimmer" />
+    
+    {/* Content */}
     <div className="p-4 space-y-3">
-      <LoadingSkeleton variant="text" width="70%" />
-      <LoadingSkeleton variant="text" width="100%" />
-      <LoadingSkeleton variant="text" width="50%" />
+      {/* Title */}
+      <div className="h-5 w-3/4 bg-muted rounded skeleton-shimmer" />
+      {/* Description */}
+      <div className="h-4 w-full bg-muted rounded skeleton-shimmer" />
+      <div className="h-4 w-1/2 bg-muted rounded skeleton-shimmer" />
+      {/* Tags */}
       <div className="flex gap-2 pt-2">
-        <LoadingSkeleton variant="rectangular" width={80} height={28} className="rounded-full" />
-        <LoadingSkeleton variant="rectangular" width={80} height={28} className="rounded-full" />
+        <div className="h-7 w-20 bg-muted rounded-full skeleton-shimmer" />
+        <div className="h-7 w-20 bg-muted rounded-full skeleton-shimmer" />
       </div>
     </div>
   </div>
@@ -190,17 +170,20 @@ export const ListItemSkeleton: React.FC = () => (
   </div>
 );
 
-// Grid of Card Skeletons
+// Grid of Card Skeletons with staggered shimmer effect
 export const CardsGridSkeleton: React.FC<{ count?: number; showLogo?: boolean }> = ({ count = 6, showLogo = true }) => {
   return (
     <div className="relative">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-60">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {Array.from({ length: count }).map((_, i) => (
           <div
             key={i}
-            className=""
+            className="skeleton-card-wrapper"
+            style={{ 
+              animationDelay: `${i * 0.15}s`,
+            }}
           >
-            <CardSkeleton />
+            <CardSkeletonEnhanced index={i} />
           </div>
         ))}
       </div>
@@ -213,6 +196,68 @@ export const CardsGridSkeleton: React.FC<{ count?: number; showLogo?: boolean }>
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+// Enhanced Card Skeleton with staggered shimmer
+const CardSkeletonEnhanced: React.FC<{ index: number; className?: string }> = ({ index, className = '' }) => {
+  // Calculate animation delay based on index for wave effect
+  const baseDelay = index * 0.15;
+  
+  return (
+    <div 
+      className={`bg-card border border-border rounded-2xl overflow-hidden ${className}`}
+    >
+      {/* Image placeholder with shimmer */}
+      <div 
+        className="h-40 bg-muted relative overflow-hidden"
+        style={{ '--shimmer-delay': `${baseDelay}s` } as React.CSSProperties}
+      >
+        <div 
+          className="absolute inset-0 shimmer-wave"
+          style={{ animationDelay: `${baseDelay}s` }}
+        />
+      </div>
+      
+      {/* Content */}
+      <div className="p-4 space-y-3">
+        {/* Title */}
+        <div className="relative overflow-hidden h-5 w-3/4 bg-muted rounded">
+          <div 
+            className="absolute inset-0 shimmer-wave"
+            style={{ animationDelay: `${baseDelay + 0.05}s` }}
+          />
+        </div>
+        {/* Description lines */}
+        <div className="relative overflow-hidden h-4 w-full bg-muted rounded">
+          <div 
+            className="absolute inset-0 shimmer-wave"
+            style={{ animationDelay: `${baseDelay + 0.1}s` }}
+          />
+        </div>
+        <div className="relative overflow-hidden h-4 w-1/2 bg-muted rounded">
+          <div 
+            className="absolute inset-0 shimmer-wave"
+            style={{ animationDelay: `${baseDelay + 0.15}s` }}
+          />
+        </div>
+        {/* Tags */}
+        <div className="flex gap-2 pt-2">
+          <div className="relative overflow-hidden h-7 w-20 bg-muted rounded-full">
+            <div 
+              className="absolute inset-0 shimmer-wave"
+              style={{ animationDelay: `${baseDelay + 0.2}s` }}
+            />
+          </div>
+          <div className="relative overflow-hidden h-7 w-20 bg-muted rounded-full">
+            <div 
+              className="absolute inset-0 shimmer-wave"
+              style={{ animationDelay: `${baseDelay + 0.25}s` }}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

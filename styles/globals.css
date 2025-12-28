@@ -183,6 +183,123 @@ body {
     animation: shimmer 1.5s infinite;
 }
 
+/* ========================================
+   PROFESSIONAL SKELETON SHIMMER EFFECT
+   Like Facebook, Instagram, and other pro apps
+   ======================================== */
+.skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background: var(--muted);
+}
+
+.skeleton-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        transparent 20%,
+        rgba(255, 255, 255, 0.15) 40%,
+        rgba(255, 255, 255, 0.35) 50%,
+        rgba(255, 255, 255, 0.15) 60%,
+        transparent 80%,
+        transparent 100%
+    );
+    animation: skeleton-shimmer-slide 1.5s ease-in-out infinite;
+}
+
+.dark .skeleton-shimmer::after {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        transparent 20%,
+        rgba(255, 255, 255, 0.08) 40%,
+        rgba(255, 255, 255, 0.15) 50%,
+        rgba(255, 255, 255, 0.08) 60%,
+        transparent 80%,
+        transparent 100%
+    );
+}
+
+@keyframes skeleton-shimmer-slide {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+/* Wave shimmer effect - for staggered loading animation */
+.shimmer-wave {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        transparent 25%,
+        rgba(255, 255, 255, 0.2) 45%,
+        rgba(255, 255, 255, 0.4) 50%,
+        rgba(255, 255, 255, 0.2) 55%,
+        transparent 75%,
+        transparent 100%
+    );
+    transform: translateX(-100%);
+    animation: shimmer-wave-slide 1.8s ease-in-out infinite;
+}
+
+.dark .shimmer-wave {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        transparent 25%,
+        rgba(255, 255, 255, 0.1) 45%,
+        rgba(255, 255, 255, 0.2) 50%,
+        rgba(255, 255, 255, 0.1) 55%,
+        transparent 75%,
+        transparent 100%
+    );
+}
+
+@keyframes shimmer-wave-slide {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+/* Card skeleton with shimmer */
+.skeleton-card {
+    position: relative;
+    overflow: hidden;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+}
+
+.skeleton-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        transparent 30%,
+        rgba(30, 150, 140, 0.08) 45%,
+        rgba(30, 150, 140, 0.15) 50%,
+        rgba(30, 150, 140, 0.08) 55%,
+        transparent 70%,
+        transparent 100%
+    );
+    animation: skeleton-shimmer-slide 1.8s ease-in-out infinite;
+    z-index: 10;
+    pointer-events: none;
+}
+
 .loading-shimmer-overlay {
     position: relative;
     overflow: hidden;
@@ -708,11 +825,273 @@ input[type="number"]::-webkit-inner-spin-button {
     color: inherit;
 }
 
+/* ========================================
+   MODERN TOUCH-SENSITIVE BUTTON EFFECTS
+   ======================================== */
+
+/* Base button reset with modern touch feel */
+button {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+    cursor: pointer;
+}
+
+/* Active press effect - subtle scale down (only for buttons that opt-in) */
+button.btn-tap:not(:disabled):active {
+    transform: scale(0.97);
+}
+
+/* CSS Ripple effect - OPT-IN via .btn-ripple class */
+button.btn-ripple {
+    position: relative;
+    overflow: hidden;
+}
+
+button.btn-ripple::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.4) 0%, transparent 70%);
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    pointer-events: none;
+    transition: width 0.5s ease, height 0.5s ease, opacity 0.3s ease;
+}
+
+button.btn-ripple:not(:disabled):active::before {
+    width: 200%;
+    height: 200%;
+    opacity: 1;
+    transition: width 0s, height 0s, opacity 0s;
+}
+
+/* Soft glow on hover - OPT-IN via .btn-glow class */
+button.btn-glow:not(:disabled):hover {
+    box-shadow: 0 0 0 3px rgba(30, 150, 140, 0.08);
+}
+
+/* Primary action buttons - stronger feedback */
+.btn-tap-primary {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-radius: 0.75rem;
+    font-weight: 600;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-tap-primary:not(:disabled):hover {
+    background: rgba(30, 150, 140, 0.9);
+    box-shadow: 0 4px 14px -3px rgba(30, 150, 140, 0.4);
+    transform: translateY(-1px);
+}
+
+.btn-tap-primary:not(:disabled):active {
+    transform: scale(0.96) translateY(0);
+    box-shadow: 0 2px 6px -2px rgba(30, 150, 140, 0.3);
+}
+
+/* Secondary/ghost buttons */
+.btn-tap-secondary {
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+    border-radius: 0.75rem;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-tap-secondary:not(:disabled):hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.dark .btn-tap-secondary:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-tap-secondary:not(:disabled):active {
+    transform: scale(0.96);
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.dark .btn-tap-secondary:not(:disabled):active {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+/* Icon buttons - circular with special effects */
+.btn-tap-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    aspect-ratio: 1;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-tap-icon:not(:disabled):hover {
+    background: rgba(30, 150, 140, 0.1);
+    box-shadow: 0 0 0 4px rgba(30, 150, 140, 0.06);
+}
+
+.btn-tap-icon:not(:disabled):active {
+    transform: scale(0.9);
+    background: rgba(30, 150, 140, 0.15);
+}
+
+/* Pill/chip buttons */
+.btn-tap-pill {
+    border-radius: 9999px;
+    padding: 0.5rem 1rem;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-tap-pill:not(:disabled):hover {
+    box-shadow: 0 2px 8px -2px rgba(30, 150, 140, 0.2);
+    transform: translateY(-1px);
+}
+
+.btn-tap-pill:not(:disabled):active {
+    transform: scale(0.95) translateY(0);
+}
+
+/* Toggle buttons (like tabs) */
+.btn-tap-toggle {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 0.5rem;
+}
+
+.btn-tap-toggle:not(:disabled):active {
+    transform: scale(0.95);
+}
+
+/* Danger/destructive buttons */
+.btn-tap-danger {
+    background: var(--destructive);
+    color: var(--destructive-foreground);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-tap-danger:not(:disabled):hover {
+    box-shadow: 0 4px 14px -3px rgba(239, 68, 68, 0.4);
+    transform: translateY(-1px);
+}
+
+.btn-tap-danger:not(:disabled):active {
+    transform: scale(0.96) translateY(0);
+}
+
+/* Success buttons */
+.btn-tap-success {
+    background: #22c55e;
+    color: white;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-tap-success:not(:disabled):hover {
+    box-shadow: 0 4px 14px -3px rgba(34, 197, 94, 0.4);
+    transform: translateY(-1px);
+}
+
+.btn-tap-success:not(:disabled):active {
+    transform: scale(0.96) translateY(0);
+}
+
+/* Transparent/ghost buttons */
+.btn-tap-ghost {
+    background: transparent;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-tap-ghost:not(:disabled):hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.dark .btn-tap-ghost:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-tap-ghost:not(:disabled):active {
+    transform: scale(0.95);
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.dark .btn-tap-ghost:not(:disabled):active {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+/* Outline buttons */
+.btn-tap-outline {
+    background: transparent;
+    border: 1.5px solid var(--border);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-tap-outline:not(:disabled):hover {
+    border-color: var(--primary);
+    background: rgba(30, 150, 140, 0.05);
+    box-shadow: 0 0 0 3px rgba(30, 150, 140, 0.08);
+}
+
+.btn-tap-outline:not(:disabled):active {
+    transform: scale(0.96);
+    background: rgba(30, 150, 140, 0.1);
+}
+
+/* Haptic feedback simulation - bouncy spring effect */
+@keyframes btn-bounce {
+    0% { transform: scale(1); }
+    30% { transform: scale(0.94); }
+    50% { transform: scale(1.02); }
+    70% { transform: scale(0.98); }
+    100% { transform: scale(1); }
+}
+
+.btn-haptic:active {
+    animation: btn-bounce 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Glow pulse on focus for accessibility */
+@keyframes btn-focus-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 2px rgba(30, 150, 140, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 0 4px rgba(30, 150, 140, 0.2);
+    }
+}
+
+button:focus-visible {
+    outline: none;
+    animation: btn-focus-pulse 1.5s ease-in-out infinite;
+}
+
+/* Ripple animation for JS-triggered ripples */
+@keyframes btn-ripple {
+    0% {
+        transform: scale(0);
+        opacity: 0.6;
+    }
+    100% {
+        transform: scale(2.5);
+        opacity: 0;
+    }
+}
+
+.btn-ripple-effect {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.4);
+    pointer-events: none;
+    animation: btn-ripple 0.6s cubic-bezier(0, 0, 0.2, 1);
+}
+
 /* Smooth Transitions for Interactive Elements */
 button, a, input, textarea, select {
     transition-property: color, background-color, border-color, box-shadow, transform;
-    transition-duration: 0.2s;
-    transition-timing-function: ease-out;
+    transition-duration: 0.15s;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Soft Pulse Animation - gentle glow effect */
@@ -759,3 +1138,81 @@ button, a, input, textarea, select {
     display: inline-block;
     animation-play-state: running;
 }
+
+/* ========================================
+   CONTINUOUS SHIMMER LOOP - For buttons on card hover
+   ======================================== */
+@keyframes shimmer-loop {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.animate-shimmer-loop {
+    animation: shimmer-loop 1.2s ease-in-out infinite;
+}
+
+/* Group hover variant for parent card hover effect */
+.group:hover .group-hover\:animate-shimmer-loop {
+    animation: shimmer-loop 1.2s ease-in-out infinite;
+}
+
+/* ========================================
+   PREMIUM BUTTON GLOW - Always-on subtle animation
+   ======================================== */
+@keyframes button-breathe {
+    0%, 100% {
+        box-shadow: 0 0 8px rgba(30, 150, 140, 0.25), 0 4px 12px rgba(30, 150, 140, 0.15);
+    }
+    50% {
+        box-shadow: 0 0 16px rgba(30, 150, 140, 0.4), 0 4px 20px rgba(30, 150, 140, 0.25);
+    }
+}
+
+@keyframes button-shimmer-always {
+    0% {
+        transform: translateX(-200%) skewX(-15deg);
+    }
+    100% {
+        transform: translateX(300%) skewX(-15deg);
+    }
+}
+
+/* Diagonal shimmer from NE to SW */
+@keyframes shimmer-diagonal {
+    0% {
+        background-position: -200% -200%;
+    }
+    100% {
+        background-position: 200% 200%;
+    }
+}
+
+@keyframes shimmer-diagonal-hover {
+    0% {
+        background-position: -200% -200%;
+    }
+    100% {
+        background-position: 200% 200%;
+    }
+}
+
+.animate-button-breathe {
+    animation: button-breathe 3s ease-in-out infinite;
+}
+
+.animate-shimmer-always {
+    animation: button-shimmer-always 4s ease-in-out infinite;
+}
+
+.animate-shimmer-diagonal {
+    animation: shimmer-diagonal 4s ease-in-out infinite;
+}
+
+.animate-shimmer-diagonal-hover {
+    animation: shimmer-diagonal-hover 1.8s ease-in-out infinite;
+}
+

@@ -14,6 +14,8 @@ export interface Conversation {
   last_message_preview: string | null;
   created_at: string;
   updated_at: string;
+  is_closed?: boolean; // هل المحادثة مغلقة؟
+  closed_reason?: string; // سبب الإغلاق
   // Joined data
   other_user?: {
     id: string;
@@ -301,6 +303,12 @@ export async function markMessagesAsRead(conversationId: string): Promise<boolea
 
     if (error) throw error;
 
+    // Update conversation's updated_at to trigger realtime subscriptions
+    await supabase
+      .from('conversations')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', conversationId);
+
     return true;
   } catch (error) {
     console.error('Error marking messages as read:', error);
@@ -313,35 +321,37 @@ export async function markMessagesAsRead(conversationId: string): Promise<boolea
 // ==========================================
 
 /**
- * Subscribe to new messages in a conversation
+ * Subscribe to new messages and updates in a conversation
  */
 export function subscribeToMessages(
   conversationId: string,
-  callback: (message: Message) => void
+  callback: (message: Message, eventType: 'INSERT' | 'UPDATE') => void
 ) {
   const channel = supabase
     .channel(`messages:${conversationId}`)
     .on(
       'postgres_changes',
       {
-        event: 'INSERT',
+        event: '*', // Listen for all changes (INSERT, UPDATE)
         schema: 'public',
         table: 'messages',
         filter: `conversation_id=eq.${conversationId}`,
       },
       async (payload) => {
-        // Fetch full message with sender data
-        const { data } = await supabase
-          .from('messages')
-          .select(`
-            *,
-            sender:profiles!messages_sender_id_fkey(id, display_name, avatar_url)
-          `)
-          .eq('id', payload.new.id)
-          .single();
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          // Fetch full message with sender data
+          const { data } = await supabase
+            .from('messages')
+            .select(`
+              *,
+              sender:profiles!messages_sender_id_fkey(id, display_name, avatar_url)
+            `)
+            .eq('id', payload.new.id)
+            .single();
 
-        if (data) {
-          callback(data as Message);
+          if (data) {
+            callback(data as Message, payload.eventType as 'INSERT' | 'UPDATE');
+          }
         }
       }
     )
@@ -390,5 +400,152 @@ export function subscribeToConversations(
   return () => {
     supabase.removeChannel(channel);
   };
+}
+
+// ==========================================
+// Conversation Management
+// ==========================================
+
+/**
+ * إغلاق محادثات طلب معين (باستثناء العرض المقبول)
+ * تُستخدم عند قبول عرض لإغلاق المحادثات مع العارضين الآخرين
+ */
+export async function closeConversationsForRequest(
+  requestId: string,
+  excludeOfferId?: string,
+  closedReason: string = 'تم قبول عرض آخر على هذا الطلب'
+): Promise<{ closedCount: number; systemMessagesSent: number }> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { closedCount: 0, systemMessagesSent: 0 };
+
+    // جلب جميع المحادثات المرتبطة بالطلب
+    const { data: conversations, error } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('request_id', requestId)
+      .neq('is_closed', true);
+
+    if (error) {
+      console.error('خطأ في جلب المحادثات:', error);
+      return { closedCount: 0, systemMessagesSent: 0 };
+    }
+
+    // تصفية المحادثات باستثناء العرض المقبول
+    const conversationsToClose = (conversations || []).filter(
+      conv => conv.offer_id !== excludeOfferId
+    );
+
+    let closedCount = 0;
+    let systemMessagesSent = 0;
+
+    for (const conv of conversationsToClose) {
+      // إغلاق المحادثة
+      const { error: closeError } = await supabase
+        .from('conversations')
+        .update({ 
+          is_closed: true, 
+          closed_reason: closedReason,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', conv.id);
+
+      if (!closeError) {
+        closedCount++;
+
+        // إرسال رسالة نظام لطيفة
+        const systemMessage = await sendSystemMessage(
+          conv.id,
+          '🔔 تم إغلاق هذه المحادثة - تم قبول عرض آخر على هذا الطلب. شكراً لاهتمامك!'
+        );
+        if (systemMessage) systemMessagesSent++;
+      }
+    }
+
+    return { closedCount, systemMessagesSent };
+  } catch (error) {
+    console.error('خطأ في إغلاق المحادثات:', error);
+    return { closedCount: 0, systemMessagesSent: 0 };
+  }
+}
+
+/**
+ * إرسال رسالة نظام في محادثة
+ */
+export async function sendSystemMessage(
+  conversationId: string,
+  content: string
+): Promise<Message | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    // إرسال الرسالة باسم النظام (نستخدم معرف المستخدم الحالي مع علامة خاصة في المحتوى)
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        sender_id: user.id,
+        content: content,
+        is_read: false,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('خطأ في إرسال رسالة النظام:', error);
+      return null;
+    }
+
+    // تحديث آخر رسالة في المحادثة
+    await supabase
+      .from('conversations')
+      .update({
+        last_message_at: new Date().toISOString(),
+        last_message_preview: content.substring(0, 100),
+      })
+      .eq('id', conversationId);
+
+    return data as Message;
+  } catch (error) {
+    console.error('خطأ في إرسال رسالة النظام:', error);
+    return null;
+  }
+}
+
+/**
+ * التحقق مما إذا كانت المحادثة مغلقة
+ */
+export async function isConversationClosed(conversationId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('is_closed')
+      .eq('id', conversationId)
+      .single();
+
+    if (error) return false;
+    return data?.is_closed || false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * الحصول على سبب إغلاق المحادثة
+ */
+export async function getConversationClosedReason(conversationId: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('closed_reason')
+      .eq('id', conversationId)
+      .single();
+
+    if (error) return null;
+    return data?.closed_reason || null;
+  } catch {
+    return null;
+  }
 }
 

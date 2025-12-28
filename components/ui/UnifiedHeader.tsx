@@ -5,8 +5,8 @@ import {
   Bell, 
   Menu, 
   X, 
-  MessageCircle, 
   LogOut, 
+  LogIn,
   ArrowRight 
 } from "lucide-react";
 import { NotificationsPopover } from "../NotificationsPopover";
@@ -18,10 +18,10 @@ interface UnifiedHeaderProps {
   toggleMode: () => void;
   isModeSwitching: boolean;
   unreadCount: number;
-  hasUnreadMessages: boolean;
+  hasUnreadMessages?: boolean; // kept for compatibility, not used
   user: any;
-  setView: (view: any) => void;
-  setPreviousView: (view: any) => void;
+  setView?: (view: any) => void; // kept for compatibility, not used
+  setPreviousView?: (view: any) => void; // kept for compatibility, not used
   titleKey: number;
   notifications: any[];
   onMarkAsRead: (id: string) => void;
@@ -32,8 +32,11 @@ interface UnifiedHeaderProps {
   title?: string;
   isScrolled?: boolean;
   showTabs?: boolean;
-  currentView?: string;
+  currentView?: string; // kept for compatibility, not used
   transparent?: boolean;
+  hideModeToggle?: boolean; // Hide the mode toggle button
+  showSidebarButton?: boolean; // Show sidebar button instead of back button (for pages accessed from sidebar)
+  isGuest?: boolean; // Guest mode - show login button instead of sign out
 }
 
 export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
@@ -43,10 +46,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   toggleMode,
   isModeSwitching,
   unreadCount,
-  hasUnreadMessages,
   user,
-  setView,
-  setPreviousView,
   titleKey,
   notifications,
   onMarkAsRead,
@@ -56,8 +56,10 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   onBack,
   title,
   isScrolled = true,
-  currentView,
   transparent = false,
+  hideModeToggle = false,
+  showSidebarButton = false,
+  isGuest = false,
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -65,7 +67,18 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   const headerContent = (
     <div className="h-16 flex items-center justify-between pt-[env(safe-area-inset-top,0px)]">
       <div className="flex items-center gap-3">
-        {backButton ? (
+        {showSidebarButton ? (
+          <button
+            className="p-2.5 hover:bg-primary/10 rounded-xl transition-all duration-300 active:scale-95 group"
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          >
+            {isSidebarOpen ? (
+              <X size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
+            ) : (
+              <Menu size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
+            )}
+          </button>
+        ) : backButton ? (
           <motion.button
             onClick={onBack}
             whileHover={{ scale: 1.05 }}
@@ -89,9 +102,9 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
         
         <div className="flex items-start gap-3">
           <h1 className="font-bold text-base text-foreground flex flex-col gap-0.5">
-            {!backButton && <span className="text-xs text-muted-foreground mt-1.5">أبيلي</span>}
+            {!backButton && !showSidebarButton && <span className="text-xs text-muted-foreground mt-1.5">أبيلي</span>}
             <AnimatePresence mode="wait">
-              {backButton && isScrolled ? (
+              {(backButton || showSidebarButton) && isScrolled ? (
                 <motion.span
                   key="scrolled-title"
                   initial={{ opacity: 0, y: 5 }}
@@ -122,51 +135,33 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
 
       <div className="flex items-center gap-2">
         {/* Mode Switch Button */}
-        <button
-          onClick={toggleMode}
-          className={`flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group ${
-            isModeSwitching 
-              ? "bg-primary/20 border border-primary/40 shadow-[0_0_15px_rgba(30,150,140,0.3)]" 
-              : "bg-card border border-border hover:text-primary"
-          }`}
-        >
-          <motion.div
-            animate={isModeSwitching ? { 
-              rotate: 180,
-              scale: 1.05,
-            } : { 
-              rotate: 0,
-              scale: 1 
-            }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-          >
-            <ArrowLeftRight 
-              size={18} 
-              strokeWidth={2} 
-              className={`transition-all duration-200 ${
-                isModeSwitching ? "text-primary" : "text-muted-foreground group-hover:text-primary"
-              }`} 
-            />
-          </motion.div>
-        </button>
-
-        {/* Messages Button */}
-        {user && (
+        {!hideModeToggle && (
           <button
-            onClick={() => {
-              if (currentView) setPreviousView(currentView);
-              setView("messages");
-            }}
-            className="flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/30 relative"
-            title="الرسائل"
+            onClick={toggleMode}
+            className={`flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group ${
+              isModeSwitching 
+                ? "bg-primary/20 border border-primary/40 shadow-[0_0_15px_rgba(30,150,140,0.3)]" 
+                : "bg-card border border-border hover:text-primary"
+            }`}
           >
-            <MessageCircle size={20} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
-            {hasUnreadMessages && (
-              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
-              </span>
-            )}
+            <motion.div
+              animate={isModeSwitching ? { 
+                rotate: 180,
+                scale: 1.05,
+              } : { 
+                rotate: 0,
+                scale: 1 
+              }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+            >
+              <ArrowLeftRight 
+                size={18} 
+                strokeWidth={2} 
+                className={`transition-all duration-200 ${
+                  isModeSwitching ? "text-primary" : "text-muted-foreground group-hover:text-primary"
+                }`} 
+              />
+            </motion.div>
           </button>
         )}
 
@@ -196,8 +191,16 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           />
         </div>
 
-        {/* Sign Out (if logged in) */}
-        {user && (
+        {/* Sign Out (if logged in) or Login (if guest) */}
+        {isGuest ? (
+          <button
+            onClick={onSignOut}
+            className="hidden sm:flex p-2.5 rounded-xl hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all active:scale-95 group"
+            title="تسجيل الدخول"
+          >
+            <LogIn size={20} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
+          </button>
+        ) : user && (
           <button
             onClick={onSignOut}
             className="hidden sm:flex p-2.5 rounded-xl hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-all active:scale-95 group"

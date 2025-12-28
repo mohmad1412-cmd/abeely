@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { AppMode, Message, Offer, Request } from "../types";
+import { AppMode, Message as LocalMessage, Offer, Request } from "../types";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
 import {
@@ -17,6 +17,7 @@ import {
   Copy,
   DollarSign,
   ExternalLink,
+  Eye,
   FileText,
   ImageIcon,
   Info,
@@ -43,10 +44,22 @@ import { findApproximateImages } from "../services/geminiService";
 import { AnimatePresence, motion } from "framer-motion";
 import { AVAILABLE_CATEGORIES } from "../data";
 import { verifyGuestPhone, confirmGuestPhone } from "../services/authService";
-import { markRequestAsViewed, markRequestAsRead } from "../services/requestViewsService";
+import { markRequestAsViewed, markRequestAsRead, incrementRequestViews } from "../services/requestViewsService";
 import ReactDOM from "react-dom";
 import html2canvas from "html2canvas";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
+import {
+  getOrCreateConversation,
+  getConversations,
+  getMessages,
+  sendMessage,
+  markMessagesAsRead,
+  subscribeToMessages,
+  closeConversationsForRequest,
+  Message as ChatMessage,
+  Conversation,
+} from "../services/messagesService";
+import { acceptOffer } from "../services/requestsService";
 
 interface RequestDetailProps {
   request: Request;
@@ -99,6 +112,7 @@ interface RequestDetailProps {
   onMarkAsRead: (id: string) => void;
   onClearAll: () => void;
   onSignOut: () => void;
+  onMarkRequestAsRead?: (id: string) => void;
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
@@ -117,7 +131,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     notifications,
     onMarkAsRead,
     onClearAll,
-    onSignOut
+    onSignOut,
+    onMarkRequestAsRead
   },
 ) => {
   const [negotiationOpen, setNegotiationOpen] = useState(false);
@@ -303,32 +318,195 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     document.addEventListener('touchend', handleEnd);
   }, []);
 
-  // Mock Messages for negotiation
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      content: "هل يمكن تنفيذ العمل في وقت أقل؟",
-      sender: "requester",
-      timestamp: new Date(),
-    },
-    {
-      id: "2",
-      content: "نعم، يمكنني الانتهاء خلال يومين مقابل زيادة بسيطة.",
-      sender: "provider",
-      timestamp: new Date(),
-    },
-  ]);
+  // Real Messages System
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [isConversationClosed, setIsConversationClosed] = useState(false);
+  const [conversationClosedReason, setConversationClosedReason] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // للتحقق من وجود محادثة سابقة (لمقدم العرض)
+  const [hasExistingConversation, setHasExistingConversation] = useState(false);
+  const [isCheckingConversation, setIsCheckingConversation] = useState(false);
 
-  const handleSendChat = () => {
-    if (!chatMessage.trim()) return;
-    const newMsg: Message = {
-      id: Date.now().toString(),
-      content: chatMessage,
-      sender: mode === "requests" ? "requester" : "provider",
-      timestamp: new Date(),
+  // تحديد الطرف الآخر في المحادثة
+  const getOtherUserId = () => {
+    // إذا كان المستخدم صاحب الطلب، الطرف الآخر هو مقدم العرض المقبول أو أول عرض
+    if (mode === "requests") {
+      // البحث عن العرض المقبول أو أول عرض
+      const acceptedOffer = request.offers?.find(o => o.status === "accepted") || request.offers?.[0];
+      return acceptedOffer?.providerId;
+    } else {
+      // إذا كان المستخدم مقدم العرض، الطرف الآخر هو صاحب الطلب
+      return request.author;
+    }
+  };
+
+  // التحقق من وجود محادثة سابقة لمقدم العرض
+  useEffect(() => {
+    if (mode !== "offers" || !user?.id || !myOffer?.id || isGuest) {
+      setHasExistingConversation(false);
+      return;
+    }
+
+    const checkExistingConversation = async () => {
+      setIsCheckingConversation(true);
+      try {
+        const conversations = await getConversations();
+        const exists = conversations.some(
+          conv => conv.offer_id === myOffer.id || 
+                  (conv.request_id === request.id && conv.offer_id === null)
+        );
+        setHasExistingConversation(exists);
+      } catch (error) {
+        console.error("خطأ في التحقق من المحادثة:", error);
+        setHasExistingConversation(false);
+      } finally {
+        setIsCheckingConversation(false);
+      }
     };
-    setMessages([...messages, newMsg]);
-    setChatMessage("");
+
+    checkExistingConversation();
+  }, [mode, user?.id, myOffer?.id, request.id, isGuest]);
+
+  // هل يمكن لمقدم العرض فتح المحادثة؟
+  const canProviderChat = () => {
+    if (mode !== "offers" || !myOffer) return false;
+    // يمكنه المحادثة إذا تم اعتماد عرضه
+    if (myOffer.status === "accepted") return true;
+    // أو إذا سمح بالتفاوض وتوجد محادثة سابقة (بدأها صاحب الطلب)
+    if (myOffer.isNegotiable && hasExistingConversation) return true;
+    return false;
+  };
+
+  // State لقبول العرض
+  const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
+  const [acceptOfferError, setAcceptOfferError] = useState<string | null>(null);
+
+  // دالة قبول العرض
+  const handleAcceptOffer = async (offerId: string) => {
+    if (!user?.id || isGuest) {
+      setAcceptOfferError('يجب تسجيل الدخول لقبول العرض');
+      return;
+    }
+
+    setIsAcceptingOffer(true);
+    setAcceptOfferError(null);
+
+    try {
+      // 1. قبول العرض
+      const result = await acceptOffer(request.id, offerId, user.id);
+      
+      if (!result.success) {
+        setAcceptOfferError(result.error || 'فشل في قبول العرض');
+        return;
+      }
+
+      // 2. إغلاق المحادثات مع العارضين الآخرين
+      await closeConversationsForRequest(request.id, offerId);
+
+      // 3. إعادة تحميل الصفحة لعرض التغييرات
+      // يمكن استبدال هذا بتحديث الـ state مباشرة
+      window.location.reload();
+    } catch (error) {
+      console.error('خطأ في قبول العرض:', error);
+      setAcceptOfferError('حدث خطأ غير متوقع');
+    } finally {
+      setIsAcceptingOffer(false);
+    }
+  };
+
+  // تحميل أو إنشاء المحادثة عند فتح الـ bottom sheet
+  useEffect(() => {
+    if (!negotiationOpen || !user?.id || isGuest) return;
+
+    const loadOrCreateConversation = async () => {
+      setIsChatLoading(true);
+      try {
+        const otherUserId = getOtherUserId();
+        if (!otherUserId) {
+          console.warn("لا يوجد طرف آخر للمحادثة");
+          setIsChatLoading(false);
+          return;
+        }
+
+        // تحديد offer_id إذا كان موجودًا
+        const offerId = mode === "offers" ? myOffer?.id : request.offers?.find(o => o.status === "accepted")?.id || request.offers?.[0]?.id;
+
+        const conversation = await getOrCreateConversation(otherUserId, request.id, offerId);
+        if (conversation) {
+          setCurrentConversation(conversation);
+          
+          // التحقق من إغلاق المحادثة
+          if (conversation.is_closed) {
+            setIsConversationClosed(true);
+            setConversationClosedReason(conversation.closed_reason || 'تم إغلاق هذه المحادثة');
+          } else {
+            setIsConversationClosed(false);
+            setConversationClosedReason(null);
+          }
+          
+          const msgs = await getMessages(conversation.id);
+          setChatMessages(msgs);
+          await markMessagesAsRead(conversation.id);
+        }
+      } catch (error) {
+        console.error("خطأ في تحميل المحادثة:", error);
+      } finally {
+        setIsChatLoading(false);
+      }
+    };
+
+    loadOrCreateConversation();
+  }, [negotiationOpen, user?.id, isGuest, request.id, mode]);
+
+  // الاشتراك في الرسائل الجديدة
+  useEffect(() => {
+    if (!currentConversation?.id || !user?.id) return;
+
+    const unsubscribe = subscribeToMessages(currentConversation.id, (newMsg, eventType) => {
+      if (eventType === 'INSERT') {
+        setChatMessages((prev) => {
+          // تجنب التكرار
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
+        // وضع علامة مقروء إذا لم تكن من المستخدم الحالي
+        if (newMsg.sender_id !== user?.id) {
+          markMessagesAsRead(currentConversation.id);
+        }
+      } else if (eventType === 'UPDATE') {
+        setChatMessages((prev) => prev.map((m) => (m.id === newMsg.id ? newMsg : m)));
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [currentConversation?.id, user?.id]);
+
+  // التمرير للأسفل عند وصول رسائل جديدة
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const handleSendChat = async () => {
+    if (!chatMessage.trim() || !currentConversation || isSendingMessage) return;
+
+    setIsSendingMessage(true);
+    try {
+      const sentMsg = await sendMessage(currentConversation.id, chatMessage);
+      if (sentMsg) {
+        setChatMessages((prev) => [...prev, sentMsg]);
+      }
+      setChatMessage("");
+    } catch (error) {
+      console.error("خطأ في إرسال الرسالة:", error);
+    } finally {
+      setIsSendingMessage(false);
+    }
   };
 
   const handleShare = async () => {
@@ -590,10 +768,21 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     }
   }, [offerPrice, offerDuration, offerCity, offerTitle, offerDescription, guestOfferVerificationStep, guestOfferPhone, guestOfferOTP, onOfferFormChange]);
 
-  // Mark request as viewed when component mounts
+  // View count state
+  const [viewCount, setViewCount] = useState<number>(0);
+
+  // Mark request as viewed and increment view count when component mounts
   useEffect(() => {
     if (request?.id) {
+      // For registered users, mark as viewed in their personal view history
       markRequestAsViewed(request.id);
+      
+      // For everyone (including guests), increment the public view count
+      incrementRequestViews(request.id).then((result) => {
+        if (result.success) {
+          setViewCount(result.viewCount);
+        }
+      });
     }
   }, [request?.id]);
 
@@ -609,6 +798,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       if (scrollPercentage > 50 && !hasScrolledDown) {
         hasScrolledDown = true;
         markRequestAsRead(request.id);
+        if (onMarkRequestAsRead) {
+          onMarkRequestAsRead(request.id);
+        }
       }
     };
 
@@ -967,6 +1159,18 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   </span>
                 </div>
 
+                {/* View Count */}
+                {viewCount > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                      <Eye size={18} className="text-blue-500" /> المشاهدات
+                    </span>
+                    <span className="font-bold text-sm text-blue-600">
+                      {viewCount} مشاهدة
+                    </span>
+                  </div>
+                )}
+
                 {/* Budget */}
                 <div className="flex flex-col gap-1.5">
                   <span 
@@ -1116,8 +1320,13 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                               {/* 1. Accept Button (Appears Right in RTL because it's first) */}
                               <Button
                                 size="sm"
-                                className="flex-1 bg-green-600 hover:bg-green-700 text-white shadow-sm h-10 text-sm font-bold"
+                                className="flex-1 bg-green-600 hover:bg-green-700 text-white shadow-sm h-10 text-sm font-bold disabled:opacity-50"
+                                onClick={() => handleAcceptOffer(offer.id)}
+                                disabled={isAcceptingOffer || isGuest}
                               >
+                                {isAcceptingOffer ? (
+                                  <Loader2 size={18} className="animate-spin ml-2" />
+                                ) : null}
                                 قبول العرض
                               </Button>
 
@@ -1183,8 +1392,13 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                               <Button
                                 size="sm"
                                 variant="success"
-                                className="flex-1 shadow-sm h-10"
+                                className="flex-1 shadow-sm h-10 disabled:opacity-50"
+                                onClick={() => handleAcceptOffer(offer.id)}
+                                disabled={isAcceptingOffer || isGuest}
                               >
+                                {isAcceptingOffer ? (
+                                  <Loader2 size={18} className="animate-spin ml-2" />
+                                ) : null}
                                 قبول العرض
                               </Button>
                             </>
@@ -1274,16 +1488,36 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           </Button>
                         )}
                         
-                        {/* In-App Chat Button */}
+                        {/* In-App Chat Button - يظهر فقط إذا تم اعتماد العرض أو توجد محادثة سابقة */}
                         {(!request.isCreatedViaWhatsApp && (request.contactMethod === 'chat' || request.contactMethod === 'both' || !request.contactMethod)) && (
-                          <Button
-                            size="sm"
-                            className="flex-1 bg-primary hover:bg-primary/90 gap-2 h-10"
-                            onClick={() => setNegotiationOpen(true)}
-                          >
-                            <MessageCircle size={18} />
-                            {myOffer.status === "accepted" ? "محادثة" : "تفاوض"}
-                          </Button>
+                          canProviderChat() ? (
+                            <Button
+                              size="sm"
+                              className="flex-1 bg-primary hover:bg-primary/90 gap-2 h-10"
+                              onClick={() => setNegotiationOpen(true)}
+                            >
+                              <MessageCircle size={18} />
+                              {myOffer.status === "accepted" ? "محادثة" : "تفاوض"}
+                            </Button>
+                          ) : myOffer.isNegotiable ? (
+                            <Button
+                              size="sm"
+                              disabled
+                              className="flex-1 bg-muted text-muted-foreground gap-2 h-10 cursor-not-allowed"
+                            >
+                              <Clock size={18} />
+                              بانتظار صاحب الطلب
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              disabled
+                              className="flex-1 bg-orange-100 text-orange-700 gap-2 h-10 cursor-not-allowed"
+                            >
+                              <Lock size={18} />
+                              التفاوض غير متاح
+                            </Button>
+                          )
                         )}
                       </div>
                     )}
@@ -1990,72 +2224,131 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
                 {/* Messages Area */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-background/50 min-h-[300px] max-h-[50vh]">
-                  {messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex flex-col ${
-                        msg.sender ===
-                            (mode === "requests" ? "requester" : "provider")
-                          ? "items-end"
-                          : "items-start"
-                      }`}
-                    >
-                      <div
-                        className={`px-4 py-3 rounded-2xl max-w-[80%] text-sm leading-relaxed shadow-sm ${
-                          msg.sender ===
-                              (mode === "requests" ? "requester" : "provider")
-                            ? "bg-primary text-primary-foreground rounded-br-md"
-                            : "bg-card border border-border rounded-bl-md"
-                        }`}
-                      >
-                        {msg.content}
-                      </div>
-                      <span className="text-[10px] text-muted-foreground mt-1.5 px-2">
-                        {format(msg.timestamp, "p", { locale: ar })}
-                      </span>
+                  {isGuest || !user?.id ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Lock size={40} className="mx-auto mb-4 opacity-30" />
+                      <p className="text-sm font-medium">تحتاج لتسجيل الدخول</p>
+                      <p className="text-xs mt-1">سجل دخولك لبدء المحادثة مع الطرف الآخر</p>
                     </div>
-                  ))}
+                  ) : isChatLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="animate-spin text-primary" size={24} />
+                      <span className="mr-2 text-sm text-muted-foreground">جاري تحميل المحادثة...</span>
+                    </div>
+                  ) : (
+                    <>
+                      {/* رسالة إغلاق المحادثة */}
+                      {isConversationClosed && (
+                        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-center mb-4">
+                          <Lock size={24} className="mx-auto mb-2 text-amber-600 dark:text-amber-400" />
+                          <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                            هذه المحادثة مغلقة
+                          </p>
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                            {conversationClosedReason || 'تم إغلاق هذه المحادثة'}
+                          </p>
+                        </div>
+                      )}
+                      
+                      {chatMessages.length === 0 && !isConversationClosed ? (
+                        <div className="text-center py-12 text-muted-foreground">
+                          <MessageCircle size={40} className="mx-auto mb-4 opacity-30" />
+                          <p className="text-sm">لا توجد رسائل بعد</p>
+                          <p className="text-xs mt-1">ابدأ المحادثة بإرسال رسالة</p>
+                        </div>
+                      ) : (
+                        chatMessages.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`flex flex-col ${
+                              msg.sender_id === user?.id
+                                ? "items-end"
+                                : "items-start"
+                            }`}
+                          >
+                            {/* رسالة نظام */}
+                            {msg.content.startsWith('🔔') ? (
+                              <div className="bg-muted/50 border border-border rounded-lg px-4 py-2 text-center w-full">
+                                <p className="text-xs text-muted-foreground">{msg.content}</p>
+                              </div>
+                            ) : (
+                              <>
+                                <div
+                                  className={`px-4 py-3 rounded-2xl max-w-[80%] text-sm leading-relaxed shadow-sm ${
+                                    msg.sender_id === user?.id
+                                      ? "bg-primary text-primary-foreground rounded-br-md"
+                                      : "bg-card border border-border rounded-bl-md"
+                                  }`}
+                                >
+                                  {msg.content}
+                                </div>
+                                <span className="text-[10px] text-muted-foreground mt-1.5 px-2">
+                                  {format(new Date(msg.created_at), "p", { locale: ar })}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </>
+                  )}
+                  <div ref={messagesEndRef} />
                 </div>
 
                 {/* Chat Input Area */}
                 <div className="p-4 border-t border-border bg-card">
-                  <div className="flex items-center gap-2 bg-secondary/30 rounded-2xl border border-border p-2">
-                    {/* Attachment Button */}
-                    <button className="w-10 h-10 rounded-full flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-background/80 transition-colors shrink-0">
-                      <Paperclip size={20} />
-                    </button>
-
-                    {/* Input Field */}
-                    <input
-                      type="text"
-                      dir="rtl"
-                      className="flex-1 bg-transparent px-2 py-2 focus:outline-none text-sm"
-                      placeholder="اكتب رسالتك..."
-                      value={chatMessage}
-                      onChange={(e) => setChatMessage(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
-                    />
-
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      {!chatMessage.trim() && (
-                        <button className="w-10 h-10 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors">
-                          <Mic size={20} />
-                        </button>
-                      )}
-                      <button
-                        onClick={handleSendChat}
-                        disabled={!chatMessage.trim()}
-                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                          chatMessage.trim()
-                            ? "bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        <Send size={18} className="-rotate-90" />
-                      </button>
+                  {isGuest || !user?.id ? (
+                    <div className="text-center py-2 text-muted-foreground text-sm">
+                      سجل دخولك لإرسال رسائل
                     </div>
-                  </div>
+                  ) : isConversationClosed ? (
+                    <div className="text-center py-2 text-amber-600 dark:text-amber-400 text-sm flex items-center justify-center gap-2">
+                      <Lock size={16} />
+                      لا يمكن إرسال رسائل في محادثة مغلقة
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 bg-secondary/30 rounded-2xl border border-border p-2">
+                      {/* Attachment Button */}
+                      <button className="w-10 h-10 rounded-full flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-background/80 transition-colors shrink-0">
+                        <Paperclip size={20} />
+                      </button>
+
+                      {/* Input Field */}
+                      <input
+                        type="text"
+                        dir="rtl"
+                        className="flex-1 bg-transparent px-2 py-2 focus:outline-none text-sm"
+                        placeholder="اكتب رسالتك..."
+                        value={chatMessage}
+                        onChange={(e) => setChatMessage(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendChat(); } }}
+                      />
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {!chatMessage.trim() && (
+                          <button className="w-10 h-10 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors">
+                            <Mic size={20} />
+                          </button>
+                        )}
+                        <button
+                          onClick={handleSendChat}
+                          disabled={!chatMessage.trim() || isSendingMessage || !currentConversation}
+                          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                            chatMessage.trim() && !isSendingMessage && currentConversation
+                              ? "bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {isSendingMessage ? (
+                            <Loader2 size={18} className="animate-spin" />
+                          ) : (
+                            <Send size={18} className="-rotate-90" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             </>

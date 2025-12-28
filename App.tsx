@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeftRight, Bell, Menu, X, LogOut, MessageCircle, Check } from "lucide-react";
+import { Check, X, CheckCircle } from "lucide-react";
+import { UnifiedHeader } from "./components/ui/UnifiedHeader";
 
 // Components
 import { Sidebar } from "./components/Sidebar";
@@ -13,6 +14,237 @@ import { NotificationsPopover } from "./components/NotificationsPopover";
 import { SplashScreen } from "./components/SplashScreen";
 import { AuthPage } from "./components/AuthPage";
 import { Messages } from "./components/Messages";
+
+// ==========================================
+// OAuth & Magic Link Callback Handler - Process OAuth codes/tokens and Magic Links
+// ==========================================
+const detectOAuthCallback = (): { isCallback: boolean; isPopup: boolean; isMagicLink: boolean } => {
+  // Check if we have OAuth callback params or Magic Link params
+  const hasOAuthParams = window.location.hash.includes('access_token') || 
+                         window.location.search.includes('code=');
+  
+  // Magic Link uses hash with access_token (no code= param)
+  const isMagicLink = window.location.hash.includes('access_token') && 
+                      !window.location.search.includes('code=');
+  
+  if (!hasOAuthParams) return { isCallback: false, isPopup: false, isMagicLink: false };
+  
+  // Check multiple indicators that we might be in a popup:
+  // 1. ⭐ URL has popup=true query param (MOST RELIABLE - travels with redirect)
+  const urlParams = new URLSearchParams(window.location.search);
+  const hasPopupParam = urlParams.get('popup') === 'true';
+  // 2. Window name contains our popup identifier
+  const windowName = window.name || '';
+  const hasPopupName = windowName.includes('-auth-popup') || windowName.includes('auth-popup');
+  // 3. Window has an opener (parent window)
+  const hasOpener = window.opener !== null && window.opener !== window;
+  // 4. Check localStorage flag that was set when popup was opened
+  const popupFlag = localStorage.getItem('abeely_oauth_popup_active');
+  const isMarkedAsPopup = popupFlag === 'true';
+  // 5. Check if window dimensions suggest a popup (small window)
+  const isSmallWindow = window.innerWidth <= 600 && window.innerHeight <= 800;
+  
+  // Magic Links are never popups (they open in the same window/tab)
+  // If we have OAuth params and ANY of the popup indicators, treat as popup
+  // Priority: URL param is most reliable, then localStorage, then others
+  const isPopup = !isMagicLink && (hasPopupParam || isMarkedAsPopup || hasPopupName || hasOpener || isSmallWindow);
+  
+  // Debug log (only in development)
+  if (import.meta.env?.DEV) {
+    console.warn('🔍 Auth Callback Detection:', { 
+      hasOAuthParams, 
+      isMagicLink,
+      hasPopupParam,
+      windowName, 
+      hasPopupName, 
+      hasOpener, 
+      isMarkedAsPopup, 
+      isSmallWindow,
+      isPopup 
+    });
+  }
+  
+  return { isCallback: true, isPopup, isMagicLink };
+};
+
+// Legacy function for backwards compatibility
+const isOAuthPopup = (): boolean => {
+  const { isCallback, isPopup } = detectOAuthCallback();
+  return isCallback && isPopup;
+};
+
+// Process OAuth/Magic Link callback in main window - run immediately
+const processMainWindowOAuthCallback = async (): Promise<boolean> => {
+  const hasCode = window.location.search.includes('code=');
+  const hasToken = window.location.hash.includes('access_token');
+  
+  if (!hasCode && !hasToken) return false;
+  
+  // Check if this is a popup - use same logic as detectOAuthCallback
+  const urlParams = new URLSearchParams(window.location.search);
+  const hasPopupParam = urlParams.get('popup') === 'true';
+  const windowName = window.name || '';
+  const isSmallWindow = window.innerWidth <= 600 && window.innerHeight <= 800;
+  const isMagicLink = window.location.hash.includes('access_token') && !hasCode;
+  const isPopup = !isMagicLink && (hasPopupParam ||
+                  windowName.includes('-auth-popup') || 
+                  windowName.includes('auth-popup') ||
+                  window.opener !== null ||
+                  localStorage.getItem('abeely_oauth_popup_active') === 'true' ||
+                  isSmallWindow);
+  
+  // If popup, let it handle itself
+  if (isPopup) return false;
+  
+  // This is the main window with OAuth/Magic Link callback - let Supabase process it
+  try {
+    // Import supabase here to avoid circular dependency issues
+    const { supabase } = await import('./services/supabaseClient');
+    
+    // Supabase will automatically process the code/token from URL
+    // For Magic Links, the token is in the hash, Supabase handles it automatically
+    const { data } = await supabase.auth.getSession();
+    
+    // Clean up URL after processing
+    if (data.session) {
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+      return true;
+    }
+  } catch (err) {
+    console.error('Auth callback processing error:', err);
+  }
+  
+  return false;
+};
+
+// OAuth Popup Success Screen Component
+const OAuthPopupSuccess: React.FC = () => {
+  const [showManualClose, setShowManualClose] = useState(false);
+  
+  useEffect(() => {
+    console.log('🎉 OAuth Popup Success - Processing...');
+    
+    // Clean URL from OAuth params
+    const cleanUrl = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+    
+    // Process OAuth callback to store session
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session) {
+        console.log('✅ Session stored in popup');
+        
+        // Wait a moment to ensure session is fully saved
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // NOW clear the popup flag - this signals main window
+        localStorage.removeItem('abeely_oauth_popup_active');
+        
+        // Signal main window
+        localStorage.setItem('abeely_auth_success', Date.now().toString());
+        
+        console.log('📢 Popup flag cleared, main window will check session');
+        
+        // Try to close window after showing success message
+        setTimeout(() => {
+          console.log('🚪 Attempting to close popup...');
+          window.close();
+          setTimeout(() => {
+            setShowManualClose(true);
+          }, 500);
+        }, 800);
+      } else {
+        // No session, clear flag anyway
+        localStorage.removeItem('abeely_oauth_popup_active');
+        setShowManualClose(true);
+      }
+    }).catch((err) => {
+      console.error('Error getting session:', err);
+      localStorage.removeItem('abeely_oauth_popup_active');
+      setShowManualClose(true);
+    });
+  }, []);
+
+  const handleManualClose = () => {
+    // Signal main window before closing
+    localStorage.setItem('abeely_auth_success', Date.now().toString());
+    
+    // Try to reload opener
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.location.reload();
+      }
+    } catch (e) {
+      // Ignore cross-origin errors
+    }
+    
+    // Try to close first
+    window.close();
+    // If still here, redirect to home (main window)
+    setTimeout(() => {
+      window.location.href = window.location.origin;
+    }, 100);
+  };
+  
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#153659] via-[#0d9488] to-[#153659] flex items-center justify-center">
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="text-center p-8"
+      >
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+          className="w-24 h-24 mx-auto mb-6 bg-green-500/20 rounded-full flex items-center justify-center"
+        >
+          <CheckCircle className="w-14 h-14 text-green-400" />
+        </motion.div>
+        <motion.h1
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="text-2xl font-bold text-white mb-3"
+        >
+          تم تسجيل الدخول بنجاح!
+        </motion.h1>
+        <AnimatePresence mode="wait">
+          {showManualClose ? (
+            <motion.div
+              key="manual-close"
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              className="space-y-4"
+            >
+              <p className="text-white/70 text-sm">
+                يمكنك الآن إغلاق هذه النافذة والعودة للتطبيق
+              </p>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleManualClose}
+                className="px-8 py-3 bg-white/20 hover:bg-white/30 text-white font-bold rounded-xl backdrop-blur-sm transition-colors"
+              >
+                انطلق ✨
+              </motion.button>
+            </motion.div>
+          ) : (
+            <motion.p
+              key="auto-close"
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.4 }}
+              className="text-white/70"
+            >
+              جاري إغلاق هذه النافذة...
+            </motion.p>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </div>
+  );
+};
 
 // Types & Data
 import {
@@ -48,23 +280,36 @@ import {
   checkSupabaseConnection,
   subscribeToNewRequests
 } from "./services/requestsService";
-import { getUnreadInterestsCount } from "./services/requestViewsService";
+import { getUnreadInterestsCount, getViewedRequestIds, subscribeToViewedRequests } from "./services/requestViewsService";
 import { checkAIConnection } from "./services/aiService";
 import { supabase } from "./services/supabaseClient";
 import { signOut as authSignOut, getCurrentUser, UserProfile, onAuthStateChange } from "./services/authService";
 import { FullScreenLoading } from "./components/ui/LoadingSkeleton";
+import { ConnectionError } from "./components/ui/ConnectionError";
 
 // Auth Views
-type AppView = 'splash' | 'auth' | 'main';
+type AppView = 'splash' | 'auth' | 'main' | 'connection-error' | 'oauth-popup';
 
 const App: React.FC = () => {
   // ==========================================
+  // OAuth & Magic Link Callback Check - Run FIRST
+  // ==========================================
+  const [oauthState] = useState(() => detectOAuthCallback());
+  const isOAuthPopupMode = oauthState.isCallback && oauthState.isPopup;
+  const isMagicLinkCallback = oauthState.isCallback && oauthState.isMagicLink;
+  
+  // ==========================================
   // Auth State
   // ==========================================
-  const [appView, setAppView] = useState<AppView>('splash');
+  const [appView, setAppView] = useState<AppView>(() => {
+    if (oauthState.isCallback && oauthState.isPopup) return 'oauth-popup';
+    return 'splash';
+  });
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isGuest, setIsGuest] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   // ==========================================
   // Global State
@@ -78,7 +323,6 @@ const App: React.FC = () => {
   const [isLanguagePopupOpen, setIsLanguagePopupOpen] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState<'ar' | 'en' | 'ur'>('ar');
   const [autoTranslateRequests, setAutoTranslateRequests] = useState(false);
-  const [userInterests, setUserInterests] = useState<string[]>(["tech", "writing"]);
   const [userPreferences, setUserPreferences] = useState<UserPreferences>({
     interestedCategories: ["tech", "writing"],
     interestedCities: ["الرياض"],
@@ -95,6 +339,7 @@ const App: React.FC = () => {
   const [allRequests, setAllRequests] = useState<Request[]>([]);
   const [interestsRequests, setInterestsRequests] = useState<Request[]>([]); // طلبات اهتماماتي فقط
   const [unreadInterestsCount, setUnreadInterestsCount] = useState<number>(0); // عدد الطلبات غير المقروءة في اهتماماتي
+  const [viewedRequestIds, setViewedRequestIds] = useState<Set<string>>(new Set()); // الطلبات المشاهدة من قاعدة البيانات
   const [myOffers, setMyOffers] = useState<Offer[]>([]);
   const [archivedRequests, setArchivedRequests] = useState<Request[]>([]);
   const [archivedOffers, setArchivedOffers] = useState<Offer[]>([]);
@@ -110,6 +355,9 @@ const App: React.FC = () => {
     ai: { connected: boolean; error?: string };
   } | null>(null);
 
+  // Unify userInterests with userPreferences.interestedCategories to prevent desync
+  const userInterests = userPreferences.interestedCategories;
+
   // ==========================================
   // Notification & Review State
   // ==========================================
@@ -123,6 +371,7 @@ const App: React.FC = () => {
   // ==========================================
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [scrollToOfferSection, setScrollToOfferSection] = useState(false);
+  const [navigatedFromSidebar, setNavigatedFromSidebar] = useState(false); // لتتبع مصدر التنقل
   
   // Save state when switching modes to restore when coming back
   const [savedOffersModeState, setSavedOffersModeState] = useState<{
@@ -178,7 +427,33 @@ const App: React.FC = () => {
   // ==========================================
   // State Persistence for ChatArea
   // ==========================================
-  const [savedChatMessages, setSavedChatMessages] = useState<any[]>([]);
+  // Load saved messages from localStorage on mount
+  const [savedChatMessages, setSavedChatMessages] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('abeely_chat_messages');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Keep only last 50 messages to prevent localStorage overflow
+        return Array.isArray(parsed) ? parsed.slice(-50) : [];
+      }
+    } catch (e) {
+      console.error('Error loading chat messages:', e);
+    }
+    return [];
+  });
+
+  // Save messages to localStorage when they change
+  useEffect(() => {
+    if (savedChatMessages.length > 0) {
+      try {
+        // Keep only last 50 messages
+        const toSave = savedChatMessages.slice(-50);
+        localStorage.setItem('abeely_chat_messages', JSON.stringify(toSave));
+      } catch (e) {
+        console.error('Error saving chat messages:', e);
+      }
+    }
+  }, [savedChatMessages]);
 
   // ==========================================
   // State Persistence for RequestDetail
@@ -196,27 +471,150 @@ const App: React.FC = () => {
   }>>({});
 
   // ==========================================
-  // Auth Initialization
+  // Auth Initialization (Fast - 3s timeout)
   // ==========================================
   useEffect(() => {
+    // Skip auth init if we're in OAuth popup mode (it will close itself)
+    if (isOAuthPopupMode) {
+      // Process OAuth callback and session will be stored
+      supabase.auth.getSession().catch(console.error);
+      return;
+    }
+
     const initAuth = async () => {
-      try {
-        // Check for existing session
-        const { data: { session } } = await supabase.auth.getSession();
+      // If we have OAuth/Magic Link callback params in main window
+      // Let Supabase's detectSessionInUrl handle the code/token exchange automatically
+      // We just need to wait for the session and clean the URL
+      if (oauthState.isCallback && !oauthState.isPopup) {
+        // Clear the popup flag if it exists
+        localStorage.removeItem('abeely_oauth_popup_active');
+        
+        if (isMagicLinkCallback) {
+          console.log('📧 Magic Link callback detected, waiting for Supabase to process...');
+        } else {
+          console.log('📝 OAuth callback detected, waiting for Supabase to process...');
+        }
+        
+        // Clean URL AFTER giving Supabase a moment to extract the code/token
+        // Supabase should have already extracted it during initialization
+        setTimeout(() => {
+          if (window.location.search.includes('code=') || window.location.hash.includes('access_token')) {
+            const cleanUrl = window.location.origin + window.location.pathname;
+            window.history.replaceState({}, document.title, cleanUrl);
+            console.log('🧹 Cleaned auth params from URL');
+          }
+        }, 100);
+        
+        // Try to get session with retry logic (Supabase may still be exchanging the code)
+        const maxRetries = 3;
+        let session = null;
+        
+        for (let i = 0; i < maxRetries && !session; i++) {
+          try {
+            console.log(`⏳ Checking session... attempt ${i + 1}/${maxRetries}`);
+            
+            // Add 3-second timeout to each attempt
+            const sessionPromise = supabase.auth.getSession();
+            const timeoutPromise = new Promise<{data: {session: null}}>((resolve) => 
+              setTimeout(() => resolve({data: {session: null}}), 3000)
+            );
+            
+            const { data } = await Promise.race([sessionPromise, timeoutPromise]);
+            session = data?.session;
+            
+            if (session) {
+              console.log(`✅ OAuth session found on attempt ${i + 1}`);
+              break;
+            }
+            
+            // Short wait between retries
+            if (i < maxRetries - 1) {
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          } catch (err) {
+            console.error(`Session check attempt ${i + 1} failed:`, err);
+          }
+        }
         
         if (session?.user) {
-          const profile = await getCurrentUser();
-          setUser(profile);
-          setIsGuest(false);
+          if (isMagicLinkCallback) {
+            console.log('✅ Magic Link session established via Supabase auto-detection!');
+          } else {
+            console.log('✅ OAuth session established via Supabase auto-detection!');
+          }
+          
+          // Get user profile with timeout (3 seconds)
+          const profilePromise = getCurrentUser();
+          const profileTimeout = new Promise<null>((resolve) => 
+            setTimeout(() => resolve(null), 3000)
+          );
+          
+          const profile = await Promise.race([profilePromise, profileTimeout]);
+          
+          if (profile) {
+            setUser(profile);
+            setIsGuest(false);
+            localStorage.removeItem('abeely_guest_mode');
+            setAppView('main');
+            setAuthLoading(false);
+            return; // Exit early, we're done
+          } else {
+            // Profile not ready, but user is authenticated - proceed anyway
+            console.log('⚠️ Profile not ready, user auth OK, proceeding to main...');
+            setAppView('main');
+            setAuthLoading(false);
+            return;
+          }
         } else {
-          // Check if guest mode was previously set
+          if (isMagicLinkCallback) {
+            console.log('⚠️ No session after Magic Link callback retries, showing auth page');
+          } else {
+            console.log('⚠️ No session after OAuth callback retries, showing auth page');
+          }
+          // Fallback to auth page immediately
+          setAuthLoading(false);
+          setAppView('auth');
+          return;
+        }
+      }
+      try {
+        // Fast timeout - 3 seconds max
+        const authPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Auth timeout')), 3000)
+        );
+        
+        const result = await Promise.race([authPromise, timeoutPromise]) as any;
+        const session = result?.data?.session;
+        
+        if (session?.user) {
+          // Try to get profile with 2s timeout
+          const profilePromise = getCurrentUser();
+          const profileTimeout = new Promise<null>((resolve) => 
+            setTimeout(() => resolve(null), 2000)
+          );
+          
+          const profile = await Promise.race([profilePromise, profileTimeout]);
+          
+          if (profile) {
+            setUser(profile);
+            setIsGuest(false);
+          } else {
+            // Profile not ready - will be fetched by onAuthStateChange
+            const wasGuest = localStorage.getItem('abeely_guest_mode') === 'true';
+            setIsGuest(wasGuest);
+          }
+        } else {
           const wasGuest = localStorage.getItem('abeely_guest_mode') === 'true';
           setIsGuest(wasGuest);
         }
-      } catch (err) {
-        console.error('Auth init error:', err);
+      } catch (err: any) {
+        // On any error, proceed to auth/guest - don't block the app
+        const wasGuest = localStorage.getItem('abeely_guest_mode') === 'true';
+        setIsGuest(wasGuest);
       } finally {
         setAuthLoading(false);
+        setIsRetrying(false);
       }
     };
 
@@ -224,14 +622,44 @@ const App: React.FC = () => {
 
     // Listen for auth changes
     const { data: { subscription } } = onAuthStateChange(async (authUser) => {
-      if (authUser) {
-        const profile = await getCurrentUser();
-        setUser(profile);
-        setIsGuest(false);
-        localStorage.removeItem('abeely_guest_mode');
-        setAppView('main');
-      } else {
-        setUser(null);
+      try {
+        if (authUser) {
+          // Add a small delay to ensure OAuth/Magic Link redirect is complete
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Clean up URL if we have OAuth/Magic Link params (after successful auth)
+          if (window.location.search.includes('code=') || window.location.hash.includes('access_token')) {
+            const cleanUrl = window.location.origin + window.location.pathname;
+            window.history.replaceState({}, document.title, cleanUrl);
+          }
+          
+          const profile = await getCurrentUser();
+          if (profile) {
+            setUser(profile);
+            setIsGuest(false);
+            localStorage.removeItem('abeely_guest_mode');
+            localStorage.removeItem('abeely_oauth_popup_active');
+            setAppView('main');
+          } else {
+            console.warn('Failed to get user profile after auth');
+            // Retry once after a delay
+            setTimeout(async () => {
+              const retryProfile = await getCurrentUser();
+              if (retryProfile) {
+                setUser(retryProfile);
+                setIsGuest(false);
+                localStorage.removeItem('abeely_guest_mode');
+                localStorage.removeItem('abeely_oauth_popup_active');
+                setAppView('main');
+              }
+            }, 1000);
+          }
+        } else {
+          setUser(null);
+        }
+      } catch (err) {
+        console.error('Auth state change error:', err);
+        // Don't crash the app, just log the error
       }
     });
 
@@ -239,6 +667,66 @@ const App: React.FC = () => {
       subscription.unsubscribe();
     };
   }, []);
+
+  // ==========================================
+  // Check for session when popup closes
+  // ==========================================
+  useEffect(() => {
+    if (isOAuthPopupMode) return;
+    
+    let lastPopupState = localStorage.getItem('abeely_oauth_popup_active') === 'true';
+    
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user && appView === 'auth') {
+          console.log('✅ Session found! Loading profile...');
+          const profile = await getCurrentUser();
+          if (profile) {
+            setUser(profile);
+            setIsGuest(false);
+            localStorage.removeItem('abeely_guest_mode');
+            setAuthLoading(false);
+            setAppView('main');
+            console.log('🚀 Navigated to main app!');
+          } else {
+            setAuthLoading(false);
+            setAppView('main');
+          }
+        }
+      } catch (err) {
+        console.error('Session check error:', err);
+      }
+    };
+    
+    // Check every 500ms if popup was closed
+    const checkPopupClosed = setInterval(() => {
+      const currentPopupState = localStorage.getItem('abeely_oauth_popup_active') === 'true';
+      
+      // If popup was active and now it's closed, check for session
+      if (lastPopupState && !currentPopupState) {
+        console.log('🔍 Popup closed, checking session...');
+        setTimeout(checkSession, 500);
+      }
+      
+      lastPopupState = currentPopupState;
+    }, 500);
+    
+    // Also check when window gets focus (user returns from popup)
+    const handleFocus = () => {
+      if (appView === 'auth' && !localStorage.getItem('abeely_oauth_popup_active')) {
+        console.log('👁️ Window focused, checking session...');
+        setTimeout(checkSession, 300);
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      clearInterval(checkPopupClosed);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [isOAuthPopupMode, appView]);
 
   // ==========================================
   // Splash Screen Complete Handler
@@ -258,13 +746,68 @@ const App: React.FC = () => {
     }
   };
 
+  // ==========================================
+  // Connection Retry Handler
+  // ==========================================
+  const handleConnectionRetry = async () => {
+    setIsRetrying(true);
+    setConnectionError(null);
+    
+    try {
+      // Try to check connection first
+      const isConnected = await checkSupabaseConnection();
+      
+      if (isConnected) {
+        // Connection restored, try to get session again
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user) {
+          const profile = await getCurrentUser();
+          if (profile) {
+            setUser(profile);
+            setIsGuest(false);
+            setAppView('main');
+          } else {
+            setAppView('auth');
+          }
+        } else {
+          // Check if was guest before
+          const wasGuest = localStorage.getItem('abeely_guest_mode') === 'true';
+          if (wasGuest) {
+            setIsGuest(true);
+            setAppView('main');
+          } else {
+            setAppView('auth');
+          }
+        }
+      } else {
+        setConnectionError('الخدمة غير متاحة حالياً. يرجى المحاولة بعد قليل.');
+        setAppView('connection-error');
+      }
+    } catch (err: any) {
+      console.error('Retry connection error:', err);
+      setConnectionError('لم نتمكن من الاتصال. تأكد من اتصالك بالإنترنت.');
+      setAppView('connection-error');
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  // Handle entering guest mode from connection error
+  const handleGuestModeFromError = () => {
+    setIsGuest(true);
+    localStorage.setItem('abeely_guest_mode', 'true');
+    setConnectionError(null);
+    setAppView('main');
+  };
+
   // Watch for auth loading completion after splash
   useEffect(() => {
     if (appView === 'splash' && !authLoading) {
-      // Delay a bit for splash animation
+      // Minimal delay - just enough for smooth transition
       const timer = setTimeout(() => {
         handleSplashComplete();
-      }, 500);
+      }, 100);
       return () => clearTimeout(timer);
     }
   }, [authLoading, appView, user, isGuest]);
@@ -349,6 +892,32 @@ const App: React.FC = () => {
   }, [user?.id]);
 
   // ==========================================
+  // Load Viewed Requests from Backend
+  // ==========================================
+  useEffect(() => {
+    if (!user?.id || isGuest) {
+      setViewedRequestIds(new Set());
+      return;
+    }
+
+    // Initial load
+    const loadViewedRequests = async () => {
+      const ids = await getViewedRequestIds();
+      setViewedRequestIds(ids);
+    };
+    loadViewedRequests();
+
+    // Subscribe to real-time updates
+    const unsubscribe = subscribeToViewedRequests(user.id, (ids) => {
+      setViewedRequestIds(ids);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user?.id, isGuest]);
+
+  // ==========================================
   // Reload Data When Opening Marketplace
   // ==========================================
   useEffect(() => {
@@ -381,6 +950,91 @@ const App: React.FC = () => {
       reloadData();
     }
   }, [view, appView, allRequests.length, requestsLoadError]);
+
+  // ==========================================
+  // Auto-Retry: Check Connection & Reload Data
+  // ==========================================
+  useEffect(() => {
+    // Only run when in main view, loading, and no data yet
+    if (appView !== 'main') return;
+    if (!isLoadingData && allRequests.length > 0) return;
+    if (loadingRef.current) return;
+
+    let retryCount = 0;
+    const maxRetries = 60; // Max 5 minutes (60 * 5s)
+    
+    const checkAndReload = async () => {
+      if (retryCount >= maxRetries) {
+        console.log('[Auto-Retry] Max retries reached, stopping auto-check');
+        return;
+      }
+      
+      retryCount++;
+      console.log(`[Auto-Retry] Checking connection (attempt ${retryCount})...`);
+      
+      try {
+        const status = await checkSupabaseConnection();
+        
+        if (status.connected) {
+          console.log('[Auto-Retry] Connection restored! Reloading data...');
+          loadingRef.current = true;
+          setIsLoadingData(true);
+          setRequestsLoadError(null);
+          
+          try {
+            const { data: firstPage, count: totalCount } = await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
+            if (Array.isArray(firstPage) && firstPage.length > 0) {
+              setAllRequests(firstPage);
+              setMarketplacePage(0);
+              const more = typeof totalCount === 'number'
+                ? firstPage.length < totalCount
+                : firstPage.length === MARKETPLACE_PAGE_SIZE;
+              setMarketplaceHasMore(more);
+              console.log('[Auto-Retry] Data loaded successfully!');
+            }
+          } catch (loadError) {
+            console.error('[Auto-Retry] Failed to load data after connection restored:', loadError);
+          } finally {
+            setIsLoadingData(false);
+            loadingRef.current = false;
+          }
+        } else {
+          console.log(`[Auto-Retry] Still disconnected: ${status.error}`);
+        }
+      } catch (err) {
+        console.log('[Auto-Retry] Connection check failed:', err);
+      }
+    };
+
+    // Start checking every 5 seconds
+    const intervalId = setInterval(checkAndReload, 5000);
+    
+    // Also check immediately
+    checkAndReload();
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [appView, isLoadingData, allRequests.length]);
+
+  // ==========================================
+  // Loading Timeout: Show friendly error after 10s
+  // ==========================================
+  useEffect(() => {
+    if (appView !== 'main') return;
+    if (allRequests.length > 0) return;
+    if (!isLoadingData) return;
+    if (requestsLoadError) return;
+
+    const timeoutId = setTimeout(() => {
+      if (isLoadingData && allRequests.length === 0) {
+        setRequestsLoadError('قد يكون هناك مشكلة مؤقتة في الاتصال');
+        setIsLoadingData(false);
+      }
+    }, 10000);
+
+    return () => clearTimeout(timeoutId);
+  }, [appView, isLoadingData, allRequests.length, requestsLoadError]);
 
   // ==========================================
   // Load Notifications from Supabase
@@ -441,37 +1095,44 @@ const App: React.FC = () => {
   // Load Interests Requests and Unread Count
   // ==========================================
   useEffect(() => {
-    if (appView !== 'main' || !user?.id) return;
+    if (appView !== 'main' || (!user?.id && !isGuest)) return;
 
     const loadInterestsData = async () => {
       try {
+        const activeCategories = userPreferences.interestedCategories;
+        const activeCities = userPreferences.interestedCities;
+
         // Filter all requests by interests
-        const hasInterests = userPreferences.interestedCategories.length > 0 || 
-                            userPreferences.interestedCities.length > 0;
+        const hasInterests = activeCategories.length > 0 || activeCities.length > 0;
         
         if (hasInterests) {
           const filtered = allRequests.filter(req => {
             // Check categories match
-            const catMatch = userPreferences.interestedCategories.length === 0 ||
-              (req.categories || []).some(cat =>
-                userPreferences.interestedCategories.some(interest =>
-                  cat.toLowerCase().includes(interest.toLowerCase()) ||
-                  interest.toLowerCase().includes(cat.toLowerCase())
-                )
-              );
+            const catMatch = activeCategories.length === 0 ||
+              (req.categories || []).some(catLabel => {
+                return activeCategories.some(interestId => {
+                  const categoryObj = AVAILABLE_CATEGORIES.find(c => c.id === interestId);
+                  const interestLabels = [interestId];
+                  if (categoryObj) interestLabels.push(categoryObj.label);
+                  
+                  return interestLabels.some(label => 
+                    catLabel.toLowerCase().includes(label.toLowerCase()) ||
+                    label.toLowerCase().includes(catLabel.toLowerCase())
+                  );
+                });
+              });
 
             // Check city match
-            const cityMatch = userPreferences.interestedCities.length === 0 ||
-              (req.location && userPreferences.interestedCities.some(city =>
-                req.location.includes(city) || city.includes(req.location)
+            const cityMatch = activeCities.length === 0 ||
+              (req.location && activeCities.some(city =>
+                req.location.toLowerCase().includes(city.toLowerCase()) || 
+                city.toLowerCase().includes(req.location.toLowerCase())
               ));
 
             return catMatch && cityMatch;
           });
 
           setInterestsRequests(filtered);
-
-          // Get unread count
           const count = await getUnreadInterestsCount();
           setUnreadInterestsCount(count);
         } else {
@@ -484,7 +1145,7 @@ const App: React.FC = () => {
     };
 
     loadInterestsData();
-  }, [appView, user?.id, allRequests, userPreferences.interestedCategories, userPreferences.interestedCities]);
+  }, [appView, user?.id, isGuest, allRequests, userPreferences.interestedCategories, userPreferences.interestedCities]);
 
   // ==========================================
   // Subscribe to New Requests (Interests Only)
@@ -543,22 +1204,37 @@ const App: React.FC = () => {
       }
     }
     
-    // Save current state before switching modes
-    if (mode === "offers") {
-      // Save offers mode state (view and selectedRequest) to restore later
-      setSavedOffersModeState({
-        view: view,
-        selectedRequest: selectedRequest,
-        scrollToOfferSection: scrollToOfferSection,
-      });
-    } else if (mode === "requests") {
-      // Save requests mode state (view only, no selected request in requests mode)
-      setSavedRequestsModeState({
-        view: view,
-      });
+    // الصفحات العامة التي لا يجب حفظها كجزء من حالة الوضع
+    const globalViews: ViewState[] = ["settings", "profile", "messages", "conversation"];
+    const isGlobalView = globalViews.includes(view);
+    
+    // Save current state before switching modes (تجاهل الصفحات العامة)
+    if (!isGlobalView) {
+      if (mode === "offers") {
+        // Save offers mode state (view and selectedRequest) to restore later
+        setSavedOffersModeState({
+          view: view,
+          selectedRequest: selectedRequest,
+          scrollToOfferSection: scrollToOfferSection,
+        });
+      } else if (mode === "requests") {
+        // Save requests mode state (view only, no selected request in requests mode)
+        setSavedRequestsModeState({
+          view: view,
+        });
+      }
     }
     
     setMode(newMode);
+    
+    // إذا كنا في صفحة عامة، ننتقل للصفحة الافتراضية للوضع الجديد
+    if (isGlobalView) {
+      const defaultView = newMode === "requests" ? "create-request" : "marketplace";
+      setView(defaultView);
+      setSelectedRequest(null);
+      setScrollToOfferSection(false);
+      return;
+    }
     
     // Restore saved state if available, otherwise use default view
     if (newMode === "offers" && savedOffersModeState) {
@@ -645,19 +1321,31 @@ const App: React.FC = () => {
     }
   }, [view, mode, requestsModeScrollPos]);
 
-  const handleSelectRequest = (req: Request, scrollToOffer = false) => {
+  const handleSelectRequest = (req: Request, scrollToOffer = false, fromSidebar = false) => {
     // Marketplace component already saves scroll position via onScrollPositionChange
     // No need to manually save it here - marketplaceScrollPos is already up to date
     setSelectedRequest(req);
     setScrollToOfferSection(scrollToOffer);
+    setNavigatedFromSidebar(fromSidebar); // تتبع مصدر التنقل
     setView("request-detail");
     if (window.innerWidth < 768) setIsSidebarOpen(false);
+    
+    // Update viewed requests immediately for optimistic UI
+    // Backend will be updated by RequestDetail component via markRequestAsViewed
+    if (user?.id && !isGuest) {
+      setViewedRequestIds(prev => {
+        const newSet = new Set(prev);
+        newSet.add(req.id);
+        return newSet;
+      });
+    }
   };
 
-  const handleSelectOffer = (offer: Offer) => {
+  const handleSelectOffer = (offer: Offer, fromSidebar = false) => {
     const relatedRequest = allRequests.find((r) => r.id === offer.requestId);
     if (relatedRequest) {
       setSelectedRequest(relatedRequest);
+      setNavigatedFromSidebar(fromSidebar); // تتبع مصدر التنقل
       setView("request-detail");
       if (window.innerWidth < 768) setIsSidebarOpen(false);
     }
@@ -668,6 +1356,10 @@ const App: React.FC = () => {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
     );
+  };
+
+  const handleRequestRead = (requestId: string) => {
+    setUnreadInterestsCount((prev) => Math.max(0, prev - 1));
   };
 
   const handleClearNotifications = async () => {
@@ -777,6 +1469,22 @@ const App: React.FC = () => {
     setUser(null);
     setIsGuest(false);
     localStorage.removeItem('abeely_guest_mode');
+    // إعادة تعيين الحالة للقيم الافتراضية لمنع بقاء آثار الجلسة السابقة
+    setView("create-request");
+    setMode("requests");
+    setSelectedRequest(null);
+    setPreviousView(null);
+    setSavedOffersModeState(null);
+    setSavedRequestsModeState(null);
+    setAppView('auth');
+  };
+
+  // ==========================================
+  // Go to Login Handler (for guest mode)
+  // ==========================================
+  const handleGoToLogin = () => {
+    setIsGuest(false);
+    localStorage.removeItem('abeely_guest_mode');
     setAppView('auth');
   };
 
@@ -790,7 +1498,12 @@ const App: React.FC = () => {
           <div className="h-full p-0 flex flex-col items-center justify-start pb-[env(safe-area-inset-bottom,0px)] overflow-x-hidden">
             <div className="w-full max-w-4xl h-full flex flex-col overflow-x-hidden">
               <ChatArea 
-                onRequestPublished={reloadData} 
+                onRequestPublished={() => {
+                  reloadData();
+                  // مسح المحادثة بعد نشر الطلب بنجاح
+                  setSavedChatMessages([]);
+                  localStorage.removeItem('abeely_chat_messages');
+                }} 
                 isGuest={isGuest}
                 userId={user?.id}
                 savedMessages={savedChatMessages}
@@ -813,7 +1526,13 @@ const App: React.FC = () => {
                 myOffers={myOffers}
                 onSelectRequest={handleSelectRequest}
                 userInterests={userInterests}
-                onUpdateInterests={setUserInterests}
+                onUpdateInterests={(interests) => {
+                  setUserPreferences(prev => ({ ...prev, interestedCategories: interests }));
+                }}
+                interestedCities={userPreferences.interestedCities}
+                onUpdateCities={(cities) => {
+                  setUserPreferences(prev => ({ ...prev, interestedCities: cities }));
+                }}
                 hasMore={marketplaceHasMore}
                 isLoadingMore={marketplaceIsLoadingMore}
                 isLoading={isLoadingData}
@@ -822,6 +1541,8 @@ const App: React.FC = () => {
                 loadError={requestsLoadError}
                 savedScrollPosition={marketplaceScrollPos}
                 onScrollPositionChange={setMarketplaceScrollPos}
+                // Viewed requests from Backend
+                viewedRequestIds={viewedRequestIds}
                 // Header integration props
                 isSidebarOpen={isSidebarOpen}
                 setIsSidebarOpen={setIsSidebarOpen}
@@ -859,11 +1580,18 @@ const App: React.FC = () => {
               onBack={() => {
                 setSelectedRequest(null);
                 setScrollToOfferSection(false);
-                setView("marketplace");
+                setNavigatedFromSidebar(false);
+                // إذا جاء من الـ Sidebar، ارجع للصفحة الافتراضية حسب الوضع
+                if (navigatedFromSidebar) {
+                  setView(mode === "requests" ? "create-request" : "marketplace");
+                } else {
+                  setView("marketplace");
+                }
                 // Marketplace will restore scroll position via savedScrollPosition prop
               }}
               isGuest={isGuest}
               scrollToOfferSection={scrollToOfferSection}
+              navigatedFromSidebar={navigatedFromSidebar}
               onNavigateToMessages={async (conversationId, userId, requestId, offerId) => {
                 const { getOrCreateConversation } = await import('./services/messagesService');
                 const { getCurrentUser } = await import('./services/authService');
@@ -906,6 +1634,7 @@ const App: React.FC = () => {
               onMarkAsRead={handleMarkAsRead}
               onClearAll={handleClearNotifications}
               onSignOut={handleSignOut}
+              onMarkRequestAsRead={handleRequestRead}
             />
           </div>
         ) : null;
@@ -918,7 +1647,6 @@ const App: React.FC = () => {
               userPreferences={userPreferences}
               onUpdatePreferences={(prefs) => {
                 setUserPreferences(prefs);
-                setUserInterests(prefs.interestedCategories);
               }}
               user={user}
               onBack={() => {
@@ -929,7 +1657,7 @@ const App: React.FC = () => {
                   handleNavigate(mode === "requests" ? "create-request" : "marketplace");
                 }
               }}
-              onSignOut={handleSignOut}
+              onSignOut={isGuest ? handleGoToLogin : handleSignOut}
               // Header integration props
               isSidebarOpen={isSidebarOpen}
               setIsSidebarOpen={setIsSidebarOpen}
@@ -944,6 +1672,7 @@ const App: React.FC = () => {
               notifications={notifications}
               onMarkAsRead={handleMarkAsRead}
               onClearAll={handleClearNotifications}
+              isGuest={isGuest}
             />
           </div>
         );
@@ -968,7 +1697,7 @@ const App: React.FC = () => {
               notifications={notifications}
               onMarkAsRead={handleMarkAsRead}
               onClearAll={handleClearNotifications}
-              onSignOut={handleSignOut}
+              onSignOut={isGuest ? handleGoToLogin : handleSignOut}
               onBack={() => {
                 if (previousView) {
                   setView(previousView);
@@ -977,6 +1706,7 @@ const App: React.FC = () => {
                   handleNavigate(mode === "requests" ? "create-request" : "marketplace");
                 }
               }}
+              isGuest={isGuest}
             />
           </div>
         );
@@ -1009,7 +1739,8 @@ const App: React.FC = () => {
               notifications={notifications}
               onMarkAsRead={handleMarkAsRead}
               onClearAll={handleClearNotifications}
-              onSignOut={handleSignOut}
+              onSignOut={isGuest ? handleGoToLogin : handleSignOut}
+              isGuest={isGuest}
             />
           </div>
         );
@@ -1035,7 +1766,8 @@ const App: React.FC = () => {
               notifications={notifications}
               onMarkAsRead={handleMarkAsRead}
               onClearAll={handleClearNotifications}
-              onSignOut={handleSignOut}
+              onSignOut={isGuest ? handleGoToLogin : handleSignOut}
+              isGuest={isGuest}
             />
           </div>
         );
@@ -1050,19 +1782,62 @@ const App: React.FC = () => {
   // App View Rendering
   // ==========================================
 
+  // OAuth Popup Success Screen - Show success and close
+  if (appView === 'oauth-popup' || isOAuthPopupMode) {
+    return <OAuthPopupSuccess />;
+  }
+
   // Splash Screen
   if (appView === 'splash') {
     return <SplashScreen onComplete={handleSplashComplete} />;
+  }
+
+  // Connection Error Screen
+  if (appView === 'connection-error') {
+    return (
+      <ConnectionError
+        onRetry={handleConnectionRetry}
+        onGuestMode={handleGuestModeFromError}
+        isRetrying={isRetrying}
+        errorMessage={connectionError || undefined}
+      />
+    );
   }
 
   // Auth Screen
   if (appView === 'auth') {
     return (
       <AuthPage
-        onAuthenticated={() => setAppView('main')}
+        onAuthenticated={async () => {
+          // Fetch session and user profile
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+              const profile = await getCurrentUser();
+              if (profile) {
+                setUser(profile);
+                setIsGuest(false);
+                localStorage.removeItem('abeely_guest_mode');
+              }
+            }
+          } catch (err) {
+            console.error('Error fetching user after auth:', err);
+          }
+          // إعادة تعيين الحالة للقيم الافتراضية عند تسجيل الدخول
+          setView("create-request");
+          setMode("requests");
+          setSelectedRequest(null);
+          setPreviousView(null);
+          setAppView('main');
+        }}
         onGuestMode={() => {
           setIsGuest(true);
           localStorage.setItem('abeely_guest_mode', 'true');
+          // إعادة تعيين الحالة للقيم الافتراضية عند الدخول كضيف
+          setView("create-request");
+          setMode("requests");
+          setSelectedRequest(null);
+          setPreviousView(null);
           setAppView('main');
         }}
       />
@@ -1109,7 +1884,7 @@ const App: React.FC = () => {
         onUnarchiveOffer={handleUnarchiveOffer}
         isGuest={isGuest}
         user={user}
-        onSignOut={handleSignOut}
+        onSignOut={isGuest ? handleGoToLogin : handleSignOut}
         onUnreadMessagesChange={setHasUnreadMessages}
         isDarkMode={isDarkMode}
         toggleTheme={() => setIsDarkMode(!isDarkMode)}
@@ -1118,152 +1893,42 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-        {/* Header - Sticky, unified with second header - hidden in marketplace and request-detail views because it's unified there */}
-        {view !== "marketplace" && view !== "request-detail" && (
-          <header className="sticky top-0 left-0 right-0 h-16 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl flex items-center justify-between px-4 z-50 pt-[env(safe-area-inset-top,0px)] border-b border-gray-200/30 dark:border-white/10">
-            <div className="flex items-center gap-3">
-              <button
-                className="md:hidden p-2.5 hover:bg-primary/10 rounded-xl transition-all duration-300 active:scale-95 group"
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              >
-                {isSidebarOpen ? (
-                  <X size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
-                ) : (
-                  <Menu size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
-                )}
-              </button>
-              <div className="flex items-start gap-3">
-                <h1 className="font-bold text-base text-foreground flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground mt-1.5">أبيلي</span>
-                  <motion.span
-                    key={titleKey}
-                    initial={{ scale: 1 }}
-                    animate={{
-                      scale: [1, 1.08, 1],
-                      x: [0, -2, 2, -2, 2, 0],
-                    }}
-                    transition={{
-                      duration: 0.4,
-                      ease: "easeInOut",
-                    }}
-                    className="bg-primary/10 text-primary px-3 py-1.5 rounded-lg text-sm inline-block"
-                  >
-                    {mode === "requests" ? "إنشاء الطلبات" : "تقديم العروض"}
-                  </motion.span>
-                </h1>
-              </div>
+        {/* Header - Only for views that don't have their own internal header */}
+        {view === "create-request" && (
+          <div className="sticky top-0 z-[60] px-4 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-gray-200/30 dark:border-white/10 shadow-sm">
+            <div className="flex flex-col">
+              <UnifiedHeader
+                isSidebarOpen={isSidebarOpen}
+                setIsSidebarOpen={setIsSidebarOpen}
+                mode={mode}
+                toggleMode={toggleMode}
+                isModeSwitching={isModeSwitching}
+                unreadCount={unreadCount}
+                hasUnreadMessages={hasUnreadMessages}
+                user={user}
+                setView={setView}
+                setPreviousView={setPreviousView}
+                titleKey={titleKey}
+                notifications={notifications}
+                onMarkAsRead={handleMarkAsRead}
+                onClearAll={handleClearNotifications}
+                onSignOut={isGuest ? handleGoToLogin : handleSignOut}
+                isGuest={isGuest}
+                currentView={view}
+                transparent={true}
+              />
             </div>
-
-            <div className="flex items-center gap-2">
-              {/* Mode Switch Button */}
-              <button
-                onClick={toggleMode}
-                className={`flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group ${
-                  isModeSwitching 
-                    ? "bg-primary/20 border-primary/40 shadow-[0_0_15px_rgba(30,150,140,0.3)]" 
-                    : "bg-secondary/50 hover:bg-primary/10 border border-border hover:border-primary/30"
-                }`}
-              >
-                <motion.div
-                  animate={isModeSwitching ? { 
-                    rotate: 360,
-                    scale: [1, 1.2, 1],
-                  } : { 
-                    rotate: 0,
-                    scale: 1 
-                  }}
-                  transition={{ duration: 0.5, ease: "easeInOut" }}
-                >
-                  <ArrowLeftRight 
-                    size={18} 
-                    strokeWidth={2} 
-                    className={`transition-all duration-300 ${
-                      isModeSwitching ? "text-primary" : "text-muted-foreground group-hover:text-primary"
-                    }`} 
-                  />
-                </motion.div>
-              </button>
-
-              {/* Messages Button */}
-              {user && (
-                <button
-                  onClick={() => {
-                    setPreviousView(view);
-                    setView("messages");
-                  }}
-                  className="p-2.5 rounded-xl hover:bg-primary/10 relative text-muted-foreground hover:text-primary transition-all duration-300 active:scale-95 group"
-                  title="الرسائل"
-                >
-                  <MessageCircle size={22} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
-                  {hasUnreadMessages && (
-                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-                    </span>
-                  )}
-                </button>
-              )}
-
-              {/* Notification Bell */}
-              <div className="relative" ref={notifRef}>
-                <button
-                  onClick={() => setIsNotifOpen(!isNotifOpen)}
-                  className="p-2.5 rounded-xl hover:bg-primary/10 relative text-muted-foreground hover:text-primary transition-all duration-300 active:scale-95 group"
-                >
-                  <Bell size={22} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
-                  {unreadCount > 0 && (
-                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                      <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 bg-red-500 text-[11px] text-white font-bold">
-                        {unreadCount}
-                      </span>
-                    </span>
-                  )}
-                </button>
-
-                <NotificationsPopover
-                  isOpen={isNotifOpen}
-                  notifications={notifications}
-                  onClose={() => setIsNotifOpen(false)}
-                  onMarkAsRead={handleMarkAsRead}
-                  onClearAll={handleClearNotifications}
-                />
-              </div>
-
-              {/* Sign Out (if logged in) */}
-              {user && (
-                <button
-                  onClick={handleSignOut}
-                  className="hidden sm:flex p-2.5 rounded-xl hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-all active:scale-95"
-                  title="تسجيل الخروج"
-                >
-                  <LogOut size={20} strokeWidth={2} />
-                </button>
-              )}
-            </div>
-          </header>
+          </div>
         )}
-        {/* Scrollable Content Area - Content scrolls behind headers for glass effect */}
+        {/* Scrollable Content Area */}
         <div
           id="main-scroll-container"
           ref={scrollContainerRef}
           className="flex-1 min-h-0 bg-background relative overflow-hidden"
         >
-          <AnimatePresence mode="popLayout">
-            <motion.div
-              key={`${view}-${selectedRequest?.id || 'list'}`}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ 
-                duration: 0.2, 
-                ease: "easeOut"
-              }}
-              className="absolute inset-0 flex flex-col overflow-auto"
-            >
-              {renderContent()}
-            </motion.div>
-          </AnimatePresence>
+          <div className="absolute inset-0 flex flex-col overflow-auto">
+            {renderContent()}
+          </div>
         </div>
       </main>
 

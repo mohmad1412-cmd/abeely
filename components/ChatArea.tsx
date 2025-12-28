@@ -542,7 +542,6 @@ const AudioPlayer: React.FC<{ url: string }> = ({ url }) => {
 
 interface ChatAreaProps {
   onRequestPublished?: () => void;
-  isGuest?: boolean;
   userId?: string;
   savedMessages?: ChatMessage[];
   onMessagesChange?: (messages: ChatMessage[]) => void;
@@ -722,11 +721,17 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   };
 
   const ensureAuthenticatedUserId = async (): Promise<string | null> => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatArea.tsx:ensureAuthenticatedUserId:entry',message:'ensureAuthenticatedUserId called',data:{userIdProp:userId,isGuest},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C,E'})}).catch(()=>{});
+    // #endregion
     // Prefer the prop coming from App.tsx (single source of truth)
     if (userId) return userId;
 
     const { data } = await supabase.auth.getUser();
     const uid = data?.user?.id ?? null;
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatArea.tsx:ensureAuthenticatedUserId:supabaseCheck',message:'supabase.auth.getUser result',data:{uid,hasUid:!!uid},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D,E'})}).catch(()=>{});
+    // #endregion
     if (uid) return uid;
 
     // No authenticated session
@@ -1720,10 +1725,19 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       // Prepare attachments (images only for now)
       const imageAttachments = attachedFiles.filter(file => file.type.startsWith('image/'));
       
+      // تحضير تاريخ المحادثة السابقة (بدون رسالة المستخدم الحالية)
+      const chatHistory = messages
+        .filter(msg => !msg.isDraftPreview) // استثناء معاينات المسودة
+        .map(msg => ({
+          role: msg.role as "user" | "ai",
+          text: msg.text,
+        }));
+      
       const draft = await generateDraftWithCta(
         finalText || (imageAttachments.length > 0 || audioBlob ? "وصف قصير مع مرفقات" : ""),
         imageAttachments.length > 0 ? imageAttachments : undefined,
         audioBlob,
+        chatHistory, // إرسال تاريخ المحادثة للذكاء
       );
 
       // Update conversation title automatically from AI-generated title
@@ -1821,6 +1835,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     draft: ChatMessage,
     skipValidation = false,
   ): Promise<string | null> => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatArea.tsx:handlePublishDraft:entry',message:'handlePublishDraft called',data:{hasDraftData:!!draft.draftData,skipValidation},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,D'})}).catch(()=>{});
+    // #endregion
     if (!draft.draftData) return null;
 
     // Check if user is guest - require phone verification and terms acceptance
@@ -1888,6 +1905,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
     try {
       const authedUserId = await ensureAuthenticatedUserId();
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatArea.tsx:handlePublishDraft:afterAuth',message:'ensureAuthenticatedUserId returned',data:{authedUserId,hasUser:!!authedUserId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D,E'})}).catch(()=>{});
+      // #endregion
       if (!authedUserId) return null;
 
       const result = await createRequestFromChat(
@@ -3202,8 +3222,14 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
   }, [draftData.isPublished, draftData.publishedRequestId, localPublished, publishedRequestId, originalPublishedData]);
 
   const onPublish = async (m: ChatMessage) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatArea.tsx:onPublish',message:'onPublish called',data:{isGuest,hasOnGuestPublish:!!onGuestPublish,draftTitle:m.draftData?.title,draftDesc:m.draftData?.description?.substring(0,50),draftLocation:m.draftData?.location},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,C'})}).catch(()=>{});
+    // #endregion
     // Check if guest - show verification modal
     if (isGuest && onGuestPublish) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatArea.tsx:onPublish:guest',message:'User is guest, calling onGuestPublish',data:{isGuest},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       // Haptic feedback - positive send pattern
       if (navigator.vibrate) {
         navigator.vibrate([30, 50, 30]);
@@ -3219,7 +3245,13 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
     
     setIsPublishing(true);
     setLocalPublished(true); // Turn green immediately
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatArea.tsx:onPublish:beforePublish',message:'Calling handlePublishDraft',data:{msgId:m.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,D'})}).catch(()=>{});
+    // #endregion
     const requestId = await handlePublishDraft(m);
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatArea.tsx:onPublish:afterPublish',message:'handlePublishDraft returned',data:{requestId,success:!!requestId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,D'})}).catch(()=>{});
+    // #endregion
     if (requestId) {
       setPublishedRequestId(requestId);
       updateDraftField(m.id, "isPublished", true);
@@ -4161,6 +4193,9 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
                   const titleTooLong = (draftData.title?.length || 0) > 70;
                   const descTooLong = (draftData.description?.length || 0) > 1000;
                   const isDisabled = !localPublished && (!draftData.title?.trim() || !draftData.description?.trim() || !draftData.location?.trim() || titleTooLong || descTooLong);
+                  // #region agent log
+                  fetch('http://127.0.0.1:7243/ingest/e4b972a3-10fd-4bed-a97d-4392044af213',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatArea.tsx:publishBtn:onClick',message:'Publish button clicked',data:{isDisabled,localPublished,titleEmpty:!draftData.title?.trim(),descEmpty:!draftData.description?.trim(),locationEmpty:!draftData.location?.trim(),titleTooLong,descTooLong,title:draftData.title,location:draftData.location},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+                  // #endregion
                   if (isDisabled) {
                     // Shake incomplete or invalid fields
                     const newShakingFields = {

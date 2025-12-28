@@ -28,6 +28,7 @@ interface SettingsProps {
   notifications: any[];
   onMarkAsRead: (id: string) => void;
   onClearAll: () => void;
+  isGuest?: boolean;
 }
 
 const CITIES = [
@@ -63,6 +64,7 @@ export const Settings: React.FC<SettingsProps> = ({
   notifications,
   onMarkAsRead,
   onClearAll,
+  isGuest = false,
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingEmail, setIsEditingEmail] = useState(false);
@@ -165,45 +167,15 @@ export const Settings: React.FC<SettingsProps> = ({
         onMarkAsRead={onMarkAsRead}
         onClearAll={onClearAll}
         onSignOut={onSignOut || (() => {})}
-        backButton={true}
-        onBack={onBack}
+        showSidebarButton={true}
         title="الإعدادات"
         currentView="settings"
+        hideModeToggle={true}
+        isGuest={isGuest}
       />
 
-      <div className="flex-1 overflow-y-auto relative">
-        {/* Sticky Theme Toggle Bar */}
-        <div className="sticky top-0 z-40 transition-all duration-300 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-gray-200/30 dark:border-white/10">
-          <div className="flex items-center justify-end px-4 py-3">
-            {/* Theme Toggle Button */}
-            <motion.button 
-              onClick={() => {
-                // Haptic feedback
-                if (navigator.vibrate) {
-                  navigator.vibrate(15);
-                }
-                toggleTheme();
-              }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 group ${
-                isDarkMode 
-                  ? 'bg-card/80 backdrop-blur-sm hover:bg-card border-border text-foreground shadow-lg' 
-                  : 'bg-card/80 backdrop-blur-sm hover:bg-card border-border text-foreground shadow-lg'
-              }`}
-            >
-              <Sun size={18} className={`transition-all ${isDarkMode ? 'opacity-40' : 'opacity-100 text-orange-500'}`} />
-              <ArrowLeftRight 
-                size={16} 
-                className={`text-muted-foreground group-hover:text-primary transition-all duration-300 ${isDarkMode ? 'rotate-180' : ''}`}
-              />
-              <Moon size={18} className={`transition-all ${isDarkMode ? 'opacity-100 text-indigo-400' : 'opacity-40'}`} />
-            </motion.button>
-          </div>
-        </div>
-        <div className="max-w-2xl mx-auto p-6 mt-8">
-      <h2 className="text-2xl font-bold mb-6">الإعدادات</h2>
-      
+      <div className="flex-1 overflow-y-auto relative no-scrollbar pb-24">
+        <div className="max-w-2xl mx-auto p-6">
           <div className="space-y-4">
             {/* Account Settings - First */}
             <div className="p-4 bg-secondary/50 rounded-lg border border-border">
@@ -831,18 +803,20 @@ export const Settings: React.FC<SettingsProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Sign Out Button - At the bottom */}
+      {/* Sign Out Button - Floating at bottom */}
       {onSignOut && (
-        <div className="max-w-2xl mx-auto px-6 pb-8">
-          <motion.button
-            onClick={onSignOut}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-all group"
-          >
-            <LogOut size={20} className="group-hover:scale-110 transition-transform" />
-            <span className="font-bold">تسجيل الخروج</span>
-          </motion.button>
+        <div className="sticky bottom-0 z-20 bg-gradient-to-t from-background via-background to-transparent pt-6 pb-6">
+          <div className="max-w-2xl mx-auto px-6">
+            <motion.button
+              onClick={onSignOut}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-all group backdrop-blur-sm"
+            >
+              <LogOut size={20} className="group-hover:scale-110 transition-transform" />
+              <span className="font-bold">تسجيل الخروج</span>
+            </motion.button>
+          </div>
         </div>
       )}
     </div>

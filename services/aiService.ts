@@ -59,10 +59,17 @@ function getMimeType(file: File): string {
   return file.type || 'application/octet-stream';
 }
 
+// نوع رسالة المحادثة
+export type ChatHistoryMessage = {
+  role: "user" | "ai";
+  text: string;
+};
+
 export async function generateDraftWithCta(
   text: string,
   attachments?: File[],
   audioBlob?: Blob,
+  chatHistory?: ChatHistoryMessage[], // تاريخ المحادثة السابقة
 ): Promise<AIDraft & { isClarification?: boolean; aiResponse: string }> {
   // 1. Try Supabase Edge Function first (Secure, handles API key on server)
   try {
@@ -70,7 +77,8 @@ export async function generateDraftWithCta(
     const { data, error } = await supabase.functions.invoke("ai-chat", {
       body: { 
         prompt: text,
-        mode: "draft"
+        mode: "draft",
+        chatHistory: chatHistory || [], // إرسال تاريخ المحادثة
       },
     });
 
@@ -95,9 +103,22 @@ export async function generateDraftWithCta(
     };
   }
 
+  // بناء تاريخ المحادثة كنص
+  const conversationHistory = chatHistory && chatHistory.length > 0
+    ? chatHistory.map(msg => `${msg.role === 'user' ? '👤 العميل' : '🤖 المساعد'}: ${msg.text}`).join('\n\n')
+    : '';
+
   const prompt = `
 أنت مساعد ذكي متخصص في منصة "أبيلي" - منصة سعودية لربط طالبي الخدمات بمقدميها.
 هدفك: فهم احتياج العميل بدقة ومساعدته في صياغة طلب واضح ومفصل.
+
+${conversationHistory ? `
+═══════════════════════════════════════════════════════════════
+📜 تاريخ المحادثة السابقة (استخدمه لفهم السياق الكامل):
+═══════════════════════════════════════════════════════════════
+${conversationHistory}
+═══════════════════════════════════════════════════════════════
+` : ''}
 
 تعليمات مهمة:
 1. كن ذكياً، طبيعياً، وعفوياً - تحدث كإنسان حقيقي وليس كروبوت مبرمج على كلمات محددة

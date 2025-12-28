@@ -28,6 +28,7 @@ interface ProfileProps {
   onClearAll: () => void;
   onSignOut: () => void;
   onBack: () => void;
+  isGuest?: boolean;
 }
 
 export const Profile: React.FC<ProfileProps> = ({ 
@@ -48,7 +49,8 @@ export const Profile: React.FC<ProfileProps> = ({
   onMarkAsRead,
   onClearAll,
   onSignOut,
-  onBack
+  onBack,
+  isGuest = false,
 }) => {
   const [profileRole, setProfileRole] = useState<'requester' | 'provider'>('provider');
 
@@ -71,10 +73,11 @@ export const Profile: React.FC<ProfileProps> = ({
         onMarkAsRead={onMarkAsRead}
         onClearAll={onClearAll}
         onSignOut={onSignOut}
-        backButton={true}
-        onBack={onBack}
+        showSidebarButton={true}
         title="الملف الشخصي"
         currentView="profile"
+        hideModeToggle={true}
+        isGuest={isGuest}
       />
 
       <div className="flex-1 overflow-y-auto no-scrollbar">

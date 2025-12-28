@@ -99,3 +99,156 @@ export async function getUnreadRequestIds(): Promise<string[]> {
   }
 }
 
+/**
+ * Get all viewed request IDs for current user (requests they actually opened)
+ * Returns set of request IDs that the user has viewed
+ */
+export async function getViewedRequestIds(): Promise<Set<string>> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return new Set();
+
+    const { data, error } = await supabase
+      .from('request_views')
+      .select('request_id')
+      .eq('user_id', user.id);
+
+    if (error) throw error;
+    return new Set((data || []).map(r => r.request_id));
+  } catch (error) {
+    console.error('Error getting viewed request IDs:', error);
+    return new Set();
+  }
+}
+
+/**
+ * Subscribe to request views changes for real-time updates
+ */
+export function subscribeToViewedRequests(
+  userId: string,
+  onUpdate: (viewedIds: Set<string>) => void
+) {
+  const channel = supabase
+    .channel(`request_views_${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'request_views',
+        filter: `user_id=eq.${userId}`,
+      },
+      async () => {
+        // Refetch all viewed requests on any change
+        const viewedIds = await getViewedRequestIds();
+        onUpdate(viewedIds);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+// ==========================================
+// View Count System (للجميع - مسجلين وزوار)
+// ==========================================
+
+/**
+ * Generate or get session ID for tracking views
+ */
+function getOrCreateSessionId(): string {
+  const STORAGE_KEY = 'abeely_session_id';
+  let sessionId = localStorage.getItem(STORAGE_KEY);
+  
+  if (!sessionId) {
+    // Generate a unique session ID
+    sessionId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+    localStorage.setItem(STORAGE_KEY, sessionId);
+  }
+  
+  return sessionId;
+}
+
+/**
+ * Increment view count for a request (works for everyone - registered and guests)
+ * Returns the new view count and whether this was a new view
+ */
+export async function incrementRequestViews(requestId: string): Promise<{
+  success: boolean;
+  isNewView: boolean;
+  viewCount: number;
+}> {
+  try {
+    const sessionId = getOrCreateSessionId();
+    const userAgent = navigator.userAgent;
+    
+    const { data, error } = await supabase.rpc('increment_request_views', {
+      request_id_param: requestId,
+      session_id_param: sessionId,
+      user_agent_param: userAgent,
+    });
+
+    if (error) throw error;
+    
+    return {
+      success: data?.success ?? false,
+      isNewView: data?.is_new_view ?? false,
+      viewCount: data?.view_count ?? 0,
+    };
+  } catch (error) {
+    console.error('Error incrementing request views:', error);
+    return { success: false, isNewView: false, viewCount: 0 };
+  }
+}
+
+/**
+ * Get view count for a specific request
+ */
+export async function getRequestViewCount(requestId: string): Promise<number> {
+  try {
+    const { data, error } = await supabase.rpc('get_request_view_count', {
+      request_id_param: requestId,
+    });
+
+    if (error) throw error;
+    return data ?? 0;
+  } catch (error) {
+    console.error('Error getting request view count:', error);
+    return 0;
+  }
+}
+
+/**
+ * Get detailed view statistics for a request (for request owner)
+ */
+export async function getRequestViewStats(requestId: string): Promise<{
+  totalViews: number;
+  uniqueRegisteredUsers: number;
+  guestViews: number;
+  viewsLast24h: number;
+  viewsLast7d: number;
+} | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_request_view_stats', {
+      request_id_param: requestId,
+    });
+
+    if (error) throw error;
+    
+    if (!data) return null;
+    
+    return {
+      totalViews: data.total_views ?? 0,
+      uniqueRegisteredUsers: data.unique_registered_users ?? 0,
+      guestViews: data.guest_views ?? 0,
+      viewsLast24h: data.views_last_24h ?? 0,
+      viewsLast7d: data.views_last_7d ?? 0,
+    };
+  } catch (error) {
+    console.error('Error getting request view stats:', error);
+    return null;
+  }
+}
+

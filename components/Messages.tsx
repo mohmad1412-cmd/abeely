@@ -6,7 +6,8 @@ import {
   Send, 
   Loader2,
   User,
-  ChevronLeft
+  ChevronLeft,
+  CheckCheck
 } from 'lucide-react';
 import { 
   getConversations, 
@@ -42,6 +43,7 @@ interface MessagesProps {
   onMarkAsRead: (id: string) => void;
   onClearAll: () => void;
   onSignOut: () => void;
+  isGuest?: boolean;
 }
 
 export const Messages: React.FC<MessagesProps> = ({ 
@@ -61,7 +63,8 @@ export const Messages: React.FC<MessagesProps> = ({
   notifications,
   onMarkAsRead,
   onClearAll,
-  onSignOut
+  onSignOut,
+  isGuest = false,
 }) => {
   const [user, setUser] = React.useState<any>(null);
 
@@ -161,18 +164,24 @@ export const Messages: React.FC<MessagesProps> = ({
     loadMessages();
 
     // Subscribe to new messages
-    const unsubscribe = subscribeToMessages(selectedConversation.id, (newMsg) => {
-      setMessages((prev) => [...prev, newMsg]);
-      
-      // Mark as read if it's not from current user
-      if (newMsg.sender_id !== user?.id) {
-        markMessagesAsRead(selectedConversation.id);
+    const unsubscribe = subscribeToMessages(selectedConversation.id, (newMsg, eventType) => {
+      if (eventType === 'INSERT') {
+        setMessages((prev) => [...prev, newMsg]);
+        
+        // Mark as read if it's not from current user
+        if (newMsg.sender_id !== user?.id) {
+          markMessagesAsRead(selectedConversation.id);
+        }
+        
+        // Scroll to bottom
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      } else if (eventType === 'UPDATE') {
+        setMessages((prev) => 
+          prev.map((m) => (m.id === newMsg.id ? newMsg : m))
+        );
       }
-      
-      // Scroll to bottom
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
     });
 
     return () => {
@@ -236,10 +245,10 @@ export const Messages: React.FC<MessagesProps> = ({
           onMarkAsRead={onMarkAsRead}
           onClearAll={onClearAll}
           onSignOut={onSignOut}
-          backButton={true}
-          onBack={onBack}
+          showSidebarButton={true}
           title="الرسائل"
           currentView="messages"
+          isGuest={isGuest}
         />
 
         {/* Conversations List */}
@@ -374,11 +383,20 @@ export const Messages: React.FC<MessagesProps> = ({
                     <p className="text-sm leading-relaxed whitespace-pre-wrap">
                       {msg.content}
                     </p>
-                    <p className={`text-[10px] mt-1 ${
-                      isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                    }`}>
-                      {formatTime(msg.created_at)}
-                    </p>
+                    <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+                      <p className={`text-[10px] ${
+                        isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                      }`}>
+                        {formatTime(msg.created_at)}
+                      </p>
+                      {isOwn && (
+                        msg.is_read ? (
+                          <CheckCheck size={12} className="text-blue-200" />
+                        ) : (
+                          <CheckCheck size={12} className="text-primary-foreground/40" />
+                        )
+                      )}
+                    </div>
                   </div>
                 </motion.div>
               );

@@ -30,6 +30,8 @@ import {
   LogOut,
   Check,
   User,
+  Eye,
+  WifiOff,
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
@@ -54,6 +56,8 @@ interface MarketplaceProps {
   loadError?: string | null;
   savedScrollPosition?: number;
   onScrollPositionChange?: (pos: number) => void;
+  // Viewed requests from Backend - الطلبات المشاهدة من قاعدة البيانات
+  viewedRequestIds?: Set<string>;
   // Main Header Props
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
@@ -91,6 +95,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   loadError = null,
   savedScrollPosition: externalScrollPos = 0,
   onScrollPositionChange,
+  // Viewed requests from Backend
+  viewedRequestIds: backendViewedIds,
   // Main Header Props
   isSidebarOpen,
   setIsSidebarOpen,
@@ -135,10 +141,20 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const [isAtTop, setIsAtTop] = useState(false);
   const [savedScrollPosition, setSavedScrollPosition] = useState(0);
+  
+  // Interests panel visibility based on scroll direction
+  const [showInterestsPanel, setShowInterestsPanel] = useState(true);
+  const lastScrollY = useRef(0);
 
   // Touch interaction state
   const [touchHoveredCardId, setTouchHoveredCardId] = useState<string | null>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Viewed requests tracking - الطلبات المشاهدة (من Backend للمسجلين، من localStorage للزوار)
+  const [guestViewedIds, setGuestViewedIds] = useState<Set<string>>(new Set()); // للزوار فقط
+
+  // استخدام بيانات Backend إذا كان المستخدم مسجل، وإلا localStorage للزوار
+  const viewedRequestIds = isGuest ? guestViewedIds : (backendViewedIds || new Set<string>());
 
   // Search term state
   const [searchTerm, setSearchTerm] = useState("");
@@ -152,6 +168,23 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
     return () => clearInterval(interval);
   }, []);
+
+  // Load viewed requests from localStorage for guests only
+  useEffect(() => {
+    if (!isGuest) return; // فقط للزوار
+    
+    try {
+      const stored = localStorage.getItem('guestViewedRequestIds');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setGuestViewedIds(new Set<string>(parsed));
+        }
+      }
+    } catch (e) {
+      console.error('Error loading guest viewed requests:', e);
+    }
+  }, [isGuest]);
 
   // Search Page State
   const [isSearchPageOpen, setIsSearchPageOpen] = useState(false);
@@ -194,28 +227,26 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   const ninthItemRef = useRef<HTMLDivElement | null>(null);
   const pullStartY = useRef<number>(0);
   const pullCurrentY = useRef<number>(0);
+  const pullDistanceRef = useRef<number>(0); // استخدام ref لتجنب stale closure
   
   // Pull-to-refresh handlers
   useEffect(() => {
     const container = marketplaceScrollRef.current;
     if (!container || !onRefresh) return;
 
-    const PULL_THRESHOLD = 80; // Distance in pixels to trigger refresh
-    const MAX_PULL = 120; // Maximum pull distance
+    const PULL_THRESHOLD = 60; // أقل لإحساس أخف وأسرع
+    const MAX_PULL = 90; // أقل لإحساس أنعم
 
     const handleTouchStart = (e: TouchEvent) => {
       if (container.scrollTop !== 0) return; // Only allow pull when at top
       pullStartY.current = e.touches[0].clientY;
       pullCurrentY.current = pullStartY.current;
-      
-      // Feedback on touch start for pull-to-refresh
-      if (navigator.vibrate) {
-        navigator.vibrate(5);
-      }
+      pullDistanceRef.current = 0;
     };
 
     const handleTouchMove = (e: TouchEvent) => {
       if (container.scrollTop !== 0) {
+        pullDistanceRef.current = 0;
         setPullToRefreshState({ isPulling: false, pullDistance: 0, isRefreshing: false });
         return;
       }
@@ -226,6 +257,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       if (pullDistance > 0) {
         e.preventDefault(); // Prevent default scroll
         const limitedPull = Math.min(pullDistance, MAX_PULL);
+        pullDistanceRef.current = limitedPull; // تحديث الـ ref
         setPullToRefreshState({
           isPulling: true,
           pullDistance: limitedPull,
@@ -235,29 +267,31 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     };
 
     const handleTouchEnd = () => {
-      if (pullToRefreshState.pullDistance >= PULL_THRESHOLD && onRefresh) {
+      const currentPullDistance = pullDistanceRef.current; // استخدام الـ ref بدلاً من state
+      
+      if (currentPullDistance >= PULL_THRESHOLD && onRefresh) {
         setPullToRefreshState({
           isPulling: false,
           pullDistance: 0,
           isRefreshing: true,
         });
         
-        // Haptic feedback
+        // Haptic feedback - خفيف
         if (navigator.vibrate) {
-          navigator.vibrate(50);
+          navigator.vibrate(25);
         }
         
-        // Call refresh callback
+        // Call refresh
         onRefresh();
         
-        // Reset after refresh completes (you may want to handle this in parent)
+        // Keep spinner for at least 1.5s for visual feedback
         setTimeout(() => {
           setPullToRefreshState({
             isPulling: false,
             pullDistance: 0,
             isRefreshing: false,
           });
-        }, 1000);
+        }, 1500);
       } else {
         setPullToRefreshState({
           isPulling: false,
@@ -267,6 +301,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       }
       pullStartY.current = 0;
       pullCurrentY.current = 0;
+      pullDistanceRef.current = 0;
     };
 
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
@@ -298,6 +333,20 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           isRefreshing: false,
         });
       }
+      
+      // Interests panel visibility based on scroll direction
+      const scrollDelta = scrollTop - lastScrollY.current;
+      if (scrollTop < 50) {
+        // Always show when near top
+        setShowInterestsPanel(true);
+      } else if (scrollDelta > 10) {
+        // Scrolling down - hide panel
+        setShowInterestsPanel(false);
+      } else if (scrollDelta < -10) {
+        // Scrolling up - show panel
+        setShowInterestsPanel(true);
+      }
+      lastScrollY.current = scrollTop;
       
       // Show scroll to top button if scrolled past the 9th item
       let hasScrolledPast = false;
@@ -426,6 +475,16 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     }, 2000); // Toggle every 2 seconds
     return () => clearInterval(interval);
   }, []);
+
+  // Reset scroll states when switching between viewMode tabs
+  useEffect(() => {
+    setShowScrollToTop(false);
+    setIsAtTop(false);
+    setHasScrolledPastFirstPage(false);
+    setSavedScrollPosition(0);
+    setShowInterestsPanel(true); // Reset interests panel visibility
+    lastScrollY.current = 0;
+  }, [viewMode]);
 
   const handleManageInterests = () => {
     setTempInterests(userInterests);
@@ -595,7 +654,9 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     <div 
       id="marketplace-container"
       ref={marketplaceScrollRef}
-      className="h-full overflow-y-auto overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar"
+      className={`h-full overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar ${
+        filteredRequests.length === 0 && !isLoading ? 'overflow-hidden' : 'overflow-y-auto'
+      }`}
     >
       {/* Sticky Header Wrapper - Unified with main header */}
       <div 
@@ -636,14 +697,16 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             <div className="flex items-center justify-between py-1 gap-2">
             {/* Left Side - Tabs or Search Term */}
             {searchTerm ? (
-              <div className="flex items-center gap-2 bg-card px-3 py-1.5 rounded-xl border border-border h-11">
-                <span className="text-sm font-bold text-primary">{searchTerm}</span>
+              <div className="flex items-center gap-2 bg-primary/5 px-3 py-1.5 rounded-xl border border-primary/20 h-11">
+                <Search size={14} className="text-primary shrink-0" strokeWidth={2.5} />
+                <span className="text-sm font-bold text-primary truncate max-w-[100px]">{searchTerm}</span>
                 <button
-                  onClick={handleResetSearch}
-                  className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
-                  title="إلغاء البحث"
+                  onClick={() => setSearchTerm("")}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-primary/15 transition-colors text-primary/70 hover:text-primary shrink-0"
+                  title="مسح البحث"
                 >
-                  <X size={14} strokeWidth={2.5} />
+                  <span className="text-[11px] font-medium">خروج</span>
+                  <X size={12} strokeWidth={2.5} />
                 </button>
               </div>
              ) : (
@@ -707,44 +770,63 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             )}
 
             <div className="flex items-center gap-2">
-              <button
+                <button
                 onClick={() => setIsSearchPageOpen(true)}
-                className="relative w-11 h-11 flex items-center justify-center rounded-xl bg-card border border-border text-muted-foreground hover:text-primary transition-all active:scale-95"
+                className={`relative w-11 h-11 flex items-center justify-center rounded-xl border transition-all active:scale-95 ${
+                  hasActiveFilters 
+                    ? 'bg-primary/10 border-primary/30 text-primary' 
+                    : 'bg-card border-border text-muted-foreground hover:text-primary'
+                }`}
               >
             <div className="relative w-full h-full flex items-center justify-center">
-              <motion.div
-                animate={{ 
-                  x: iconToggle ? 0 : -20,
-                  opacity: iconToggle ? 1 : 0
-                }}
-                transition={{ 
-                  type: "spring", 
-                  stiffness: 300, 
-                  damping: 25,
-                  duration: 0.4
-                }}
-                className="absolute inset-0 flex items-center justify-center"
-              >
-                <Filter size={18} strokeWidth={2} />
-              </motion.div>
-              <motion.div
-                animate={{ 
-                  x: iconToggle ? 20 : 0,
-                  opacity: iconToggle ? 0 : 1
-                }}
-                transition={{ 
-                  type: "spring", 
-                  stiffness: 300, 
-                  damping: 25,
-                  duration: 0.4
-                }}
-                className="absolute inset-0 flex items-center justify-center"
-              >
-                <Search size={18} strokeWidth={2} />
-              </motion.div>
+              {hasActiveFilters ? (
+                // أيقونة ثابتة عند وجود فلاتر نشطة
+                <Filter size={18} strokeWidth={2.5} />
+              ) : (
+                // أيقونة متحركة عند عدم وجود فلاتر
+                <>
+                  <motion.div
+                    animate={{ 
+                      x: iconToggle ? 0 : -20,
+                      opacity: iconToggle ? 1 : 0
+                    }}
+                    transition={{ 
+                      type: "spring", 
+                      stiffness: 300, 
+                      damping: 25,
+                      duration: 0.4
+                    }}
+                    className="absolute inset-0 flex items-center justify-center"
+                  >
+                    <Filter size={18} strokeWidth={2} />
+                  </motion.div>
+                  <motion.div
+                    animate={{ 
+                      x: iconToggle ? 20 : 0,
+                      opacity: iconToggle ? 0 : 1
+                    }}
+                    transition={{ 
+                      type: "spring", 
+                      stiffness: 300, 
+                      damping: 25,
+                      duration: 0.4
+                    }}
+                    className="absolute inset-0 flex items-center justify-center"
+                  >
+                    <Search size={18} strokeWidth={2} />
+                  </motion.div>
+                </>
+              )}
             </div>
+            {/* Badge رقمي يظهر عدد الفلاتر النشطة */}
             {hasActiveFilters && (
-              <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-primary rounded-full animate-pulse z-10" />
+              <motion.span 
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center shadow-md"
+              >
+                {searchCategories.length + searchCities.length + (searchBudgetMin || searchBudgetMax ? 1 : 0) + (searchTerm ? 1 : 0)}
+              </motion.span>
             )}
           </button>
           </div>
@@ -754,48 +836,67 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           {(searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax) && (
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
               <div className="flex items-center gap-1.5">
-                {searchCategories.map(catId => {
-                  const cat = AVAILABLE_CATEGORIES.find(c => c.id === catId);
-                  return cat ? (
+                {/* التصنيفات - إظهار المختارة أو "كل التصنيفات" */}
+                {searchCategories.length > 0 ? (
+                  searchCategories.map(catId => {
+                    const cat = AVAILABLE_CATEGORIES.find(c => c.id === catId);
+                    return cat ? (
+                      <motion.div
+                        key={catId}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/5 text-primary border border-primary/20 text-xs font-medium shrink-0 hover:bg-primary/10 transition-colors"
+                      >
+                        <span>{cat.label}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSearchCategory(catId);
+                          }}
+                          className="hover:bg-primary/20 rounded-full p-0.5 transition-colors -mr-0.5"
+                        >
+                          <X size={11} strokeWidth={2.5} />
+                        </button>
+                      </motion.div>
+                    ) : null;
+                  })
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary/50 text-muted-foreground border border-border/50 text-xs font-medium shrink-0">
+                    <Filter size={11} strokeWidth={2} />
+                    <span>كل التصنيفات</span>
+                  </div>
+                )}
+                
+                {/* المدن - إظهار المختارة أو "كل المدن" */}
+                {searchCities.length > 0 ? (
+                  searchCities.map(city => (
                     <motion.div
-                      key={catId}
+                      key={city}
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/5 text-primary border border-primary/20 text-xs font-medium shrink-0 hover:bg-primary/10 transition-colors"
                     >
-                      <span>{cat.label}</span>
+                      <MapPin size={11} strokeWidth={2} />
+                      <span>{city}</span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          toggleSearchCategory(catId);
+                          toggleSearchCity(city);
                         }}
                         className="hover:bg-primary/20 rounded-full p-0.5 transition-colors -mr-0.5"
                       >
                         <X size={11} strokeWidth={2.5} />
                       </button>
                     </motion.div>
-                  ) : null;
-                })}
-                {searchCities.map(city => (
-                  <motion.div
-                    key={city}
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/5 text-primary border border-primary/20 text-xs font-medium shrink-0 hover:bg-primary/10 transition-colors"
-                  >
+                  ))
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary/50 text-muted-foreground border border-border/50 text-xs font-medium shrink-0">
                     <MapPin size={11} strokeWidth={2} />
-                    <span>{city}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSearchCity(city);
-                      }}
-                      className="hover:bg-primary/20 rounded-full p-0.5 transition-colors -mr-0.5"
-                    >
-                      <X size={11} strokeWidth={2.5} />
-                    </button>
-                  </motion.div>
-                ))}
+                    <span>كل المدن</span>
+                  </div>
+                )}
+                
+                {/* الميزانية */}
                 {(searchBudgetMin || searchBudgetMax) && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
@@ -861,7 +962,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       strokeWidth="1.5"
                       fill="transparent"
                       strokeDasharray={125.6}
-                      strokeDashoffset={125.6 - (Math.min(pullToRefreshState.pullDistance / 80, 1) * 125.6)}
+                      strokeDashoffset={125.6 - (Math.min(pullToRefreshState.pullDistance / 60, 1) * 125.6)}
                       strokeLinecap="round"
                       className="opacity-30"
                     />
@@ -877,7 +978,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 {/* Icon Container - Floating & Minimal */}
                 <motion.div 
                   animate={{ 
-                    scale: pullToRefreshState.pullDistance >= 80 ? 1.1 : 1,
+                    scale: pullToRefreshState.pullDistance >= 60 ? 1.1 : 1,
                     backgroundColor: pullToRefreshState.isRefreshing ? "transparent" : "rgba(255, 255, 255, 0.2)"
                   }}
                   className="w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors duration-300"
@@ -904,11 +1005,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         animate={{ 
                           opacity: 1, 
                           scale: 1,
-                          rotate: (pullToRefreshState.pullDistance / 80) * 360
+                          rotate: (pullToRefreshState.pullDistance / 60) * 360
                         }}
                         exit={{ opacity: 0, scale: 0.5 }}
                         transition={{ type: "spring", stiffness: 200, damping: 20 }}
-                        className={pullToRefreshState.pullDistance >= 80 ? "text-primary" : "text-primary/40"}
+                        className={pullToRefreshState.pullDistance >= 60 ? "text-primary" : "text-primary/40"}
                       >
                         <RotateCw size={18} strokeWidth={2.5} />
                       </motion.div>
@@ -922,8 +1023,9 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       </AnimatePresence>
 
       {/* Floating Scroll to Top Button - Bottom Left */}
+      {/* يظهر فقط إذا كان هناك أكثر من 9 طلبات وتم السكرول للأسفل */}
       <AnimatePresence>
-        {(showScrollToTop || isAtTop) && (
+        {(showScrollToTop || isAtTop) && filteredRequests.length >= 9 && (
           <motion.button
             initial={{ opacity: 0, scale: 0.8, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -955,11 +1057,6 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             >
               <ChevronUp size={20} strokeWidth={2.5} />
             </motion.div>
-            {viewMode === "interests" && unreadInterestsCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-5 px-1 rounded-full bg-primary text-white text-[11px] flex items-center justify-center font-bold">
-                {unreadInterestsCount}
-              </span>
-            )}
           </motion.button>
         )}
       </AnimatePresence>
@@ -1236,13 +1333,17 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
       <div className="p-4">
         {/* 1. Sub-Filters (Interests Panel) - ALWAYS TOP when in interests mode */}
-        {viewMode === "interests" && (
-          <div className="mb-6 animate-in fade-in slide-in-from-top-1">
+        <AnimatePresence>
+        {viewMode === "interests" && showInterestsPanel && (
+          <motion.div 
+            initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+            animate={{ opacity: 1, height: "auto", marginBottom: 24 }}
+            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="overflow-hidden"
+          >
             {/* Interests Panel - Clean Redesign */}
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm"
+            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm"
             >
               {/* Header */}
               <div className="p-4 border-b border-border/50 flex items-center justify-between bg-secondary/10">
@@ -1442,38 +1543,148 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   </button>
                 </div>
               </div>
-            </motion.div>
-          </div>
+            </div>
+          </motion.div>
         )}
+        </AnimatePresence>
 
         {/* 2. Skeleton/Loading State */}
-        {((viewMode === "all" && requests.length === 0 && isLoading) || 
-          (viewMode === "interests" && interestsRequests.length === 0 && isLoading)) && !loadError && (
+        {filteredRequests.length === 0 && isLoading && !loadError && (
           <div className="mt-4">
             <CardsGridSkeleton count={6} showLogo={false} />
           </div>
         )}
 
+        {/* 2.5. Connection Error State */}
+        {loadError && (
+          <div className="flex flex-col items-center justify-center py-16 text-center min-h-[50vh]">
+            {/* Animated Icon */}
+            <div className="relative mb-8">
+              <div className="absolute inset-0 w-24 h-24 rounded-full bg-primary/10 animate-ping" style={{ animationDuration: '2s' }} />
+              <div className="relative inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 shadow-xl">
+                <WifiOff className="text-slate-400 dark:text-slate-500" size={40} strokeWidth={1.5} />
+              </div>
+            </div>
+            
+            <h3 className="text-xl font-bold text-foreground mb-3">لم نتمكن من التحميل</h3>
+            <p className="text-muted-foreground max-w-xs mx-auto leading-relaxed mb-8 text-sm">
+              قد يكون هناك مشكلة مؤقتة في الاتصال. لا تقلق، جرب مرة أخرى!
+            </p>
+            
+            <div className="flex flex-col gap-3 w-full max-w-xs">
+              {/* Primary Retry Button with animated icon */}
+              {onRefresh && (
+                <button
+                  onClick={onRefresh}
+                  className="group relative w-full px-6 py-4 text-sm font-bold text-white bg-primary hover:bg-primary/90 rounded-2xl transition-all shadow-lg hover:shadow-xl overflow-hidden"
+                >
+                  <span className="relative z-10 flex items-center justify-center gap-3">
+                    <span className="relative w-5 h-5">
+                      <span className="absolute inset-0 rounded-full border-2 border-white/30" />
+                      <span className="absolute inset-0 rounded-full border-2 border-t-white animate-spin" style={{ animationDuration: '1.5s' }} />
+                    </span>
+                    إعادة المحاولة
+                  </span>
+                  {/* Shimmer effect */}
+                  <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                </button>
+              )}
+              
+              {/* Hard Refresh Button - Clears EVERYTHING */}
+              <button
+                onClick={async () => {
+                  try {
+                    // 1. Unregister ALL Service Workers
+                    if ('serviceWorker' in navigator) {
+                      const registrations = await navigator.serviceWorker.getRegistrations();
+                      for (const registration of registrations) {
+                        await registration.unregister();
+                      }
+                      console.log('[Hard Refresh] Service workers unregistered');
+                    }
+
+                    // 2. Clear ALL Cache Storage
+                    if ('caches' in window) {
+                      const cacheNames = await caches.keys();
+                      await Promise.all(cacheNames.map(name => caches.delete(name)));
+                      console.log('[Hard Refresh] Cache storage cleared');
+                    }
+
+                    // 3. Clear ALL localStorage (except critical items)
+                    const keysToKeep = ['theme', 'language'];
+                    const allKeys = Object.keys(localStorage);
+                    allKeys.forEach(key => {
+                      if (!keysToKeep.includes(key)) {
+                        localStorage.removeItem(key);
+                      }
+                    });
+                    console.log('[Hard Refresh] localStorage cleared');
+
+                    // 4. Clear ALL sessionStorage
+                    sessionStorage.clear();
+                    console.log('[Hard Refresh] sessionStorage cleared');
+
+                    // 5. Clear IndexedDB (Supabase uses this)
+                    if ('indexedDB' in window) {
+                      const databases = await indexedDB.databases?.() || [];
+                      for (const db of databases) {
+                        if (db.name) {
+                          indexedDB.deleteDatabase(db.name);
+                        }
+                      }
+                      console.log('[Hard Refresh] IndexedDB cleared');
+                    }
+
+                    // 6. Force hard reload (bypass cache)
+                    // Using cache-busting query param + force reload
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('_refresh', Date.now().toString());
+                    window.location.replace(url.toString());
+                    
+                  } catch (err) {
+                    console.error('[Hard Refresh] Error:', err);
+                    // Fallback: just force reload
+                    window.location.href = window.location.origin + '?_refresh=' + Date.now();
+                  }
+                }}
+                className="w-full px-6 py-3.5 text-sm font-medium text-muted-foreground bg-secondary/50 hover:bg-secondary rounded-2xl transition-all border border-border/50"
+              >
+                مسح كل البيانات المحفوظة وإعادة التحميل
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 3. Empty State */}
-        {((viewMode === "all" && requests.length === 0 && !isLoading) || 
-          (viewMode === "interests" && interestsRequests.length === 0 && !isLoading)) && !loadError && (
-          <div className="mt-10 py-20 text-center">
+        {filteredRequests.length === 0 && !isLoading && !loadError && (
+          <div className="flex flex-col items-center justify-center py-20 text-center min-h-[50vh]">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-secondary mb-4">
               <Search className="text-muted-foreground" size={24} />
             </div>
             <h3 className="text-lg font-bold text-foreground mb-2">لا توجد نتائج</h3>
-            <p className="text-muted-foreground max-w-xs mx-auto">
+            <p className="text-muted-foreground max-w-xs mx-auto leading-relaxed">
               {viewMode === "interests" 
                 ? "لم نجد طلبات تطابق اهتماماتك الحالية. جرب تعديل الاهتمامات أو اختيار مدن أخرى."
-                : "لا توجد طلبات متاحة حالياً."}
+                : hasActiveFilters
+                  ? "لم نجد طلبات تطابق معايير البحث الحالية. جرب تعديل الفلاتر أو البحث بكلمات مختلفة."
+                  : "لا توجد طلبات جديدة حالياً. اسحب للأسفل للتحديث أو عُد لاحقاً."}
             </p>
-            {viewMode === "interests" && (
+            {viewMode === "interests" ? (
               <Button
                 variant="outline"
                 onClick={handleManageInterests}
                 className="mt-6 rounded-2xl"
               >
                 تعديل الاهتمامات
+              </Button>
+            ) : hasActiveFilters && (
+              <Button
+                variant="outline"
+                onClick={handleResetSearch}
+                className="mt-6 rounded-2xl gap-2"
+              >
+                <X size={16} />
+                مسح الفلاتر
               </Button>
             )}
           </div>
@@ -1725,13 +1936,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
         {/* Grid */}
         <motion.div 
-          key={`grid-${viewMode}-${searchCategories.length}-${searchCities.length}-${searchTerm}-${searchBudgetMin}-${searchBudgetMax}`}
-          initial="hidden"
-          animate="show"
-          variants={{
-            hidden: { opacity: 0 },
-            show: { opacity: 1, transition: { staggerChildren: 0.08 } }
-          }}
+          key={`grid-${searchCategories.join(',')}-${searchCities.join(',')}-${searchTerm}-${searchBudgetMin}-${searchBudgetMax}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
         >
           {filteredRequests.map((req, index) => {
@@ -1750,25 +1958,49 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     (ninthItemRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
                   }
                 }}
-                layoutId={`card-${req.id}`}
+                data-request-id={req.id}
                 key={req.id}
-                variants={{
-                  hidden: { opacity: 0, y: 30, scale: 0.95 },
-                  show: { 
-                    opacity: 1, 
-                    y: 0, 
-                    scale: 1,
-                    transition: { type: "spring", stiffness: 400, damping: 30 }
-                  }
+                initial={{ opacity: 0, y: 15 }}
+                animate={isTouchHovered 
+                  ? { opacity: 1, y: -8, scale: 1.02 } 
+                  : { opacity: 1, y: 0, scale: 1 }
+                }
+                transition={{ 
+                  type: "spring", 
+                  stiffness: 400, 
+                  damping: 30,
+                  delay: index < 9 ? index * 0.03 : 0 // تأخير خفيف فقط لأول 9 كروت
                 }}
-                whileHover={{ y: -8, scale: 1.02, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}
-                whileTap={{ scale: 0.98 }}
-                animate={isTouchHovered ? { y: -8, scale: 1.02, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" } : {}}
+                whileHover={{ y: -8, scale: 1.02 }}
                 className={`bg-card border border-border rounded-2xl overflow-hidden transition-colors flex flex-col cursor-pointer relative shadow-sm ${isTouchHovered ? '' : 'group'}`}
                  onClick={() => {
+                   // Update guest viewed requests in localStorage
+                   if (isGuest) {
+                     setGuestViewedIds(prev => {
+                       const newSet = new Set(prev);
+                       newSet.add(req.id);
+                       try {
+                         localStorage.setItem('guestViewedRequestIds', JSON.stringify([...newSet]));
+                       } catch (e) {
+                         console.error('Error saving guest viewed requests:', e);
+                       }
+                       return newSet;
+                     });
+                   }
                    onSelectRequest(req);
                  }}
               >
+                {/* Viewed Indicator - مؤشر المشاهدة (فتحت هذا الطلب سابقاً) */}
+                {viewedRequestIds.has(req.id) && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="absolute top-3 left-3 z-20 w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center"
+                    title="فتحت هذا الطلب سابقاً"
+                  >
+                    <Eye size={14} className="text-white/80" />
+                  </motion.div>
+                )}
                 {/* Image Section */}
                 {req.images && req.images.length > 0 ? (
                   <motion.div
@@ -1961,15 +2193,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         <motion.button
                           initial={false}
                           whileHover={{ 
-                            scale: 1.05,
-                            boxShadow: "0 0 15px rgba(30, 150, 140, 0.4)",
+                            scale: 1.08,
                           }}
                           whileTap={{ 
                             scale: 0.88,
                           }}
                           animate={isTouchHovered ? {
-                            scale: 1.05,
-                            boxShadow: "0 0 15px rgba(30, 150, 140, 0.4)",
+                            scale: 1.08,
                           } : {}}
                           transition={{
                             type: "spring",
@@ -1989,14 +2219,45 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           onPointerUp={(e) => e.stopPropagation()}
                           onTouchStart={(e) => e.stopPropagation()}
                           onTouchEnd={(e) => e.stopPropagation()}
-                          className={`h-9 px-4 text-xs font-bold rounded-xl bg-primary text-white shadow-md relative overflow-hidden ${
-                            showOfferButtonPulse ? "animate-soft-pulse" : ""
-                          }`}
+                          className="h-9 px-4 text-xs font-bold rounded-xl bg-primary text-white relative overflow-hidden animate-button-breathe"
                         >
-                          {/* Continuous shimmer - يعمل مع hover و touch scroll */}
-                          <span className={`absolute inset-0 bg-gradient-to-r from-transparent via-white/35 to-transparent -translate-x-full pointer-events-none ${
-                            isTouchHovered ? "animate-shimmer-loop" : "group-hover:animate-shimmer-loop"
-                          }`} />
+                          {/* Always-on diagonal shimmer - from NE (top-right) to SW (bottom-left) */}
+                          {/* Light mode shimmer - more visible */}
+                          <span 
+                            className="absolute inset-0 pointer-events-none animate-shimmer-diagonal dark:hidden" 
+                            style={{
+                              background: 'linear-gradient(315deg, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.12) 50%, transparent 65%, transparent 100%)',
+                              backgroundSize: '200% 200%'
+                            }} 
+                          />
+                          {/* Dark mode shimmer - lighter */}
+                          <span 
+                            className="absolute inset-0 pointer-events-none animate-shimmer-diagonal hidden dark:block" 
+                            style={{
+                              background: 'linear-gradient(315deg, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.05) 50%, transparent 65%, transparent 100%)',
+                              backgroundSize: '200% 200%'
+                            }} 
+                          />
+                          {/* Intensified shimmer on hover/touch - Light mode */}
+                          <span 
+                            className={`absolute inset-0 pointer-events-none opacity-0 dark:hidden ${
+                              isTouchHovered ? "opacity-100 animate-shimmer-diagonal-hover" : "group-hover:opacity-100 group-hover:animate-shimmer-diagonal-hover"
+                            }`} 
+                            style={{
+                              background: 'linear-gradient(315deg, transparent 0%, transparent 30%, rgba(255, 255, 255, 0.3) 50%, transparent 70%, transparent 100%)',
+                              backgroundSize: '200% 200%'
+                            }} 
+                          />
+                          {/* Intensified shimmer on hover/touch - Dark mode */}
+                          <span 
+                            className={`absolute inset-0 pointer-events-none opacity-0 hidden dark:block ${
+                              isTouchHovered ? "opacity-100 animate-shimmer-diagonal-hover" : "group-hover:opacity-100 group-hover:animate-shimmer-diagonal-hover"
+                            }`} 
+                            style={{
+                              background: 'linear-gradient(315deg, transparent 0%, transparent 30%, rgba(255, 255, 255, 0.12) 50%, transparent 70%, transparent 100%)',
+                              backgroundSize: '200% 200%'
+                            }} 
+                          />
                           <span className="relative z-10">تقديم عرض</span>
                         </motion.button>
                       )}
@@ -2007,11 +2268,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           })}
         </motion.div>
 
-        {/* Load more sentinel + indicator */}
-        <div ref={loadMoreTriggerRef} className="h-4 w-full" />
-        <div className="py-10 pb-24 min-h-[200px] flex flex-col justify-start">
-          <AnimatePresence mode="wait">
-            {isLoadingMore ? (
+        {/* Load more sentinel + indicator - Only show when we have data */}
+        {filteredRequests.length > 0 && (
+          <>
+            <div ref={loadMoreTriggerRef} className="h-4 w-full" />
+            <div className="py-10 pb-24 min-h-[200px] flex flex-col justify-start">
+              <AnimatePresence mode="wait">
+                {isLoadingMore ? (
               <motion.div 
                 key="loading-more"
                 initial={{ opacity: 0 }}
@@ -2019,7 +2282,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 exit={{ opacity: 0 }}
                 className="space-y-8 w-full"
               >
-                <CardsGridSkeleton count={3} />
+                <CardsGridSkeleton count={3} showLogo={false} />
                 <div className="flex flex-col items-center gap-3 py-4">
                   <div className="relative w-10 h-10">
                     <div className="absolute inset-0 rounded-full border-2 border-primary/10" />
@@ -2107,7 +2370,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
-                className="relative overflow-hidden p-8 rounded-[2.5rem] bg-gradient-to-b from-secondary/20 to-transparent border border-border/40 text-center group mx-4 w-full"
+                className="relative overflow-hidden p-8 rounded-[2.5rem] bg-gradient-to-b from-secondary/20 to-transparent border border-border/40 text-center group max-w-md mx-auto"
               >
                 {/* Decorative background elements */}
                 <div className="absolute -top-12 -right-12 w-40 h-40 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/8 transition-colors" />
@@ -2124,23 +2387,55 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     </p>
                   </div>
                   
+                  {/* زر العودة للأعلى والتحديث */}
                   <div className="pt-4 flex flex-col items-center gap-3">
-                    <div className="h-px w-12 bg-border/50" />
-                    <div className="flex items-center gap-2 text-primary/60 text-xs font-bold">
-                      <span>اسحب للأعلى للتحديث</span>
-                      <motion.div 
-                        animate={{ y: [-4, 2, -4] }}
-                        transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-                      >
-                        <ChevronUp size={16} strokeWidth={3} />
-                      </motion.div>
-                    </div>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => {
+                        // Haptic feedback
+                        if (navigator.vibrate) navigator.vibrate(15);
+                        
+                        // Scroll to top first
+                        if (marketplaceScrollRef.current) {
+                          marketplaceScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                        }
+                        
+                        // Show refresh indicator and trigger refresh
+                        setPullToRefreshState({
+                          isPulling: false,
+                          pullDistance: 0,
+                          isRefreshing: true,
+                        });
+                        
+                        // Trigger actual refresh
+                        if (onRefresh) {
+                          onRefresh();
+                        }
+                        
+                        // Keep the spinner for at least 1.5s for visual feedback
+                        setTimeout(() => {
+                          setPullToRefreshState({
+                            isPulling: false,
+                            pullDistance: 0,
+                            isRefreshing: false,
+                          });
+                        }, 1500);
+                      }}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white font-bold text-sm shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
+                    >
+                      <RotateCw size={16} strokeWidth={2.5} />
+                      <span>تحديث والعودة للأعلى</span>
+                      <ChevronUp size={16} strokeWidth={2.5} />
+                    </motion.button>
                   </div>
                 </div>
               </motion.div>
             ) : null}
-          </AnimatePresence>
-        </div>
+              </AnimatePresence>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

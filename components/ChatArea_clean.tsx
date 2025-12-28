@@ -742,13 +742,34 @@ const ChatPanel = ({
 // Main ChatArea Component
 // ============================================
 
-export const ChatArea: React.FC = () => {
+interface ChatAreaProps {
+  onRequestPublished?: () => void;
+  userId?: string;
+  savedMessages?: ChatMessage[];
+  onMessagesChange?: (messages: ChatMessage[]) => void;
+  savedScrollPosition?: number;
+  onScrollPositionChange?: (pos: number) => void;
+  aiStatus?: { connected: boolean; error?: string };
+  isGuest?: boolean;
+}
+
+export const ChatArea: React.FC<ChatAreaProps> = ({
+  onRequestPublished,
+  userId,
+  savedMessages = [],
+  onMessagesChange,
+  savedScrollPosition = 0,
+  onScrollPositionChange,
+  aiStatus,
+  isGuest = false,
+}) => {
   const [stage, setStage] = useState<"welcome" | "editing">("welcome");
   const [isLoading, setIsLoading] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(savedMessages || []);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Draft State
   const [draft, setDraft] = useState<DraftData>({
@@ -763,6 +784,32 @@ export const ChatArea: React.FC = () => {
     isLocationValid: false,
     isDescriptionValid: false,
   });
+
+  // Notify parent when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      onMessagesChange?.(messages);
+    }
+  }, [messages, onMessagesChange]);
+
+  // Restore scroll position
+  useEffect(() => {
+    if (savedScrollPosition > 0 && scrollContainerRef.current) {
+      // Use requestAnimationFrame to ensure DOM is ready
+      requestAnimationFrame(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = savedScrollPosition;
+        }
+      });
+    }
+  }, [savedScrollPosition]);
+
+  // Save scroll position
+  const handleScroll = () => {
+    if (scrollContainerRef.current && onScrollPositionChange) {
+      onScrollPositionChange(scrollContainerRef.current.scrollTop);
+    }
+  };
 
   // Validation Logic
   useEffect(() => {
@@ -815,17 +862,6 @@ export const ChatArea: React.FC = () => {
 
       // Parse custom fields from AI response
       let customFields: CustomField[] = [];
-      
-      // Use AI-generated custom fields if available
-      if (aiDraft.customFields && Array.isArray(aiDraft.customFields)) {
-        customFields = aiDraft.customFields.map((f: any) => ({
-          id: f.id || Date.now().toString() + Math.random(),
-          label: f.label || "حقل",
-          value: f.value || "",
-          type: f.type || "text",
-          placeholder: f.placeholder,
-        }));
-      }
       
       // Add budget as custom field if exists and not already in customFields
       if ((aiDraft.budgetMin || aiDraft.budgetMax) && !customFields.some(f => f.label.includes("ميزانية"))) {
@@ -953,8 +989,12 @@ export const ChatArea: React.FC = () => {
     setIsPublishing(true);
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id ?? null;
+      // Use userId from props, or get from auth if not provided
+      let currentUserId = userId;
+      if (!currentUserId && !isGuest) {
+        const { data: userData } = await supabase.auth.getUser();
+        currentUserId = userData?.user?.id ?? null;
+      }
 
       // Prepare custom fields as JSON in description
       let enrichedDescription = draft.description;
@@ -969,7 +1009,7 @@ export const ChatArea: React.FC = () => {
       }
 
       const result = await createRequestFromChat(
-        userId,
+        currentUserId ?? null,
         {
           title: draft.title,
           description: enrichedDescription,
@@ -999,6 +1039,9 @@ export const ChatArea: React.FC = () => {
         text: `🎉 تم نشر طلبك بنجاح! رقم الطلب: ${result?.id || ""}`,
       };
       setMessages((prev) => [...prev, successMsg]);
+
+      // Notify parent component
+      onRequestPublished?.();
     } catch (error) {
       console.error("Error publishing:", error);
       const errorMsg: ChatMessage = {
@@ -1059,7 +1102,11 @@ export const ChatArea: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto min-h-0"
+        onScroll={handleScroll}
+      >
         {stage === "welcome" ? (
           <WelcomeScreen onSubmit={handleInitialSubmit} isLoading={isLoading} />
         ) : (

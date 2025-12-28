@@ -41,6 +41,7 @@ export interface Request {
 export interface Offer {
   id: string;
   requestId: string;
+  providerId?: string; // معرف مقدم الخدمة في قاعدة البيانات
   providerName: string;
   providerAvatar?: string;
   title: string;

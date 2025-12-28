@@ -7,10 +7,10 @@ interface SplashScreenProps {
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   React.useEffect(() => {
-    // Auto-complete after animation
+    // Fast auto-complete - 1.2 seconds
     const timer = setTimeout(() => {
       onComplete?.();
-    }, 2500);
+    }, 1200);
 
     return () => clearTimeout(timer);
   }, [onComplete]);
