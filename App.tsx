@@ -614,343 +614,81 @@ const App: React.FC = () => {
   }, [allRequests]);
 
   // ==========================================
-  // Auth Initialization (Fast - 3s timeout)
+  // Auth Initialization & State Listener
   // ==========================================
   useEffect(() => {
-    // Skip auth init if we're in OAuth popup mode (it will close itself)
-    if (isOAuthPopupMode) {
-      // Process OAuth callback and session will be stored
-      supabase.auth.getSession().catch(console.error);
-      return;
-    }
+    let isMounted = true;
 
-    const initAuth = async () => {
-      // If we have OAuth/Magic Link callback params in main window
-      // Let Supabase's detectSessionInUrl handle the code/token exchange automatically
-      // We just need to wait for the session and clean the URL
-      if (oauthState.isCallback && !oauthState.isPopup) {
-        // Clear the popup flag if it exists
-        localStorage.removeItem("abeely_oauth_popup_active");
-
-        if (isMagicLinkCallback) {
-          console.log(
-            "📧 Magic Link callback detected, waiting for Supabase to process...",
-          );
-        } else {
-          console.log(
-            "📝 OAuth callback detected, waiting for Supabase to process...",
-          );
-        }
-
-        // Clean URL AFTER giving Supabase a moment to extract the code/token
-        // Supabase should have already extracted it during initialization
-        setTimeout(() => {
-          if (
-            window.location.search.includes("code=") ||
-            window.location.hash.includes("access_token")
-          ) {
-            const cleanUrl = window.location.origin + window.location.pathname;
-            window.history.replaceState({}, document.title, cleanUrl);
-            console.log("🧹 Cleaned auth params from URL");
-          }
-        }, 100);
-
-        // Try to get session with retry logic (Supabase may still be exchanging the code)
-        const maxRetries = 3;
-        let session = null;
-
-        for (let i = 0; i < maxRetries && !session; i++) {
-          try {
-            console.log(
-              `⏳ Checking session... attempt ${i + 1}/${maxRetries}`,
-            );
-
-            // Add 3-second timeout to each attempt
-            const sessionPromise = supabase.auth.getSession();
-            const timeoutPromise = new Promise<{ data: { session: null } }>((
-              resolve,
-            ) => setTimeout(() => resolve({ data: { session: null } }), 3000));
-
-            const { data } = await Promise.race([
-              sessionPromise,
-              timeoutPromise,
-            ]);
-            session = data?.session;
-
-            if (session) {
-              console.log(`✅ OAuth session found on attempt ${i + 1}`);
-              break;
-            }
-
-            // Short wait between retries
-            if (i < maxRetries - 1) {
-              await new Promise((resolve) => setTimeout(resolve, 500));
-            }
-          } catch (err) {
-            console.error(`Session check attempt ${i + 1} failed:`, err);
-          }
-        }
-
-        if (session?.user) {
-          if (isMagicLinkCallback) {
-            console.log(
-              "✅ Magic Link session established via Supabase auto-detection!",
-            );
-          } else {
-            console.log(
-              "✅ OAuth session established via Supabase auto-detection!",
-            );
-          }
-
-          // Get user profile with timeout (3 seconds)
-          const profilePromise = getCurrentUser();
-          const profileTimeout = new Promise<null>((resolve) =>
-            setTimeout(() => resolve(null), 3000)
-          );
-
-          const profile = await Promise.race([profilePromise, profileTimeout]);
-
-          if (profile) {
-            setUser(profile);
-            setIsGuest(false);
-            localStorage.removeItem("abeely_guest_mode");
-            setAppView("main");
-            setAuthLoading(false);
-            return; // Exit early, we're done
-          } else {
-            // Profile not ready, but user is authenticated - proceed anyway
-            console.log(
-              "⚠️ Profile not ready, user auth OK, proceeding to main...",
-            );
-            setAppView("main");
-            setAuthLoading(false);
-            return;
-          }
-        } else {
-          if (isMagicLinkCallback) {
-            console.log(
-              "⚠️ No session after Magic Link callback retries, showing auth page",
-            );
-          } else {
-            console.log(
-              "⚠️ No session after OAuth callback retries, showing auth page",
-            );
-          }
-          // Fallback to auth page immediately
+    // 1. Initial Session Check
+    const checkInitialSession = async () => {
+      try {
+        if (isOAuthPopupMode) {
           setAuthLoading(false);
-          setAppView("auth");
           return;
         }
-      }
-      try {
-        // Fast timeout - 3 seconds max
-        const authPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Auth timeout")), 3000)
-        );
 
-        const result = await Promise.race([authPromise, timeoutPromise]) as any;
-        const session = result?.data?.session;
-
-        if (session?.user) {
-          // Try to get profile with 2s timeout
-          const profilePromise = getCurrentUser();
-          const profileTimeout = new Promise<null>((resolve) =>
-            setTimeout(() => resolve(null), 2000)
-          );
-
-          const profile = await Promise.race([profilePromise, profileTimeout]);
-
-          if (profile) {
-            setUser(profile);
-            setIsGuest(false);
-          } else {
-            // Profile not ready - will be fetched by onAuthStateChange
-            const wasGuest =
-              localStorage.getItem("abeely_guest_mode") === "true";
-            setIsGuest(wasGuest);
-          }
-        } else {
-          const wasGuest = localStorage.getItem("abeely_guest_mode") === "true";
-          setIsGuest(wasGuest);
+        const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
+        if (isGuestSaved) {
+          setIsGuest(true);
+          setAppView("main");
+          setAuthLoading(false);
+          return;
         }
-      } catch (err: any) {
-        // On any error, proceed to auth/guest - don't block the app
-        const wasGuest = localStorage.getItem("abeely_guest_mode") === "true";
-        setIsGuest(wasGuest);
-      } finally {
-        setAuthLoading(false);
-        setIsRetrying(false);
-      }
-    };
 
-    initAuth();
-
-    // Listen for auth changes
-    const { data: { subscription } } = onAuthStateChange(async (authUser) => {
-      try {
-        if (authUser) {
-          // Add a small delay to ensure OAuth/Magic Link redirect is complete
-          await new Promise((resolve) => setTimeout(resolve, 100));
-
-          // Clean up URL if we have OAuth/Magic Link params (after successful auth)
-          if (
-            window.location.search.includes("code=") ||
-            window.location.hash.includes("access_token")
-          ) {
-            const cleanUrl = window.location.origin + window.location.pathname;
-            window.history.replaceState({}, document.title, cleanUrl);
-          }
-
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user && isMounted) {
           const profile = await getCurrentUser();
           if (profile) {
             setUser(profile);
-            setIsGuest(false);
-            localStorage.removeItem("abeely_guest_mode");
-            localStorage.removeItem("abeely_oauth_popup_active");
             setAppView("main");
           } else {
-            console.warn("Failed to get user profile after auth");
-            // Retry once after a delay
-            setTimeout(async () => {
-              const retryProfile = await getCurrentUser();
-              if (retryProfile) {
-                setUser(retryProfile);
-                setIsGuest(false);
-                localStorage.removeItem("abeely_guest_mode");
-                localStorage.removeItem("abeely_oauth_popup_active");
-                setAppView("main");
-              }
-            }, 1000);
+            setAppView("main");
           }
-        } else {
-          setUser(null);
+        } else if (!oauthState.isCallback) {
+          setAppView("auth");
         }
       } catch (err) {
-        console.error("Auth state change error:", err);
-        // Don't crash the app, just log the error
+        console.error("Auth init error:", err);
+        setAppView("auth");
+      } finally {
+        if (isMounted) setAuthLoading(false);
+      }
+    };
+
+    checkInitialSession();
+
+    // 2. Continuous Auth Listener (Crucial for Popup)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user) {
+        const profile = await getCurrentUser();
+        if (profile && isMounted) {
+          setUser(profile);
+          setIsGuest(false);
+          localStorage.removeItem("abeely_guest_mode");
+          localStorage.removeItem("abeely_oauth_popup_active");
+          setAppView("main");
+          
+          if (window.location.search.includes("code=") || window.location.hash.includes("access_token")) {
+            const cleanUrl = window.location.origin + window.location.pathname;
+            window.history.replaceState({}, document.title, cleanUrl);
+          }
+        } else if (session?.user && isMounted) {
+          setIsGuest(false);
+          setAppView("main");
+        }
+      } else if (event === "SIGNED_OUT") {
+        if (isMounted) {
+          setUser(null);
+          setAppView("auth");
+        }
       }
     });
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
-  }, []);
-
-  // ==========================================
-  // Check for session when popup closes
-  // ==========================================
-  useEffect(() => {
-    if (isOAuthPopupMode) return;
-
-    let lastPopupState =
-      localStorage.getItem("abeely_oauth_popup_active") === "true";
-
-    const checkSession = async () => {
-      try {
-        // Wait a bit for session to be saved
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user && appView === "auth") {
-          console.log("✅ Session found! Loading profile...");
-
-          // Try to get profile with retry
-          let profile = null;
-          for (let i = 0; i < 3; i++) {
-            profile = await getCurrentUser();
-            if (profile) break;
-            await new Promise((resolve) => setTimeout(resolve, 300));
-          }
-
-          if (profile) {
-            setUser(profile);
-            setIsGuest(false);
-            localStorage.removeItem("abeely_guest_mode");
-            localStorage.removeItem("abeely_oauth_popup_active");
-            setAuthLoading(false);
-            // إعادة تعيين الحالة للقيم الافتراضية عند تسجيل الدخول
-            setView("create-request");
-            setMode("requests");
-            setSelectedRequest(null);
-            setPreviousView(null);
-            setAppView("main");
-            console.log("🚀 Navigated to main app!");
-          } else {
-            // Even without profile, if session exists, proceed
-            setAuthLoading(false);
-            setView("create-request");
-            setMode("requests");
-            setSelectedRequest(null);
-            setPreviousView(null);
-            setAppView("main");
-          }
-        }
-      } catch (err) {
-        console.error("Session check error:", err);
-      }
-    };
-
-    // Check every 500ms if popup was closed
-    const checkPopupClosed = setInterval(() => {
-      const currentPopupState =
-        localStorage.getItem("abeely_oauth_popup_active") === "true";
-
-      // If popup was active and now it's closed, check for session
-      if (lastPopupState && !currentPopupState) {
-        console.log("🔍 Popup closed, checking session...");
-        checkSession();
-      }
-
-      lastPopupState = currentPopupState;
-    }, 500);
-
-    // Also check when window gets focus (user returns from popup)
-    const handleFocus = () => {
-      if (
-        appView === "auth" && !localStorage.getItem("abeely_oauth_popup_active")
-      ) {
-        console.log("👁️ Window focused, checking session...");
-        checkSession();
-      }
-    };
-
-    // Also listen for auth success signal from popup
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "abeely_auth_success" && appView === "auth") {
-        console.log(
-          "📢 Auth success signal received via storage, checking session...",
-        );
-        checkSession();
-      }
-    };
-
-    // Listen for postMessage from popup (more reliable than storage events)
-    const handleMessage = (e: MessageEvent) => {
-      if (e.origin !== window.location.origin) return;
-      if (e.data?.type === "oauth_success" && appView === "auth") {
-        console.log(
-          "📢 Auth success signal received via postMessage, checking session...",
-        );
-        checkSession();
-      }
-    };
-
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("storage", handleStorageChange);
-    window.addEventListener("message", handleMessage);
-
-    // Check immediately if popup flag was just cleared
-    if (!lastPopupState && localStorage.getItem("abeely_auth_success")) {
-      checkSession();
-    }
-
-    return () => {
-      clearInterval(checkPopupClosed);
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("message", handleMessage);
-    };
+  }, [isOAuthPopupMode, oauthState.isCallback]);
   }, [isOAuthPopupMode, appView]);
 
   // ==========================================
