@@ -709,7 +709,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 </button>
               </div>
              ) : (
-               <div className="flex items-center gap-1 bg-card p-1 rounded-2xl border border-border h-11 relative overflow-hidden min-w-[240px]">
+               <div className="flex bg-secondary/30 rounded-2xl p-1 border border-border/30 relative min-w-[200px]">
                  <button
                    onClick={() => {
                      if (navigator.vibrate) navigator.vibrate(15);
@@ -719,7 +719,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                      }
                      setViewMode("all");
                    }}
-                   className={`h-full font-bold transition-all rounded-xl text-xs sm:text-sm flex items-center justify-center relative flex-1 ${
+                   className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${
                      viewMode === "all" && !hasActiveFilters
                        ? "text-white"
                        : "text-muted-foreground hover:text-foreground"
@@ -728,11 +728,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                    {viewMode === "all" && !hasActiveFilters && (
                      <motion.div 
                        layoutId="active-marketplace-tab"
-                       className="absolute inset-0 rounded-xl bg-primary shadow-sm z-0"
+                       className="absolute inset-0 rounded-xl bg-primary shadow-lg z-0"
                        transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
                      />
                    )}
-                   <span className="relative z-10 mb-0.5">الكل</span>
+                   <span className="relative z-10">الكل</span>
                  </button>
                  <button
                    onClick={() => {
@@ -743,7 +743,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                      }
                      setViewMode("interests");
                    }}
-                   className={`h-full font-bold transition-all rounded-xl flex items-center gap-2 text-xs sm:text-sm justify-center relative flex-1 ${
+                   className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${
                      viewMode === "interests" && !hasActiveFilters
                        ? "text-white"
                        : "text-muted-foreground hover:text-foreground"
@@ -752,13 +752,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                    {viewMode === "interests" && !hasActiveFilters && (
                      <motion.div 
                        layoutId="active-marketplace-tab"
-                       className="absolute inset-0 rounded-xl bg-primary shadow-sm z-0"
+                       className="absolute inset-0 rounded-xl bg-primary shadow-lg z-0"
                        transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
                      />
                    )}
-                   <span className="relative z-10 mb-0.5">اهتماماتي</span>
+                   <span className="relative z-10">اهتماماتي</span>
                    {(unreadInterestsCount > 0 || interestsRequests.length > 0) && (
-                     <span className={`relative z-10 min-w-[20px] h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center font-bold ${
+                     <span className={`relative z-10 inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${
                        viewMode === "interests" && !hasActiveFilters ? "bg-white/20 text-white" : "bg-primary/10 text-primary"
                      }`}>
                        {interestsRequests.length > 0 ? interestsRequests.length : unreadInterestsCount}

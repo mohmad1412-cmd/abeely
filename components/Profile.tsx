@@ -7,6 +7,7 @@ import { UnifiedHeader } from './ui/UnifiedHeader';
 interface ProfileProps {
   userReviews: Review[];
   userRating: number;
+  profileRole: 'requester' | 'provider';
   // Unified Header Props
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
@@ -30,6 +31,7 @@ interface ProfileProps {
 export const Profile: React.FC<ProfileProps> = ({ 
   userReviews, 
   userRating,
+  profileRole,
   isSidebarOpen,
   setIsSidebarOpen,
   mode,
@@ -48,7 +50,6 @@ export const Profile: React.FC<ProfileProps> = ({
   onBack,
   isGuest = false,
 }) => {
-  const [profileRole, setProfileRole] = useState<'requester' | 'provider'>('provider');
 
   return (
     <div className="h-full flex flex-col">
@@ -78,24 +79,6 @@ export const Profile: React.FC<ProfileProps> = ({
 
       <div className="flex-1 overflow-y-auto no-scrollbar">
         <div className="container mx-auto max-w-4xl p-4 md:p-8">
-          {/* Role Switcher */}
-          <div className="flex justify-end mb-4">
-            <div className="bg-secondary p-1 rounded-lg inline-flex items-center">
-               <button 
-                 onClick={() => setProfileRole('requester')}
-                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${profileRole === 'requester' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'}`}
-               >
-                 كمنشئ طلبات
-               </button>
-               <button 
-                 onClick={() => setProfileRole('provider')}
-                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${profileRole === 'provider' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground'}`}
-               >
-                 كمقدم عروض
-               </button>
-            </div>
-          </div>
-
           {/* Header Profile Card */}
           <div className="bg-card border border-border rounded-xl p-6 shadow-sm mb-8 flex flex-col md:flex-row items-center md:items-start gap-6 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-l from-primary/10 to-transparent -z-0"></div>

@@ -107,7 +107,8 @@ const App: React.FC = () => {
     notifyOnInterest: true,
     roleMode: "requester",
   });
-  const [isModeSwitching, setIsModeSwitching] = useState(false); // Temporary state for button animation
+  const [isModeSwitching, setIsModeSwitching] = useState(false);
+  const [profileRole, setProfileRole] = useState<'requester' | 'provider'>('provider'); // Temporary state for button animation
 
   // ==========================================
   // Data State
@@ -1744,6 +1745,7 @@ const App: React.FC = () => {
             <Profile
               userReviews={reviews}
               userRating={userRating}
+              profileRole={profileRole}
               // Header integration props
               isSidebarOpen={isSidebarOpen}
               setIsSidebarOpen={setIsSidebarOpen}
@@ -1951,6 +1953,8 @@ const App: React.FC = () => {
         isGuest={isGuest}
         user={user}
         onSignOut={isGuest ? handleGoToLogin : handleSignOut}
+        profileRole={profileRole}
+        onProfileRoleChange={setProfileRole}
         onUnreadMessagesChange={setHasUnreadMessages}
         isDarkMode={isDarkMode}
         toggleTheme={() => setIsDarkMode(!isDarkMode)}
