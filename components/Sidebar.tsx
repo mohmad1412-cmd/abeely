@@ -571,7 +571,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      <div className="px-2 pt-2 shrink-0 relative z-0 bg-transparent">
+      <div className="px-0 pt-0 shrink-0 relative z-0 bg-transparent">
         {/* Mode Switcher */}
         <div className="flex bg-secondary/30 rounded-2xl p-1 border border-border/30 relative min-w-[200px]">
           <button onClick={() => { 
