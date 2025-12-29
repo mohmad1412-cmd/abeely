@@ -199,15 +199,15 @@ export const Profile: React.FC<ProfileProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="relative group">
-                    <p className="text-sm leading-relaxed max-w-2xl mx-auto md:mx-0 text-muted-foreground">
+                  <div className="flex items-start justify-center md:justify-start gap-3 max-w-2xl mx-auto md:mx-0">
+                    <p className="text-sm leading-relaxed text-muted-foreground flex-1 pr-0">
                       {bio}
                     </p>
                     <motion.button
                       whileHover={{ scale: 1.1 }}
                       whileTap={{ scale: 0.9 }}
                       onClick={() => setIsEditingBio(true)}
-                      className="absolute top-0 left-0 p-1.5 rounded-lg hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100"
+                      className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-primary shrink-0 mt-0.5"
                       title="تعديل التعريف"
                     >
                       <Edit2 size={16} />
