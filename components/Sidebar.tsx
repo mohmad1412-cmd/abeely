@@ -571,39 +571,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      <div className="px-4 pt-3 shrink-0 relative z-0 space-y-3">
-        {/* Profile Role Switcher */}
-        {onProfileRoleChange && (
-          <div className="flex bg-secondary/30 rounded-2xl p-1 border border-border/30 relative min-w-[200px]">
-            <button onClick={() => { 
-              if (navigator.vibrate) navigator.vibrate(15); 
-              onProfileRoleChange('requester'); 
-            }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${profileRole === "requester" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>
-              {profileRole === "requester" && (
-                <motion.div 
-                  layoutId="active-profile-role-tab"
-                  className="absolute inset-0 rounded-xl bg-primary shadow-lg z-0"
-                  transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
-                />
-              )}
-              <span className="relative z-10">كمنشئ طلبات</span>
-            </button>
-            <button onClick={() => { 
-              if (navigator.vibrate) navigator.vibrate(15); 
-              onProfileRoleChange('provider'); 
-            }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${profileRole === "provider" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>
-              {profileRole === "provider" && (
-                <motion.div 
-                  layoutId="active-profile-role-tab"
-                  className="absolute inset-0 rounded-xl bg-primary shadow-lg z-0"
-                  transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
-                />
-              )}
-              <span className="relative z-10">كمقدم عروض</span>
-            </button>
-          </div>
-        )}
-        
+      <div className="px-4 pt-3 shrink-0 relative z-0">
         {/* Mode Switcher */}
         <div className="flex bg-secondary/30 rounded-2xl p-1 border border-border/30 relative min-w-[200px]">
           <button onClick={() => { 
