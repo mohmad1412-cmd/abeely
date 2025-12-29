@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient";
 import { AIDraft, classifyAndDraft } from "./aiService";
 import { Request, Offer } from "../types";
+import { getCategoryIdsByLabels, UNSPECIFIED_CATEGORY } from "./categoriesService";
 
 type RequestInsert = {
   author_id?: string;
@@ -18,19 +19,66 @@ type RequestInsert = {
   seriousness?: number;
 };
 
+/**
+ * ربط التصنيفات بالطلب - نستخدم الآن getCategoryIdsByLabels للتحويل الآمن
+ */
+const linkCategoriesByLabels = async (requestId: string, labels: string[] = []) => {
+  try {
+    // تحويل الأسماء إلى IDs (يضيف "غير محدد" تلقائياً إذا لم يجد تصنيفات)
+    const categoryIds = await getCategoryIdsByLabels(labels);
+    
+    if (categoryIds.length === 0) {
+      // إذا لم يكن هناك تصنيفات، نضيف "غير محدد"
+      categoryIds.push('unspecified');
+    }
+    
+    // ربط التصنيفات بالطلب
+    const links = categoryIds.map((id) => ({
+      request_id: requestId,
+      category_id: id,
+    }));
+    
+    const { error } = await supabase
+      .from("request_categories")
+      .upsert(links, { onConflict: "request_id,category_id" });
+    
+    if (error) {
+      console.warn("Error linking categories:", error);
+    }
+    
+    return categoryIds;
+  } catch (err) {
+    console.error("Error in linkCategoriesByLabels:", err);
+    // في حالة الخطأ، نحاول إضافة "غير محدد" على الأقل
+    try {
+      await supabase
+        .from("request_categories")
+        .upsert([{ request_id: requestId, category_id: 'unspecified' }], { onConflict: "request_id,category_id" });
+    } catch (_) {}
+    return ['unspecified'];
+  }
+};
+
+// دالة قديمة للتوافق (لا نستخدمها لإنشاء تصنيفات جديدة)
 const upsertCategories = async (labels: string[] = []) => {
   if (!labels.length) return [];
-  const rows = labels.map((label) => ({ label }));
+  // لم نعد نُنشئ تصنيفات جديدة تلقائياً - نستخدم فقط التصنيفات الموجودة
   const { data, error } = await supabase
     .from("categories")
-    .upsert(rows, { onConflict: "label" })
-    .select("id,label");
-  if (error) throw error;
+    .select("id,label")
+    .in("label", labels);
+  if (error) {
+    console.warn("Error fetching categories:", error);
+    return [];
+  }
   return data || [];
 };
 
 const linkCategories = async (requestId: string, categoryIds: string[]) => {
-  if (!categoryIds.length) return;
+  if (!categoryIds.length) {
+    // إذا لم يكن هناك تصنيفات، نضيف "غير محدد"
+    categoryIds = ['unspecified'];
+  }
   const links = categoryIds.map((id) => ({
     request_id: requestId,
     category_id: id,
@@ -73,27 +121,74 @@ export async function createRequestFromChat(
     Object.assign(payload, overrides);
   }
 
-  const { data, error } = await supabase.from("requests").insert(payload)
-    .select("id").single();
-  if (error || !data?.id) {
-    console.error("Supabase Insert Error:", error);
-    throw error || new Error("Insert failed: no id returned");
-  }
+  try {
+    const attemptInsert = async (
+      p: RequestInsert,
+      runId: string,
+      hypothesisId: string,
+    ) => {
+      const { data, error } = await supabase.from("requests").insert(p)
+        .select("id").single();
 
-  if (draftData.categories?.length) {
+      if (error || !data?.id) {
+        console.error("Supabase Insert Error:", error);
+        throw error || new Error("Insert failed: no id returned");
+      }
+
+      return data;
+    };
+
+    // Primary attempt (active, public) - may fail if DB missing columns in triggers
+    let data = await attemptInsert(payload, "run2", "G");
+
+    // ربط التصنيفات بالطلب (يضمن وجود "غير محدد" إذا لم يكن هناك تصنيفات)
     try {
-      const catRows = await upsertCategories(draftData.categories);
-      const ids = catRows.map((c: any) => c.id);
-      await linkCategories(data.id, ids);
+      const categories = draftData.categories || [];
+      await linkCategoriesByLabels(data.id, categories);
     } catch (catErr) {
       console.warn(
         "Failed to link categories, but request was created:",
         catErr,
       );
+      // نحاول إضافة "غير محدد" على الأقل
+      try {
+        await linkCategories(data.id, ['unspecified']);
+      } catch (_) {}
+    }
+
+    return data;
+  } catch (err) {
+    const e: any = err;
+    const msg = e?.message || "";
+    const code = e?.code || "";
+
+    // Fallback: if missing column (e.g., interested_categories triggers), try draft/non-public to bypass triggers
+    const isMissingColumn = code === "42703" || msg.includes("interested_categories");
+    if (!isMissingColumn) {
+      throw err;
+    }
+
+    const fallbackPayload: RequestInsert = {
+      ...payload,
+      status: "draft",
+      is_public: false,
+    };
+
+    try {
+      const data = await (async () => {
+        const { data, error } = await supabase.from("requests").insert(fallbackPayload).select("id").single();
+        if (error || !data?.id) {
+          throw error || new Error("Fallback insert failed");
+        }
+        return data;
+      })();
+
+      // Skip categories linking in fallback to avoid more errors
+      return data;
+    } catch (fallbackErr) {
+      throw fallbackErr;
     }
   }
-
-  return data;
 }
 
 export async function createOfferFromChat(
@@ -384,7 +479,7 @@ export async function archiveRequest(requestId: string, userId: string): Promise
       // Fallback to direct update if function doesn't exist
       const { error: updateError } = await supabase
         .from('requests')
-        .update({ status: 'archived' })
+        .update({ status: 'archived', is_public: false })
         .eq('id', requestId)
         .eq('author_id', userId);
 

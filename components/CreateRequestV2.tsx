@@ -237,7 +237,9 @@ const simpleExtraction = (message: string): ExtractedData => {
 
 interface CreateRequestV2Props {
   onBack: () => void;
-  onPublish: (request: Partial<Request>) => void;
+  onPublish: (request: Partial<Request>) => Promise<string | null>; // Returns request ID on success
+  onGoToRequest?: (requestId: string) => void; // Navigate to created request
+  onGoToMarketplace?: () => void; // Navigate back to marketplace
   // Header props
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
@@ -786,6 +788,8 @@ const GlassPanel: React.FC<{
 export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   onBack,
   onPublish,
+  onGoToRequest,
+  onGoToMarketplace,
   isSidebarOpen,
   setIsSidebarOpen,
   mode,
@@ -845,6 +849,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
 
   // Handle back - immediate navigation
   const handleBack = useCallback(() => {
+    if (navigator.vibrate) navigator.vibrate(12);
     onBack();
   }, [onBack]);
 
@@ -854,6 +859,11 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
 
   // Check if can submit
   const canSubmit = !!(description.trim() && location.trim());
+  
+  // Submit states
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
   
   // Track previous submit state for celebration
   const prevCanSubmit = useRef(false);
@@ -1079,19 +1089,39 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   };
 
   // Handle publish
-  const handlePublish = () => {
+  const handlePublish = async (): Promise<string | null> => {
+    // Extract budget values if budget field is enabled
+    const budgetField = additionalFields.find((f) => f.id === "budget" && f.enabled);
+    let budgetMin: string | undefined;
+    let budgetMax: string | undefined;
+    
+    if (budgetField?.value) {
+      // Handle budget in format "500-1000" or "1000-2000 ر.س" or single value
+      const budgetValue = budgetField.value.replace(/[^\d-]/g, ''); // Remove non-numeric except dash
+      if (budgetValue.includes('-')) {
+        const [min, max] = budgetValue.split('-').map(v => v.trim());
+        budgetMin = min;
+        budgetMax = max;
+      } else if (budgetValue) {
+        // Single value - treat as min
+        budgetMin = budgetValue;
+      }
+    }
+    
     const request: Partial<Request> = {
-      title: title || description.slice(0, 50),
-      description,
-      location,
-      budgetMin: additionalFields.find((f) => f.id === "budget" && f.enabled)?.value,
+      title: title || description.slice(0, 50) || "طلب جديد",
+      description: description.trim(),
+      location: location.trim(),
+      budgetMin,
+      budgetMax,
       categories: additionalFields.find((f) => f.id === "category" && f.enabled)
         ? [additionalFields.find((f) => f.id === "category")!.value]
         : undefined,
       deliveryTimeFrom: additionalFields.find((f) => f.id === "deliveryTime" && f.enabled)?.value,
     };
-    
-    onPublish(request);
+
+    console.log("Publishing request with data:", request);
+    return await onPublish(request);
   };
 
   return (
@@ -1123,21 +1153,59 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         onMarkAsRead={onMarkAsRead}
         onClearAll={onClearAll}
         onSignOut={onSignOut}
-        backButton
-        closeIcon
-        onBack={handleBack}
+        onGoToMarketplace={onGoToMarketplace}
         title="إنشاء طلب جديد"
         hideModeToggle
         isGuest={isGuest}
         showSubmitButton
         canSubmit={canSubmit}
-        onSubmit={() => {
-          if (canSubmit) {
-            setShowCelebration(true);
-            setTimeout(() => {
-              handlePublish();
-              setShowCelebration(false);
-            }, 1000);
+        onSubmit={async () => {
+          // استدعاء فوري بدون تحقق إضافي (UnifiedHeader يتحقق بالفعل)
+          console.log("Submit button clicked - calling handlePublish");
+          if (navigator.vibrate) navigator.vibrate(15);
+          
+          try {
+            // التحقق من البيانات الأساسية
+            if (!description.trim() || !location.trim()) {
+              console.error("Missing required fields:", { description: !!description.trim(), location: !!location.trim() });
+              return;
+            }
+
+            // بدء الإرسال
+            setIsSubmitting(true);
+            
+            // نشر الطلب
+            const requestId = await handlePublish();
+            
+            if (requestId) {
+              // نجاح الإرسال
+              setCreatedRequestId(requestId);
+              setSubmitSuccess(true);
+              setIsSubmitting(false);
+              
+              // إخفاء بعد 3 ثواني إذا لم يضغط المستخدم
+              setTimeout(() => {
+                if (onGoToRequest && requestId) {
+                  onGoToRequest(requestId);
+                }
+              }, 3000);
+            } else {
+              // فشل الإرسال
+              setIsSubmitting(false);
+              setShowCelebration(true);
+              setTimeout(() => setShowCelebration(false), 2000);
+            }
+          } catch (error) {
+            console.error("Error in onSubmit:", error);
+            setIsSubmitting(false);
+            setSubmitSuccess(false);
+          }
+        }}
+        isSubmitting={isSubmitting}
+        submitSuccess={submitSuccess}
+        onGoToRequest={() => {
+          if (createdRequestId && onGoToRequest) {
+            onGoToRequest(createdRequestId);
           }
         }}
         justBecameReady={justBecameReady}

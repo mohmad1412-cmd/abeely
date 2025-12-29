@@ -116,6 +116,7 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const toggleCategory = (catId: string) => {
+    if (navigator.vibrate) navigator.vibrate(10);
     setTempCategories(prev => 
       prev.includes(catId) 
         ? prev.filter(id => id !== catId)
@@ -124,6 +125,7 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const toggleCity = (city: string) => {
+    if (navigator.vibrate) navigator.vibrate(10);
     setTempCities(prev => 
       prev.includes(city)
         ? prev.filter(c => c !== city)
@@ -170,7 +172,7 @@ export const Settings: React.FC<SettingsProps> = ({
         onMarkAsRead={onMarkAsRead}
         onClearAll={onClearAll}
         onSignOut={onSignOut || (() => {})}
-        showSidebarButton={true}
+        onGoToMarketplace={onBack}
         title="الإعدادات"
         currentView="settings"
         hideModeToggle={true}
@@ -353,7 +355,7 @@ export const Settings: React.FC<SettingsProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <p className="font-medium text-sm">
-                      {showNameToApprovedProvider ? "إظهار اسمي لمقدم العرض بعد اعتماده" : "إبقاء اسمي غير ظاهر دائماً"}
+                      {showNameToApprovedProvider ? "اظهار اسمي لمقدم العرض بعد اعتماده" : "إبقاء اسمي غير ظاهر دائماً"}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {showNameToApprovedProvider 

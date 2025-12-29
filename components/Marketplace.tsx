@@ -228,6 +228,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   const pullStartY = useRef<number>(0);
   const pullCurrentY = useRef<number>(0);
   const pullDistanceRef = useRef<number>(0); // استخدام ref لتجنب stale closure
+  const searchPageScrollRef = useRef<HTMLDivElement>(null); // Ref للسكرول في صفحة البحث
   
   // Pull-to-refresh handlers
   useEffect(() => {
@@ -557,6 +558,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
   // Toggle Category Selection
   const toggleSearchCategory = (id: string) => {
+    if (navigator.vibrate) navigator.vibrate(10);
     setSearchCategories(prev => {
       if (prev.includes(id)) {
         return prev.filter(c => c !== id);
@@ -568,6 +570,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
   // Toggle City Selection
   const toggleSearchCity = (city: string) => {
+    if (navigator.vibrate) navigator.vibrate(10);
     setSearchCities(prev => {
       if (prev.includes(city)) {
         return prev.filter(c => c !== city);
@@ -1059,7 +1062,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Search Page Full Screen Modal */}
+      {/* Search Page Full Screen Modal - نسخة محسّنة */}
       <AnimatePresence>
         {isSearchPageOpen && (
           <motion.div
@@ -1073,7 +1076,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 50, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="h-full flex flex-col"
+              className="h-full flex flex-col overflow-hidden"
             >
               {/* Search Header */}
               <div className="shrink-0 p-4 border-b border-border bg-card/80 backdrop-blur-xl">
@@ -1112,8 +1115,15 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 </div>
               </div>
 
-              {/* Filters Section */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-40">
+              {/* Filters Section - محسّن للسكرول */}
+              <div 
+                ref={searchPageScrollRef}
+                className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6"
+                style={{ 
+                  paddingBottom: '180px', // مساحة للزر السفلي
+                  WebkitOverflowScrolling: 'touch' // سكرول سلس على iOS
+                }}
+              >
                 
                 {/* Category Filter - Collapsible */}
                 <div className="border-b border-border pb-4">
@@ -1138,7 +1148,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       >
                         <div className="flex flex-wrap gap-2 pt-1">
                           <button
-                            onClick={() => setSearchCategories([])}
+                            onClick={() => { if (navigator.vibrate) navigator.vibrate(10); setSearchCategories([]); }}
                             className={`px-4 py-2 rounded-full text-sm border transition-all ${
                               searchCategories.length === 0
                                 ? "bg-primary text-primary-foreground border-primary"
@@ -1190,7 +1200,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       >
                          <div className="flex flex-wrap gap-2 pt-1">
                           <button
-                            onClick={() => setSearchCities([])}
+                            onClick={() => { if (navigator.vibrate) navigator.vibrate(10); setSearchCities([]); }}
                             className={`px-4 py-2 rounded-full text-sm border transition-all ${
                               searchCities.length === 0
                                 ? "bg-primary text-primary-foreground border-primary"
@@ -1264,8 +1274,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 </div>
               </div>
 
-              {/* Sticky Bottom Area (Active Filters + Action Button) */}
-              <div className="absolute bottom-0 left-0 right-0 border-t border-border bg-background/95 backdrop-blur-xl z-20 shadow-[0_-5px_20px_-5px_rgba(0,0,0,0.1)]">
+              {/* Sticky Bottom Area (Active Filters + Action Button) - محسّن */}
+              <div className="absolute bottom-0 left-0 right-0 border-t border-border bg-background/95 backdrop-blur-xl z-20 shadow-[0_-5px_20px_-5px_rgba(0,0,0,0.1)] safe-area-bottom">
                 
                 {/* Active Filters Summary - Sticky */}
                 {hasActiveFilters && (
@@ -1942,6 +1952,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         >
           {filteredRequests.map((req, index) => {
             const myOffer = getMyOffer(req.id);
+            const requestAuthorId = (req as any).authorId || (req as any).author_id || req.author;
+            const isMyRequest = !!user?.id && requestAuthorId === user.id;
             const isNinthItem = index === 8; // 9th item (0-indexed)
             const isTouchHovered = touchHoveredCardId === req.id; // هل الإصبع فوق هذا الكارت؟
             return (
@@ -1997,6 +2009,15 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     title="فتحت هذا الطلب سابقاً"
                   >
                     <Eye size={14} className="text-white/80" />
+                  </motion.div>
+                )}
+                {isMyRequest && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="absolute top-3 right-3 z-20 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm dark:bg-amber-500/10 dark:text-amber-100 dark:border-amber-400/30"
+                  >
+                    طلبي
                   </motion.div>
                 )}
                 {/* Image Section */}
@@ -2135,6 +2156,47 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         <Lock size={14} />
                         منتهي
                       </div>
+                    ) : isMyRequest ? (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.96 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
+                          onSelectRequest(req, false); // Open request without scrolling to offer section
+                        }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onTouchStart={(e) => e.stopPropagation()}
+                        className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gradient-to-r from-primary to-teal-600 text-white shadow-md hover:shadow-lg transition-all relative overflow-hidden"
+                      >
+                        {/* Shimmer effect */}
+                        <span 
+                          className="absolute inset-0 pointer-events-none animate-shimmer-diagonal" 
+                          style={{
+                            background: 'linear-gradient(315deg, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.15) 50%, transparent 65%, transparent 100%)',
+                            backgroundSize: '200% 200%'
+                          }} 
+                        />
+                        <User size={14} className="relative z-10" />
+                        <span className="relative z-10 flex items-center gap-1">
+                          طلبي
+                          {(req.offers?.length || 0) > 0 && (
+                            <span className="text-yellow-200 font-bold text-[10px] animate-pulse whitespace-nowrap">
+                              (عروض جديدة!)
+                            </span>
+                          )}
+                        </span>
+                        {/* Notification badge for offers count */}
+                        {(req.offers?.length || 0) > 0 && (
+                          <motion.span
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="absolute -top-1.5 -left-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg z-20 border-2 border-white dark:border-gray-900"
+                          >
+                            {req.offers?.length}
+                          </motion.span>
+                        )}
+                      </motion.button>
                     ) : myOffer ? (
                         <motion.div
                           initial={{ scale: 0.9, opacity: 0 }}

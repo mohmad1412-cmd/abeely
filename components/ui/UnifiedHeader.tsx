@@ -14,7 +14,9 @@ import {
   Plus,
   ArrowLeft,
   Send,
-  ChevronsDown
+  ChevronsDown,
+  Loader2,
+  FileText
 } from "lucide-react";
 import { NotificationsPopover } from "../NotificationsPopover";
 
@@ -54,10 +56,20 @@ interface UnifiedHeaderProps {
   canSubmit?: boolean;
   onSubmit?: () => void;
   justBecameReady?: boolean; // For celebration animation
+  // Submit states for animation
+  isSubmitting?: boolean;
+  submitSuccess?: boolean;
+  onGoToRequest?: () => void; // Navigate to created request
   // Scroll to offer button (for RequestDetail page)
   showScrollToOffer?: boolean;
   onScrollToOffer?: () => void;
   isOfferSectionVisible?: boolean; // Hide button when offer section is visible
+  // My Request button (for viewing own request)
+  showMyRequestButton?: boolean;
+  myRequestOffersCount?: number;
+  onMyRequestClick?: () => void;
+  // Back to marketplace
+  onGoToMarketplace?: () => void; // If provided, mobile back button navigates to marketplace
 }
 
 export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
@@ -89,9 +101,16 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   canSubmit = false,
   onSubmit,
   justBecameReady = false,
+  isSubmitting = false,
+  submitSuccess = false,
+  onGoToRequest,
   showScrollToOffer = false,
   onScrollToOffer,
   isOfferSectionVisible = false,
+  showMyRequestButton = false,
+  myRequestOffersCount = 0,
+  onMyRequestClick,
+  onGoToMarketplace,
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isLinkCopied, setIsLinkCopied] = useState(false);
@@ -150,7 +169,10 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
         {showSidebarButton ? (
           <button
             className="p-2.5 hover:bg-primary/10 rounded-xl transition-all duration-300 active:scale-95 group"
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            onClick={() => {
+              if (navigator.vibrate) navigator.vibrate(10);
+              setIsSidebarOpen(!isSidebarOpen);
+            }}
           >
             {isSidebarOpen ? (
               <X size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
@@ -160,7 +182,10 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           </button>
         ) : backButton ? (
           <motion.button
-            onClick={onBack}
+            onClick={() => {
+              if (navigator.vibrate) navigator.vibrate(12);
+              onBack?.();
+            }}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.88 }}
             transition={{ type: "spring", stiffness: 500, damping: 25 }}
@@ -170,18 +195,22 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
             <span className="absolute inset-0 rounded-full border-2 border-primary/50 opacity-0 group-active:opacity-100 group-active:animate-ping" />
             {closeIcon ? <X size={22} strokeWidth={2.5} className="relative z-10" /> : <ArrowRight size={22} strokeWidth={2.5} className="relative z-10" />}
           </motion.button>
-        ) : (
-          <button
-            className="md:hidden p-2.5 hover:bg-primary/10 rounded-xl transition-all duration-300 active:scale-95 group"
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        ) : onGoToMarketplace ? (
+          <motion.button
+            className="md:hidden relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group"
+            onClick={() => {
+              if (navigator.vibrate) navigator.vibrate(12);
+              onGoToMarketplace?.();
+            }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.88 }}
+            transition={{ type: "spring", stiffness: 500, damping: 25 }}
           >
-            {isSidebarOpen ? (
-              <X size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
-            ) : (
-              <Menu size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
-            )}
-          </button>
-        )}
+            {/* Pulse ring effect - only on active/touch */}
+            <span className="absolute inset-0 rounded-full border-2 border-primary/50 opacity-0 group-active:opacity-100 group-active:animate-ping" />
+            <ArrowRight size={22} strokeWidth={2.5} className="relative z-10" />
+          </motion.button>
+        ) : null}
         
         <div className="flex items-start gap-3">
           <h1 className="font-bold text-base text-foreground flex flex-col gap-0.5">
@@ -322,22 +351,63 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
             {/* Submit Button OR Notification Bell */}
             {showSubmitButton ? (
               <motion.button
-                onClick={onSubmit}
-                disabled={!canSubmit}
-                className={`relative flex items-center gap-2 h-11 px-4 rounded-full group transition-all duration-500 overflow-visible ${
-                  canSubmit 
-                    ? "cursor-pointer" 
-                    : "cursor-not-allowed opacity-50"
-                }`}
-                whileHover={canSubmit ? { scale: 1.05 } : {}}
-                whileTap={canSubmit ? { scale: 0.95 } : {}}
-                animate={justBecameReady ? {
-                  scale: [1, 1.1, 1],
+                type="button"
+                data-no-swipe="true"
+                disabled={isSubmitting || (!canSubmit && !submitSuccess)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                  
+                  // إذا نجح الإرسال، انتقل للطلب
+                  if (submitSuccess && onGoToRequest) {
+                    if (navigator.vibrate) navigator.vibrate([10, 50, 10]);
+                    onGoToRequest();
+                    return;
+                  }
+                  
+                  // إرسال الطلب
+                  if (canSubmit && onSubmit && !isSubmitting) {
+                    if (navigator.vibrate) navigator.vibrate([15, 30, 15]);
+                    onSubmit();
+                  }
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                }}
+                onTouchEnd={(e) => {
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                }}
+                whileTap={{ scale: 0.92 }}
+                animate={submitSuccess ? {
+                  scale: [1, 1.08, 1],
+                  transition: { duration: 0.4, ease: "easeOut" }
                 } : {}}
-                transition={justBecameReady ? { duration: 0.4, repeat: 2 } : {}}
+                className={`relative flex items-center gap-2 h-11 rounded-full overflow-visible select-none transition-all duration-300 ${
+                  submitSuccess 
+                    ? "px-5 cursor-pointer" 
+                    : isSubmitting 
+                      ? "px-5 cursor-wait"
+                      : canSubmit 
+                        ? "px-4 cursor-pointer" 
+                        : "px-4 cursor-not-allowed opacity-50"
+                }`}
+                style={{ 
+                  touchAction: 'manipulation', 
+                  WebkitTapHighlightColor: 'transparent',
+                  pointerEvents: 'auto',
+                  zIndex: 10,
+                  position: 'relative'
+                }}
               >
-                {/* Ping Ring - Pulsing border effect */}
-                {canSubmit && (
+                {/* Ping Ring - Pulsing border effect (only when ready to submit) */}
+                {canSubmit && !isSubmitting && !submitSuccess && (
                   <motion.div
                     className="absolute inset-0 rounded-full border-2 border-primary/50 pointer-events-none"
                     animate={{
@@ -352,56 +422,217 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   />
                 )}
                 
-                {/* Outer Glow - Only when canSubmit */}
-                {canSubmit && (
-                  <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-primary/30 via-teal-500/20 to-primary/30 blur-md group-hover:blur-lg transition-all duration-500 animate-pulse pointer-events-none" />
+                {/* Success celebration rings */}
+                {submitSuccess && (
+                  <>
+                    <motion.div
+                      className="absolute inset-0 rounded-full border-2 border-emerald-400 pointer-events-none"
+                      initial={{ scale: 1, opacity: 0.8 }}
+                      animate={{ scale: 2, opacity: 0 }}
+                      transition={{ duration: 0.6, ease: "easeOut" }}
+                    />
+                    <motion.div
+                      className="absolute inset-0 rounded-full border-2 border-emerald-400 pointer-events-none"
+                      initial={{ scale: 1, opacity: 0.6 }}
+                      animate={{ scale: 1.7, opacity: 0 }}
+                      transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
+                    />
+                  </>
                 )}
                 
-                {/* Main Button Body */}
-                <div className={`absolute inset-0 rounded-full transition-all duration-500 pointer-events-none ${
-                  canSubmit 
-                    ? "bg-gradient-to-br from-primary via-primary to-teal-600 shadow-[0_8px_25px_rgba(30,150,140,0.4),0_4px_12px_rgba(30,150,140,0.3)] group-hover:shadow-[0_10px_35px_rgba(30,150,140,0.5),0_5px_18px_rgba(30,150,140,0.4)]"
-                    : "bg-muted"
+                {/* Outer Glow */}
+                <div className={`absolute inset-[-6px] rounded-full blur-md transition-all duration-500 pointer-events-none ${
+                  submitSuccess 
+                    ? "bg-gradient-to-br from-emerald-400/40 via-green-500/30 to-emerald-400/40"
+                    : isSubmitting
+                      ? "bg-gradient-to-br from-primary/20 via-teal-500/15 to-primary/20"
+                      : canSubmit
+                        ? "bg-gradient-to-br from-primary/30 via-teal-500/20 to-primary/30 animate-pulse"
+                        : ""
                 }`} />
                 
-                {/* Inner shine - Only when canSubmit */}
-                {canSubmit && (
+                {/* Main Button Body */}
+                <motion.div 
+                  className={`absolute inset-0 rounded-full transition-all duration-300 pointer-events-none ${
+                    submitSuccess 
+                      ? "bg-gradient-to-br from-emerald-500 via-green-500 to-emerald-600 shadow-[0_8px_25px_rgba(16,185,129,0.5),0_4px_12px_rgba(16,185,129,0.4)]"
+                      : isSubmitting
+                        ? "bg-gradient-to-br from-primary/80 via-primary to-teal-600/80 shadow-[0_4px_15px_rgba(30,150,140,0.3)]"
+                        : canSubmit 
+                          ? "bg-gradient-to-br from-primary via-primary to-teal-600 shadow-[0_8px_25px_rgba(30,150,140,0.4),0_4px_12px_rgba(30,150,140,0.3)]"
+                          : "bg-muted"
+                  }`}
+                  layoutId="submit-button-bg"
+                />
+                
+                {/* Inner shine */}
+                {(canSubmit || isSubmitting || submitSuccess) && (
                   <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
                     <div className="absolute inset-0 bg-gradient-to-b from-white/25 via-transparent to-transparent" />
                   </div>
                 )}
 
-                {/* Content */}
-                <span className={`relative z-10 text-sm font-medium transition-colors duration-300 ${
-                  canSubmit ? "text-white" : "text-muted-foreground"
-                }`}>
-                  إرسال الطلب
-                </span>
-                <motion.div
-                  className="relative z-10"
-                  animate={canSubmit ? { 
-                    x: [0, -3, 0],
-                  } : {}}
-                  transition={canSubmit ? {
-                    duration: 1.5,
-                    repeat: Infinity,
-                    ease: "easeInOut"
-                  } : {}}
-                >
-                  <Send 
-                    size={16} 
-                    className={`-rotate-90 transition-colors duration-300 ${
-                      canSubmit ? "text-white" : "text-muted-foreground"
-                    }`}
-                  />
-                </motion.div>
+                {/* Content with AnimatePresence for smooth transitions */}
+                <AnimatePresence mode="wait">
+                  {submitSuccess ? (
+                    <motion.div
+                      key="success"
+                      initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.8, y: -10 }}
+                      transition={{ duration: 0.25, ease: "easeOut" }}
+                      className="relative z-10 flex items-center gap-2"
+                    >
+                      <motion.div
+                        initial={{ scale: 0, rotate: -180 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 25, delay: 0.1 }}
+                      >
+                        <FileText size={16} className="text-white" />
+                      </motion.div>
+                      <span className="text-sm font-semibold text-white whitespace-nowrap">
+                        طلبي
+                      </span>
+                      <motion.div
+                        animate={{ x: [0, 4, 0] }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
+                      >
+                        <ArrowLeft size={14} className="text-white/80" />
+                      </motion.div>
+                    </motion.div>
+                  ) : isSubmitting ? (
+                    <motion.div
+                      key="submitting"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ duration: 0.2 }}
+                      className="relative z-10 flex items-center gap-2"
+                    >
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      >
+                        <Loader2 size={16} className="text-white" />
+                      </motion.div>
+                      <span className="text-sm font-medium text-white whitespace-nowrap">
+                        جاري الإرسال...
+                      </span>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="idle"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ duration: 0.2 }}
+                      className="relative z-10 flex items-center gap-2"
+                    >
+                      <span className={`text-sm font-medium transition-colors duration-300 ${
+                        canSubmit ? "text-white" : "text-muted-foreground"
+                      }`}>
+                        إرسال الطلب
+                      </span>
+                      <motion.div
+                        animate={canSubmit ? { x: [0, -3, 0] } : {}}
+                        transition={canSubmit ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" } : {}}
+                      >
+                        <Send 
+                          size={16} 
+                          className={`-rotate-90 transition-colors duration-300 ${
+                            canSubmit ? "text-white" : "text-muted-foreground"
+                          }`}
+                        />
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-                {/* Sparkles - Only when canSubmit */}
-                {canSubmit && (
+                {/* Sparkles - Only when canSubmit and not submitting */}
+                {canSubmit && !isSubmitting && !submitSuccess && (
                   <>
                     <div className="absolute -top-1 -right-1 w-2 h-2 bg-white/50 rounded-full blur-[2px] animate-pulse pointer-events-none" />
                     <div className="absolute -bottom-1 -left-1 w-1.5 h-1.5 bg-teal-300/40 rounded-full blur-[1px] animate-bounce pointer-events-none" />
                   </>
+                )}
+                
+                {/* Success sparkles */}
+                {submitSuccess && (
+                  <>
+                    <motion.div
+                      className="absolute -top-2 -right-2 w-3 h-3 bg-yellow-300 rounded-full pointer-events-none"
+                      initial={{ scale: 0, opacity: 1 }}
+                      animate={{ scale: [0, 1.5, 0], opacity: [1, 0.8, 0] }}
+                      transition={{ duration: 0.6, delay: 0.2 }}
+                    />
+                    <motion.div
+                      className="absolute -bottom-2 -left-2 w-2 h-2 bg-emerald-300 rounded-full pointer-events-none"
+                      initial={{ scale: 0, opacity: 1 }}
+                      animate={{ scale: [0, 1.5, 0], opacity: [1, 0.8, 0] }}
+                      transition={{ duration: 0.5, delay: 0.3 }}
+                    />
+                    <motion.div
+                      className="absolute top-0 left-1/2 w-2 h-2 bg-white rounded-full pointer-events-none"
+                      initial={{ scale: 0, opacity: 1, y: 0 }}
+                      animate={{ scale: [0, 1, 0], opacity: [1, 0.6, 0], y: -15 }}
+                      transition={{ duration: 0.5, delay: 0.1 }}
+                    />
+                  </>
+                )}
+              </motion.button>
+            ) : showMyRequestButton ? (
+              /* My Request Button - for viewing own request */
+              <motion.button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
+                  onMyRequestClick?.();
+                }}
+                initial={{ opacity: 0, scale: 0.8, x: 20, filter: "blur(8px)" }}
+                animate={{ 
+                  opacity: 1, 
+                  scale: 1, 
+                  x: 0,
+                  filter: "blur(0px)",
+                  transition: {
+                    type: "spring",
+                    stiffness: 400,
+                    damping: 25,
+                    mass: 0.8,
+                  }
+                }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96 }}
+                className="relative flex items-center gap-2 h-11 px-4 rounded-xl group active:scale-95 bg-primary/10 border border-primary/30 hover:border-primary/50 hover:bg-primary/15 overflow-hidden"
+              >
+                {/* Shimmer effect */}
+                <span 
+                  className="absolute inset-0 pointer-events-none animate-shimmer-diagonal" 
+                  style={{
+                    background: 'linear-gradient(315deg, transparent 0%, transparent 35%, rgba(30, 150, 140, 0.1) 50%, transparent 65%, transparent 100%)',
+                    backgroundSize: '200% 200%'
+                  }} 
+                />
+                
+                <FileText size={16} className="relative z-10 text-primary" />
+                <span className="relative z-10 text-sm font-medium text-primary whitespace-nowrap flex items-center gap-1">
+                  طلبي
+                  {myRequestOffersCount > 0 && (
+                    <span className="text-primary/70 text-[10px] font-bold animate-pulse">
+                      (عروض جديدة!)
+                    </span>
+                  )}
+                </span>
+                
+                {/* Notification badge for offers count */}
+                {myRequestOffersCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -top-1.5 -left-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg z-20 border-2 border-white dark:border-gray-900"
+                  >
+                    {myRequestOffersCount}
+                  </motion.span>
                 )}
               </motion.button>
             ) : (
@@ -457,7 +688,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
 
   return (
     <>
-      <div className={transparent ? "" : "sticky top-0 z-30 px-4 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-gray-200/30 dark:border-white/10 shadow-sm shrink-0"}>
+      <div className={transparent ? "" : "sticky top-0 z-50 px-4 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-gray-200/30 dark:border-white/10 shadow-sm shrink-0"}>
         <div className={transparent ? "" : "flex flex-col"}>
           {headerContent}
         </div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Review } from '../types';
 import { Badge } from './ui/Badge';
 import { Calendar, Briefcase, Award, CheckCircle, Clock, DollarSign, Edit2, X, Check, Camera } from 'lucide-react';
@@ -53,13 +53,18 @@ export const Profile: React.FC<ProfileProps> = ({
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingBio, setIsEditingBio] = useState(false);
-  const [displayName, setDisplayName] = useState('خالد عبد الله');
+  const [displayName, setDisplayName] = useState(user?.display_name || '');
   const [bio, setBio] = useState(profileRole === 'provider' 
     ? 'مهتم ببناء الحلول الرقمية المبتكرة. لدي خبرة واسعة في إدارة المشاريع التقنية والتعامل مع فرق العمل عن بعد. أسعى دائماً للجودة والاحترافية في العمل.'
     : 'أبحث دائماً عن محترفين لتنفيذ مشاريعي التقنية بدقة وجودة عالية. أقدر الالتزام بالوقت والتواصل الفعال.');
   const [avatarUrl, setAvatarUrl] = useState('https://picsum.photos/200/200');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync displayName with user.display_name when user changes
+  useEffect(() => {
+    setDisplayName(user?.display_name || '');
+  }, [user?.display_name]);
 
   const handleSaveName = () => {
     // هنا يمكن إضافة حفظ الاسم في قاعدة البيانات
@@ -125,7 +130,7 @@ export const Profile: React.FC<ProfileProps> = ({
         onMarkAsRead={onMarkAsRead}
         onClearAll={onClearAll}
         onSignOut={onSignOut}
-        showSidebarButton={true}
+        onGoToMarketplace={onBack}
         title="الملف الشخصي"
         currentView="profile"
         hideModeToggle={true}
@@ -211,7 +216,7 @@ export const Profile: React.FC<ProfileProps> = ({
                                 handleSaveName();
                               } else if (e.key === 'Escape') {
                                 setIsEditingName(false);
-                                setDisplayName('خالد عبد الله');
+                                setDisplayName(user?.display_name || '');
                               }
                             }}
                           />
@@ -237,7 +242,7 @@ export const Profile: React.FC<ProfileProps> = ({
                             whileTap={{ scale: 0.95 }}
                             onClick={() => {
                               setIsEditingName(false);
-                              setDisplayName('خالد عبد الله');
+                              setDisplayName(user?.display_name || '');
                             }}
                             className="px-4 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors text-sm font-medium flex items-center gap-2"
                           >
@@ -247,18 +252,32 @@ export const Profile: React.FC<ProfileProps> = ({
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-start justify-center md:justify-start gap-2 w-full">
-                        <h1 className="text-2xl font-bold flex-1 break-words overflow-wrap-anywhere min-w-0">{displayName}</h1>
+                      displayName.trim() === '' ? (
                         <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
                           onClick={() => setIsEditingName(true)}
-                          className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-primary shrink-0 mt-1"
-                          title="تعديل الاسم"
+                          className="w-full text-center md:text-right py-3 px-4 rounded-lg border-2 border-dashed border-border hover:border-primary/50 bg-secondary/20 hover:bg-secondary/40 transition-all text-muted-foreground hover:text-primary"
                         >
-                          <Edit2 size={18} />
+                          <div className="flex items-center justify-center md:justify-start gap-2">
+                            <Edit2 size={18} />
+                            <span className="text-sm font-medium">أضف اسمك</span>
+                          </div>
                         </motion.button>
-                      </div>
+                      ) : (
+                        <div className="flex items-start justify-center md:justify-start gap-2 w-full">
+                          <h1 className="text-2xl font-bold flex-1 break-words overflow-wrap-anywhere min-w-0">{displayName}</h1>
+                          <motion.button
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={() => setIsEditingName(true)}
+                            className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-primary shrink-0 mt-1"
+                            title="تعديل الاسم"
+                          >
+                            <Edit2 size={18} />
+                          </motion.button>
+                        </div>
+                      )
                     )}
                   </div>
                   

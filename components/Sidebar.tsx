@@ -36,6 +36,7 @@ interface SidebarProps {
   mode: AppMode;
   isOpen: boolean;
   onClose?: () => void;
+  onOpen?: () => void;
   userRequests: Request[];
   allRequests?: Request[];
   userOffers: Offer[];
@@ -72,6 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   mode,
   isOpen,
   onClose,
+  onOpen,
   userRequests,
   allRequests = [],
   userOffers,
@@ -107,9 +109,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [offersSheetLevel, setOffersSheetLevel] = useState(0);
   
   // Sidebar width resize state
-  const DEFAULT_WIDTH = 300;
-  const MIN_WIDTH = 280;
-  const MAX_WIDTH = 600;
+  const DEFAULT_WIDTH = 260;
+  const MIN_WIDTH = 240;
+  const MAX_WIDTH = 500;
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH);
   const [isSidebarResizing, setIsSidebarResizing] = useState(false);
   const isExpanded = sidebarWidth > DEFAULT_WIDTH;
@@ -346,39 +348,144 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const offersConversationsRef = useRef<HTMLDivElement>(null);
 
   // Swipe to close sidebar state
-  const [sidebarSwipeStart, setSidebarSwipeStart] = useState<{ x: number; y: number } | null>(null);
   const [sidebarSwipeOffset, setSidebarSwipeOffset] = useState(0);
+  const [isSidebarSwipeCaptured, setIsSidebarSwipeCaptured] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
-
-  const handleSidebarSwipeStart = useCallback((e: React.TouchEvent) => {
-    setSidebarSwipeStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
-    setSidebarSwipeOffset(0);
-  }, []);
-
-  const handleSidebarSwipeMove = useCallback((e: React.TouchEvent) => {
-    if (!sidebarSwipeStart) return;
-    const currentX = e.touches[0].clientX;
-    const currentY = e.touches[0].clientY;
-    const dx = currentX - sidebarSwipeStart.x;
-    const dy = currentY - sidebarSwipeStart.y;
+  const sidebarSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  // هل تم تحديد الاتجاه؟
+  const directionDecidedRef = useRef(false);
+  // هل السحب أفقي؟
+  const isHorizontalRef = useRef(false);
+  // هل تم التقاط السحب؟
+  const isCapturedRef = useRef(false);
+  
+  // منع التفاعلات عند التقاط السحب
+  useEffect(() => {
+    if (isSidebarSwipeCaptured) {
+      // إيقاف كل السكرول في السايد بار
+      const scrollables = sidebarRef.current?.querySelectorAll('.overflow-auto, .overflow-y-auto, .overflow-scroll');
+      scrollables?.forEach(el => {
+        (el as HTMLElement).style.overflow = 'hidden';
+        (el as HTMLElement).style.touchAction = 'none';
+      });
+      
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+      document.documentElement.classList.add('sidebar-swipe-captured');
+      
+      return () => {
+        scrollables?.forEach(el => {
+          (el as HTMLElement).style.overflow = '';
+          (el as HTMLElement).style.touchAction = '';
+        });
+        document.body.style.overflow = '';
+        document.body.style.touchAction = '';
+        document.documentElement.classList.remove('sidebar-swipe-captured');
+      };
+    }
+  }, [isSidebarSwipeCaptured]);
+  
+  // استخدام native event listeners للسماح بـ preventDefault
+  useEffect(() => {
+    const sidebar = sidebarRef.current;
+    if (!sidebar) return;
     
-    // Only handle horizontal swipes to the right
-    if (Math.abs(dx) > Math.abs(dy) && dx > 0) {
-      // Prevent default to avoid scrolling while swiping
+    const handleTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      sidebarSwipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+      directionDecidedRef.current = false;
+      isHorizontalRef.current = false;
+      isCapturedRef.current = false;
+      setSidebarSwipeOffset(0);
+      setIsSidebarSwipeCaptured(false);
+    };
+    
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!sidebarSwipeStartRef.current) return;
+      
+      const touch = e.touches[0];
+      const dx = touch.clientX - sidebarSwipeStartRef.current.x;
+      const dy = touch.clientY - sidebarSwipeStartRef.current.y;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+      
+      // **المفتاح**: إذا لم نحدد الاتجاه بعد، نمنع كل شيء مؤقتاً
+      if (!directionDecidedRef.current) {
+        if (absDx > 5 || absDy > 5) {
+          directionDecidedRef.current = true;
+          isHorizontalRef.current = absDx >= absDy;
+          
+          // إذا السحب أفقي وباتجاه اليمين (للإغلاق)
+          if (isHorizontalRef.current && dx > 0) {
+            isCapturedRef.current = true;
+            setIsSidebarSwipeCaptured(true);
+            e.preventDefault();
+            e.stopPropagation();
+          }
+          
+          // إذا السحب عمودي - نتجاهل ونسمح بالسكرول
+          if (!isHorizontalRef.current) {
+            sidebarSwipeStartRef.current = null;
+            return;
+          }
+        } else {
+          // لم نتحرك كفاية - نمنع مؤقتاً حتى نحدد الاتجاه
+          e.preventDefault();
+          return;
+        }
+      }
+      
+      // إذا لم يتم التقاط السحب، نتجاهل
+      if (!isCapturedRef.current) return;
+      
+      // منع السكرول
       e.preventDefault();
-      setSidebarSwipeOffset(Math.min(dx, sidebarWidth));
-    }
-  }, [sidebarSwipeStart, sidebarWidth]);
-
-  const handleSidebarSwipeEnd = useCallback(() => {
-    if (sidebarSwipeOffset > 80) {
-      // Close sidebar if swiped more than 80px to the right
-      if (navigator.vibrate) navigator.vibrate(10);
-      onClose?.();
-    }
-    setSidebarSwipeStart(null);
-    setSidebarSwipeOffset(0);
-  }, [sidebarSwipeOffset, onClose]);
+      e.stopPropagation();
+      
+      // السحب لليمين للإغلاق
+      if (dx > 0) {
+        setSidebarSwipeOffset(Math.min(dx, sidebarWidth));
+      }
+    };
+    
+    const handleTouchEnd = () => {
+      if (!isCapturedRef.current) {
+        resetState();
+        return;
+      }
+      
+      const currentOffset = sidebarSwipeOffset;
+      
+      // ✅ نفس العتبة المستخدمة في المقبض (50px)
+      if (currentOffset > 50) {
+        if (navigator.vibrate) navigator.vibrate(10);
+        onClose?.();
+      }
+      
+      resetState();
+    };
+    
+    const resetState = () => {
+      sidebarSwipeStartRef.current = null;
+      directionDecidedRef.current = false;
+      isHorizontalRef.current = false;
+      isCapturedRef.current = false;
+      setSidebarSwipeOffset(0);
+      setIsSidebarSwipeCaptured(false);
+    };
+    
+    sidebar.addEventListener('touchstart', handleTouchStart, { passive: true });
+    sidebar.addEventListener('touchmove', handleTouchMove, { passive: false });
+    sidebar.addEventListener('touchend', handleTouchEnd, { passive: true });
+    sidebar.addEventListener('touchcancel', resetState, { passive: true });
+    
+    return () => {
+      sidebar.removeEventListener('touchstart', handleTouchStart);
+      sidebar.removeEventListener('touchmove', handleTouchMove);
+      sidebar.removeEventListener('touchend', handleTouchEnd);
+      sidebar.removeEventListener('touchcancel', resetState);
+    };
+  }, [sidebarWidth, onClose, sidebarSwipeOffset]);
 
   useEffect(() => {
     if (isRequestsConversationsOpen && user?.id && !isGuest) {
@@ -473,6 +580,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [isOffersDropdownOpen, isRequestsDropdownOpen]);
 
+  // تحميل حالة الرسائل غير المقروءة عند فتح السايد بار
+  useEffect(() => {
+    if (!user?.id || isGuest) return;
+    
+    let isMounted = true;
+    const checkUnreadMessages = async () => {
+      try {
+        const conversations = await getConversations();
+        if (!isMounted) return;
+        const allUnread = conversations.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
+        setHasUnreadMessages(allUnread > 0);
+        onUnreadMessagesChange?.(allUnread > 0);
+      } catch (error) {
+        console.error('Error checking unread messages:', error);
+      }
+    };
+    
+    checkUnreadMessages();
+    
+    // الاشتراك في تحديثات المحادثات
+    const unsubscribe = subscribeToConversations(user.id, () => {
+      checkUnreadMessages();
+    });
+    
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [user?.id, isGuest, onUnreadMessagesChange]);
+
   const filteredRequests = (() => {
     const allReqs = [...userRequests, ...(archivedRequests || [])];
     if (reqFilter === "all") return allReqs.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
@@ -515,12 +652,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         width: `${sidebarWidth}px`,
         transform: sidebarSwipeOffset > 0 ? `translateX(${sidebarSwipeOffset}px)` : undefined
       }}
-      className={`fixed inset-y-0 right-0 z-[90] bg-card border-l border-border md:translate-x-0 md:static md:block shadow-2xl md:shadow-none flex flex-col pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${isOpen ? "translate-x-0" : "translate-x-full"} ${isSidebarResizing ? "transition-none" : ""} ${sidebarSwipeOffset > 0 ? "transition-none" : "transition-[transform,opacity,box-shadow] duration-[400ms] ease-[cubic-bezier(0.22,1,0.36,1)]"}`}
-      onTouchStart={handleSidebarSwipeStart}
-      onTouchMove={handleSidebarSwipeMove}
-      onTouchEnd={handleSidebarSwipeEnd}
+      className={`fixed inset-y-0 right-0 z-[90] bg-card border-l border-border md:translate-x-0 md:static md:block shadow-2xl md:shadow-none flex flex-col pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${isOpen ? "translate-x-0" : "translate-x-full"} ${isSidebarResizing ? "transition-none" : ""} ${sidebarSwipeOffset > 0 ? "transition-none" : "transition-[transform,opacity,box-shadow] duration-[400ms] ease-[cubic-bezier(0.22,1,0.36,1)]"} ${hasUnreadMessages ? "sidebar-has-notifications" : ""}`}
     >
-      {/* Resize Handle - Left side */}
+      {/* Magical notification sparkle lines - gentle reminder */}
+      {hasUnreadMessages && (
+        <>
+          <div className="sidebar-sparkle-line" />
+          <div className="sidebar-sparkle-line sidebar-sparkle-line-delayed" />
+        </>
+      )}
+      
+      {/* Resize Handle - Left side (Desktop) */}
       <div
         onMouseDown={handleSidebarMouseDown}
         className="hidden md:flex absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize items-center justify-center group z-50 hover:bg-primary/5 transition-colors"
@@ -530,6 +672,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className={`w-1 h-6 rounded-full transition-all ${isSidebarResizing ? "bg-primary" : "bg-primary/40 group-hover:bg-primary"}`} />
         </div>
       </div>
+      
       
       {/* Close button when expanded */}
       <AnimatePresence>
@@ -546,86 +689,99 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </motion.button>
         )}
       </AnimatePresence>
-      {/* Floating Action Buttons - Outside sidebar, to the left */}
-      <div className="absolute top-4 -left-14 flex flex-col gap-2 z-50">
-        {/* Settings Button */}
-        {user && !isGuest && (
-          <motion.button 
-            initial={{ opacity: 0, x: 20, scale: 0.8 }}
-            animate={{ 
-              opacity: 1, 
-              x: 0, 
-              scale: 1,
-              y: [0, -3, 0],
-            }}
-            transition={{
-              opacity: { duration: 0.3, delay: 0.1 },
-              x: { duration: 0.4, delay: 0.1, type: "spring", stiffness: 300 },
-              scale: { duration: 0.3, delay: 0.1 },
-              y: { duration: 3, repeat: Infinity, ease: "easeInOut", delay: 0 },
-            }}
-            whileHover={{ scale: 1.15, rotate: 90 }} 
-            whileTap={{ scale: 0.9 }} 
-            onClick={() => onNavigate("settings")} 
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-card border border-border shadow-lg text-muted-foreground hover:text-primary hover:border-primary/30 hover:shadow-xl transition-all duration-200 group backdrop-blur-sm" 
-            title="الإعدادات"
+      {/* Floating Action Buttons - Outside sidebar, to the left - Only visible when sidebar is open */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ opacity: 0, x: 30 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 30 }}
+            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute top-4 -left-14 flex flex-col gap-2.5 z-50"
           >
-            <Settings size={18} strokeWidth={2} />
-          </motion.button>
+            {/* Settings Button */}
+            {user && !isGuest && (
+              <motion.button 
+                initial={{ opacity: 0, scale: 0.5, x: 10 }}
+                animate={{ 
+                  opacity: 1, 
+                  scale: 1,
+                  x: 0,
+                  y: [0, -2, 0],
+                }}
+                exit={{ opacity: 0, scale: 0.5, x: 10 }}
+                transition={{
+                  opacity: { duration: 0.3, delay: 0.15 },
+                  scale: { duration: 0.4, delay: 0.15, type: "spring", stiffness: 400, damping: 25 },
+                  x: { duration: 0.3, delay: 0.15 },
+                  y: { duration: 4, repeat: Infinity, ease: "easeInOut", delay: 0.5 },
+                }}
+                whileHover={{ scale: 1.1, rotate: 90 }} 
+                whileTap={{ scale: 0.9 }} 
+                onClick={() => onNavigate("settings")} 
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-card border border-border shadow-lg text-muted-foreground hover:text-primary hover:border-primary/30 hover:shadow-xl transition-all duration-200 backdrop-blur-sm" 
+                title="الإعدادات"
+              >
+                <Settings size={18} strokeWidth={2} />
+              </motion.button>
+            )}
+            
+            {/* Theme Toggle Button */}
+            {toggleTheme && (
+              <motion.button 
+                initial={{ opacity: 0, scale: 0.5, x: 10 }}
+                animate={{ 
+                  opacity: 1, 
+                  scale: 1,
+                  x: 0,
+                  y: [0, -2.5, 0],
+                }}
+                exit={{ opacity: 0, scale: 0.5, x: 10 }}
+                transition={{
+                  opacity: { duration: 0.3, delay: 0.25 },
+                  scale: { duration: 0.4, delay: 0.25, type: "spring", stiffness: 400, damping: 25 },
+                  x: { duration: 0.3, delay: 0.25 },
+                  y: { duration: 3.5, repeat: Infinity, ease: "easeInOut", delay: 1 },
+                }}
+                whileHover={{ scale: 1.1, rotate: 15 }} 
+                whileTap={{ scale: 0.9 }} 
+                onClick={() => { if (navigator.vibrate) navigator.vibrate(15); toggleTheme(); }} 
+                className={`w-10 h-10 flex items-center justify-center rounded-xl border shadow-lg transition-all duration-200 backdrop-blur-sm hover:shadow-xl ${isDarkMode ? 'bg-card border-border text-amber-500 hover:border-amber-500/30' : 'bg-card border-border text-indigo-500 hover:border-indigo-500/30'}`}
+                title={isDarkMode ? "الوضع الفاتح" : "الوضع الداكن"}
+              >
+                {isDarkMode ? <Sun size={18} strokeWidth={2} /> : <Moon size={18} strokeWidth={2} />}
+              </motion.button>
+            )}
+            
+            {/* Language Button */}
+            {onOpenLanguagePopup && (
+              <motion.button 
+                initial={{ opacity: 0, scale: 0.5, x: 10 }}
+                animate={{ 
+                  opacity: 1, 
+                  scale: 1,
+                  x: 0,
+                  y: [0, -1.5, 0],
+                }}
+                exit={{ opacity: 0, scale: 0.5, x: 10 }}
+                transition={{
+                  opacity: { duration: 0.3, delay: 0.35 },
+                  scale: { duration: 0.4, delay: 0.35, type: "spring", stiffness: 400, damping: 25 },
+                  x: { duration: 0.3, delay: 0.35 },
+                  y: { duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1.5 },
+                }}
+                whileHover={{ scale: 1.1, rotate: -10 }} 
+                whileTap={{ scale: 0.9 }} 
+                onClick={onOpenLanguagePopup} 
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-card border border-border shadow-lg text-muted-foreground hover:text-primary hover:border-primary/30 hover:shadow-xl transition-all duration-200 backdrop-blur-sm" 
+                title="تغيير اللغة"
+              >
+                <Languages size={18} strokeWidth={2} />
+              </motion.button>
+            )}
+          </motion.div>
         )}
-        
-        {/* Theme Toggle Button */}
-        {toggleTheme && (
-          <motion.button 
-            initial={{ opacity: 0, x: 20, scale: 0.8 }}
-            animate={{ 
-              opacity: 1, 
-              x: 0, 
-              scale: 1,
-              y: [0, -4, 0],
-            }}
-            transition={{
-              opacity: { duration: 0.3, delay: 0.2 },
-              x: { duration: 0.4, delay: 0.2, type: "spring", stiffness: 300 },
-              scale: { duration: 0.3, delay: 0.2 },
-              y: { duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 },
-            }}
-            whileHover={{ scale: 1.15, rotate: 15 }} 
-            whileTap={{ scale: 0.9 }} 
-            onClick={() => { if (navigator.vibrate) navigator.vibrate(15); toggleTheme(); }} 
-            className={`w-10 h-10 flex items-center justify-center rounded-xl border shadow-lg transition-all duration-200 group backdrop-blur-sm hover:shadow-xl ${isDarkMode ? 'bg-card border-border text-amber-500 hover:border-amber-500/30' : 'bg-card border-border text-indigo-500 hover:border-indigo-500/30'}`}
-            title={isDarkMode ? "الوضع الفاتح" : "الوضع الداكن"}
-          >
-            {isDarkMode ? <Sun size={18} strokeWidth={2} /> : <Moon size={18} strokeWidth={2} />}
-          </motion.button>
-        )}
-        
-        {/* Language Button */}
-        {onOpenLanguagePopup && (
-          <motion.button 
-            initial={{ opacity: 0, x: 20, scale: 0.8 }}
-            animate={{ 
-              opacity: 1, 
-              x: 0, 
-              scale: 1,
-              y: [0, -2, 0],
-            }}
-            transition={{
-              opacity: { duration: 0.3, delay: 0.3 },
-              x: { duration: 0.4, delay: 0.3, type: "spring", stiffness: 300 },
-              scale: { duration: 0.3, delay: 0.3 },
-              y: { duration: 3.5, repeat: Infinity, ease: "easeInOut", delay: 1 },
-            }}
-            whileHover={{ scale: 1.15, rotate: -10 }} 
-            whileTap={{ scale: 0.9 }} 
-            onClick={onOpenLanguagePopup} 
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-card border border-border shadow-lg text-muted-foreground hover:text-primary hover:border-primary/30 hover:shadow-xl transition-all duration-200 group backdrop-blur-sm" 
-            title="تغيير اللغة"
-          >
-            <Languages size={18} strokeWidth={2} />
-          </motion.button>
-        )}
-      </div>
+      </AnimatePresence>
 
       {/* Top Section - User Profile - Reduced height and simplified styling */}
       <div className="h-12 px-3 flex items-center bg-card shrink-0 md:border-b-0">
@@ -661,11 +817,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
 
       {/* Mode Switcher - Above dropdown */}
-      <div className="px-2 py-2 bg-card z-20 shrink-0">
+      <div className="px-2 pt-4 pb-3 bg-card z-20 shrink-0">
         <LayoutGroup id="sidebar-mode-switcher">
           <div className="flex bg-secondary/30 rounded-2xl p-1 border border-border/30 relative min-w-[200px]">
             <button onClick={() => { 
-              if (navigator.vibrate) navigator.vibrate(15); onNavigate("requests-mode"); 
+              if (navigator.vibrate) navigator.vibrate(15); onNavigate("sidebar-requests-mode"); 
             }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${mode === "requests" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>
               {mode === "requests" && (
                 <motion.div 
@@ -678,7 +834,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className={`relative z-10 inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "requests" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userRequests.length}</span>
             </button>
             <button onClick={() => { 
-              if (navigator.vibrate) navigator.vibrate(15); onNavigate("offers-mode"); 
+              if (navigator.vibrate) navigator.vibrate(15); onNavigate("sidebar-offers-mode"); 
             }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${mode === "offers" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>
               {mode === "offers" && (
                 <motion.div 
@@ -694,7 +850,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </LayoutGroup>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar px-2 touch-pan-y relative z-10 pt-2">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar px-2 touch-pan-y relative z-10 pt-3">
         {mode === "requests" ? (
           <>
             {/* TODO: إنشاء طلب جديد - Hidden for now, can be restored later */}
@@ -707,10 +863,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <AnimatePresence>
                 {isRequestsDropdownOpen && (
                   <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-2xl shadow-lg z-50 overflow-hidden">
-                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setReqFilter("all"); setIsRequestsDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors flex items-center justify-between focus:outline-none ${reqFilter === "all" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">كل طلباتي</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${reqFilter === "all" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.requests.all}</span></motion.button>
-                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setReqFilter("active"); setIsRequestsDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${reqFilter === "active" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">طلباتي النشطة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${reqFilter === "active" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.requests.active}</span></motion.button>
-                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setReqFilter("approved"); setIsRequestsDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${reqFilter === "approved" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">طلباتي المعتمدة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${reqFilter === "approved" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.requests.approved}</span></motion.button>
-                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setReqFilter("completed"); setIsRequestsDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${reqFilter === "completed" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">المكتملة والمؤرشفة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${reqFilter === "completed" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.requests.completed}</span></motion.button>
+                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { if (navigator.vibrate) navigator.vibrate(10); setReqFilter("all"); setIsRequestsDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors flex items-center justify-between focus:outline-none ${reqFilter === "all" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">كل طلباتي</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${reqFilter === "all" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.requests.all}</span></motion.button>
+                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { if (navigator.vibrate) navigator.vibrate(10); setReqFilter("active"); setIsRequestsDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${reqFilter === "active" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">طلباتي النشطة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${reqFilter === "active" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.requests.active}</span></motion.button>
+                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { if (navigator.vibrate) navigator.vibrate(10); setReqFilter("approved"); setIsRequestsDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${reqFilter === "approved" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">طلباتي المعتمدة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${reqFilter === "approved" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.requests.approved}</span></motion.button>
+                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { if (navigator.vibrate) navigator.vibrate(10); setReqFilter("completed"); setIsRequestsDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${reqFilter === "completed" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">المكتملة والمؤرشفة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${reqFilter === "completed" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.requests.completed}</span></motion.button>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -724,15 +880,200 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <p className="text-sm text-muted-foreground">لا توجد طلبات</p>
                 </motion.div>
               )}
-              {filteredRequests.map((req, index) => (
-                <motion.button key={req.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.05, type: "spring", stiffness: 400, damping: 30 }} whileHover={{ scale: 1.02, x: -4 }} whileTap={{ scale: 0.98 }} onClick={() => onSelectRequest(req, false, true)} className="w-full text-right bg-card hover:bg-secondary/80 border border-border p-3 mt-3 rounded-xl transition-colors group relative shadow-sm hover:shadow-md">
-                  <span className="absolute -top-2.5 right-3 bg-card px-2 text-[11px] font-bold text-primary">طلبي:</span>
-                  <div className="flex items-start justify-between mb-1">
-                    <span className="font-bold text-sm truncate max-w-[70%]">{req.title}</span>
-                    {req.status === "active" && <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>}
-                  </div>
-                </motion.button>
-              ))}
+              {filteredRequests.map((req, index) => {
+                // Get offers for this request
+                const requestOffers = userOffers.filter(o => o.requestId === req.id);
+                const acceptedOffer = requestOffers.find(o => o.status === 'accepted');
+                const pendingOffers = requestOffers.filter(o => o.status === 'pending' || o.status === 'negotiating');
+                
+                // رقم الطلب
+                const requestNumber = req.requestNumber || req.id.slice(-4).toUpperCase();
+                
+                // Status config
+                const getStatusConfig = () => {
+                  if (req.status === 'assigned' || req.status === 'completed') {
+                    return { text: "تم اعتماد عرض", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400", icon: "✅" };
+                  }
+                  if (req.status === 'archived') {
+                    return { text: "مؤرشف", color: "bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400", icon: "📦" };
+                  }
+                  if (req.status === 'draft') {
+                    return { text: "مسودة", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", icon: "📝" };
+                  }
+                  return { text: "نشط", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400", icon: "🟢" };
+                };
+                
+                const statusConfig = getStatusConfig();
+                
+                return (
+                  <motion.button
+                    key={req.id}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.05, type: "spring", stiffness: 400, damping: 30 }}
+                    whileHover={{ scale: 1.02, x: -4 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => onSelectRequest(req, false, true)}
+                    className="w-full text-right bg-card hover:bg-secondary/80 border border-border p-3 pt-4 rounded-xl transition-colors group relative shadow-sm hover:shadow-md"
+                  >
+                    {/* Floating Label */}
+                    <span className="absolute -top-2.5 right-3 bg-card px-2 text-[11px] font-bold text-primary">
+                      طلبي ({requestNumber})
+                    </span>
+                    
+                    {/* Title & Status */}
+                    <div className="flex items-start justify-between mb-2">
+                      <span className="font-bold text-base truncate text-primary max-w-[70%]">
+                        {req.title}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusConfig.color}`}>
+                          {statusConfig.text}
+                        </span>
+                        {onArchiveRequest && req.status !== 'archived' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onArchiveRequest(req.id);
+                            }}
+                            className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground"
+                            title="أرشفة الطلب"
+                          >
+                            <Archive size={14} />
+                          </button>
+                        )}
+                        {onUnarchiveRequest && req.status === 'archived' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onUnarchiveRequest(req.id);
+                            }}
+                            className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground"
+                            title="إلغاء الأرشفة"
+                          >
+                            <ArchiveRestore size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Location & Date */}
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 flex-wrap">
+                      {req.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin size={14} />
+                          {req.location}
+                        </span>
+                      )}
+                      {req.createdAt && (
+                        <span className="flex items-center gap-1">
+                          <Calendar size={14} />
+                          {format(new Date(req.createdAt), "dd MMM", { locale: ar })}
+                        </span>
+                      )}
+                      {req.categories && req.categories.length > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Briefcase size={14} />
+                          {req.categories[0]}
+                        </span>
+                      )}
+                    </div>
+                    
+                    {/* Budget */}
+                    {(req.budgetMin || req.budgetMax) && (
+                      <div className="flex items-center gap-2 text-sm mb-2 flex-wrap">
+                        <span className="text-muted-foreground">الميزانية:</span>
+                        <span className="font-bold text-foreground">
+                          {req.budgetMin && req.budgetMax 
+                            ? `${req.budgetMin} - ${req.budgetMax} ر.س`
+                            : req.budgetMax 
+                              ? `حتى ${req.budgetMax} ر.س`
+                              : `من ${req.budgetMin} ر.س`
+                          }
+                        </span>
+                      </div>
+                    )}
+                    
+                    {/* Offers Summary Box */}
+                    {requestOffers.length > 0 && (
+                      <div className="mt-3 p-2.5 pt-3 rounded-lg bg-secondary/50 border border-border/50 space-y-1.5 relative">
+                        {/* Floating Label */}
+                        <span className="absolute -top-2.5 right-3 bg-card px-2 text-[11px] font-bold text-muted-foreground">
+                          العروض المستلمة ({requestOffers.length})
+                        </span>
+                        
+                        {/* Offers Stats */}
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          {pendingOffers.length > 0 && (
+                            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400">
+                              ⏳ {pendingOffers.length} قيد الانتظار
+                            </span>
+                          )}
+                          {acceptedOffer && (
+                            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400">
+                              ✅ عرض معتمد
+                            </span>
+                          )}
+                        </div>
+                        
+                        {/* Accepted Offer Details */}
+                        {acceptedOffer && (
+                          <div className="mt-2 pt-2 border-t border-border/50">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">العرض المعتمد:</span>
+                              <span className="font-bold text-primary">{acceptedOffer.price} ر.س</span>
+                            </div>
+                            {acceptedOffer.providerName && (
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                                <User size={12} />
+                                <span>{acceptedOffer.providerName}</span>
+                              </div>
+                            )}
+                            {/* Contact Buttons */}
+                            <div className="flex items-center gap-1.5 mt-2 justify-end">
+                              {(req.contactMethod === 'chat' || req.contactMethod === 'both' || !req.contactMethod) && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onOpenChat) {
+                                      onOpenChat(req.id, acceptedOffer);
+                                    }
+                                  }}
+                                  className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-primary hover:bg-primary/90 active:scale-95 text-primary-foreground transition-all shadow-sm"
+                                  title="فتح المحادثة"
+                                >
+                                  <MessageCircle size={12} />
+                                  محادثة
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* No accepted offer yet - show best offer */}
+                        {!acceptedOffer && pendingOffers.length > 0 && (
+                          <div className="mt-2 pt-2 border-t border-border/50">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span>أقل عرض:</span>
+                              <span className="font-bold text-foreground">
+                                {Math.min(...pendingOffers.map(o => parseFloat(o.price) || 0))} ر.س
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* No offers yet */}
+                    {requestOffers.length === 0 && req.status === 'active' && (
+                      <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="text-amber-500">⏳</span>
+                        <span>بانتظار العروض...</span>
+                      </div>
+                    )}
+                  </motion.button>
+                );
+              })}
             </div>
           </>
         ) : (
@@ -747,10 +1088,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <AnimatePresence>
                 {isOffersDropdownOpen && (
                   <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-2xl shadow-lg z-50 overflow-hidden">
-                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setOfferFilter("all"); setIsOffersDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors flex items-center justify-between focus:outline-none ${offerFilter === "all" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">كل عروضي</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${offerFilter === "all" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.offers.all}</span></motion.button>
-                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setOfferFilter("pending"); setIsOffersDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${offerFilter === "pending" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">عروضي قيد الانتظار</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${offerFilter === "pending" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.offers.pending}</span></motion.button>
-                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setOfferFilter("accepted"); setIsOffersDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${offerFilter === "accepted" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">عروضي المقبولة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${offerFilter === "accepted" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.offers.accepted}</span></motion.button>
-                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setOfferFilter("completed"); setIsOffersDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${offerFilter === "completed" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">المكتملة والمؤرشفة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${offerFilter === "completed" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.offers.completed}</span></motion.button>
+                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { if (navigator.vibrate) navigator.vibrate(10); setOfferFilter("all"); setIsOffersDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors flex items-center justify-between focus:outline-none ${offerFilter === "all" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">كل عروضي</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${offerFilter === "all" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.offers.all}</span></motion.button>
+                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { if (navigator.vibrate) navigator.vibrate(10); setOfferFilter("pending"); setIsOffersDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${offerFilter === "pending" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">عروضي قيد الانتظار</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${offerFilter === "pending" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.offers.pending}</span></motion.button>
+                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { if (navigator.vibrate) navigator.vibrate(10); setOfferFilter("accepted"); setIsOffersDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${offerFilter === "accepted" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">عروضي المقبولة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${offerFilter === "accepted" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.offers.accepted}</span></motion.button>
+                    <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { if (navigator.vibrate) navigator.vibrate(10); setOfferFilter("completed"); setIsOffersDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${offerFilter === "completed" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">المكتملة والمؤرشفة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${offerFilter === "completed" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.offers.completed}</span></motion.button>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1009,7 +1350,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </motion.div>
               )}
             </AnimatePresence>
-            <button onClick={() => toggleSheet('requests')} className={`w-full text-right flex items-center justify-between px-4 py-3 transition-all relative z-40 ${isRequestsConversationsOpen ? "bg-primary/10 border-primary text-primary" : "bg-primary/10 border-primary/20 text-primary hover:bg-primary/15"}`}>
+            <button onClick={() => toggleSheet('requests')} className={`w-full text-right flex items-center justify-between px-4 py-3 transition-all relative z-40 ${isRequestsConversationsOpen ? "bg-primary/15 border-primary/40 text-primary" : "bg-primary/5 border-primary/10 text-primary/80 hover:bg-primary/10 hover:text-primary"}`}>
               <div className="flex items-center gap-3">
                 <MessageCircle size={18} strokeWidth={2} />
                 <span className="text-sm font-bold">محادثات طلباتي</span>
@@ -1067,7 +1408,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </motion.div>
               )}
             </AnimatePresence>
-            <button onClick={() => toggleSheet('offers')} className={`w-full text-right flex items-center justify-between px-4 py-3 transition-all relative z-40 ${isOffersConversationsOpen ? "bg-primary/10 border-primary text-primary" : "bg-primary/10 border-primary/20 text-primary hover:bg-primary/15"}`}>
+            <button onClick={() => toggleSheet('offers')} className={`w-full text-right flex items-center justify-between px-4 py-3 transition-all relative z-40 ${isOffersConversationsOpen ? "bg-primary/15 border-primary/40 text-primary" : "bg-primary/5 border-primary/10 text-primary/80 hover:bg-primary/10 hover:text-primary"}`}>
               <div className="flex items-center gap-3">
                 <MessageCircle size={18} strokeWidth={2} />
                 <span className="text-sm font-bold">محادثات عروضي</span>

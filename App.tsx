@@ -122,18 +122,20 @@ const MobileOverlay: React.FC<{
     
     if (!isHorizontalRef.current) return;
     
-    // السحب لليسار فقط للإغلاق
-    if (deltaX < 0) {
-      const offset = Math.min(Math.abs(deltaX), sidebarWidth);
+    // ✅ السحب لليمين للإغلاق (deltaX > 0 = السحب نحو اليمين)
+    if (deltaX > 0) {
+      const offset = Math.min(deltaX, sidebarWidth);
       setSwipeOffset(offset);
     }
   };
 
   const handleTouchEnd = () => {
-    const threshold = sidebarWidth * 0.25;
+    // ✅ نفس العتبة المستخدمة في المقبض (50px)
+    const threshold = 50;
     const velocityThreshold = 0.3;
     
-    if (swipeOffset > threshold || velocityRef.current < -velocityThreshold) {
+    // ✅ velocity > 0 يعني السحب لليمين بسرعة
+    if (swipeOffset > threshold || velocityRef.current > velocityThreshold) {
       if (navigator.vibrate) navigator.vibrate(10);
       onClose();
     }
@@ -190,11 +192,22 @@ const App: React.FC = () => {
   // Global State
   // ==========================================
   const [mode, setMode] = useState<AppMode>("requests");
-  const [view, setView] = useState<ViewState>("create-request");
+  const [view, setView] = useState<ViewState>("marketplace");
   const [previousView, setPreviousView] = useState<ViewState | null>(null);
   const [titleKey, setTitleKey] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  
+  // Sidebar handle position (percentage from top, 0-100)
+  const [handleYPercent, setHandleYPercent] = useState(50);
+  const handleDragRef = useRef<{
+    startY: number;
+    startX: number;
+    startPercent: number;
+    isDragging: boolean;
+    isHorizontal: boolean | null;
+    sidebarOpening: boolean;
+  } | null>(null);
   const [isLanguagePopupOpen, setIsLanguagePopupOpen] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState<"ar" | "en" | "ur">(
     "ar",
@@ -451,8 +464,8 @@ const App: React.FC = () => {
         
       case 'home':
       default:
-        setView("create-request");
-        setMode("requests");
+        setView("marketplace");
+        setMode("offers");
         break;
     }
   };
@@ -1365,7 +1378,7 @@ const App: React.FC = () => {
     // إذا كنا في صفحة عامة، ننتقل للصفحة الافتراضية للوضع الجديد
     if (isGlobalView) {
       const defaultView = newMode === "requests"
-        ? "create-request"
+        ? "marketplace"
         : "marketplace";
       setView(defaultView);
       setSelectedRequest(null);
@@ -1385,15 +1398,10 @@ const App: React.FC = () => {
       setSelectedRequest(null); // No selected request in requests mode
       setScrollToOfferSection(false);
     } else {
-      // No saved state, use default view
-      const defaultView = newMode === "requests"
-        ? "create-request"
-        : "marketplace";
-      setView(defaultView);
-      if (newMode === "offers") {
-        setSelectedRequest(null);
-        setScrollToOfferSection(false);
-      }
+      // No saved state, use default view - الماركت بليس هي الصفحة الافتراضية لكلا الوضعين
+      setView("marketplace");
+      setSelectedRequest(null);
+      setScrollToOfferSection(false);
     }
   };
 
@@ -1428,6 +1436,16 @@ const App: React.FC = () => {
     }
     if (newView === "offers-mode") {
       handleModeSwitch("offers");
+      return;
+    }
+    
+    // السويتشات في الجانبية - تغيير الـ mode فقط بدون تغيير الـ view
+    if (newView === "sidebar-requests-mode") {
+      setMode("requests");
+      return;
+    }
+    if (newView === "sidebar-offers-mode") {
+      setMode("offers");
       return;
     }
 
@@ -1614,8 +1632,8 @@ const App: React.FC = () => {
     setIsGuest(false);
     localStorage.removeItem("abeely_guest_mode");
     // إعادة تعيين الحالة للقيم الافتراضية لمنع بقاء آثار الجلسة السابقة
-    setView("create-request");
-    setMode("requests");
+    setView("marketplace");
+    setMode("offers");
     setSelectedRequest(null);
     setPreviousView(null);
     setSavedOffersModeState(null);
@@ -1642,15 +1660,27 @@ const App: React.FC = () => {
         return (
           <CreateRequestV2
             onBack={() => {
-              handleNavigate(mode === "requests" ? "marketplace" : "marketplace");
+              handleNavigate("marketplace");
             }}
-            onPublish={async (request) => {
+            onGoToMarketplace={() => {
+              handleNavigate("marketplace");
+            }}
+            onPublish={async (request): Promise<string | null> => {
               try {
                 console.log("Publishing request:", request);
+
+                // التحقق من البيانات الأساسية
+                if (!request.description || !request.location) {
+                  console.error("Missing required fields:", { 
+                    description: !!request.description, 
+                    location: !!request.location 
+                  });
+                  return null;
+                }
                 
                 // تحويل البيانات لصيغة AIDraft
                 const draftData = {
-                  title: request.title,
+                  title: request.title || request.description.slice(0, 50) || "طلب جديد",
                   description: request.description,
                   location: request.location,
                   budgetMin: request.budgetMin,
@@ -1659,16 +1689,49 @@ const App: React.FC = () => {
                   deliveryTime: request.deliveryTimeFrom,
                 };
                 
-                // إنشاء الطلب في قاعدة البيانات
-                await createRequestFromChat(user?.id || null, draftData);
+                console.log("Draft data to be sent:", draftData);
                 
-                // إعادة تحميل البيانات والانتقال للسوق
-                await reloadData();
-                handleNavigate("marketplace");
+                // إنشاء الطلب في قاعدة البيانات
+                const createdRequest = await createRequestFromChat(user?.id || null, draftData);
+                
+                console.log("Request created successfully:", createdRequest);
+                
+                // إعادة تحميل البيانات في الخلفية
+                reloadData().catch(console.error);
+                
+                // إرجاع ID الطلب المنشأ
+                return createdRequest?.id || null;
               } catch (error) {
                 console.error("Error publishing request:", error);
-                // يمكن إضافة toast هنا لإظهار رسالة خطأ
+                return null;
               }
+            }}
+            onGoToRequest={(requestId) => {
+              // البحث عن الطلب في القائمة أو إنشاء كائن مؤقت
+              const foundRequest = [...myRequests, ...allRequests].find(r => r.id === requestId);
+              
+              if (foundRequest) {
+                setSelectedRequest(foundRequest);
+              } else {
+                // إنشاء كائن مؤقت للطلب
+                const tempRequest: Request = {
+                  id: requestId,
+                  title: "طلبي الجديد",
+                  description: "",
+                  location: "",
+                  status: "active",
+                  authorId: user?.id || null,
+                  authorName: user?.user_metadata?.full_name || user?.email || "مستخدم",
+                  isPublic: true,
+                  createdAt: new Date().toISOString(),
+                  offers: [],
+                  offersCount: 0,
+                  viewCount: 0,
+                };
+                setSelectedRequest(tempRequest);
+              }
+              
+              handleNavigate("request-detail");
             }}
             // Header Props
             isSidebarOpen={isSidebarOpen}
@@ -1771,14 +1834,8 @@ const App: React.FC = () => {
                   setSelectedRequest(null);
                   setScrollToOfferSection(false);
                   setNavigatedFromSidebar(false);
-                  // إذا جاء من الـ Sidebar، ارجع للصفحة الافتراضية حسب الوضع
-                  if (navigatedFromSidebar) {
-                    setView(
-                      mode === "requests" ? "create-request" : "marketplace",
-                    );
-                  } else {
-                    setView("marketplace");
-                  }
+                  // الرجوع دائماً للماركت بليس
+                  setView("marketplace");
                   // Marketplace will restore scroll position via savedScrollPosition prop
                 }}
                 isGuest={isGuest}
@@ -1840,6 +1897,7 @@ const App: React.FC = () => {
                 onClearAll={handleClearNotifications}
                 onSignOut={handleSignOut}
                 onMarkRequestAsRead={handleRequestRead}
+                onArchiveRequest={handleArchiveRequest}
                 onOfferCreated={async () => {
                   // Reload user's offers after creating a new one
                   if (user?.id) {
@@ -2038,8 +2096,8 @@ const App: React.FC = () => {
               }
               setIsGuest(false);
               localStorage.removeItem("abeely_guest_mode");
-              setView("create-request");
-              setMode("requests");
+              setView("marketplace");
+              setMode("offers");
               setSelectedRequest(null);
               setPreviousView(null);
               setAppView("main");
@@ -2054,8 +2112,8 @@ const App: React.FC = () => {
         onGuestMode={() => {
           setIsGuest(true);
           localStorage.setItem("abeely_guest_mode", "true");
-          setView("create-request");
-          setMode("requests");
+          setView("marketplace");
+          setMode("offers");
           setSelectedRequest(null);
           setPreviousView(null);
           setAppView("main");
@@ -2090,6 +2148,7 @@ const App: React.FC = () => {
         mode={mode}
         isOpen={isSidebarOpen || window.innerWidth >= 768}
         onClose={() => setIsSidebarOpen(false)}
+        onOpen={() => setIsSidebarOpen(true)}
         userRequests={myRequests}
         allRequests={allRequests}
         userOffers={myOffers}
@@ -2137,6 +2196,83 @@ const App: React.FC = () => {
             </div>
           </div>
         </SwipeGestureHandler>
+        
+        {/* Floating Sidebar Handle - Draggable vertically, swipe horizontally to open sidebar */}
+        <AnimatePresence>
+          {!isSidebarOpen && (
+            <motion.div
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10, transition: { duration: 0.15 } }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              className="md:hidden fixed right-0 z-[95] touch-manipulation"
+              style={{ 
+                top: `${handleYPercent}%`,
+                transform: 'translateY(-50%)',
+              }}
+              onTouchStart={(e) => {
+                const touch = e.touches[0];
+                handleDragRef.current = {
+                  startY: touch.clientY,
+                  startX: touch.clientX,
+                  startPercent: handleYPercent,
+                  isDragging: false,
+                  isHorizontal: null,
+                  sidebarOpening: false,
+                };
+              }}
+              onTouchMove={(e) => {
+                if (!handleDragRef.current) return;
+                const touch = e.touches[0];
+                const deltaX = handleDragRef.current.startX - touch.clientX;
+                const deltaY = touch.clientY - handleDragRef.current.startY;
+                const absDeltaX = Math.abs(deltaX);
+                const absDeltaY = Math.abs(deltaY);
+                
+                // Determine direction if not yet determined
+                if (handleDragRef.current.isHorizontal === null && (absDeltaX > 8 || absDeltaY > 8)) {
+                  handleDragRef.current.isHorizontal = absDeltaX > absDeltaY;
+                  handleDragRef.current.isDragging = true;
+                  if (navigator.vibrate) navigator.vibrate(5);
+                }
+                
+                if (handleDragRef.current.isHorizontal === true) {
+                  // Horizontal drag - open sidebar
+                  if (deltaX > 50 && !handleDragRef.current.sidebarOpening) {
+                    handleDragRef.current.sidebarOpening = true;
+                    if (navigator.vibrate) navigator.vibrate(15);
+                    setIsSidebarOpen(true);
+                  }
+                } else if (handleDragRef.current.isHorizontal === false) {
+                  // Vertical drag - move handle position
+                  const windowHeight = window.innerHeight;
+                  const newPercent = handleDragRef.current.startPercent + (deltaY / windowHeight) * 100;
+                  // Clamp between 15% and 85%
+                  setHandleYPercent(Math.max(15, Math.min(85, newPercent)));
+                }
+              }}
+              onTouchEnd={() => {
+                if (handleDragRef.current && !handleDragRef.current.isDragging) {
+                  // It was a tap, not a drag - toggle sidebar
+                  if (navigator.vibrate) navigator.vibrate(10);
+                  setIsSidebarOpen(true);
+                }
+                handleDragRef.current = null;
+              }}
+            >
+              <motion.div
+                className="bg-primary rounded-l-xl px-1.5 py-5 shadow-lg shadow-primary/25 cursor-grab active:cursor-grabbing"
+                whileTap={{ scale: 0.95 }}
+              >
+                {/* Two vertical lines */}
+                <div className="flex gap-1">
+                  <div className="w-0.5 h-7 bg-white/80 rounded-full" />
+                  <div className="w-0.5 h-7 bg-white/50 rounded-full" />
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
 
       {/* Language Popup */}
@@ -2270,6 +2406,7 @@ const App: React.FC = () => {
       </AnimatePresence>
 
       {/* Global Floating Orb - appears on all pages */}
+      {/* Hide AI orb when sidebar is open during create-request, but keep navigate orb visible */}
       <GlobalFloatingOrb
         mode={view === "create-request" ? "ai" : "navigate"}
         onNavigate={() => handleNavigate("create-request")}
@@ -2285,7 +2422,7 @@ const App: React.FC = () => {
         isLoading={isAiLoading}
         position={aiOrbPosition}
         onPositionChange={setAiOrbPosition}
-        isVisible={true}
+        isVisible={!(isSidebarOpen && view === "create-request")}
       />
     </div>
   );

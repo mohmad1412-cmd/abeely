@@ -289,6 +289,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
 
       mediaRecorderRef.current = recorder;
       recorder.start();
+      if (navigator.vibrate) navigator.vibrate(12);
       setIsRecording(true);
     } catch (error) {
       console.error("Error starting recording:", error);
@@ -299,6 +300,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
   // Stop recording
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
+      if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
       try {
         mediaRecorderRef.current.stop();
       } catch (error) {
@@ -477,6 +479,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
   }, [renderPos.x, renderPos.y]);
   
   const handleDragStart = () => {
+    if (navigator.vibrate) navigator.vibrate(8);
     setIsDragging(true);
   };
 
@@ -494,6 +497,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
 
   // Handle orb click based on mode
   const handleOrbClick = () => {
+    if (navigator.vibrate) navigator.vibrate(15);
     if (mode === "navigate") {
       // Navigate to create-request page
       onNavigate?.();
@@ -874,7 +878,10 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
 
                 {/* Send Button */}
                 <motion.button
-                  onClick={() => onSend?.()}
+                  onClick={() => {
+                    if (navigator.vibrate) navigator.vibrate(15);
+                    onSend?.();
+                  }}
                   disabled={!inputValue.trim() || isLoading}
                   className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
                     inputValue.trim()
@@ -893,7 +900,10 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
 
                 {/* Close Button */}
                 <button
-                  onClick={() => setIsExpanded(false)}
+                  onClick={() => {
+                    if (navigator.vibrate) navigator.vibrate(10);
+                    setIsExpanded(false);
+                  }}
                   className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-colors"
                 >
                   <X size={16} />

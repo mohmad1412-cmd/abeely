@@ -30,10 +30,12 @@ import {
   Mic,
   MoreVertical,
   Paperclip,
+  Edit,
   Search,
   Send,
   Share2,
   Sparkles,
+  Trash2,
   Upload,
   Wand2,
   X,
@@ -53,6 +55,7 @@ import { createReport, REPORT_REASONS, ReportReason } from "../services/reportsS
 import ReactDOM from "react-dom";
 import html2canvas from "html2canvas";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
+import { DropdownMenu, DropdownMenuItem } from "./ui/DropdownMenu";
 import {
   getOrCreateConversation,
   getConversations,
@@ -121,6 +124,7 @@ interface RequestDetailProps {
   onSignOut: () => void;
   onMarkRequestAsRead?: (id: string) => void;
   onOfferCreated?: () => void; // Callback when a new offer is successfully created
+  onArchiveRequest?: (id: string) => void;
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
@@ -141,7 +145,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     onClearAll,
     onSignOut,
     onMarkRequestAsRead,
-    onOfferCreated
+    onOfferCreated,
+    onArchiveRequest
   },
 ) => {
   const [negotiationOpen, setNegotiationOpen] = useState(false);
@@ -231,7 +236,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [offerAttachments, setOfferAttachments] = useState<File[]>([]);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const offerFileInputRef = useRef<HTMLInputElement>(null);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLinkCopied, setIsLinkCopied] = useState(false);
   
   // Report modal state
@@ -735,7 +739,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     }
   };
 
+  const requestAuthorId = (request as any).authorId || (request as any).author_id || request.author;
+  const isMyRequest = !!user?.id && requestAuthorId === user.id;
   const isMyOffer = !!myOffer;
+  const [isArchiving, setIsArchiving] = useState(false);
 
   // Scroll state for glass header animation
   const [isScrolled, setIsScrolled] = useState(false);
@@ -902,24 +909,25 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
   // Scroll to offer section and show pulse animation
   useEffect(() => {
+    if (isMyRequest) return;
     if (scrollToOfferSection && offerSectionRef.current && scrollContainerRef.current) {
       // Small delay to ensure the component is fully rendered
       setTimeout(() => {
         handleScrollToOfferSection();
       }, 500); // Slightly more delay to ensure layout is stable
     }
-  }, [scrollToOfferSection, handleScrollToOfferSection]);
+  }, [scrollToOfferSection, handleScrollToOfferSection, isMyRequest]);
 
 
   // Offer section continuous pulse when NOT visible
   useEffect(() => {
-    if (mode === "offers" && !isMyOffer && request.status === "active") {
+    if (mode === "offers" && !isMyRequest && !isMyOffer && request.status === "active") {
       // Show pulse only when section is not visible
       setShowOfferPulse(!isOfferSectionVisible);
     } else {
       setShowOfferPulse(false);
     }
-  }, [mode, isMyOffer, request.status, isOfferSectionVisible]);
+  }, [mode, isMyRequest, isMyOffer, request.status, isOfferSectionVisible]);
 
   // Track offer section visibility with IntersectionObserver
   // Only hide the header button when the offer section is near the top of the viewport
@@ -950,6 +958,79 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     };
   }, []);
 
+  const handleEditRequest = () => {
+    if (setPreviousView) {
+      setPreviousView("request-detail");
+    }
+    setView("create-request");
+  };
+
+  const handleArchiveClick = async () => {
+    if (!onArchiveRequest) return;
+    const confirmDelete = window.confirm("سيتم حذف/أرشفة هذا الطلب. هل أنت متأكد؟");
+    if (!confirmDelete) return;
+    setIsArchiving(true);
+    try {
+      await onArchiveRequest(request.id);
+      onBack();
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
+  const dropdownItems: DropdownMenuItem[] = isMyRequest ? [
+    {
+      id: 'edit',
+      label: 'تعديل الطلب',
+      icon: <Edit size={16} />,
+      onClick: handleEditRequest,
+    },
+    {
+      id: 'archive',
+      label: isArchiving ? 'جاري الحذف...' : 'حذف الطلب',
+      icon: <Trash2 size={16} />,
+      onClick: handleArchiveClick,
+      variant: 'danger',
+      disabled: isArchiving,
+      showDivider: true,
+    },
+  ] : [
+    {
+      id: 'copy-id',
+      label: isIdCopied ? "✓ تم النسخ!" : `رقم الطلب: ${request.id.slice(0, 8)}...`,
+      icon: isIdCopied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />,
+      keepOpenOnClick: true, // نبقي الـ dropdown مفتوح لإظهار التأكيد
+      onClick: async () => {
+        if (isIdCopied) return; // منع النقر المتكرر
+        try {
+          await navigator.clipboard.writeText(request.id);
+          setIsIdCopied(true);
+          // إغلاق الـ dropdown بعد تأخير بسيط
+          setTimeout(() => {
+            setIsIdCopied(false);
+          }, 1500);
+        } catch (err) {
+          console.error('Failed to copy ID:', err);
+        }
+      },
+    },
+    {
+      id: 'share',
+      label: 'مشاركة الطلب',
+      icon: <Share2 size={16} className="text-primary" />,
+      onClick: handleShare,
+      showDivider: true,
+    },
+    {
+      id: 'report',
+      label: 'الإبلاغ عن الطلب',
+      icon: <Flag size={16} />,
+      onClick: () => setIsReportModalOpen(true),
+      variant: 'danger',
+      showDivider: true,
+    },
+  ];
+
   return (
     <motion.div
       key="request-detail"
@@ -960,14 +1041,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       transition={{ duration: 0.2, ease: "easeOut" }}
       className="flex-1 bg-background flex flex-col overflow-y-auto overflow-x-hidden"
     >
-      {/* Click-outside overlay for menu */}
-      {isMenuOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setIsMenuOpen(false)}
-        />
-      )}
-
       {/* Unified Header */}
       <UnifiedHeader
         isSidebarOpen={isSidebarOpen}
@@ -985,14 +1058,22 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         onMarkAsRead={onMarkAsRead}
         onClearAll={onClearAll}
         onSignOut={onSignOut}
-        backButton={!navigatedFromSidebar}
+        backButton
         onBack={onBack}
         title={request.title}
         isScrolled={isScrolled}
         currentView="request-detail"
-        showScrollToOffer={!isMyOffer && request.status === "active"}
+        showScrollToOffer={!isMyRequest && !isMyOffer && request.status === "active"}
         onScrollToOffer={handleScrollToOfferSection}
         isOfferSectionVisible={isOfferSectionVisible}
+        showMyRequestButton={isMyRequest}
+        myRequestOffersCount={request.offers?.length || 0}
+        onMyRequestClick={() => {
+          // Scroll to top to see offers
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        }}
       />
       
       {/* Spacer below header */}
@@ -1032,7 +1113,12 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     animate={{ opacity: 1, scale: 1 }}
                     className="absolute bottom-8 left-4 z-20"
                   >
-                    {isMyOffer ? (
+                    {isMyRequest ? (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-amber-50 text-amber-700 border border-amber-200 backdrop-blur-md dark:bg-amber-500/10 dark:text-amber-100 dark:border-amber-400/30">
+                        <Check size={14} strokeWidth={2.5} className="text-amber-500" />
+                        <span>طلبك</span>
+                      </div>
+                    ) : isMyOffer ? (
                       <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-card border border-border text-emerald-600 dark:text-emerald-400 backdrop-blur-md">
                         <Check size={14} strokeWidth={2.5} className="text-emerald-500" />
                         <span>لقد قدمت عرض</span>
@@ -1062,78 +1148,15 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   <h1 className="flex-1 text-base font-bold text-foreground truncate">{request.title}</h1>
                   
                   {/* Three-dot Menu Button */}
-                  <div className="relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsMenuOpen(!isMenuOpen);
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-black/5 transition-colors"
-                    >
-                      <MoreVertical size={18} className="text-muted-foreground" />
-                    </button>
-                    
-                    {/* Dropdown Menu */}
-                    <AnimatePresence>
-                      {isMenuOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.95, y: -5 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute left-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg z-50 min-w-[180px] overflow-hidden"
-                        >
-                          {/* Request ID with Copy */}
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              try {
-                                await navigator.clipboard.writeText(request.id);
-                                setIsIdCopied(true);
-                                setTimeout(() => setIsIdCopied(false), 2000);
-                              } catch (err) {
-                                console.error('Failed to copy ID:', err);
-                              }
-                            }}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-right hover:bg-secondary/50 transition-colors"
-                          >
-                            {isIdCopied ? (
-                              <Check size={16} className="text-green-500" />
-                            ) : (
-                              <Copy size={16} className="text-muted-foreground" />
-                            )}
-                            <span className="flex-1">{isIdCopied ? "تم نسخ رقم الطلب!" : `رقم الطلب: ${request.id.slice(0, 8)}...`}</span>
-                          </button>
-                          
-                          {/* Share Request */}
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              setIsMenuOpen(false);
-                              await handleShare();
-                            }}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-right hover:bg-secondary/50 transition-colors border-t border-border"
-                          >
-                            <Share2 size={16} className="text-primary" />
-                            <span>مشاركة الطلب</span>
-                          </button>
-                          
-                          {/* Report */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIsMenuOpen(false);
-                              setIsReportModalOpen(true);
-                            }}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-right hover:bg-secondary/50 transition-colors border-t border-border text-red-500"
-                          >
-                            <Flag size={16} />
-                            <span>الإبلاغ عن الطلب</span>
-                          </button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
+                  <DropdownMenu
+                    trigger={
+                      <button className="p-1.5 rounded-lg hover:bg-black/5 transition-colors">
+                        <MoreVertical size={18} className="text-muted-foreground" />
+                      </button>
+                    }
+                    items={dropdownItems}
+                    align="left"
+                  />
                 </motion.div>
 
                 {/* Translation Toggle - Below Title */}
@@ -1220,7 +1243,12 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     animate={{ opacity: 1, scale: 1 }}
                     className="absolute bottom-8 left-4 z-20"
                   >
-                    {isMyOffer ? (
+                    {isMyRequest ? (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-amber-50 text-amber-700 border border-amber-200 backdrop-blur-md dark:bg-amber-500/10 dark:text-amber-100 dark:border-amber-400/30">
+                        <Check size={14} strokeWidth={2.5} className="text-amber-500" />
+                        <span>طلبك</span>
+                      </div>
+                    ) : isMyOffer ? (
                       <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-card border border-border text-emerald-600 dark:text-emerald-400 backdrop-blur-md">
                         <Check size={14} strokeWidth={2.5} className="text-emerald-500" />
                         <span>لقد قدمت عرض</span>
@@ -1250,78 +1278,15 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   <h1 className="flex-1 text-base font-bold text-foreground truncate">{request.title}</h1>
                   
                   {/* Three-dot Menu Button */}
-                  <div className="relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsMenuOpen(!isMenuOpen);
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-black/5 transition-colors"
-                    >
-                      <MoreVertical size={18} className="text-muted-foreground" />
-                    </button>
-                    
-                    {/* Dropdown Menu */}
-                    <AnimatePresence>
-                      {isMenuOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.95, y: -5 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute left-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg z-50 min-w-[180px] overflow-hidden"
-                        >
-                          {/* Request ID with Copy */}
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              try {
-                                await navigator.clipboard.writeText(request.id);
-                                setIsIdCopied(true);
-                                setTimeout(() => setIsIdCopied(false), 2000);
-                              } catch (err) {
-                                console.error('Failed to copy ID:', err);
-                              }
-                            }}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-right hover:bg-secondary/50 transition-colors"
-                          >
-                            {isIdCopied ? (
-                              <Check size={16} className="text-green-500" />
-                            ) : (
-                              <Copy size={16} className="text-muted-foreground" />
-                            )}
-                            <span className="flex-1">{isIdCopied ? "تم نسخ رقم الطلب!" : `رقم الطلب: ${request.id.slice(0, 8)}...`}</span>
-                          </button>
-                          
-                          {/* Share Request */}
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              setIsMenuOpen(false);
-                              await handleShare();
-                            }}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-right hover:bg-secondary/50 transition-colors border-t border-border"
-                          >
-                            <Share2 size={16} className="text-primary" />
-                            <span>مشاركة الطلب</span>
-                          </button>
-                          
-                          {/* Report */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIsMenuOpen(false);
-                              setIsReportModalOpen(true);
-                            }}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-right hover:bg-secondary/50 transition-colors border-t border-border text-red-500"
-                          >
-                            <Flag size={16} />
-                            <span>الإبلاغ عن الطلب</span>
-                          </button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
+                  <DropdownMenu
+                    trigger={
+                      <button className="p-1.5 rounded-lg hover:bg-black/5 transition-colors">
+                        <MoreVertical size={18} className="text-muted-foreground" />
+                      </button>
+                    }
+                    items={dropdownItems}
+                    align="left"
+                  />
                 </motion.div>
 
                 {/* Translation Toggle - Below Title (No Images State) */}
@@ -1909,7 +1874,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 )}
 
                 {/* CASE 2: NO OFFER YET (AND REQUEST IS ACTIVE) */}
-                {!isMyOffer && request.status === "active" && (
+                {!isMyRequest && !isMyOffer && request.status === "active" && (
                   <div 
                     ref={offerSectionRef}
                     className={`bg-card border-2 rounded-2xl p-6 shadow-lg mt-4 relative ${
@@ -2492,7 +2457,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 )}
 
                 {/* CASE 3: CLOSED REQUEST */}
-                {!isMyOffer && request.status !== "active" && (
+                {!isMyRequest && !isMyOffer && request.status !== "active" && (
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -2945,7 +2910,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         </div>
       </div>
 
-      {/* Report Modal */}
+      {/* Report Modal - Bottom Sheet Style for Mobile */}
       <AnimatePresence>
         {isReportModalOpen && (
           <>
@@ -2955,18 +2920,24 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => !isSubmittingReport && setIsReportModalOpen(false)}
-              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100]"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
             />
             
-            {/* Modal */}
+            {/* Modal - Bottom Sheet on Mobile, Centered on Desktop */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-md mx-auto bg-card border border-border rounded-2xl shadow-2xl z-[101] overflow-hidden"
+              initial={{ opacity: 0, y: '100%' }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+              className="fixed inset-x-0 bottom-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 max-w-md w-full mx-auto bg-card border-t sm:border border-border rounded-t-3xl sm:rounded-2xl shadow-2xl z-[101] max-h-[90vh] flex flex-col"
             >
+              {/* Drag Handle - Mobile Only */}
+              <div className="sm:hidden flex justify-center py-2">
+                <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
+              </div>
+
               {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b border-border">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
                 <button
                   onClick={() => !isSubmittingReport && setIsReportModalOpen(false)}
                   className="p-2 hover:bg-secondary/50 rounded-lg transition-colors"
@@ -2974,72 +2945,85 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   <X size={20} />
                 </button>
                 <h3 className="font-bold text-lg">الإبلاغ عن الطلب</h3>
-                <div className="w-9" /> {/* Spacer */}
+                <div className="w-9" />
               </div>
 
-              {reportSubmitted ? (
-                /* Success State */
-                <div className="p-8 text-center">
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                    className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center"
-                  >
-                    <Check size={32} className="text-green-600" />
-                  </motion.div>
-                  <h4 className="font-bold text-lg mb-2">تم إرسال البلاغ</h4>
-                  <p className="text-muted-foreground text-sm">شكراً لك، سنراجع البلاغ في أقرب وقت</p>
-                </div>
-              ) : (
-                /* Form */
-                <div className="p-4">
-                  {/* Warning Icon */}
-                  <div className="flex items-center gap-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl mb-4">
-                    <AlertTriangle size={20} className="text-red-500 shrink-0" />
-                    <p className="text-sm text-red-700 dark:text-red-300">
-                      الإبلاغات الكاذبة قد تؤدي إلى تعليق حسابك
-                    </p>
+              {/* Scrollable Content */}
+              <div className="flex-1 overflow-y-auto overscroll-contain">
+                {reportSubmitted ? (
+                  /* Success State */
+                  <div className="p-8 text-center">
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                      className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center"
+                    >
+                      <Check size={32} className="text-green-600" />
+                    </motion.div>
+                    <h4 className="font-bold text-lg mb-2">تم إرسال البلاغ</h4>
+                    <p className="text-muted-foreground text-sm">شكراً لك، سنراجع البلاغ في أقرب وقت</p>
                   </div>
+                ) : (
+                  /* Form */
+                  <div className="p-4 pb-4">
+                    {/* Warning Icon */}
+                    <div className="flex items-center gap-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl mb-4">
+                      <AlertTriangle size={20} className="text-red-500 shrink-0" />
+                      <p className="text-sm text-red-700 dark:text-red-300">
+                        الإبلاغات الكاذبة قد تؤدي إلى تعليق حسابك
+                      </p>
+                    </div>
 
-                  {/* Reason Selection */}
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-2">سبب الإبلاغ</label>
-                    <div className="space-y-2">
-                      {REPORT_REASONS.map((reason) => (
-                        <button
-                          key={reason.value}
-                          onClick={() => setReportReason(reason.value)}
-                          className={`w-full text-right px-4 py-3 rounded-xl border transition-all ${
-                            reportReason === reason.value
-                              ? "bg-primary/10 border-primary text-primary"
-                              : "bg-secondary/30 border-border hover:bg-secondary/50"
-                          }`}
-                        >
-                          <span className="text-sm font-medium">{reason.label}</span>
-                        </button>
-                      ))}
+                    {/* Reason Selection */}
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium mb-2">سبب الإبلاغ <span className="text-red-500">*</span></label>
+                      <div className="space-y-2">
+                        {REPORT_REASONS.map((reason) => (
+                          <button
+                            key={reason.value}
+                            onClick={() => setReportReason(reason.value)}
+                            className={`w-full text-right px-4 py-3 rounded-xl border transition-all ${
+                              reportReason === reason.value
+                                ? "bg-primary/10 border-primary text-primary"
+                                : "bg-secondary/30 border-border hover:bg-secondary/50"
+                            }`}
+                          >
+                            <span className="text-sm font-medium">{reason.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Description (optional) */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        تفاصيل إضافية <span className="text-muted-foreground">(اختياري)</span>
+                      </label>
+                      <textarea
+                        value={reportDescription}
+                        onChange={(e) => setReportDescription(e.target.value)}
+                        placeholder="هل تريد إضافة تفاصيل أكثر عن المشكلة؟"
+                        className="w-full px-4 py-3 rounded-xl border border-border bg-background resize-none h-24 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/50"
+                        maxLength={500}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1 text-left">
+                        {reportDescription.length}/500
+                      </p>
                     </div>
                   </div>
+                )}
+              </div>
 
-                  {/* Description (optional) */}
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-2">تفاصيل إضافية (اختياري)</label>
-                    <textarea
-                      value={reportDescription}
-                      onChange={(e) => setReportDescription(e.target.value)}
-                      placeholder="اشرح المشكلة بالتفصيل..."
-                      className="w-full px-4 py-3 rounded-xl border border-border bg-secondary/30 resize-none h-24 text-sm focus:outline-none focus:border-primary transition-colors"
-                    />
-                  </div>
-
-                  {/* Submit Button */}
+              {/* Fixed Submit Button - Outside Scrollable Area */}
+              {!reportSubmitted && (
+                <div className="shrink-0 p-4 pt-2 border-t border-border bg-card">
                   <button
                     onClick={handleSubmitReport}
                     disabled={!reportReason || isSubmittingReport}
-                    className={`w-full py-3 rounded-xl font-bold text-white transition-all ${
+                    className={`w-full py-3.5 rounded-xl font-bold text-white transition-all ${
                       reportReason && !isSubmittingReport
-                        ? "bg-red-500 hover:bg-red-600"
+                        ? "bg-red-500 hover:bg-red-600 active:scale-[0.98]"
                         : "bg-gray-300 dark:bg-gray-700 cursor-not-allowed"
                     }`}
                   >

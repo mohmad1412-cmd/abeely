@@ -1,19 +1,12 @@
-import React, { useRef, useCallback, useState } from "react";
+import React, { useRef, useEffect } from "react";
 
 interface SwipeGestureHandlerProps {
   children: React.ReactNode;
-  // هل السايد بار مفتوح؟
   isSidebarOpen: boolean;
-  // دالة إغلاق السايد بار
   onCloseSidebar: () => void;
-  // دالة فتح السايد بار
   onOpenSidebar?: () => void;
-  // تمكين/تعطيل السحب
   enabled?: boolean;
-  // عرض السايد بار (للتأثير البصري)
   sidebarWidth?: number;
-  // دالة لتحديث موقع السايد بار أثناء السحب (للسلاسة)
-  onSwipeProgress?: (offset: number, isOpening: boolean) => void;
 }
 
 export const SwipeGestureHandler: React.FC<SwipeGestureHandlerProps> = ({
@@ -23,164 +16,140 @@ export const SwipeGestureHandler: React.FC<SwipeGestureHandlerProps> = ({
   onOpenSidebar,
   enabled = true,
   sidebarWidth = 340,
-  onSwipeProgress,
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef<number | null>(null);
   const startYRef = useRef<number | null>(null);
   const hasFiredRef = useRef(false);
-  const isHorizontalSwipeRef = useRef<boolean | null>(null);
-  const velocityRef = useRef<number>(0);
-  const lastXRef = useRef<number>(0);
-  const lastTimeRef = useRef<number>(0);
   
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const [isSwipingToOpen, setIsSwipingToOpen] = useState(false);
-  const [isSwipingToClose, setIsSwipingToClose] = useState(false);
+  const directionDecidedRef = useRef(false);
+  const isHorizontalRef = useRef(false);
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (!enabled) return;
-    
-    const touch = e.touches[0];
-    startXRef.current = touch.clientX;
-    startYRef.current = touch.clientY;
-    lastXRef.current = touch.clientX;
-    lastTimeRef.current = Date.now();
-    hasFiredRef.current = false;
-    isHorizontalSwipeRef.current = null;
-    velocityRef.current = 0;
-    setSwipeOffset(0);
-    setIsSwipingToOpen(false);
-    setIsSwipingToClose(false);
-  }, [enabled]);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !enabled) return;
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!enabled || startXRef.current === null || startYRef.current === null || hasFiredRef.current) return;
-    
-    const touch = e.touches[0];
-    const deltaX = touch.clientX - startXRef.current;
-    const deltaY = touch.clientY - startYRef.current;
-    
-    // حساب السرعة
-    const now = Date.now();
-    const timeDelta = now - lastTimeRef.current;
-    if (timeDelta > 0) {
-      velocityRef.current = (touch.clientX - lastXRef.current) / timeDelta;
-    }
-    lastXRef.current = touch.clientX;
-    lastTimeRef.current = now;
-    
-    // تحديد اتجاه السحب في أول حركة
-    if (isHorizontalSwipeRef.current === null && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
-      isHorizontalSwipeRef.current = Math.abs(deltaX) > Math.abs(deltaY);
-      if (!isHorizontalSwipeRef.current) {
-        // سحب عمودي - تجاهل
+    // منطقة الفتح: 65% من الشاشة من اليمين
+    const getOpenSwipeZone = () => window.innerWidth * 0.65;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      const target = e.target as HTMLElement;
+      
+      // ⚡ تجاهل اللمسات على الأزرار والعناصر التفاعلية
+      if (target.closest('button, a, input, textarea, select, [role="button"], [data-no-swipe]')) {
         startXRef.current = null;
+        startYRef.current = null;
         return;
       }
-    }
-    
-    if (!isHorizontalSwipeRef.current) return;
-    
-    if (isSidebarOpen) {
-      // السايد بار مفتوح - السحب لليسار للإغلاق
-      if (deltaX < 0) {
-        const offset = Math.min(Math.abs(deltaX), sidebarWidth);
-        setSwipeOffset(offset);
-        setIsSwipingToClose(true);
-        setIsSwipingToOpen(false);
-        onSwipeProgress?.(offset, false);
+      
+      // ⚡ تجاهل اللمسات في منطقة الـ header (أول 80px من الأعلى)
+      if (touch.clientY < 80) {
+        startXRef.current = null;
+        startYRef.current = null;
+        return;
       }
-    } else {
-      // السايد بار مغلق - السحب من الحافة اليمنى لليسار للفتح
-      if (startXRef.current > window.innerWidth - 60 && deltaX < 0 && onOpenSidebar) {
-        const offset = Math.min(Math.abs(deltaX), sidebarWidth);
-        setSwipeOffset(offset);
-        setIsSwipingToOpen(true);
-        setIsSwipingToClose(false);
-        onSwipeProgress?.(offset, true);
+      
+      // تحديد المنطقة الصالحة:
+      // - إذا السايدبار مفتوح: كل الشاشة صالحة للإغلاق (يتعامل معها MobileOverlay)
+      // - إذا السايدبار مغلق: منطقة اليمين فقط للفتح
+      const touchFromRight = window.innerWidth - touch.clientX;
+      const isInOpenZone = touchFromRight <= getOpenSwipeZone();
+      
+      if (!isSidebarOpen && !isInOpenZone) {
+        startXRef.current = null;
+        startYRef.current = null;
+        return;
       }
-    }
-  }, [enabled, isSidebarOpen, onSwipeProgress, sidebarWidth, onOpenSidebar]);
+      
+      startXRef.current = touch.clientX;
+      startYRef.current = touch.clientY;
+      hasFiredRef.current = false;
+      directionDecidedRef.current = false;
+      isHorizontalRef.current = false;
+    };
 
-  const handleTouchEnd = useCallback(() => {
-    if (hasFiredRef.current || startXRef.current === null) {
-      resetState();
-      return;
-    }
-    
-    const velocity = velocityRef.current;
-    const threshold = sidebarWidth * 0.3; // 30% من العرض
-    const velocityThreshold = 0.3; // pixels per ms
-    
-    if (isSwipingToClose && swipeOffset > 0) {
-      // قرار الإغلاق: إذا تجاوز 30% أو السرعة عالية لليسار
-      if (swipeOffset > threshold || velocity < -velocityThreshold) {
-        hasFiredRef.current = true;
-        if (navigator.vibrate) navigator.vibrate(10);
-        onCloseSidebar();
+    const handleTouchMove = (e: TouchEvent) => {
+      if (startXRef.current === null || startYRef.current === null || hasFiredRef.current) return;
+      
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - startXRef.current;
+      const deltaY = touch.clientY - startYRef.current;
+      const absDeltaX = Math.abs(deltaX);
+      const absDeltaY = Math.abs(deltaY);
+      
+      // تحديد اتجاه السحب
+      if (!directionDecidedRef.current) {
+        if (absDeltaX > 8 || absDeltaY > 8) {
+          directionDecidedRef.current = true;
+          isHorizontalRef.current = absDeltaX >= absDeltaY;
+          
+          if (isHorizontalRef.current) {
+            if (navigator.vibrate) navigator.vibrate(5);
+          }
+          
+          if (!isHorizontalRef.current) {
+            // السحب عمودي - نتجاهل
+            startXRef.current = null;
+            startYRef.current = null;
+            return;
+          }
+        } else {
+          return;
+        }
       }
-    } else if (isSwipingToOpen && swipeOffset > 0 && onOpenSidebar) {
-      // قرار الفتح: إذا تجاوز 30% أو السرعة عالية لليسار
-      if (swipeOffset > threshold || velocity < -velocityThreshold) {
-        hasFiredRef.current = true;
-        if (navigator.vibrate) navigator.vibrate(10);
-        onOpenSidebar();
+      
+      if (!isHorizontalRef.current) return;
+      
+      // ✅ نفس منطق المقبض: نفتح/نغلق مباشرة عند الوصول للعتبة (50px)
+      const threshold = 50;
+      
+      if (!isSidebarOpen && onOpenSidebar) {
+        // الفتح: السحب لليسار (deltaX < 0)
+        if (deltaX < -threshold) {
+          hasFiredRef.current = true;
+          if (navigator.vibrate) navigator.vibrate(15);
+          onOpenSidebar();
+        }
+      } else if (isSidebarOpen) {
+        // الإغلاق: السحب لليمين (deltaX > 0)
+        if (deltaX > threshold) {
+          hasFiredRef.current = true;
+          if (navigator.vibrate) navigator.vibrate(10);
+          onCloseSidebar();
+        }
       }
-    }
-    
-    resetState();
-  }, [swipeOffset, isSwipingToClose, isSwipingToOpen, sidebarWidth, onCloseSidebar, onOpenSidebar]);
-  
-  const resetState = () => {
-    startXRef.current = null;
-    startYRef.current = null;
-    isHorizontalSwipeRef.current = null;
-    velocityRef.current = 0;
-    setSwipeOffset(0);
-    setIsSwipingToOpen(false);
-    setIsSwipingToClose(false);
-  };
+    };
 
-  // حساب شفافية الخلفية
-  const overlayOpacity = isSwipingToOpen 
-    ? Math.min(swipeOffset / sidebarWidth * 0.5, 0.5)
-    : isSwipingToClose 
-      ? Math.max(0.5 - (swipeOffset / sidebarWidth * 0.5), 0)
-      : 0;
+    const handleTouchEnd = () => {
+      startXRef.current = null;
+      startYRef.current = null;
+      directionDecidedRef.current = false;
+      isHorizontalRef.current = false;
+      hasFiredRef.current = false;
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: true });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+    container.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [enabled, isSidebarOpen, sidebarWidth, onOpenSidebar, onCloseSidebar]);
 
   return (
-    <>
-      {/* Swipe preview overlay - يظهر أثناء السحب للفتح */}
-      {isSwipingToOpen && swipeOffset > 0 && (
-        <div 
-          className="fixed inset-0 z-[85] pointer-events-none md:hidden"
-          style={{
-            background: `rgba(0, 0, 0, ${overlayOpacity})`,
-            backdropFilter: `blur(${Math.min(swipeOffset / sidebarWidth * 4, 4)}px)`,
-          }}
-        />
-      )}
-      
-      {/* Swipe preview for sidebar - يظهر preview للسايد بار أثناء السحب للفتح */}
-      {isSwipingToOpen && swipeOffset > 0 && (
-        <div 
-          className="fixed inset-y-0 right-0 z-[86] bg-card border-l border-border shadow-2xl pointer-events-none md:hidden"
-          style={{
-            width: `${sidebarWidth}px`,
-            transform: `translateX(${sidebarWidth - swipeOffset}px)`,
-          }}
-        />
-      )}
-      
-      <div 
-        className="h-full w-full"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        {children}
-      </div>
-    </>
+    <div 
+      ref={containerRef}
+      className="h-full w-full"
+      style={{ touchAction: 'pan-y pinch-zoom' }}
+    >
+      {children}
+    </div>
   );
 };
 
