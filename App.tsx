@@ -624,9 +624,6 @@ const App: React.FC = () => {
         
         // تنظيف sessionStorage
         sessionStorage.removeItem('oauth_code_processed');
-        
-        // انتقل لـ main فوراً - لا تنتظر profile
-        console.log("🚀 Transitioning to main view immediately...");
         setIsGuest(false);
         localStorage.removeItem("abeely_guest_mode");
         setIsProcessingOAuth(false);
@@ -641,12 +638,9 @@ const App: React.FC = () => {
         // تحميل الـ profile في الخلفية
         getCurrentUser().then(profile => {
           if (profile && isMounted) {
-            console.log("👤 Profile loaded:", profile.display_name);
             setUser(profile);
           }
-        }).catch(err => {
-          console.error("Profile load error:", err);
-        });
+        }).catch(() => {});
       } else if (event === "TOKEN_REFRESHED" && session?.user && isMounted) {
         // تحديث الـ profile فقط
         const profile = await getCurrentUser();
