@@ -571,7 +571,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      <div className="px-4 pt-3 shrink-0 relative z-0 bg-transparent">
+      <div className="px-2 pt-2 shrink-0 relative z-0 bg-transparent">
         {/* Mode Switcher */}
         <div className="flex bg-secondary/30 rounded-2xl p-1 border border-border/30 relative min-w-[200px]">
           <button onClick={() => { 
@@ -603,7 +603,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar px-4 touch-pan-y relative z-10" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} style={{ paddingTop: '12px' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar px-2 touch-pan-y relative z-10" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} style={{ paddingTop: '10px' }}>
         {mode === "requests" ? (
           <>
             {/* Create Request Button - Between switch and dropdown */}
