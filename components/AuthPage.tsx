@@ -76,6 +76,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
   const [error, setError] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'error' | 'info'>('error');
+  const [showSuccess, setShowSuccess] = useState(false);
 
   // Auto-dismiss toast after 4 seconds
   useEffect(() => {
@@ -89,20 +90,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
 
   // Handle phone submission
   const handlePhoneSubmit = async () => {
-    if (!isValidSaudiPhone(phone)) {
-      setError('يرجى إدخال رقم جوال سعودي صحيح');
+    // تنظيف الرقم من المسافات
+    const cleanPhone = phone.replace(/\s/g, '');
+    
+    if (!isValidSaudiPhone(cleanPhone)) {
+      setError('يرجى إدخال رقم جوال سعودي صحيح (9 أو 10 أرقام)');
       return;
     }
 
     setIsLoading(true);
     setError('');
 
-    const result = await sendOTP(phone);
+    const result = await sendOTP(cleanPhone);
     
     setIsLoading(false);
     
     if (result.success) {
       setStep('otp');
+      setPhone(cleanPhone); // حفظ الرقم المنظف
     } else {
       setError(result.error || 'فشل إرسال رمز التحقق');
     }
@@ -117,17 +122,40 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
 
     setIsLoading(true);
     setError('');
+    setShowSuccess(false);
 
     const result = await verifyOTP(phone, otp);
     
     setIsLoading(false);
     
     if (result.success) {
-      onAuthenticated();
+      // إظهار ومضة النجاح
+      setShowSuccess(true);
+      
+      // الانتقال بعد ثانية واحدة
+      setTimeout(() => {
+        onAuthenticated();
+      }, 1000);
     } else {
       setError(result.error || 'رمز التحقق غير صحيح');
     }
   };
+
+  // تفعيل Enter عند اكتمال الرقم (6 أرقام)
+  useEffect(() => {
+    if (step !== 'otp') return;
+
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && otp.length === 6 && !isLoading && !showSuccess) {
+        e.preventDefault();
+        handleOTPVerify();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, otp, isLoading, showSuccess]);
 
   // Handle email submission
   const handleEmailSubmit = async () => {
@@ -388,8 +416,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   <input
                     type="tel"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                    placeholder="5XXXXXXXX"
+                    onChange={(e) => {
+                      // السماح بـ 0 في البداية أو بدون
+                      const value = e.target.value.replace(/\D/g, '');
+                      // يقبل حتى 10 أرقام (مع 0) أو 9 (بدون 0)
+                      if (value.length <= 10) {
+                        setPhone(value);
+                      }
+                    }}
+                    placeholder="0501234567 أو 501234567"
                     dir="ltr"
                     className="flex-1 py-4 px-4 rounded-2xl bg-white/10 border-2 border-white/20 text-white text-left text-xl font-medium placeholder:text-white/40 focus:border-white/50 outline-none transition-all"
                     maxLength={10}
@@ -408,7 +443,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
 
                 <button
                   onClick={handlePhoneSubmit}
-                  disabled={isLoading || phone.length < 9}
+                  disabled={isLoading || !isValidSaudiPhone(phone)}
                   className="w-full py-4 px-6 rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
                 >
                   <span>إرسال رمز التحقق</span>
@@ -425,7 +460,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -30 }}
                 transition={{ type: "spring", stiffness: 400, damping: 35 }}
-                className="space-y-4"
+                className="space-y-4 relative"
               >
                 <div className="flex justify-center gap-2" dir="ltr">
                   {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -439,7 +474,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                         const val = e.target.value.replace(/\D/g, '');
                         const newOtp = otp.split('');
                         newOtp[i] = val;
-                        setOtp(newOtp.join(''));
+                        const updatedOtp = newOtp.join('');
+                        setOtp(updatedOtp);
+                        
                         // Auto-focus next input
                         if (val && i < 5) {
                           const next = document.querySelector(`input[data-index="${i + 1}"]`) as HTMLInputElement;
@@ -450,6 +487,20 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                         if (e.key === 'Backspace' && !otp[i] && i > 0) {
                           const prev = document.querySelector(`input[data-index="${i - 1}"]`) as HTMLInputElement;
                           prev?.focus();
+                        } else if (e.key === 'Enter') {
+                          // تفعيل Enter عند اكتمال الرقم (6 أرقام)
+                          const currentOtp = otp.split('');
+                          currentOtp[i] = e.currentTarget.value.replace(/\D/g, '');
+                          const fullOtp = currentOtp.join('');
+                          
+                          if (fullOtp.length === 6 && !isLoading && !showSuccess) {
+                            e.preventDefault();
+                            setOtp(fullOtp);
+                            // تأخير بسيط للتأكد من تحديث state
+                            setTimeout(() => {
+                              handleOTPVerify();
+                            }, 50);
+                          }
                         }
                       }}
                       data-index={i}
@@ -458,7 +509,43 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   ))}
                 </div>
 
-                {error && (
+                {/* Success Flash Animation */}
+                <AnimatePresence>
+                  {showSuccess && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.5 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.5 }}
+                      transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
+                      className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
+                    >
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: [0, 1.2, 1] }}
+                        transition={{ duration: 0.5, times: [0, 0.5, 1] }}
+                        className="w-24 h-24 rounded-full bg-green-500/90 backdrop-blur-xl flex items-center justify-center shadow-2xl border-4 border-white/30"
+                      >
+                        <motion.div
+                          initial={{ pathLength: 0 }}
+                          animate={{ pathLength: 1 }}
+                          transition={{ duration: 0.4, delay: 0.2 }}
+                        >
+                          <Check size={48} className="text-white" strokeWidth={4} />
+                        </motion.div>
+                      </motion.div>
+                      <motion.p
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 }}
+                        className="absolute top-1/2 mt-20 text-white font-bold text-lg"
+                      >
+                        تم التحقق بنجاح! ✅
+                      </motion.p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {error && !showSuccess && (
                   <motion.p
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -470,11 +557,20 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
 
                 <button
                   onClick={handleOTPVerify}
-                  disabled={isLoading || otp.length !== 6}
+                  disabled={isLoading || otp.length !== 6 || showSuccess}
                   className="w-full py-4 px-6 rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
                 >
-                  <Check size={22} />
-                  <span>تأكيد الدخول</span>
+                  {showSuccess ? (
+                    <>
+                      <Check size={22} className="text-green-500" />
+                      <span className="text-green-500">تم التحقق</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check size={22} />
+                      <span>تأكيد الدخول</span>
+                    </>
+                  )}
                 </button>
 
                 <button
