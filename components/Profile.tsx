@@ -135,8 +135,8 @@ export const Profile: React.FC<ProfileProps> = ({
       <div className="flex-1 overflow-y-auto no-scrollbar">
         <div className="container mx-auto max-w-4xl p-4 md:p-8">
           {/* Header Profile Card */}
-          <div className="bg-card border border-border rounded-xl p-6 shadow-sm mb-8 flex flex-col md:flex-row items-center md:items-start gap-6 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-l from-primary/10 to-transparent -z-0"></div>
+          <div className="bg-card border border-border rounded-xl p-6 shadow-sm mb-8 flex flex-col md:flex-row items-center md:items-start gap-6 relative overflow-visible">
+            <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-l from-primary/10 to-transparent -z-0 rounded-t-xl"></div>
             
             <div className="relative w-24 h-24 md:w-32 md:h-32 shrink-0 z-10 group">
               <div className="w-full h-full rounded-full bg-secondary overflow-hidden border-4 border-background shadow-md">
