@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, X } from "lucide-react";
 import { UnifiedHeader } from "./components/ui/UnifiedHeader";
+import { SwipeGestureHandler } from "./components/ui/SwipeGestureHandler";
 
 // Components
 import { Sidebar } from "./components/Sidebar";
@@ -14,6 +15,7 @@ import { NotificationsPopover } from "./components/NotificationsPopover";
 import { SplashScreen } from "./components/SplashScreen";
 import { AuthPage } from "./components/AuthPage";
 import { Messages } from "./components/Messages";
+import { CreateRequestV2 } from "./components/CreateRequestV2";
 
 
 // Types & Data
@@ -1388,42 +1390,32 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (view) {
       case "create-request":
+        // استخدام واجهة إنشاء الطلب الجديدة (V2)
         return (
-          <div className="h-full p-0 flex flex-col items-center justify-start pb-[env(safe-area-inset-bottom,0px)] overflow-x-hidden">
-            <div className="w-full max-w-4xl h-full flex flex-col overflow-x-hidden">
-              <ChatArea
-                onRequestPublished={() => {
-                  reloadData();
-                  // مسح المحادثة بعد نشر الطلب بنجاح
-                  setSavedChatMessages([]);
-                  localStorage.removeItem("abeely_chat_messages");
-                }}
-                isGuest={isGuest}
-                userId={user?.id}
-                savedMessages={savedChatMessages}
-                onMessagesChange={setSavedChatMessages}
-                savedScrollPosition={chatAreaScrollPos}
-                onScrollPositionChange={setChatAreaScrollPos}
-                aiStatus={connectionStatus?.ai}
-                // Unified Header Props
-                isSidebarOpen={isSidebarOpen}
-                setIsSidebarOpen={setIsSidebarOpen}
-                mode={mode}
-                toggleMode={toggleMode}
-                isModeSwitching={isModeSwitching}
-                unreadCount={unreadCount}
-                hasUnreadMessages={hasUnreadMessages}
-                user={user}
-                setView={setView}
-                setPreviousView={setPreviousView}
-                titleKey={titleKey}
-                notifications={notifications}
-                onMarkAsRead={handleMarkAsRead}
-                onClearAll={handleClearNotifications}
-                onSignOut={isGuest ? handleGoToLogin : handleSignOut}
-              />
-            </div>
-          </div>
+          <CreateRequestV2
+            onBack={() => {
+              handleNavigate(mode === "requests" ? "marketplace" : "marketplace");
+            }}
+            onPublish={(request) => {
+              console.log("Publishing request:", request);
+              // TODO: Implement actual publish logic
+              reloadData();
+            }}
+            // Header Props
+            isSidebarOpen={isSidebarOpen}
+            setIsSidebarOpen={setIsSidebarOpen}
+            mode={mode}
+            toggleMode={toggleMode}
+            isModeSwitching={isModeSwitching}
+            unreadCount={unreadCount}
+            user={user}
+            titleKey={titleKey}
+            notifications={notifications}
+            onMarkAsRead={handleMarkAsRead}
+            onClearAll={handleClearNotifications}
+            onSignOut={isGuest ? handleGoToLogin : handleSignOut}
+            isGuest={isGuest}
+          />
         );
       case "marketplace":
         return (
@@ -1836,43 +1828,23 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-        {/* Header - Only for views that don't have their own internal header */}
-        {view === "create-request" && (
-          <div className="sticky top-0 z-[60] px-4 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-gray-200/30 dark:border-white/10 shadow-sm">
-            <div className="flex flex-col">
-              <UnifiedHeader
-                isSidebarOpen={isSidebarOpen}
-                setIsSidebarOpen={setIsSidebarOpen}
-                mode={mode}
-                toggleMode={toggleMode}
-                isModeSwitching={isModeSwitching}
-                unreadCount={unreadCount}
-                hasUnreadMessages={hasUnreadMessages}
-                user={user}
-                setView={setView}
-                setPreviousView={setPreviousView}
-                titleKey={titleKey}
-                notifications={notifications}
-                onMarkAsRead={handleMarkAsRead}
-                onClearAll={handleClearNotifications}
-                onSignOut={isGuest ? handleGoToLogin : handleSignOut}
-                isGuest={isGuest}
-                currentView={view}
-                transparent={true}
-              />
+        {/* Header moved inside individual components (CreateRequestV2, Marketplace, etc.) */}
+        {/* Scrollable Content Area - السحب لليسار يغلق السايد بار فقط */}
+        <SwipeGestureHandler
+          isSidebarOpen={isSidebarOpen}
+          onCloseSidebar={() => setIsSidebarOpen(false)}
+          enabled={true}
+        >
+          <div
+            id="main-scroll-container"
+            ref={scrollContainerRef}
+            className="flex-1 min-h-0 bg-background relative overflow-hidden h-full"
+          >
+            <div className="absolute inset-0 flex flex-col overflow-auto">
+              {renderContent()}
             </div>
           </div>
-        )}
-        {/* Scrollable Content Area */}
-        <div
-          id="main-scroll-container"
-          ref={scrollContainerRef}
-          className="flex-1 min-h-0 bg-background relative overflow-hidden"
-        >
-          <div className="absolute inset-0 flex flex-col overflow-auto">
-            {renderContent()}
-          </div>
-        </div>
+        </SwipeGestureHandler>
       </main>
 
       {/* Language Popup */}

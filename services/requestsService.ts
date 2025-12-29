@@ -125,6 +125,53 @@ export async function createOfferFromChat(
 }
 
 /**
+ * Creates an offer with full form data (used by RequestDetail form)
+ */
+export interface CreateOfferInput {
+  requestId: string;
+  providerId: string;
+  title: string;
+  description?: string;
+  price: string;
+  deliveryTime?: string;
+  location?: string;
+  isNegotiable?: boolean;
+  images?: string[]; // URLs of uploaded images
+}
+
+export async function createOffer(input: CreateOfferInput): Promise<{ id: string } | null> {
+  try {
+    const { data, error } = await supabase
+      .from("offers")
+      .insert({
+        request_id: input.requestId,
+        provider_id: input.providerId,
+        provider_name: "مزود خدمة",
+        title: input.title,
+        description: input.description || "",
+        price: input.price,
+        delivery_time: input.deliveryTime,
+        status: "pending" as const,
+        is_negotiable: input.isNegotiable ?? true,
+        location: input.location,
+        images: input.images || [],
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Create offer error:", error);
+      return null;
+    }
+    
+    return data;
+  } catch (err) {
+    console.error("Create offer failed:", err);
+    return null;
+  }
+}
+
+/**
  * Fetch requests with pagination
  */
 export async function fetchRequestsPaginated(page: number = 0, pageSize: number = 10): Promise<{ data: Request[], count: number | null }> {

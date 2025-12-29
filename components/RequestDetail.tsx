@@ -37,6 +37,9 @@ import {
   Upload,
   Wand2,
   X,
+  Flag,
+  Link,
+  AlertTriangle,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -46,6 +49,7 @@ import { AVAILABLE_CATEGORIES } from "../data";
 import { verifyGuestPhone, confirmGuestPhone } from "../services/authService";
 import { markRequestAsViewed, markRequestAsRead, incrementRequestViews } from "../services/requestViewsService";
 import { getRequestShareUrl, copyShareUrl } from "../services/routingService";
+import { createReport, REPORT_REASONS, ReportReason } from "../services/reportsService";
 import ReactDOM from "react-dom";
 import html2canvas from "html2canvas";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
@@ -60,7 +64,9 @@ import {
   Message as ChatMessage,
   Conversation,
 } from "../services/messagesService";
-import { acceptOffer } from "../services/requestsService";
+import { acceptOffer, createOffer } from "../services/requestsService";
+import { uploadOfferAttachments, isImageFile, validateFile, formatFileSize } from "../services/storageService";
+import { supabase } from "../services/supabaseClient";
 
 interface RequestDetailProps {
   request: Request;
@@ -144,6 +150,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [showStatusPulse, setShowStatusPulse] = useState(false);
   const [clickedIcons, setClickedIcons] = useState<{ [key: string]: boolean }>({});
   const [isShowingOriginal, setIsShowingOriginal] = useState(false);
+  const [isOfferSectionVisible, setIsOfferSectionVisible] = useState(false);
   const offerSectionRef = useRef<HTMLDivElement>(null);
 
   // Language names for display
@@ -219,7 +226,20 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [offerTitle, setOfferTitle] = useState(savedOfferForm?.title || "");
   const [offerDescription, setOfferDescription] = useState(savedOfferForm?.description || "");
   const [isNegotiable, setIsNegotiable] = useState(true);
+  const [offerAttachments, setOfferAttachments] = useState<File[]>([]);
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  const offerFileInputRef = useRef<HTMLInputElement>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isLinkCopied, setIsLinkCopied] = useState(false);
+  
+  // Report modal state
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportReason, setReportReason] = useState<ReportReason | null>(null);
+  const [reportDescription, setReportDescription] = useState("");
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [isSubmittingOffer, setIsSubmittingOffer] = useState(false);
+  const [offerSubmitted, setOfferSubmitted] = useState(false);
   
   // Focus States for Floating Labels
   const [isPriceFocused, setIsPriceFocused] = useState(false);
@@ -572,6 +592,46 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     }
   };
 
+  // Handle copy link with visual feedback
+  const handleCopyLink = async () => {
+    try {
+      const shareUrl = getRequestShareUrl(request.id);
+      await navigator.clipboard.writeText(shareUrl);
+      setIsLinkCopied(true);
+      setTimeout(() => setIsLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  // Handle report submission
+  const handleSubmitReport = async () => {
+    if (!reportReason) return;
+    
+    setIsSubmittingReport(true);
+    
+    const result = await createReport({
+      report_type: 'request',
+      target_id: request.id,
+      reason: reportReason,
+      description: reportDescription || undefined,
+    });
+    
+    setIsSubmittingReport(false);
+    
+    if (result.success) {
+      setReportSubmitted(true);
+      setTimeout(() => {
+        setIsReportModalOpen(false);
+        setReportSubmitted(false);
+        setReportReason(null);
+        setReportDescription("");
+      }, 2000);
+    } else {
+      alert(result.error || 'حدث خطأ');
+    }
+  };
+
   // --- Better Image Carousel Swipe ---
   const handleImgTouchStart = (e: React.TouchEvent) => {
     setImgTouchStart({
@@ -817,46 +877,76 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     };
   }, [request?.id]);
 
+  // Handler to scroll to offer section
+  const handleScrollToOfferSection = useCallback(() => {
+    const container = scrollContainerRef.current;
+    const target = offerSectionRef.current;
+    if (container && target) {
+      // Calculate target position relative to the scroll container accurately
+      const containerRect = container.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const relativeTop = targetRect.top - containerRect.top + container.scrollTop;
+      
+      // Offset by 70px (header height approx 64px + small gap)
+      container.scrollTo({
+        top: relativeTop - 70,
+        behavior: 'smooth'
+      });
+      setShowOfferPulse(true);
+      // Hide pulse after animation
+      setTimeout(() => setShowOfferPulse(false), 2000);
+    }
+  }, []);
+
   // Scroll to offer section and show pulse animation
   useEffect(() => {
     if (scrollToOfferSection && offerSectionRef.current && scrollContainerRef.current) {
       // Small delay to ensure the component is fully rendered
       setTimeout(() => {
-        const container = scrollContainerRef.current;
-        const target = offerSectionRef.current;
-        if (container && target) {
-          // Calculate target position relative to the scroll container accurately
-          const containerRect = container.getBoundingClientRect();
-          const targetRect = target.getBoundingClientRect();
-          const relativeTop = targetRect.top - containerRect.top + container.scrollTop;
-          
-          // Offset by 70px (header height approx 64px + small gap)
-          container.scrollTo({
-            top: relativeTop - 70,
-            behavior: 'smooth'
-          });
-        }
-        setShowOfferPulse(true);
-        // Hide pulse after animation
-        setTimeout(() => setShowOfferPulse(false), 2000);
+        handleScrollToOfferSection();
       }, 500); // Slightly more delay to ensure layout is stable
     }
-  }, [scrollToOfferSection]);
+  }, [scrollToOfferSection, handleScrollToOfferSection]);
 
 
-  // Offer section pulse animation every 8 seconds
+  // Offer section continuous pulse when NOT visible
   useEffect(() => {
     if (mode === "offers" && !isMyOffer && request.status === "active") {
-      const interval = setInterval(() => {
-        setShowOfferPulse(true);
-        setTimeout(() => setShowOfferPulse(false), 2000);
-      }, 8000); // Every 8 seconds
-
-      return () => {
-        clearInterval(interval);
-      };
+      // Show pulse only when section is not visible
+      setShowOfferPulse(!isOfferSectionVisible);
+    } else {
+      setShowOfferPulse(false);
     }
-  }, [mode, isMyOffer, request.status]);
+  }, [mode, isMyOffer, request.status, isOfferSectionVisible]);
+
+  // Track offer section visibility with IntersectionObserver
+  // Only hide the header button when the offer section is near the top of the viewport
+  // This means the button stays visible until user scrolls down enough that the offer section
+  // takes up most of the visible area
+  useEffect(() => {
+    if (!offerSectionRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          // The section is "active" when it's in the upper portion of the viewport
+          // With -60% bottom margin, the section needs to be in the top 40% of viewport
+          setIsOfferSectionVisible(entry.isIntersecting);
+        });
+      },
+      {
+        threshold: 0.1,
+        // Top: -80px for header, Bottom: -60% means section must be in upper 40% of viewport
+        rootMargin: '-80px 0px -60% 0px',
+      }
+    );
+
+    observer.observe(offerSectionRef.current);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   return (
     <motion.div
@@ -898,9 +988,13 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         title={request.title}
         isScrolled={isScrolled}
         currentView="request-detail"
-        showShareButton={true}
-        shareUrl={getRequestShareUrl(request.id)}
+        showScrollToOffer={!isMyOffer && request.status === "active"}
+        onScrollToOffer={handleScrollToOfferSection}
+        isOfferSectionVisible={isOfferSectionVisible}
       />
+      
+      {/* Spacer below header */}
+      <div className="h-6" />
 
       <div className="container mx-auto max-w-5xl flex-1 flex flex-col md:flex-row gap-6 min-h-0 px-4">
         {/* Main Content (Left Side) */}
@@ -936,19 +1030,26 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     animate={{ opacity: 1, scale: 1 }}
                     className="absolute bottom-8 left-4 z-20"
                   >
-                    <Badge variant="info" size="lg" className="backdrop-blur-md bg-white/20 dark:bg-white/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300">
-                      نشط (يستقبل عروض)
-                    </Badge>
+                    {isMyOffer ? (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-card border border-border text-emerald-600 dark:text-emerald-400 backdrop-blur-md">
+                        <Check size={14} strokeWidth={2.5} className="text-emerald-500" />
+                        <span>لقد قدمت عرض</span>
+                      </div>
+                    ) : (
+                      <Badge variant="info" size="lg" className="backdrop-blur-md bg-white/20 dark:bg-white/10 border-primary/30 text-primary dark:text-primary">
+                        يستقبل عروض
+                      </Badge>
+                    )}
                   </motion.div>
                 )}
 
                 {/* Title Overlay - Above Image with Simple Glassmorphism */}
-                <motion.h1
+                <motion.div
                   layoutId={`title-${request.id}`}
                   initial={{ opacity: 1 }}
                   animate={{ opacity: isScrolled ? 0 : 1 }}
                   transition={{ duration: 0.3 }}
-                  className="absolute top-4 right-4 left-4 text-base font-bold text-foreground z-20 px-4 py-2.5 rounded-xl"
+                  className="absolute top-4 right-4 left-4 z-20 flex items-center gap-2 px-4 py-2.5 rounded-xl"
                   style={{ 
                     background: 'rgba(255, 255, 255, 0.85)',
                     backdropFilter: 'blur(12px)',
@@ -956,8 +1057,82 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     boxShadow: '0 2px 12px rgba(0, 0, 0, 0.1)',
                   }}
                 >
-                  {request.title}
-                </motion.h1>
+                  <h1 className="flex-1 text-base font-bold text-foreground truncate">{request.title}</h1>
+                  
+                  {/* Three-dot Menu Button */}
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsMenuOpen(!isMenuOpen);
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-black/5 transition-colors"
+                    >
+                      <MoreVertical size={18} className="text-muted-foreground" />
+                    </button>
+                    
+                    {/* Dropdown Menu */}
+                    <AnimatePresence>
+                      {isMenuOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95, y: -5 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: -5 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute left-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg z-50 min-w-[180px] overflow-hidden"
+                        >
+                          {/* Request ID with Copy */}
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await navigator.clipboard.writeText(request.id);
+                                setIsIdCopied(true);
+                                setTimeout(() => setIsIdCopied(false), 2000);
+                              } catch (err) {
+                                console.error('Failed to copy ID:', err);
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-right hover:bg-secondary/50 transition-colors"
+                          >
+                            {isIdCopied ? (
+                              <Check size={16} className="text-green-500" />
+                            ) : (
+                              <Copy size={16} className="text-muted-foreground" />
+                            )}
+                            <span className="flex-1">{isIdCopied ? "تم نسخ رقم الطلب!" : `رقم الطلب: ${request.id.slice(0, 8)}...`}</span>
+                          </button>
+                          
+                          {/* Share Request */}
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setIsMenuOpen(false);
+                              await handleShare();
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-right hover:bg-secondary/50 transition-colors border-t border-border"
+                          >
+                            <Share2 size={16} className="text-primary" />
+                            <span>مشاركة الطلب</span>
+                          </button>
+                          
+                          {/* Report */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsMenuOpen(false);
+                              setIsReportModalOpen(true);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-right hover:bg-secondary/50 transition-colors border-t border-border text-red-500"
+                          >
+                            <Flag size={16} />
+                            <span>الإبلاغ عن الطلب</span>
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </motion.div>
 
                 {/* Translation Toggle - Below Title */}
                 {autoTranslateRequests && (
@@ -1043,19 +1218,26 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     animate={{ opacity: 1, scale: 1 }}
                     className="absolute bottom-8 left-4 z-20"
                   >
-                    <Badge variant="info" size="lg" className="backdrop-blur-md bg-white/20 dark:bg-white/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300">
-                      نشط (يستقبل عروض)
-                    </Badge>
+                    {isMyOffer ? (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-card border border-border text-emerald-600 dark:text-emerald-400 backdrop-blur-md">
+                        <Check size={14} strokeWidth={2.5} className="text-emerald-500" />
+                        <span>لقد قدمت عرض</span>
+                      </div>
+                    ) : (
+                      <Badge variant="info" size="lg" className="backdrop-blur-md bg-white/20 dark:bg-white/10 border-primary/30 text-primary dark:text-primary">
+                        يستقبل عروض
+                      </Badge>
+                    )}
                   </motion.div>
                 )}
                 
                 {/* Title Overlay - Same Simple Glassmorphism Style as With Images */}
-                <motion.h1
+                <motion.div
                   layoutId={`title-${request.id}`}
                   initial={{ opacity: 1 }}
                   animate={{ opacity: isScrolled ? 0 : 1 }}
                   transition={{ duration: 0.3 }}
-                  className="absolute top-4 right-4 left-4 text-base font-bold text-foreground z-20 px-4 py-2.5 rounded-xl"
+                  className="absolute top-4 right-4 left-4 z-20 flex items-center gap-2 px-4 py-2.5 rounded-xl"
                   style={{ 
                     background: 'rgba(255, 255, 255, 0.85)',
                     backdropFilter: 'blur(12px)',
@@ -1063,8 +1245,82 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     boxShadow: '0 2px 12px rgba(0, 0, 0, 0.1)',
                   }}
                 >
-                  {request.title}
-                </motion.h1>
+                  <h1 className="flex-1 text-base font-bold text-foreground truncate">{request.title}</h1>
+                  
+                  {/* Three-dot Menu Button */}
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsMenuOpen(!isMenuOpen);
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-black/5 transition-colors"
+                    >
+                      <MoreVertical size={18} className="text-muted-foreground" />
+                    </button>
+                    
+                    {/* Dropdown Menu */}
+                    <AnimatePresence>
+                      {isMenuOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95, y: -5 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: -5 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute left-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg z-50 min-w-[180px] overflow-hidden"
+                        >
+                          {/* Request ID with Copy */}
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await navigator.clipboard.writeText(request.id);
+                                setIsIdCopied(true);
+                                setTimeout(() => setIsIdCopied(false), 2000);
+                              } catch (err) {
+                                console.error('Failed to copy ID:', err);
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-right hover:bg-secondary/50 transition-colors"
+                          >
+                            {isIdCopied ? (
+                              <Check size={16} className="text-green-500" />
+                            ) : (
+                              <Copy size={16} className="text-muted-foreground" />
+                            )}
+                            <span className="flex-1">{isIdCopied ? "تم نسخ رقم الطلب!" : `رقم الطلب: ${request.id.slice(0, 8)}...`}</span>
+                          </button>
+                          
+                          {/* Share Request */}
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setIsMenuOpen(false);
+                              await handleShare();
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-right hover:bg-secondary/50 transition-colors border-t border-border"
+                          >
+                            <Share2 size={16} className="text-primary" />
+                            <span>مشاركة الطلب</span>
+                          </button>
+                          
+                          {/* Report */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsMenuOpen(false);
+                              setIsReportModalOpen(true);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-right hover:bg-secondary/50 transition-colors border-t border-border text-red-500"
+                          >
+                            <Flag size={16} />
+                            <span>الإبلاغ عن الطلب</span>
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </motion.div>
 
                 {/* Translation Toggle - Below Title (No Images State) */}
                 {autoTranslateRequests && (
@@ -1887,68 +2143,151 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       </motion.div>
                     </div>
 
-                    {/* Attachments Section (Clean & No Gen Button) */}
+                    {/* Attachments Section */}
                     <div className="mb-6">
                       <h4 className="text-sm font-bold mb-3 flex items-center gap-2">
                         <Paperclip size={22} /> المرفقات وصور توضيحية
+                        {offerAttachments.length > 0 && (
+                          <span className="text-xs text-muted-foreground mr-auto">
+                            {offerAttachments.length} ملف
+                          </span>
+                        )}
                       </h4>
 
-                      <div className="bg-secondary/20 border border-dashed border-border rounded-xl p-4">
-                        {generatedImage
-                          ? (
-                            <div className="relative w-full h-48 rounded-lg overflow-hidden border border-border bg-background">
-                              <img
-                                src={generatedImage}
-                                alt="Reference"
-                                className="w-full h-full object-cover"
+                      <div className={`border-2 border-dashed rounded-xl p-4 transition-colors ${
+                        offerAttachments.length > 0 
+                          ? 'border-primary/50 bg-primary/5' 
+                          : 'border-border bg-secondary/20'
+                      }`}>
+                        {/* Uploaded Files Preview */}
+                        {offerAttachments.length > 0 && (
+                          <div className="flex gap-2 flex-wrap mb-3">
+                            {offerAttachments.map((file, index) => {
+                              const fileUrl = URL.createObjectURL(file);
+                              const isImage = isImageFile(file);
+                              return (
+                                <motion.div
+                                  key={file.name + index}
+                                  initial={{ scale: 0, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  exit={{ scale: 0, opacity: 0 }}
+                                  className="relative group"
+                                >
+                                  <div className="w-20 h-20 rounded-xl border border-border overflow-hidden bg-background">
+                                    {isImage ? (
+                                      <img
+                                        src={fileUrl}
+                                        alt={file.name}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex flex-col items-center justify-center p-2">
+                                        <FileText size={24} className="text-muted-foreground mb-1" />
+                                        <span className="text-[10px] text-muted-foreground truncate w-full text-center">
+                                          {file.name.split('.').pop()?.toUpperCase()}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => setOfferAttachments(prev => prev.filter((_, i) => i !== index))}
+                                    className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] px-1 py-0.5 text-center truncate">
+                                    {formatFileSize(file.size)}
+                                  </div>
+                                </motion.div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Upload Buttons */}
+                        <div className="flex gap-3">
+                          {/* Upload Box */}
+                          <div 
+                            onClick={() => offerFileInputRef.current?.click()}
+                            className="flex-1 flex flex-col items-center justify-center h-24 bg-background border border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                          >
+                            <Upload
+                              size={28}
+                              className="text-primary mb-2"
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              رفع ملف/صورة
+                            </span>
+                          </div>
+                          {/* Search Image Box */}
+                          <div
+                            onClick={handleFindApproxImage}
+                            className="flex-1 flex flex-col items-center justify-center h-24 bg-background border border-border rounded-lg cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
+                          >
+                            {isImageGenerating ? (
+                              <Loader2
+                                size={28}
+                                className="animate-spin text-indigo-500"
                               />
-                              <button
-                                onClick={() => setGeneratedImage(null)}
-                                className="absolute top-2 right-2 bg-black/60 text-white p-1.5 rounded-full hover:bg-black/80"
-                              >
-                                <X size={18} />
-                              </button>
-                              <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[11px] px-3 py-1 rounded-full backdrop-blur-sm">
-                                صورة تقريبية من البحث
-                              </div>
+                            ) : (
+                              <ImageIcon
+                                size={28}
+                                className="text-indigo-500 mb-2"
+                              />
+                            )}
+                            <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">
+                              بحث صورة تقريبية
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Generated Image Preview */}
+                        {generatedImage && (
+                          <div className="relative w-full h-48 rounded-lg overflow-hidden border border-border bg-background mt-3">
+                            <img
+                              src={generatedImage}
+                              alt="Reference"
+                              className="w-full h-full object-cover"
+                            />
+                            <button
+                              onClick={() => setGeneratedImage(null)}
+                              className="absolute top-2 right-2 bg-black/60 text-white p-1.5 rounded-full hover:bg-black/80"
+                            >
+                              <X size={18} />
+                            </button>
+                            <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[11px] px-3 py-1 rounded-full backdrop-blur-sm">
+                              صورة تقريبية من البحث
                             </div>
-                          )
-                          : (
-                            <div className="flex gap-3">
-                              {/* Upload Box */}
-                              <div className="flex-1 flex flex-col items-center justify-center h-24 bg-background border border-border rounded-lg cursor-pointer hover:border-primary/50 transition-colors">
-                                <Upload
-                                  size={28}
-                                  className="text-muted-foreground mb-2"
-                                />
-                                <span className="text-xs text-muted-foreground">
-                                  رفع ملف/صورة
-                                </span>
-                              </div>
-                              {/* Search Image Box */}
-                              <div
-                                onClick={handleFindApproxImage}
-                                className="flex-1 flex flex-col items-center justify-center h-24 bg-background border border-border rounded-lg cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors"
-                              >
-                                {isImageGenerating
-                                  ? (
-                                    <Loader2
-                                      size={28}
-                                      className="animate-spin text-indigo-500"
-                                    />
-                                  )
-                                  : (
-                                    <ImageIcon
-                                      size={28}
-                                      className="text-indigo-500 mb-2"
-                                    />
-                                  )}
-                                <span className="text-xs text-indigo-600 font-medium">
-                                  بحث صورة تقريبية
-                                </span>
-                              </div>
-                            </div>
-                          )}
+                          </div>
+                        )}
+
+                        {/* Hidden File Input */}
+                        <input
+                          ref={offerFileInputRef}
+                          type="file"
+                          multiple
+                          accept="image/*,video/*,.pdf,.doc,.docx"
+                          className="hidden"
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files || []);
+                            if (files.length > 0) {
+                              // Validate each file
+                              const validFiles: File[] = [];
+                              for (const file of files) {
+                                const validation = validateFile(file);
+                                if (validation.valid) {
+                                  validFiles.push(file);
+                                } else {
+                                  alert(validation.error);
+                                }
+                              }
+                              if (validFiles.length > 0) {
+                                setOfferAttachments(prev => [...prev, ...validFiles]);
+                              }
+                            }
+                            e.target.value = "";
+                          }}
+                        />
                       </div>
                     </div>
 
@@ -1985,9 +2324,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       transition={{ delay: 0.3 }}
                     >
                       <motion.button
-                        whileHover={offerPrice && offerTitle ? { scale: 1.03, y: -2 } : {}}
+                        whileHover={offerPrice && offerTitle && !isSubmittingOffer ? { scale: 1.03, y: -2 } : {}}
                         whileTap={{ scale: 0.97 }}
-                        onClick={() => {
+                        disabled={isSubmittingOffer}
+                        onClick={async () => {
                           // Validate required fields
                           const isPriceValid = offerPrice && offerPrice.trim() !== '';
                           const isTitleValid = offerTitle && offerTitle.trim() !== '';
@@ -2015,22 +2355,130 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           if (isGuest) {
                             setGuestOfferVerificationStep('phone');
                           } else {
-                            // Haptic feedback - positive send pattern
-                            if (navigator.vibrate) {
-                              navigator.vibrate([30, 50, 30]);
+                            // Get current user
+                            const { data: userData } = await supabase.auth.getUser();
+                            if (!userData?.user?.id) {
+                              alert("يرجى تسجيل الدخول أولاً");
+                              return;
                             }
-                            // TODO: Submit offer
-                            alert("سيتم إرسال العرض قريباً");
+                            
+                            setIsSubmittingOffer(true);
+                            
+                            try {
+                              // Upload attachments if any
+                              let uploadedImageUrls: string[] = [];
+                              if (offerAttachments.length > 0) {
+                                setIsUploadingAttachments(true);
+                                // Generate a temporary ID for organizing uploads
+                                const tempId = `${userData.user.id}-${Date.now()}`;
+                                uploadedImageUrls = await uploadOfferAttachments(offerAttachments, tempId);
+                                setIsUploadingAttachments(false);
+                              }
+                              
+                              // Add generated image if exists
+                              if (generatedImage) {
+                                uploadedImageUrls.push(generatedImage);
+                              }
+                              
+                              // Create the offer
+                              const result = await createOffer({
+                                requestId: request.id,
+                                providerId: userData.user.id,
+                                title: offerTitle.trim(),
+                                description: offerDescription.trim() || undefined,
+                                price: offerPrice.trim(),
+                                deliveryTime: offerDuration.trim() || undefined,
+                                location: offerCity.trim() || undefined,
+                                isNegotiable,
+                                images: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
+                              });
+                              
+                              if (result) {
+                                // Haptic feedback - positive send pattern
+                                if (navigator.vibrate) {
+                                  navigator.vibrate([30, 50, 30]);
+                                }
+                                
+                                setOfferSubmitted(true);
+                                
+                                // Reset form
+                                setOfferPrice("");
+                                setOfferTitle("");
+                                setOfferDescription("");
+                                setOfferDuration("");
+                                setOfferCity("");
+                                setOfferAttachments([]);
+                                setGeneratedImage(null);
+                                
+                                // Show success message
+                                setTimeout(() => {
+                                  setOfferSubmitted(false);
+                                  // Optionally navigate back or refresh
+                                }, 2000);
+                              } else {
+                                alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
+                              }
+                            } catch (err) {
+                              console.error("Submit offer error:", err);
+                              alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
+                            } finally {
+                              setIsSubmittingOffer(false);
+                              setIsUploadingAttachments(false);
+                            }
                           }
                         }}
-                        className={`w-full md:w-auto px-12 h-12 text-base font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 ${
-                          offerPrice && offerTitle
+                        className={`relative w-full md:w-auto px-12 h-12 text-base font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 overflow-visible ${
+                          offerPrice && offerTitle && !isSubmittingOffer
                             ? "bg-primary text-white hover:shadow-xl"
                             : "bg-primary/30 text-primary border-2 border-primary/30 cursor-not-allowed"
                         }`}
                       >
-                        إرسال العرض
-                        <Send size={20} className="ml-2 -rotate-90" />
+                        {/* Ping Ring - Only when ready to submit */}
+                        {offerPrice && offerTitle && !isSubmittingOffer && !offerSubmitted && (
+                          <>
+                            <motion.span
+                              className="absolute -inset-1 rounded-xl border-[3px] border-primary pointer-events-none"
+                              animate={{
+                                scale: [1, 1.15, 1.25],
+                                opacity: [0.7, 0.3, 0],
+                              }}
+                              transition={{ 
+                                duration: 1.8, 
+                                repeat: Infinity, 
+                                ease: "easeOut"
+                              }}
+                            />
+                            <motion.span
+                              className="absolute -inset-0.5 rounded-xl border-2 border-primary/80 pointer-events-none"
+                              animate={{
+                                scale: [1, 1.08, 1.12],
+                                opacity: [0.8, 0.4, 0],
+                              }}
+                              transition={{ 
+                                duration: 1.8, 
+                                repeat: Infinity, 
+                                ease: "easeOut",
+                                delay: 0.3
+                              }}
+                            />
+                          </>
+                        )}
+                        {isSubmittingOffer ? (
+                          <>
+                            <Loader2 size={20} className="animate-spin" />
+                            {isUploadingAttachments ? "جاري رفع المرفقات..." : "جاري الإرسال..."}
+                          </>
+                        ) : offerSubmitted ? (
+                          <>
+                            <Check size={20} />
+                            تم إرسال العرض!
+                          </>
+                        ) : (
+                          <>
+                            إرسال العرض
+                            <Send size={20} className="ml-2 -rotate-90" />
+                          </>
+                        )}
                       </motion.button>
                     </motion.div>
                   </div>
@@ -2489,6 +2937,120 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
           </div>
         </div>
       </div>
+
+      {/* Report Modal */}
+      <AnimatePresence>
+        {isReportModalOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isSubmittingReport && setIsReportModalOpen(false)}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100]"
+            />
+            
+            {/* Modal */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-md mx-auto bg-card border border-border rounded-2xl shadow-2xl z-[101] overflow-hidden"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-border">
+                <button
+                  onClick={() => !isSubmittingReport && setIsReportModalOpen(false)}
+                  className="p-2 hover:bg-secondary/50 rounded-lg transition-colors"
+                >
+                  <X size={20} />
+                </button>
+                <h3 className="font-bold text-lg">الإبلاغ عن الطلب</h3>
+                <div className="w-9" /> {/* Spacer */}
+              </div>
+
+              {reportSubmitted ? (
+                /* Success State */
+                <div className="p-8 text-center">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                    className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center"
+                  >
+                    <Check size={32} className="text-green-600" />
+                  </motion.div>
+                  <h4 className="font-bold text-lg mb-2">تم إرسال البلاغ</h4>
+                  <p className="text-muted-foreground text-sm">شكراً لك، سنراجع البلاغ في أقرب وقت</p>
+                </div>
+              ) : (
+                /* Form */
+                <div className="p-4">
+                  {/* Warning Icon */}
+                  <div className="flex items-center gap-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl mb-4">
+                    <AlertTriangle size={20} className="text-red-500 shrink-0" />
+                    <p className="text-sm text-red-700 dark:text-red-300">
+                      الإبلاغات الكاذبة قد تؤدي إلى تعليق حسابك
+                    </p>
+                  </div>
+
+                  {/* Reason Selection */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">سبب الإبلاغ</label>
+                    <div className="space-y-2">
+                      {REPORT_REASONS.map((reason) => (
+                        <button
+                          key={reason.value}
+                          onClick={() => setReportReason(reason.value)}
+                          className={`w-full text-right px-4 py-3 rounded-xl border transition-all ${
+                            reportReason === reason.value
+                              ? "bg-primary/10 border-primary text-primary"
+                              : "bg-secondary/30 border-border hover:bg-secondary/50"
+                          }`}
+                        >
+                          <span className="text-sm font-medium">{reason.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Description (optional) */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">تفاصيل إضافية (اختياري)</label>
+                    <textarea
+                      value={reportDescription}
+                      onChange={(e) => setReportDescription(e.target.value)}
+                      placeholder="اشرح المشكلة بالتفصيل..."
+                      className="w-full px-4 py-3 rounded-xl border border-border bg-secondary/30 resize-none h-24 text-sm focus:outline-none focus:border-primary transition-colors"
+                    />
+                  </div>
+
+                  {/* Submit Button */}
+                  <button
+                    onClick={handleSubmitReport}
+                    disabled={!reportReason || isSubmittingReport}
+                    className={`w-full py-3 rounded-xl font-bold text-white transition-all ${
+                      reportReason && !isSubmittingReport
+                        ? "bg-red-500 hover:bg-red-600"
+                        : "bg-gray-300 dark:bg-gray-700 cursor-not-allowed"
+                    }`}
+                  >
+                    {isSubmittingReport ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 size={18} className="animate-spin" />
+                        جاري الإرسال...
+                      </span>
+                    ) : (
+                      "إرسال البلاغ"
+                    )}
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

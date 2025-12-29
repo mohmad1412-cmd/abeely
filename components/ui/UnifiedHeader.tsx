@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   ArrowLeftRight, 
@@ -10,7 +10,11 @@ import {
   ArrowRight,
   Share2,
   Check,
-  Link
+  Link,
+  Plus,
+  ArrowLeft,
+  Send,
+  ChevronsDown
 } from "lucide-react";
 import { NotificationsPopover } from "../NotificationsPopover";
 
@@ -32,6 +36,7 @@ interface UnifiedHeaderProps {
   onSignOut: () => void;
   backButton?: boolean;
   onBack?: () => void;
+  closeIcon?: boolean; // Use X icon instead of arrow for back button
   title?: string;
   isScrolled?: boolean;
   showTabs?: boolean;
@@ -44,6 +49,15 @@ interface UnifiedHeaderProps {
   showShareButton?: boolean;
   onShare?: () => void;
   shareUrl?: string; // Optional: URL to copy directly
+  // Submit button (replaces notifications in CreateRequestV2)
+  showSubmitButton?: boolean;
+  canSubmit?: boolean;
+  onSubmit?: () => void;
+  justBecameReady?: boolean; // For celebration animation
+  // Scroll to offer button (for RequestDetail page)
+  showScrollToOffer?: boolean;
+  onScrollToOffer?: () => void;
+  isOfferSectionVisible?: boolean; // Hide button when offer section is visible
 }
 
 export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
@@ -61,6 +75,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   onSignOut,
   backButton,
   onBack,
+  closeIcon = false,
   title,
   isScrolled = true,
   transparent = false,
@@ -70,10 +85,29 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   showShareButton = false,
   onShare,
   shareUrl,
+  showSubmitButton = false,
+  canSubmit = false,
+  onSubmit,
+  justBecameReady = false,
+  showScrollToOffer = false,
+  onScrollToOffer,
+  isOfferSectionVisible = false,
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isLinkCopied, setIsLinkCopied] = useState(false);
+  const [showCreateHint, setShowCreateHint] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  
+  // Show "Create Request" hint every 35 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setShowCreateHint(true);
+      // Hide after 8 seconds
+      setTimeout(() => setShowCreateHint(false), 8000);
+    }, 35000);
+
+    return () => clearInterval(interval);
+  }, []);
   
   // Handle share/copy link
   const handleShare = async () => {
@@ -128,10 +162,13 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           <motion.button
             onClick={onBack}
             whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
+            whileTap={{ scale: 0.88 }}
+            transition={{ type: "spring", stiffness: 500, damping: 25 }}
+            className="relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group"
           >
-            <ArrowRight size={22} strokeWidth={2.5} />
+            {/* Pulse ring effect - only on active/touch */}
+            <span className="absolute inset-0 rounded-full border-2 border-primary/50 opacity-0 group-active:opacity-100 group-active:animate-ping" />
+            {closeIcon ? <X size={22} strokeWidth={2.5} className="relative z-10" /> : <ArrowRight size={22} strokeWidth={2.5} className="relative z-10" />}
           </motion.button>
         ) : (
           <button
@@ -156,7 +193,11 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -5 }}
-                  className="font-bold text-sm truncate max-w-[120px] sm:max-w-xs text-foreground"
+                  className={`font-bold text-sm truncate text-foreground transition-all duration-300 ${
+                    showScrollToOffer && isOfferSectionVisible 
+                      ? 'max-w-[200px] sm:max-w-md' 
+                      : 'max-w-[120px] sm:max-w-xs'
+                  }`}
                 >
                   {title}
                 </motion.span>
@@ -218,62 +259,243 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           </motion.button>
         )}
 
-        {/* Mode Switch Button */}
-        {!hideModeToggle && (
-          <button
-            onClick={toggleMode}
-            className={`flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group ${
-              isModeSwitching 
-                ? "bg-primary/20 border border-primary/40 shadow-[0_0_15px_rgba(30,150,140,0.3)]" 
-                : "bg-card border border-border hover:text-primary"
-            }`}
-          >
-            <motion.div
-              animate={isModeSwitching ? { 
-                rotate: 180,
-                scale: 1.05,
-              } : { 
-                rotate: 0,
-                scale: 1 
+        {/* Scroll to Offer Button - Replaces both mode toggle and notifications */}
+        <AnimatePresence mode="popLayout">
+          {showScrollToOffer && !isOfferSectionVisible && (
+            <motion.button
+              key="scroll-to-offer-btn"
+              onClick={onScrollToOffer}
+              initial={{ opacity: 0, scale: 0.8, x: 20, filter: "blur(8px)" }}
+              animate={{ 
+                opacity: 1, 
+                scale: 1, 
+                x: 0,
+                filter: "blur(0px)",
+                transition: {
+                  type: "spring",
+                  stiffness: 400,
+                  damping: 25,
+                  mass: 0.8,
+                }
               }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
+              exit={{ 
+                opacity: 0, 
+                scale: 0.8, 
+                x: 20,
+                filter: "blur(8px)",
+                transition: {
+                  duration: 0.25,
+                  ease: [0.4, 0, 1, 1],
+                }
+              }}
+              className="relative flex items-center gap-2 h-11 px-4 rounded-xl group active:scale-95 bg-primary/10 border border-primary/30 hover:border-primary/50 hover:bg-primary/15 overflow-hidden"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
             >
-              <ArrowLeftRight 
-                size={18} 
-                strokeWidth={2} 
-                className={`transition-all duration-200 ${
-                  isModeSwitching ? "text-primary" : "text-muted-foreground group-hover:text-primary"
-                }`} 
-              />
-            </motion.div>
-          </button>
-        )}
-
-        {/* Notification Bell */}
-        <div className="relative" ref={notifRef}>
-          <button
-            onClick={() => setIsNotifOpen(!isNotifOpen)}
-            className="flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/30 relative"
-          >
-            <Bell size={20} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 bg-red-500 text-[11px] text-white font-bold">
-                  {unreadCount}
-                </span>
+              {/* Content */}
+              <span className="relative z-10 text-sm font-medium text-primary whitespace-nowrap">
+                قدّم عرض
               </span>
-            )}
-          </button>
+              <motion.div
+                className="relative z-10"
+                animate={{ 
+                  y: [0, 3, 0],
+                }}
+                transition={{
+                  duration: 1.5,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+              >
+                <ChevronsDown 
+                  size={18} 
+                  strokeWidth={2.5}
+                  className="text-primary"
+                />
+              </motion.div>
+            </motion.button>
+          )}
+        </AnimatePresence>
+        
+        {!showScrollToOffer && (
+          <>
+            {/* Create Request Button - Artistic & Light */}
+            {!hideModeToggle && (
+              <div className="relative flex items-center mr-1">
+                <AnimatePresence>
+                  {showCreateHint && (
+                    <motion.div
+                      initial={{ opacity: 0, x: -20, scale: 0.8 }}
+                      animate={{ opacity: 1, x: 0, scale: 1 }}
+                      exit={{ opacity: 0, x: -10, scale: 0.8 }}
+                      className="absolute left-full ml-3 whitespace-nowrap bg-white/95 dark:bg-[#1a1a24]/95 backdrop-blur-md text-primary px-3 py-1.5 rounded-full text-[11px] font-medium shadow-xl border border-primary/20 pointer-events-none z-50 flex items-center gap-1.5"
+                    >
+                      <ArrowLeft size={12} className="animate-bounce-x-right rotate-180" />
+                      <span>أنشئ طلبك من هنا</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-          <NotificationsPopover
-            isOpen={isNotifOpen}
-            notifications={notifications}
-            onClose={() => setIsNotifOpen(false)}
-            onMarkAsRead={onMarkAsRead}
-            onClearAll={onClearAll}
-          />
-        </div>
+                <motion.button
+                  id="create-request-button"
+                  onClick={toggleMode}
+                  className="relative flex items-center justify-center h-11 w-11 rounded-full group transition-all duration-500 overflow-visible"
+                  whileHover={{ scale: 1.08 }}
+                  whileTap={{ scale: 0.92 }}
+                >
+                  {/* Outer Glow - Same as ball */}
+                  <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-primary/30 via-teal-500/20 to-primary/30 blur-md group-hover:blur-lg transition-all duration-500 animate-pulse" />
+                  
+                  {/* Main Button Body - Same gradient as ball */}
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-br from-primary via-primary to-teal-600 shadow-[0_8px_25px_rgba(30,150,140,0.4),0_4px_12px_rgba(30,150,140,0.3)] group-hover:shadow-[0_10px_35px_rgba(30,150,140,0.5),0_5px_18px_rgba(30,150,140,0.4)] transition-all duration-500" />
+                  
+                  {/* Inner shine - Same as ball */}
+                  <div className="absolute inset-0 rounded-full overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-b from-white/25 via-transparent to-transparent" />
+                  </div>
+
+                  {/* Icon with Artistic Animation & Periodic Rotation */}
+                  <motion.div
+                    className="relative z-10"
+                    initial={{ rotate: 0 }}
+                    animate={{ 
+                      rotate: [0, 90, 90, 0],
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      repeatDelay: 10,
+                      ease: "easeInOut"
+                    }}
+                    whileHover={{ rotate: 180, scale: 1.1 }}
+                  >
+                    <Plus 
+                      size={22} 
+                      strokeWidth={2.5} 
+                      className="text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]" 
+                    />
+                  </motion.div>
+
+                  {/* Sparkles matching ball halo */}
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-white/50 rounded-full blur-[2px] animate-pulse" />
+                  <div className="absolute -bottom-1 -left-1 w-1.5 h-1.5 bg-teal-300/40 rounded-full blur-[1px] animate-bounce" />
+                </motion.button>
+              </div>
+            )}
+
+            {/* Submit Button OR Notification Bell */}
+            {showSubmitButton ? (
+              <motion.button
+                onClick={onSubmit}
+                disabled={!canSubmit}
+                className={`relative flex items-center gap-2 h-11 px-4 rounded-full group transition-all duration-500 overflow-visible ${
+                  canSubmit 
+                    ? "cursor-pointer" 
+                    : "cursor-not-allowed opacity-50"
+                }`}
+                whileHover={canSubmit ? { scale: 1.05 } : {}}
+                whileTap={canSubmit ? { scale: 0.95 } : {}}
+                animate={justBecameReady ? {
+                  scale: [1, 1.1, 1],
+                } : {}}
+                transition={justBecameReady ? { duration: 0.4, repeat: 2 } : {}}
+              >
+                {/* Ping Ring - Pulsing border effect */}
+                {canSubmit && (
+                  <motion.div
+                    className="absolute inset-0 rounded-full border-2 border-primary/50 pointer-events-none"
+                    animate={{
+                      scale: [1, 1.3, 1.5],
+                      opacity: [0.5, 0.2, 0],
+                    }}
+                    transition={{ 
+                      duration: 2, 
+                      repeat: Infinity, 
+                      ease: "easeOut"
+                    }}
+                  />
+                )}
+                
+                {/* Outer Glow - Only when canSubmit */}
+                {canSubmit && (
+                  <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-primary/30 via-teal-500/20 to-primary/30 blur-md group-hover:blur-lg transition-all duration-500 animate-pulse" />
+                )}
+                
+                {/* Main Button Body */}
+                <div className={`absolute inset-0 rounded-full transition-all duration-500 ${
+                  canSubmit 
+                    ? "bg-gradient-to-br from-primary via-primary to-teal-600 shadow-[0_8px_25px_rgba(30,150,140,0.4),0_4px_12px_rgba(30,150,140,0.3)] group-hover:shadow-[0_10px_35px_rgba(30,150,140,0.5),0_5px_18px_rgba(30,150,140,0.4)]"
+                    : "bg-muted"
+                }`} />
+                
+                {/* Inner shine - Only when canSubmit */}
+                {canSubmit && (
+                  <div className="absolute inset-0 rounded-full overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-b from-white/25 via-transparent to-transparent" />
+                  </div>
+                )}
+
+                {/* Content */}
+                <span className={`relative z-10 text-sm font-medium transition-colors duration-300 ${
+                  canSubmit ? "text-white" : "text-muted-foreground"
+                }`}>
+                  إرسال الطلب
+                </span>
+                <motion.div
+                  className="relative z-10"
+                  animate={canSubmit ? { 
+                    x: [0, -3, 0],
+                  } : {}}
+                  transition={canSubmit ? {
+                    duration: 1.5,
+                    repeat: Infinity,
+                    ease: "easeInOut"
+                  } : {}}
+                >
+                  <Send 
+                    size={16} 
+                    className={`-rotate-90 transition-colors duration-300 ${
+                      canSubmit ? "text-white" : "text-muted-foreground"
+                    }`}
+                  />
+                </motion.div>
+
+                {/* Sparkles - Only when canSubmit */}
+                {canSubmit && (
+                  <>
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-white/50 rounded-full blur-[2px] animate-pulse" />
+                    <div className="absolute -bottom-1 -left-1 w-1.5 h-1.5 bg-teal-300/40 rounded-full blur-[1px] animate-bounce" />
+                  </>
+                )}
+              </motion.button>
+            ) : (
+              <div className="relative" ref={notifRef}>
+                <button
+                  onClick={() => setIsNotifOpen(!isNotifOpen)}
+                  className="flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/30 relative"
+                >
+                  <Bell size={20} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                      <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 bg-red-500 text-[11px] text-white font-bold">
+                        {unreadCount}
+                      </span>
+                    </span>
+                  )}
+                </button>
+
+                <NotificationsPopover
+                  isOpen={isNotifOpen}
+                  notifications={notifications}
+                  onClose={() => setIsNotifOpen(false)}
+                  onMarkAsRead={onMarkAsRead}
+                  onClearAll={onClearAll}
+                />
+              </div>
+            )}
+          </>
+        )}
 
         {/* Sign Out (if logged in) or Login (if guest) */}
         {isGuest ? (

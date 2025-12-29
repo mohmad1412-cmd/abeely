@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AppMode, Offer, Request } from "../types";
 import {
   Archive,
@@ -23,6 +23,7 @@ import {
   Languages,
   ArrowLeftRight,
   X,
+  GripVertical,
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { format } from "date-fns";
@@ -97,6 +98,48 @@ export const Sidebar: React.FC<SidebarProps> = ({
   
   const [requestsSheetLevel, setRequestsSheetLevel] = useState(0);
   const [offersSheetLevel, setOffersSheetLevel] = useState(0);
+  
+  // Sidebar width resize state
+  const DEFAULT_WIDTH = 340;
+  const MIN_WIDTH = 340;
+  const MAX_WIDTH = 600;
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH);
+  const [isSidebarResizing, setIsSidebarResizing] = useState(false);
+  const isExpanded = sidebarWidth > DEFAULT_WIDTH;
+  
+  const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsSidebarResizing(true);
+  }, []);
+  
+  const handleSidebarMouseMove = useCallback((e: MouseEvent) => {
+    if (!isSidebarResizing) return;
+    const newWidth = window.innerWidth - e.clientX;
+    setSidebarWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, newWidth)));
+  }, [isSidebarResizing]);
+  
+  const handleSidebarMouseUp = useCallback(() => {
+    setIsSidebarResizing(false);
+  }, []);
+  
+  const resetWidth = useCallback(() => {
+    setSidebarWidth(DEFAULT_WIDTH);
+  }, []);
+  
+  useEffect(() => {
+    if (isSidebarResizing) {
+      document.addEventListener("mousemove", handleSidebarMouseMove);
+      document.addEventListener("mouseup", handleSidebarMouseUp);
+      document.body.style.cursor = "ew-resize";
+      document.body.style.userSelect = "none";
+    }
+    return () => {
+      document.removeEventListener("mousemove", handleSidebarMouseMove);
+      document.removeEventListener("mouseup", handleSidebarMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [isSidebarResizing, handleSidebarMouseMove, handleSidebarMouseUp]);
   
   const [requestsConvsHeight, setRequestsConvsHeight] = useState(0);
   const [offersConvsHeight, setOffersConvsHeight] = useState(0);
@@ -450,7 +493,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className={`fixed inset-y-0 right-0 z-[90] w-[75vw] max-w-[340px] bg-card border-l border-border md:translate-x-0 md:static md:block md:w-[340px] shadow-2xl md:shadow-none flex flex-col transition-transform duration-300 ease-out pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${isOpen ? "translate-x-0" : "translate-x-full"}`}>
+    <aside 
+      style={{ width: `${sidebarWidth}px` }}
+      className={`fixed inset-y-0 right-0 z-[90] bg-card border-l border-border md:translate-x-0 md:static md:block shadow-2xl md:shadow-none flex flex-col transition-transform duration-300 ease-out pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${isOpen ? "translate-x-0" : "translate-x-full"} ${isSidebarResizing ? "transition-none" : ""}`}
+    >
+      {/* Resize Handle - Left side */}
+      <div
+        onMouseDown={handleSidebarMouseDown}
+        className="hidden md:flex absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize items-center justify-center group z-50 hover:bg-primary/5 transition-colors"
+      >
+        <div className="flex flex-col gap-1">
+          <div className={`w-1 h-6 rounded-full transition-all ${isSidebarResizing ? "bg-primary" : "bg-primary/40 group-hover:bg-primary"}`} />
+          <div className={`w-1 h-6 rounded-full transition-all ${isSidebarResizing ? "bg-primary" : "bg-primary/40 group-hover:bg-primary"}`} />
+        </div>
+      </div>
+      
+      {/* Close button when expanded */}
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            onClick={resetWidth}
+            className="hidden md:flex absolute left-4 top-3 z-50 w-8 h-8 items-center justify-center rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 transition-colors"
+            title="إعادة الحجم الافتراضي"
+          >
+            <X size={16} strokeWidth={2.5} />
+          </motion.button>
+        )}
+      </AnimatePresence>
       {/* Top Section - User Profile - Reduced height and simplified styling */}
       <div className="h-12 px-4 flex items-center bg-card shrink-0 md:border-b-0">
         <div className="flex items-center gap-2.5 w-full">
@@ -528,14 +600,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar px-4 touch-pan-y relative z-10" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} style={{ paddingTop: '12px' }}>
         {mode === "requests" ? (
           <>
-            <div className="mb-3 mt-2 relative" ref={requestsDropdownRef}>
-              <button onClick={() => setIsRequestsDropdownOpen(!isRequestsDropdownOpen)} className={`w-full text-right flex items-center justify-between px-3 py-3.5 rounded-lg border transition-all ${isRequestsDropdownOpen ? "bg-primary/10 border-primary text-primary" : "bg-primary/10 border-primary/20 text-primary hover:bg-primary/15"}`}>
+            {/* Create Request Button - Between switch and dropdown */}
+            <motion.button 
+              id="sidebar-create-button"
+              onClick={onCreateRequest} 
+              whileHover={{ scale: 1.02, y: -2 }} 
+              whileTap={{ scale: 0.98 }} 
+              className="w-full mb-3 magic-border focus:outline-none"
+            >
+              <motion.span 
+                className="w-full gap-2 bg-gradient-to-r from-primary/10 via-background to-primary/5 text-primary h-12 text-sm font-bold rounded-xl flex items-center justify-center relative z-10 overflow-hidden"
+                whileHover={{ background: "linear-gradient(to right, rgba(30, 150, 140, 0.2), var(--background), rgba(30, 150, 140, 0.1))" }}
+                whileTap={{ background: "linear-gradient(to right, rgba(30, 150, 140, 0.35), rgba(30, 150, 140, 0.2), rgba(30, 150, 140, 0.3))" }}
+                transition={{ duration: 0.15 }}
+              >
+                <motion.span whileTap={{ scale: 0.85 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
+                  <PlusCircle size={20} strokeWidth={2} />
+                </motion.span>
+                <span>إنشاء طلب جديد</span>
+              </motion.span>
+            </motion.button>
+
+            <div className="mb-3 relative" ref={requestsDropdownRef}>
+              <button onClick={() => setIsRequestsDropdownOpen(!isRequestsDropdownOpen)} className={`w-full text-right flex items-center justify-between px-3 py-3.5 rounded-2xl border transition-all ${isRequestsDropdownOpen ? "bg-primary/10 border-primary text-primary" : "bg-primary/10 border-primary/20 text-primary hover:bg-primary/15"}`}>
                 <div className="flex items-center gap-2"><span className="text-sm font-bold">{reqFilter === "active" ? "طلباتي النشطة" : reqFilter === "approved" ? "طلباتي المعتمدة" : reqFilter === "all" ? "كل طلباتي" : "المكتملة والمؤرشفة"}</span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${isRequestsDropdownOpen ? "bg-primary text-white" : "bg-primary text-white"}`}>{reqFilter === "active" ? counts.requests.active : reqFilter === "approved" ? counts.requests.approved : reqFilter === "all" ? counts.requests.all : counts.requests.completed}</span></div>
-                <ChevronUp size={18} className="text-primary" />
+                <motion.div animate={{ rotate: isRequestsDropdownOpen ? 180 : 0 }} transition={{ type: "spring", stiffness: 300, damping: 20 }}><ChevronUp size={18} className="text-primary" /></motion.div>
               </button>
               <AnimatePresence>
                 {isRequestsDropdownOpen && (
-                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden">
+                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-2xl shadow-lg z-50 overflow-hidden">
                     <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setReqFilter("all"); setIsRequestsDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors flex items-center justify-between focus:outline-none ${reqFilter === "all" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">كل طلباتي</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${reqFilter === "all" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.requests.all}</span></motion.button>
                     <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setReqFilter("active"); setIsRequestsDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${reqFilter === "active" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">طلباتي النشطة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${reqFilter === "active" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.requests.active}</span></motion.button>
                     <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setReqFilter("approved"); setIsRequestsDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${reqFilter === "approved" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">طلباتي المعتمدة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${reqFilter === "approved" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.requests.approved}</span></motion.button>
@@ -566,14 +659,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </>
         ) : (
           <>
-            <div className="mb-3 mt-2 relative" ref={offersDropdownRef}>
-              <button onClick={() => setIsOffersDropdownOpen(!isOffersDropdownOpen)} className={`w-full text-right flex items-center justify-between px-3 py-3.5 rounded-lg border transition-all ${isOffersDropdownOpen ? "bg-primary/10 border-primary text-primary" : "bg-primary/10 border-primary/20 text-primary hover:bg-primary/15"}`}>
+            {/* Browse Requests Button - Between switch and dropdown */}
+            <motion.button 
+              onClick={() => onNavigate("marketplace")} 
+              whileHover={{ scale: 1.02, y: -2 }} 
+              whileTap={{ scale: 0.98 }} 
+              className="w-full h-12 mb-3 text-right flex items-center justify-between px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-md hover:shadow-lg transition-all group"
+            >
+              <div className="flex items-center gap-2">
+                <LayoutDashboard size={22} strokeWidth={2} />
+                <span className="font-bold text-sm">تصفح طلبات الآخرين</span>
+              </div>
+              <ChevronLeft size={20} strokeWidth={2.5} className="group-hover:-translate-x-1 transition-transform" />
+            </motion.button>
+
+            <div className="mb-3 relative" ref={offersDropdownRef}>
+              <button onClick={() => setIsOffersDropdownOpen(!isOffersDropdownOpen)} className={`w-full text-right flex items-center justify-between px-3 py-3.5 rounded-2xl border transition-all ${isOffersDropdownOpen ? "bg-primary/10 border-primary text-primary" : "bg-primary/10 border-primary/20 text-primary hover:bg-primary/15"}`}>
                 <div className="flex items-center gap-2"><span className="text-sm font-bold">{offerFilter === "all" ? "كل عروضي" : offerFilter === "accepted" ? "عروضي المقبولة" : offerFilter === "pending" ? "عروضي قيد الانتظار" : "المكتملة والمؤرشفة"}</span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${isOffersDropdownOpen ? "bg-primary text-white" : "bg-primary text-white"}`}>{offerFilter === "all" ? counts.offers.all : offerFilter === "accepted" ? counts.offers.accepted : offerFilter === "pending" ? counts.offers.pending : counts.offers.completed}</span></div>
-                <ChevronUp size={18} className="text-primary" />
+                <motion.div animate={{ rotate: isOffersDropdownOpen ? 180 : 0 }} transition={{ type: "spring", stiffness: 300, damping: 20 }}><ChevronUp size={18} className="text-primary" /></motion.div>
               </button>
               <AnimatePresence>
                 {isOffersDropdownOpen && (
-                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden">
+                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-2xl shadow-lg z-50 overflow-hidden">
                     <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setOfferFilter("all"); setIsOffersDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors flex items-center justify-between focus:outline-none ${offerFilter === "all" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">كل عروضي</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${offerFilter === "all" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.offers.all}</span></motion.button>
                     <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setOfferFilter("pending"); setIsOffersDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${offerFilter === "pending" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">عروضي قيد الانتظار</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${offerFilter === "pending" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.offers.pending}</span></motion.button>
                     <motion.button whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }} onClick={() => { setOfferFilter("accepted"); setIsOffersDropdownOpen(false); }} className={`w-full text-right px-3 py-3 text-sm font-bold transition-colors border-t border-border flex items-center justify-between focus:outline-none ${offerFilter === "accepted" ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}><motion.span whileTap={{ scale: 1.02 }} className="transition-transform">عروضي المقبولة</motion.span><span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${offerFilter === "accepted" ? "bg-primary text-white" : "bg-primary/10 text-primary"}`}>{counts.offers.accepted}</span></motion.button>
@@ -664,28 +771,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {mode === "requests" && (
-          <div className="border-t border-border bg-card z-20 shrink-0 px-4 py-3">
-            <motion.button 
-              onClick={onCreateRequest} 
-              whileHover={{ scale: 1.02, y: -2 }} 
-              whileTap={{ scale: 0.98 }} 
-              className="w-full magic-border focus:outline-none"
-            >
-              <motion.span 
-                className="w-full gap-2 bg-gradient-to-r from-primary/10 via-background to-primary/5 text-primary h-12 text-sm font-bold rounded-xl flex items-center justify-center relative z-10 overflow-hidden"
-                whileHover={{ background: "linear-gradient(to right, rgba(30, 150, 140, 0.2), var(--background), rgba(30, 150, 140, 0.1))" }}
-                whileTap={{ background: "linear-gradient(to right, rgba(30, 150, 140, 0.35), rgba(30, 150, 140, 0.2), rgba(30, 150, 140, 0.3))" }}
-                transition={{ duration: 0.15 }}
-              >
-                <motion.span whileTap={{ scale: 0.85 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
-                  <PlusCircle size={20} strokeWidth={2} />
-                </motion.span>
-                <span>إنشاء طلب جديد</span>
-              </motion.span>
-            </motion.button>
-          </div>
-        )}
 
         {mode === "offers" && (
           <div className="border-t border-border bg-card z-20 shrink-0 relative flex flex-col" ref={offersConversationsRef}>
@@ -744,16 +829,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {mode === "offers" && (
-          <div className="border-t border-border bg-card z-20 shrink-0 px-4 py-3">
-            <motion.button onClick={() => {
-              onNavigate("marketplace");
-            }} whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} className="w-full h-12 text-right flex items-center justify-between px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-md hover:shadow-lg transition-all group">
-              <div className="flex items-center gap-2"><LayoutDashboard size={22} strokeWidth={2} /><span className="font-bold text-sm">تصفح طلبات الآخرين</span></div>
-              <ChevronLeft size={20} strokeWidth={2.5} className="group-hover:-translate-x-1 transition-transform" />
-            </motion.button>
-          </div>
-        )}
 
         <div className="p-4 border-t border-border bg-card z-20 shrink-0">
           <div className="flex items-center gap-3 w-full">
