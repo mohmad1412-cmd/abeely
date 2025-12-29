@@ -28,7 +28,7 @@ import {
 import { Button } from "./ui/Button";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, LayoutGroup } from "framer-motion";
 import { UserProfile } from "../services/authService";
 import { getConversations, Conversation, subscribeToConversations } from "../services/messagesService";
 
@@ -617,34 +617,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Mode Switcher - Above dropdown */}
       <div className="px-2 py-2 bg-card z-20 shrink-0">
-        <div className="flex bg-secondary/30 rounded-2xl p-1 border border-border/30 relative min-w-[200px]">
-          <button onClick={() => { 
-            if (navigator.vibrate) navigator.vibrate(15); onNavigate("requests-mode"); 
-          }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${mode === "requests" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>
-            {mode === "requests" && (
-              <motion.div 
-                layoutId="active-sidebar-tab"
-                className="absolute inset-0 rounded-xl bg-primary shadow-lg z-0"
-                transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
-              />
-            )}
-            <span className="relative z-10">طلباتي</span>
-            <span className={`relative z-10 inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "requests" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userRequests.length}</span>
-          </button>
-          <button onClick={() => { 
-            if (navigator.vibrate) navigator.vibrate(15); onNavigate("offers-mode"); 
-          }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${mode === "offers" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>
-            {mode === "offers" && (
-              <motion.div 
-                layoutId="active-sidebar-tab"
-                className="absolute inset-0 rounded-xl bg-primary shadow-lg z-0"
-                transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
-              />
-            )}
-            <span className="relative z-10">عروضي</span>
-            <span className={`relative z-10 inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "offers" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userOffers.length}</span>
-          </button>
-        </div>
+        <LayoutGroup id="sidebar-mode-switcher">
+          <div className="flex bg-secondary/30 rounded-2xl p-1 border border-border/30 relative min-w-[200px]">
+            <button onClick={() => { 
+              if (navigator.vibrate) navigator.vibrate(15); onNavigate("requests-mode"); 
+            }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${mode === "requests" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>
+              {mode === "requests" && (
+                <motion.div 
+                  layoutId="active-sidebar-tab"
+                  className="absolute inset-0 rounded-xl bg-primary shadow-lg z-0"
+                  transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
+                />
+              )}
+              <span className="relative z-10">طلباتي</span>
+              <span className={`relative z-10 inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "requests" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userRequests.length}</span>
+            </button>
+            <button onClick={() => { 
+              if (navigator.vibrate) navigator.vibrate(15); onNavigate("offers-mode"); 
+            }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${mode === "offers" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>
+              {mode === "offers" && (
+                <motion.div 
+                  layoutId="active-sidebar-tab"
+                  className="absolute inset-0 rounded-xl bg-primary shadow-lg z-0"
+                  transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
+                />
+              )}
+              <span className="relative z-10">عروضي</span>
+              <span className={`relative z-10 inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "offers" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userOffers.length}</span>
+            </button>
+          </div>
+        </LayoutGroup>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar px-2 touch-pan-y relative z-10 pt-2">

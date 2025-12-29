@@ -413,11 +413,22 @@ const GlowingField: React.FC<{
   // Handle resize drag
   const handleResizeStart = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsResizing(true);
     startY.current = 'touches' in e ? e.touches[0].clientY : e.clientY;
     startHeight.current = textareaHeight;
     
+    // Disable body scroll during resize
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+    
     const handleMove = (moveEvent: MouseEvent | TouchEvent) => {
+      // Prevent scroll during resize
+      if (moveEvent.cancelable) {
+        moveEvent.preventDefault();
+      }
+      moveEvent.stopPropagation();
+      
       const currentY = 'touches' in moveEvent ? moveEvent.touches[0].clientY : moveEvent.clientY;
       const diff = currentY - startY.current;
       const newHeight = Math.max(60, Math.min(300, startHeight.current + diff));
@@ -426,15 +437,19 @@ const GlowingField: React.FC<{
     
     const handleEnd = () => {
       setIsResizing(false);
+      // Re-enable body scroll
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
+      
       document.removeEventListener('mousemove', handleMove);
       document.removeEventListener('mouseup', handleEnd);
       document.removeEventListener('touchmove', handleMove);
       document.removeEventListener('touchend', handleEnd);
     };
     
-    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mousemove', handleMove, { passive: false });
     document.addEventListener('mouseup', handleEnd);
-    document.addEventListener('touchmove', handleMove);
+    document.addEventListener('touchmove', handleMove, { passive: false });
     document.addEventListener('touchend', handleEnd);
   };
 
@@ -502,7 +517,7 @@ const GlowingField: React.FC<{
       </div>
 
       {/* Input */}
-      <div className="flex items-center gap-2 px-4 pb-3">
+      <div className={`flex items-center gap-2 px-4 ${multiline ? 'pb-8' : 'pb-3'}`}>
         {multiline ? (
           <textarea
             ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -531,16 +546,17 @@ const GlowingField: React.FC<{
         {rightElement}
       </div>
 
-      {/* Resize Handle for Multiline */}
+      {/* Resize Handle for Multiline - Full width bottom edge */}
       {multiline && (
         <div
           onMouseDown={handleResizeStart}
           onTouchStart={handleResizeStart}
-          className="absolute bottom-1 left-1/2 -translate-x-1/2 w-12 h-4 flex items-center justify-center cursor-ns-resize"
+          className={`absolute bottom-0 left-0 right-0 h-6 flex items-center justify-center cursor-ns-resize select-none rounded-b-2xl transition-colors ${isResizing ? 'bg-primary/10' : 'hover:bg-primary/5'}`}
+          style={{ touchAction: 'none' }}
         >
-          <div className="flex flex-col gap-0.5">
-            <div className="w-8 h-0.5 bg-primary rounded-full" />
-            <div className="w-8 h-0.5 bg-primary rounded-full" />
+          <div className="flex flex-col gap-0.5 pointer-events-none">
+            <div className={`w-10 h-0.5 rounded-full transition-colors ${isResizing ? 'bg-primary' : 'bg-primary/50'}`} />
+            <div className={`w-10 h-0.5 rounded-full transition-colors ${isResizing ? 'bg-primary' : 'bg-primary/50'}`} />
           </div>
         </div>
       )}
