@@ -1969,7 +1969,9 @@ const App: React.FC = () => {
         <SwipeGestureHandler
           isSidebarOpen={isSidebarOpen}
           onCloseSidebar={() => setIsSidebarOpen(false)}
+          onOpenSidebar={() => setIsSidebarOpen(true)}
           enabled={true}
+          sidebarWidth={340}
         >
           <div
             id="main-scroll-container"
