@@ -29,6 +29,8 @@ export interface Request {
   authorName?: string; // Display name of the author
   authorFirstName?: string; // First name initial
   authorLastName?: string; // Last name initial
+  showAuthorName?: boolean; // هل يريد صاحب الطلب إظهار اسمه لمقدمي العروض المعتمدين
+  requestNumber?: string; // رقم الطلب للعرض (آخر 4 أرقام من ID)
   // Location coordinates
   locationCoords?: {
     lat: number;
@@ -113,6 +115,7 @@ export interface UserPreferences {
   radarWords: string[];
   notifyOnInterest: boolean;
   roleMode: 'requester' | 'provider'; // Profile toggle
+  showNameToApprovedProvider: boolean; // إظهار الاسم لمقدم العرض المعتمد
 }
 
 export type AppMode = 'requests' | 'offers';

@@ -1,12 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { motion, AnimatePresence, useDragControls } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus,
-  Send,
-  Mic,
   MapPin,
   Map,
-  GripVertical,
   X,
   DollarSign,
   Clock,
@@ -15,7 +11,6 @@ import {
   Sparkles,
   Check,
   ChevronDown,
-  Loader2,
   User,
   Wrench,
   Calendar,
@@ -257,6 +252,15 @@ interface CreateRequestV2Props {
   onClearAll: () => void;
   onSignOut: () => void;
   isGuest?: boolean;
+  // AI Orb props - shared with GlobalFloatingOrb
+  aiInput: string;
+  setAiInput: (value: string) => void;
+  aiMessages: AIMessage[];
+  setAiMessages: React.Dispatch<React.SetStateAction<AIMessage[]>>;
+  isAiLoading: boolean;
+  setIsAiLoading: (loading: boolean) => void;
+  // Ref to register handleSend for GlobalFloatingOrb
+  aiSendHandlerRef?: React.MutableRefObject<((audioBlob?: Blob) => Promise<void>) | null>;
 }
 
 // ============================================
@@ -748,590 +752,6 @@ const GlassPanel: React.FC<{
 };
 
 // ============================================
-// Floating AI Input Component
-// ============================================
-const FloatingAIInput: React.FC<{
-  position: { x: number; y: number };
-  onPositionChange: (pos: { x: number; y: number }) => void;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
-  inputValue: string;
-  onInputChange: (value: string) => void;
-  onSend: (audioBlob?: Blob) => void;
-  isLoading: boolean;
-  aiMessages: AIMessage[];
-  bubbleSize?: number;
-}> = ({
-  position,
-  onPositionChange,
-  isExpanded,
-  onToggleExpand,
-  inputValue,
-  onInputChange,
-  onSend,
-  isLoading,
-  aiMessages,
-  bubbleSize = 60,
-}) => {
-  const dragControls = useDragControls();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isPressed, setIsPressed] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const [recordingTime, setRecordingTime] = useState(0);
-  
-  
-  // Constants for sizing
-  const BUBBLE_SIZE = bubbleSize;
-  const EXPANDED_WIDTH = 320;
-  const EXPANDED_HEIGHT = 56;
-  const GLASS_PANEL_HEIGHT = 140;
-  const MARGIN = 20;
-  const BOTTOM_MARGIN = 40; // Space from bottom for floating input
-  
-  // Track keyboard height for mobile
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  
-  // Detect keyboard open/close using visualViewport API
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.visualViewport) return;
-    
-    const viewport = window.visualViewport;
-    
-    const handleResize = () => {
-      // Calculate keyboard height from viewport difference
-      const heightDiff = window.innerHeight - viewport.height;
-      setKeyboardHeight(heightDiff > 50 ? heightDiff : 0);
-    };
-    
-    viewport.addEventListener('resize', handleResize);
-    viewport.addEventListener('scroll', handleResize);
-    
-    return () => {
-      viewport.removeEventListener('resize', handleResize);
-      viewport.removeEventListener('scroll', handleResize);
-    };
-  }, []);
-  
-  // Move capsule up when keyboard opens while expanded
-  useEffect(() => {
-    if (isExpanded && keyboardHeight > 0) {
-      const safeY = window.innerHeight - keyboardHeight - EXPANDED_HEIGHT - GLASS_PANEL_HEIGHT - MARGIN;
-      if (position.y > safeY) {
-        onPositionChange({ ...position, y: Math.max(MARGIN + GLASS_PANEL_HEIGHT, safeY) });
-      }
-    }
-  }, [keyboardHeight, isExpanded]);
-
-  // Recording timer
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (isRecording) {
-      setRecordingTime(0);
-      interval = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isRecording]);
-
-  // Start recording
-  const startRecording = async () => {
-    if (isRecording || !navigator.mediaDevices?.getUserMedia) {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        alert("التسجيل الصوتي غير مدعوم في هذا المتصفح");
-      }
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        // Send audio to AI
-        if (audioBlob.size > 0) {
-          onSend(audioBlob);
-        }
-        setIsRecording(false);
-        setRecordingTime(0);
-      };
-
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      setIsRecording(true);
-    } catch (error) {
-      console.error("Error starting recording:", error);
-      alert("فشل في بدء التسجيل");
-    }
-  };
-
-  // Stop recording
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (error) {
-        console.error("Error stopping recording:", error);
-        setIsRecording(false);
-      }
-    }
-  };
-
-  // Focus input when expanded
-  useEffect(() => {
-    if (isExpanded && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  }, [isExpanded]);
-  
-  // Click outside to close
-  useEffect(() => {
-    if (!isExpanded) return;
-    
-    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        onToggleExpand();
-      }
-    };
-    
-    // Add delay to prevent immediate close
-    const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('touchstart', handleClickOutside);
-    }, 100);
-    
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, [isExpanded, onToggleExpand]);
-
-  // Get current bounds based on expanded state
-  const getBounds = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return { minX: MARGIN, maxX: 500, minY: MARGIN, maxY: 500 };
-    }
-    
-    const width = isExpanded ? EXPANDED_WIDTH : BUBBLE_SIZE;
-    const height = isExpanded ? EXPANDED_HEIGHT : BUBBLE_SIZE;
-    const topSpace = isExpanded ? GLASS_PANEL_HEIGHT + 20 : 0;
-    
-    return {
-      minX: MARGIN,
-      maxX: Math.max(MARGIN, window.innerWidth - width - MARGIN),
-      minY: MARGIN + topSpace,
-      maxY: Math.max(MARGIN + topSpace, window.innerHeight - height - BOTTOM_MARGIN)
-    };
-  }, [isExpanded]);
-
-  // Clamp position to keep within screen bounds
-  const clampPosition = useCallback((x: number, y: number) => {
-    const bounds = getBounds();
-    return {
-      x: Math.max(bounds.minX, Math.min(bounds.maxX, x)),
-      y: Math.max(bounds.minY, Math.min(bounds.maxY, y))
-    };
-  }, [getBounds]);
-
-  // Track the actual rendered position
-  const [renderPos, setRenderPos] = useState({ x: position.x, y: position.y });
-  
-  // Update render position when position changes
-  useEffect(() => {
-    const clamped = clampPosition(position.x, position.y);
-    setRenderPos(clamped);
-  }, [position.x, position.y, clampPosition]);
-
-  // Re-clamp when expanded state changes
-  useEffect(() => {
-    // Use setTimeout to avoid setState during render
-    const timer = setTimeout(() => {
-      const clamped = clampPosition(renderPos.x, renderPos.y);
-      if (clamped.x !== renderPos.x || clamped.y !== renderPos.y) {
-        setRenderPos(clamped);
-        onPositionChange(clamped);
-      }
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [isExpanded, clampPosition]);
-  
-  // Handle drag start - track position for velocity
-  // Simple drag start
-  const handleDragStart = () => {
-    setIsDragging(true);
-  };
-
-  // Simple drag end - just update position, no throwing
-  const handleDragEnd = (_: any, info: { offset: { x: number; y: number } }) => {
-    setIsDragging(false);
-    setIsPressed(false);
-    
-    const newX = renderPos.x + info.offset.x;
-    const newY = renderPos.y + info.offset.y;
-    const clamped = clampPosition(newX, newY);
-    
-    setRenderPos(clamped);
-    onPositionChange(clamped);
-  };
-
-  // Get current drag constraints
-  const bounds = getBounds();
-
-  return (
-    <>
-      <motion.div
-        ref={containerRef}
-        drag
-        dragControls={dragControls}
-        dragConstraints={{
-          left: bounds.minX,
-          right: bounds.maxX,
-          top: bounds.minY,
-          bottom: bounds.maxY
-        }}
-        dragElastic={0.1}
-        dragMomentum={false}
-        dragTransition={{ 
-          bounceStiffness: 300, 
-          bounceDamping: 30
-        }}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onTapStart={() => setIsPressed(true)}
-        onTap={() => setIsPressed(false)}
-        onTapCancel={() => setIsPressed(false)}
-        initial={false}
-        animate={{
-          x: renderPos.x,
-          y: renderPos.y,
-        }}
-        transition={{
-          type: "spring",
-          stiffness: 400,
-          damping: 30,
-          mass: 0.8
-        }}
-        style={{ position: 'fixed', left: 0, top: 0 }}
-        className="z-50 pointer-events-auto"
-      >
-        {/* Floating Animation Wrapper */}
-        <motion.div
-          animate={!isExpanded && !isDragging ? {
-            y: [0, -6, 0],
-          } : { y: 0 }}
-          transition={!isExpanded && !isDragging ? {
-            duration: 2.5,
-            repeat: Infinity,
-            ease: "easeInOut"
-          } : { duration: 0.2 }}
-        >
-          {/* Glass Panel - AI Messages */}
-          <AnimatePresence>
-            {isExpanded && (
-              <GlassPanel messages={aiMessages} isVisible={isExpanded} isLoading={isLoading} />
-            )}
-          </AnimatePresence>
-
-          {/* Soft Animated Halo - Like a real glowing ball */}
-        {!isExpanded && (
-          <>
-            {/* Ground Shadow */}
-            <motion.div
-              className="absolute left-1/2 -translate-x-1/2 w-10 h-2 bg-black/15 rounded-full blur-sm"
-              style={{ bottom: -8 }}
-              animate={{
-                scale: isDragging ? 0.6 : [1, 0.9, 1],
-                opacity: isDragging ? 0.1 : [0.2, 0.15, 0.2],
-              }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-            />
-            
-            {/* Soft Outer Halo - Breathing Effect */}
-            <motion.div
-              className="absolute -inset-4 rounded-full pointer-events-none"
-              style={{
-                background: "radial-gradient(circle, rgba(30,150,140,0.25) 0%, rgba(30,150,140,0.1) 40%, transparent 70%)",
-                filter: "blur(8px)",
-              }}
-              animate={{
-                scale: [1, 1.15, 1],
-                opacity: [0.6, 0.8, 0.6],
-              }}
-              transition={{ 
-                duration: 3, 
-                repeat: Infinity, 
-                ease: "easeInOut" 
-              }}
-            />
-            
-            {/* Inner Halo Ring */}
-            <motion.div
-              className="absolute -inset-2 rounded-full pointer-events-none"
-              style={{
-                background: "radial-gradient(circle, rgba(30,150,140,0.3) 0%, transparent 60%)",
-                filter: "blur(4px)",
-              }}
-              animate={{
-                scale: [1, 1.1, 1],
-                opacity: [0.5, 0.7, 0.5],
-              }}
-              transition={{ 
-                duration: 2, 
-                repeat: Infinity, 
-                ease: "easeInOut",
-                delay: 0.5
-              }}
-            />
-            
-            {/* Ping Ring - Pulsing border effect */}
-            <motion.div
-              className="absolute -inset-1 rounded-full border-2 border-primary/60 pointer-events-none"
-              animate={{
-                scale: [1, 1.4, 1.6],
-                opacity: [0.6, 0.2, 0],
-              }}
-              transition={{ 
-                duration: 2, 
-                repeat: Infinity, 
-                ease: "easeOut"
-              }}
-            />
-            
-            {/* Subtle Shine Arc */}
-            <motion.div
-              className="absolute top-1 left-1/4 right-1/4 h-3 rounded-full pointer-events-none"
-              style={{
-                background: "linear-gradient(to bottom, rgba(255,255,255,0.4), transparent)",
-                filter: "blur(2px)",
-              }}
-              animate={{
-                opacity: [0.3, 0.5, 0.3],
-              }}
-              transition={{ 
-                duration: 2, 
-                repeat: Infinity, 
-                ease: "easeInOut" 
-              }}
-            />
-          </>
-        )}
-
-        {/* Main Input Container */}
-        <motion.div
-          layout
-          className={`relative rounded-full ${
-            isExpanded
-              ? "bg-card border border-primary/30 shadow-xl"
-              : "bg-gradient-to-br from-primary via-primary to-teal-600"
-          }`}
-          style={{
-            borderRadius: isExpanded ? "28px" : "50%",
-            // Permanent glow effect (slightly lighter than hover)
-            boxShadow: !isExpanded 
-              ? "0 10px 35px rgba(30,150,140,0.45), 0 5px 18px rgba(30,150,140,0.35), inset 0 -2px 6px rgba(0,0,0,0.1), inset 0 2px 6px rgba(255,255,255,0.2)"
-              : "0 8px 32px rgba(0,0,0,0.15)"
-          }}
-          animate={{
-            width: isExpanded ? 320 : BUBBLE_SIZE,
-            height: isExpanded ? 56 : BUBBLE_SIZE,
-            scale: isPressed && !isExpanded ? 0.85 : isDragging && !isExpanded ? 1.1 : 1,
-            rotate: isDragging && !isExpanded ? [0, 5, -5, 0] : 0,
-          }}
-          whileHover={!isExpanded ? { 
-            scale: 1.05,
-          } : {}}
-          transition={{ 
-            type: "spring", 
-            stiffness: 400, 
-            damping: 25,
-            scale: { type: "spring", stiffness: 600, damping: 15 }
-          }}
-        >
-          {/* Inner Glow/Shine Effect */}
-          {!isExpanded && (
-            <motion.div
-              className="absolute inset-0 rounded-full overflow-hidden"
-              initial={false}
-            >
-              {/* Top shine */}
-              <motion.div
-                className="absolute top-1 left-1/4 right-1/4 h-4 bg-gradient-to-b from-white/30 to-transparent rounded-full blur-sm"
-              />
-              {/* Animated glow pulse */}
-              <motion.div
-                className="absolute inset-0 rounded-full"
-                animate={{
-                  boxShadow: [
-                    "inset 0 0 15px rgba(255,255,255,0.1)",
-                    "inset 0 0 25px rgba(255,255,255,0.2)",
-                    "inset 0 0 15px rgba(255,255,255,0.1)",
-                  ],
-                }}
-                transition={{ duration: 2, repeat: Infinity }}
-              />
-            </motion.div>
-          )}
-
-          {/* Collapsed State - Sparkles Icon */}
-          <AnimatePresence mode="popLayout">
-            {!isExpanded ? (
-              <motion.button
-                key="collapsed"
-                initial={{ opacity: 0, scale: 0.5 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.5 }}
-                transition={{ duration: 0.2, type: "spring", stiffness: 500, damping: 30 }}
-                onClick={onToggleExpand}
-                className="absolute inset-0 flex items-center justify-center text-white z-10"
-              >
-                <motion.div
-                  animate={{ 
-                    rotate: [0, 5, -5, 0],
-                  }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                >
-                  <Sparkles size={26} strokeWidth={2} />
-                </motion.div>
-              </motion.button>
-            ) : (
-              <motion.div
-                key="expanded"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.1 }}
-                className="flex items-center h-full px-2 gap-1 rounded-full overflow-hidden"
-              >
-                {/* Drag Handle */}
-                <button
-                  onPointerDown={(e) => dragControls.start(e)}
-                  className="p-2 text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing touch-none"
-                >
-                  <GripVertical size={18} />
-                </button>
-
-                {/* Text Input */}
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => onInputChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      onSend();
-                    }
-                  }}
-                  placeholder="اكتب طلبك هنا..."
-                  className="flex-1 bg-transparent text-sm text-foreground focus:outline-none placeholder:text-muted-foreground/50 text-right min-w-0"
-                  dir="rtl"
-                />
-
-                {/* Mic Button with Recording Animation */}
-                <div className="relative shrink-0">
-                  {/* Recording Waves Animation */}
-                  {isRecording && (
-                    <>
-                      {[0, 1, 2].map((i) => (
-                        <motion.div
-                          key={i}
-                          className="absolute inset-0 rounded-full border-2 border-red-500"
-                          initial={{ scale: 1, opacity: 0.8 }}
-                          animate={{
-                            scale: [1, 1.5, 2],
-                            opacity: [0.8, 0.4, 0],
-                          }}
-                          transition={{
-                            duration: 1.5,
-                            repeat: Infinity,
-                            delay: i * 0.5,
-                            ease: "easeOut",
-                          }}
-                        />
-                      ))}
-                    </>
-                  )}
-                  <button
-                    className={`relative p-2 rounded-full transition-colors z-10 ${
-                      isRecording
-                        ? "bg-red-500 text-white"
-                        : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                    }`}
-                    onMouseDown={startRecording}
-                    onMouseUp={stopRecording}
-                    onMouseLeave={stopRecording}
-                    onTouchStart={startRecording}
-                    onTouchEnd={stopRecording}
-                    title="اضغط مع الاستمرار للتسجيل"
-                  >
-                    <Mic size={18} />
-                  </button>
-                  {/* Recording Time */}
-                  {isRecording && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="absolute -top-6 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap"
-                    >
-                      {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
-                    </motion.div>
-                  )}
-                </div>
-
-                {/* Send Button */}
-                <motion.button
-                  onClick={() => onSend()}
-                  disabled={!inputValue.trim() || isLoading}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                    inputValue.trim()
-                      ? "bg-primary text-white shadow-md"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                  whileHover={inputValue.trim() ? { scale: 1.05 } : {}}
-                  whileTap={inputValue.trim() ? { scale: 0.95 } : {}}
-                >
-                  {isLoading ? (
-                    <Loader2 size={18} className="animate-spin" />
-                  ) : (
-                    <Send size={16} className="-rotate-90" />
-                  )}
-                </motion.button>
-
-                {/* Close Button */}
-                <button
-                  onClick={onToggleExpand}
-                  className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-colors"
-                >
-                  <X size={16} />
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-        {/* End of Floating Animation Wrapper */}
-        </motion.div>
-      </motion.div>
-    </>
-  );
-};
-
-// ============================================
 // Main Component
 // ============================================
 export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
@@ -1350,6 +770,14 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   onClearAll,
   onSignOut,
   isGuest,
+  // AI Orb props
+  aiInput,
+  setAiInput,
+  aiMessages,
+  setAiMessages,
+  isAiLoading,
+  setIsAiLoading,
+  aiSendHandlerRef,
 }) => {
   // Core fields
   const [title, setTitle] = useState("");
@@ -1386,74 +814,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // Show additional fields only when AI suggests them
   const [showAdditionalFields, setShowAdditionalFields] = useState(false);
 
-  // Floating input state - positioned at bottom right
-  const [floatingPosition, setFloatingPosition] = useState({ x: 0, y: 0 });
-  const [initialPositionSet, setInitialPositionSet] = useState(false);
-  const [isDropAnimating, setIsDropAnimating] = useState(true);
-  
-  // Bubble size state: always 60px
-  const [bubbleSize, setBubbleSize] = useState(60); 
-  
-  const [isInputExpanded, setIsInputExpanded] = useState(false);
-  
-  // Set initial position on mount - ascend from bottom
-  useEffect(() => {
-    if (!initialPositionSet && typeof window !== 'undefined') {
-      const safeY = window.innerHeight - 150; // Final position above submit button
-      const offScreenY = window.innerHeight + 100; // Start position below screen
-      
-      // Clear legacy storage item just in case
-      sessionStorage.removeItem('create-button-pos');
-      
-      // Start at bottom off-screen
-      setFloatingPosition({
-        x: 20,
-        y: offScreenY
-      });
-      
-      // Use requestAnimationFrame to ensure the first position is rendered
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          // Animate to final position
-          setFloatingPosition({
-            x: 20,
-            y: safeY
-          });
-          
-          // End animation after transition completes
-          setTimeout(() => setIsDropAnimating(false), 800);
-        });
-      });
-      
-      setInitialPositionSet(true);
-    }
-  }, [initialPositionSet]);
-  
-  // Handle back - immediate navigation, ball animates in background
+  // Handle back - immediate navigation
   const handleBack = useCallback(() => {
-    // Start ball animation
-    setIsDropAnimating(true);
-    setIsInputExpanded(false);
-    setFloatingPosition(prev => ({
-      ...prev,
-      y: window.innerHeight + 100
-    }));
-    
-    // Navigate immediately - no waiting for animation
     onBack();
   }, [onBack]);
-  
-  const [aiInput, setAiInput] = useState("");
-  const [isAiLoading, setIsAiLoading] = useState(false);
-
-  // AI messages
-  const [aiMessages, setAiMessages] = useState<AIMessage[]>([
-    {
-      id: "welcome",
-      text: "مرحباً، صف طلبك وسأساعدك في إنشائه.",
-      timestamp: new Date(),
-    },
-  ]);
 
   // Glowing states
   const [glowingFields, setGlowingFields] = useState<Set<string>>(new Set());
@@ -1500,33 +864,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const descriptionFieldRef = useRef<HTMLDivElement>(null);
   const locationFieldRef = useRef<HTMLDivElement>(null);
   
-  // Add glow effect to a field and move floating input if blocking
+  // Add glow effect to a field
   const addGlow = (fieldId: string) => {
     setGlowingFields((prev) => new Set(prev).add(fieldId));
-    
-    // Move floating input if it's blocking the glowing field
-    if (isInputExpanded && typeof window !== 'undefined') {
-      const fieldRef = fieldId === 'description' ? descriptionFieldRef : 
-                       fieldId === 'location' ? locationFieldRef : null;
-      
-      if (fieldRef?.current) {
-        const fieldRect = fieldRef.current.getBoundingClientRect();
-        const floatingTop = floatingPosition.y;
-        const floatingBottom = floatingPosition.y + 300; // Approximate height with glass panel
-        
-        // Check if floating input overlaps with field
-        if (floatingTop < fieldRect.bottom && floatingBottom > fieldRect.top) {
-          // Move floating input above or below the field
-          const newY = fieldRect.bottom + 20; // Move below the field
-          if (newY + 300 < window.innerHeight - 100) {
-            setFloatingPosition({ ...floatingPosition, y: newY });
-          } else {
-            // Move above the field
-            setFloatingPosition({ ...floatingPosition, y: Math.max(260, fieldRect.top - 320) });
-          }
-        }
-      }
-    }
     
     setTimeout(() => {
       setGlowingFields((prev) => {
@@ -1595,12 +935,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         }, 300);
       }
       
-      // Collapse floating input after getting response to show fields
-      if (extracted.description || extracted.location) {
-        setTimeout(() => {
-          setIsInputExpanded(false);
-        }, 1500);
-      }
+      // Note: Floating orb collapse is handled by GlobalFloatingOrb
 
       // Budget
       if (extracted.budget) {
@@ -1692,6 +1027,18 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       setIsAiLoading(false);
     }
   };
+
+  // Register handleSend in ref for GlobalFloatingOrb to use
+  useEffect(() => {
+    if (aiSendHandlerRef) {
+      aiSendHandlerRef.current = handleSend;
+    }
+    return () => {
+      if (aiSendHandlerRef) {
+        aiSendHandlerRef.current = null;
+      }
+    };
+  }, [handleSend, aiSendHandlerRef]);
 
   // Get default follow-up question based on missing fields
   const getDefaultFollowUp = (desc: string, loc: string): string => {
@@ -1971,31 +1318,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       </div>
 
 
-      {/* Floating AI Input */}
-      <FloatingAIInput
-        position={floatingPosition}
-        onPositionChange={setFloatingPosition}
-        isExpanded={isInputExpanded}
-        onToggleExpand={() => {
-          const newExpanded = !isInputExpanded;
-          if (newExpanded && typeof window !== 'undefined') {
-            // When expanding, ensure there's room for glass panel
-            const GLASS_PANEL_HEIGHT = 220;
-            const MARGIN = 20;
-            const minY = MARGIN + GLASS_PANEL_HEIGHT + 20;
-            if (floatingPosition.y < minY) {
-              setFloatingPosition({ ...floatingPosition, y: minY });
-            }
-          }
-          setIsInputExpanded(newExpanded);
-        }}
-        inputValue={aiInput}
-        onInputChange={setAiInput}
-        onSend={handleSend}
-        isLoading={isAiLoading}
-        aiMessages={aiMessages}
-        bubbleSize={bubbleSize}
-      />
+      {/* Floating AI Input is now handled by GlobalFloatingOrb in App.tsx */}
     </motion.div>
   );
 };

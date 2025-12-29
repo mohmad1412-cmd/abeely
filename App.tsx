@@ -16,7 +16,7 @@ import { SplashScreen } from "./components/SplashScreen";
 import { AuthPage } from "./components/AuthPage";
 import { Messages } from "./components/Messages";
 import { CreateRequestV2 } from "./components/CreateRequestV2";
-import { GlobalAIOrb } from "./components/GlobalAIOrb";
+import { GlobalFloatingOrb } from "./components/GlobalFloatingOrb";
 
 
 // Types & Data
@@ -144,16 +144,27 @@ const MobileOverlay: React.FC<{
     setSwipeOffset(0);
   };
 
-  const opacity = Math.max(0.5 - (swipeOffset / sidebarWidth * 0.5), 0);
-  const blur = Math.max(4 - (swipeOffset / sidebarWidth * 4), 0);
+  // حساب الشفافية والضبابية بناءً على السحب
+  const dynamicOpacity = Math.max(0.55 - (swipeOffset / sidebarWidth * 0.55), 0);
+  const dynamicBlur = Math.max(8 - (swipeOffset / sidebarWidth * 8), 0);
 
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+      animate={{ 
+        opacity: 1, 
+        backdropFilter: `blur(${dynamicBlur}px)`,
+      }}
+      exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+      transition={{ 
+        duration: 0.4, 
+        ease: [0.22, 1, 0.36, 1] // Custom easing for ultra-smooth feel
+      }}
       className="fixed inset-0 z-[80] md:hidden"
       style={{
-        background: `rgba(0, 0, 0, ${opacity})`,
-        backdropFilter: `blur(${blur}px)`,
-        transition: swipeOffset === 0 ? 'all 0.3s cubic-bezier(0.32, 0.72, 0, 1)' : 'none',
+        background: `rgba(0, 0, 0, ${swipeOffset > 0 ? dynamicOpacity : 0.55})`,
+        backdropFilter: swipeOffset > 0 ? `blur(${dynamicBlur}px)` : undefined,
+        WebkitBackdropFilter: swipeOffset > 0 ? `blur(${dynamicBlur}px)` : undefined,
       }}
       onClick={onClose}
       onTouchStart={handleTouchStart}
@@ -262,6 +273,22 @@ const App: React.FC = () => {
       view: ViewState;
     } | null
   >(null);
+
+  // ==========================================
+  // AI Orb State (Global - used by GlobalFloatingOrb)
+  // ==========================================
+  const [aiOrbPosition, setAiOrbPosition] = useState({ x: 20, y: 500 });
+  const [aiInput, setAiInput] = useState("");
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiMessages, setAiMessages] = useState<{id: string; text: string; timestamp: Date}[]>([
+    {
+      id: "welcome",
+      text: "مرحباً، صف طلبك وسأساعدك في إنشائه.",
+      timestamp: new Date(),
+    },
+  ]);
+  // Ref to CreateRequestV2's handleSend function
+  const aiSendHandlerRef = useRef<((audioBlob?: Blob) => Promise<void>) | null>(null);
 
   // ==========================================
   // Scroll Persistence
@@ -1617,10 +1644,31 @@ const App: React.FC = () => {
             onBack={() => {
               handleNavigate(mode === "requests" ? "marketplace" : "marketplace");
             }}
-            onPublish={(request) => {
-              console.log("Publishing request:", request);
-              // TODO: Implement actual publish logic
-              reloadData();
+            onPublish={async (request) => {
+              try {
+                console.log("Publishing request:", request);
+                
+                // تحويل البيانات لصيغة AIDraft
+                const draftData = {
+                  title: request.title,
+                  description: request.description,
+                  location: request.location,
+                  budgetMin: request.budgetMin,
+                  budgetMax: request.budgetMax,
+                  categories: request.categories,
+                  deliveryTime: request.deliveryTimeFrom,
+                };
+                
+                // إنشاء الطلب في قاعدة البيانات
+                await createRequestFromChat(user?.id || null, draftData);
+                
+                // إعادة تحميل البيانات والانتقال للسوق
+                await reloadData();
+                handleNavigate("marketplace");
+              } catch (error) {
+                console.error("Error publishing request:", error);
+                // يمكن إضافة toast هنا لإظهار رسالة خطأ
+              }
             }}
             // Header Props
             isSidebarOpen={isSidebarOpen}
@@ -1636,6 +1684,14 @@ const App: React.FC = () => {
             onClearAll={handleClearNotifications}
             onSignOut={isGuest ? handleGoToLogin : handleSignOut}
             isGuest={isGuest}
+            // AI Orb props
+            aiInput={aiInput}
+            setAiInput={setAiInput}
+            aiMessages={aiMessages}
+            setAiMessages={setAiMessages}
+            isAiLoading={isAiLoading}
+            setIsAiLoading={setIsAiLoading}
+            aiSendHandlerRef={aiSendHandlerRef}
           />
         );
       case "marketplace":
@@ -2011,13 +2067,15 @@ const App: React.FC = () => {
   // Main App
   return (
     <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
-      {/* Mobile Overlay with Swipe Support */}
-      {isSidebarOpen && (
-        <MobileOverlay 
-          onClose={() => setIsSidebarOpen(false)} 
-          sidebarWidth={340}
-        />
-      )}
+      {/* Mobile Overlay with Swipe Support - Ultra Smooth Animation */}
+      <AnimatePresence mode="wait">
+        {isSidebarOpen && (
+          <MobileOverlay 
+            onClose={() => setIsSidebarOpen(false)} 
+            sidebarWidth={340}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Notification Click-Outside Overlay */}
       {isNotifOpen && (
@@ -2211,12 +2269,23 @@ const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Global AI Orb (Add Button) */}
-      <GlobalAIOrb
-        currentView={view}
-        onNavigate={() => {
-          handleNavigate("create-request");
+      {/* Global Floating Orb - appears on all pages */}
+      <GlobalFloatingOrb
+        mode={view === "create-request" ? "ai" : "navigate"}
+        onNavigate={() => handleNavigate("create-request")}
+        aiMessages={aiMessages}
+        inputValue={aiInput}
+        onInputChange={setAiInput}
+        onSend={async (audioBlob) => {
+          // إذا كنا في صفحة create-request وهناك handler مسجل، استخدمه
+          if (view === "create-request" && aiSendHandlerRef.current) {
+            await aiSendHandlerRef.current(audioBlob);
+          }
         }}
+        isLoading={isAiLoading}
+        position={aiOrbPosition}
+        onPositionChange={setAiOrbPosition}
+        isVisible={true}
       />
     </div>
   );

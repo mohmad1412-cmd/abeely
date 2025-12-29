@@ -46,7 +46,9 @@ export const Settings: React.FC<SettingsProps> = ({
     interestedCategories: [],
     interestedCities: [],
     notifyOnInterest: true,
-    roleMode: 'requester'
+    roleMode: 'requester',
+    showNameToApprovedProvider: true,
+    radarWords: []
   },
   onUpdatePreferences,
   user = null,
@@ -82,6 +84,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [notifyOnInterest, setNotifyOnInterest] = useState(userPreferences.notifyOnInterest);
   const [notifyOnOffers, setNotifyOnOffers] = useState(true);
   const [notifyOnMessages, setNotifyOnMessages] = useState(true);
+  const [showNameToApprovedProvider, setShowNameToApprovedProvider] = useState(userPreferences.showNameToApprovedProvider ?? true);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(userPreferences.interestedCategories);
   const [selectedCities, setSelectedCities] = useState<string[]>(userPreferences.interestedCities);
   const [selectedRadarWords, setSelectedRadarWords] = useState<string[]>([]);
@@ -332,6 +335,56 @@ export const Settings: React.FC<SettingsProps> = ({
                       تعديل
                     </button>
                   )}
+                </div>
+              </div>
+            </div>
+
+            {/* Privacy Section */}
+            <div className="p-4 bg-secondary/50 rounded-lg border border-border">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-full bg-primary/10 text-primary">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+                <h3 className="font-bold text-base">الخصوصية</h3>
+              </div>
+              
+              <div className="space-y-3">
+                {/* Show Name to Approved Provider */}
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">
+                      {showNameToApprovedProvider ? "إظهار اسمي لمقدم العرض بعد اعتماده" : "إبقاء اسمي غير ظاهر دائماً"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {showNameToApprovedProvider 
+                        ? "سيظهر اسمك لمقدم الخدمة بعد اعتماد عرضه" 
+                        : "لن يظهر اسمك لمقدمي الخدمات، سيظهر رقم الطلب فقط"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (navigator.vibrate) {
+                        navigator.vibrate(15);
+                      }
+                      const newValue = !showNameToApprovedProvider;
+                      setShowNameToApprovedProvider(newValue);
+                      if (onUpdatePreferences) {
+                        onUpdatePreferences({
+                          ...userPreferences,
+                          showNameToApprovedProvider: newValue
+                        });
+                      }
+                    }}
+                    className={`w-14 h-7 rounded-full p-1 transition-all relative flex items-center shrink-0 ${
+                      showNameToApprovedProvider ? "bg-primary" : "bg-gray-300"
+                    }`}
+                  >
+                    <motion.div
+                      animate={{ x: showNameToApprovedProvider ? -28 : 0 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      className="w-5 h-5 bg-white rounded-full shadow-lg"
+                    />
+                  </button>
                 </div>
               </div>
             </div>

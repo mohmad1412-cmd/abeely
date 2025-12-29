@@ -22,7 +22,8 @@ export const getUserPreferences = async (userId: string): Promise<UserPreference
         interestedCities: [],
         radarWords: [],
         notifyOnInterest: true,
-        roleMode: 'requester'
+        roleMode: 'requester',
+        showNameToApprovedProvider: true
       };
     }
 
@@ -31,7 +32,8 @@ export const getUserPreferences = async (userId: string): Promise<UserPreference
       interestedCities: data.interested_cities || [],
       radarWords: data.radar_words || [],
       notifyOnInterest: data.notify_on_interest ?? true,
-      roleMode: data.role_mode || 'requester'
+      roleMode: data.role_mode || 'requester',
+      showNameToApprovedProvider: data.show_name_to_approved_provider ?? true
     };
   } catch (err) {
     console.error('Error in getUserPreferences:', err);
@@ -52,7 +54,8 @@ export const updateUserPreferences = async (
         p_cities: preferences.interestedCities,
         p_radar_words: preferences.radarWords,
         p_notify_on_interest: preferences.notifyOnInterest,
-        p_role_mode: preferences.roleMode
+        p_role_mode: preferences.roleMode,
+        p_show_name_to_approved_provider: preferences.showNameToApprovedProvider
       });
 
     if (error) {
@@ -65,7 +68,8 @@ export const updateUserPreferences = async (
       interestedCities: data.interested_cities || [],
       radarWords: data.radar_words || [],
       notifyOnInterest: data.notify_on_interest ?? true,
-      roleMode: data.role_mode || 'requester'
+      roleMode: data.role_mode || 'requester',
+      showNameToApprovedProvider: data.show_name_to_approved_provider ?? true
     };
   } catch (err) {
     console.error('Error in updateUserPreferences:', err);
@@ -127,6 +131,9 @@ export const updatePreferencesDirect = async (
     if (preferences.roleMode !== undefined) {
       updateData.role_mode = preferences.roleMode;
     }
+    if (preferences.showNameToApprovedProvider !== undefined) {
+      updateData.show_name_to_approved_provider = preferences.showNameToApprovedProvider;
+    }
     
     updateData.updated_at = new Date().toISOString();
 
@@ -152,7 +159,7 @@ export const getPreferencesDirect = async (userId: string): Promise<UserPreferen
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('interested_categories, interested_cities, radar_words, notify_on_interest, role_mode')
+      .select('interested_categories, interested_cities, radar_words, notify_on_interest, role_mode, show_name_to_approved_provider')
       .eq('id', userId)
       .single();
 
@@ -170,7 +177,8 @@ export const getPreferencesDirect = async (userId: string): Promise<UserPreferen
       interestedCities: data.interested_cities || [],
       radarWords: data.radar_words || [],
       notifyOnInterest: data.notify_on_interest ?? true,
-      roleMode: data.role_mode || 'requester'
+      roleMode: data.role_mode || 'requester',
+      showNameToApprovedProvider: data.show_name_to_approved_provider ?? true
     };
   } catch (err) {
     console.error('Error in getPreferencesDirect:', err);
