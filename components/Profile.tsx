@@ -193,14 +193,25 @@ export const Profile: React.FC<ProfileProps> = ({
                   {/* Name with Edit */}
                   <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
                     {isEditingName ? (
-                      <div className="flex items-center gap-2 flex-1 w-full">
+                      <div className="flex items-center gap-2 flex-1 w-full relative">
                         <input
                           type="text"
                           value={displayName}
-                          onChange={(e) => setDisplayName(e.target.value)}
-                          className="flex-1 text-2xl font-bold bg-background border border-border rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                          onChange={(e) => {
+                            if (e.target.value.length <= 60) {
+                              setDisplayName(e.target.value);
+                            }
+                          }}
+                          maxLength={60}
+                          className="flex-1 text-2xl font-bold bg-background border border-border rounded-lg px-3 py-1 pr-16 focus:outline-none focus:ring-2 focus:ring-primary"
                           autoFocus
                         />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                          <span className={displayName.length >= 50 ? 'text-orange-500 font-medium' : ''}>
+                            {displayName.length}
+                          </span>
+                          <span className="text-muted-foreground"> / 60</span>
+                        </div>
                         <motion.button
                           whileHover={{ scale: 1.1 }}
                           whileTap={{ scale: 0.9 }}
