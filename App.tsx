@@ -1935,6 +1935,7 @@ const App: React.FC = () => {
       <Sidebar
         mode={mode}
         isOpen={isSidebarOpen || window.innerWidth >= 768}
+        onClose={() => setIsSidebarOpen(false)}
         userRequests={myRequests}
         allRequests={allRequests}
         userOffers={myOffers}

@@ -35,6 +35,7 @@ import { getConversations, Conversation, subscribeToConversations } from "../ser
 interface SidebarProps {
   mode: AppMode;
   isOpen: boolean;
+  onClose?: () => void;
   userRequests: Request[];
   allRequests?: Request[];
   userOffers: Offer[];
@@ -70,6 +71,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   mode,
   isOpen,
+  onClose,
   userRequests,
   allRequests = [],
   userOffers,
@@ -343,31 +345,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const requestsConversationsRef = useRef<HTMLDivElement>(null);
   const offersConversationsRef = useRef<HTMLDivElement>(null);
 
-  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
+  // Swipe to close sidebar state
+  const [sidebarSwipeStart, setSidebarSwipeStart] = useState<{ x: number; y: number } | null>(null);
+  const [sidebarSwipeOffset, setSidebarSwipeOffset] = useState(0);
+  const sidebarRef = useRef<HTMLElement>(null);
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
-  };
+  const handleSidebarSwipeStart = useCallback((e: React.TouchEvent) => {
+    setSidebarSwipeStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+    setSidebarSwipeOffset(0);
+  }, []);
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStart) return;
-    const touchEnd = { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
-    const dx = touchEnd.x - touchStart.x;
-    const dy = touchEnd.y - touchStart.y;
-    if (Math.abs(dy) > Math.abs(dx)) { setTouchStart(null); return; }
-    const minSwipeDistance = 60;
-    if (Math.abs(dx) > minSwipeDistance) {
-      if (dx > 0) {
-        if (mode === "requests" && reqFilter === "active") setReqFilter("completed");
-        if (mode === "offers" && offerFilter === "all") setOfferFilter("accepted");
-      }
-      if (dx < 0) {
-        if (mode === "requests" && reqFilter === "completed") setReqFilter("active");
-        if (mode === "offers" && offerFilter === "accepted") setOfferFilter("all");
-      }
+  const handleSidebarSwipeMove = useCallback((e: React.TouchEvent) => {
+    if (!sidebarSwipeStart) return;
+    const currentX = e.touches[0].clientX;
+    const currentY = e.touches[0].clientY;
+    const dx = currentX - sidebarSwipeStart.x;
+    const dy = currentY - sidebarSwipeStart.y;
+    
+    // Only handle horizontal swipes to the right
+    if (Math.abs(dx) > Math.abs(dy) && dx > 0) {
+      // Prevent default to avoid scrolling while swiping
+      e.preventDefault();
+      setSidebarSwipeOffset(Math.min(dx, sidebarWidth));
     }
-    setTouchStart(null);
-  };
+  }, [sidebarSwipeStart, sidebarWidth]);
+
+  const handleSidebarSwipeEnd = useCallback(() => {
+    if (sidebarSwipeOffset > 80) {
+      // Close sidebar if swiped more than 80px to the right
+      if (navigator.vibrate) navigator.vibrate(10);
+      onClose?.();
+    }
+    setSidebarSwipeStart(null);
+    setSidebarSwipeOffset(0);
+  }, [sidebarSwipeOffset, onClose]);
 
   useEffect(() => {
     if (isRequestsConversationsOpen && user?.id && !isGuest) {
@@ -499,8 +510,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside 
-      style={{ width: `${sidebarWidth}px` }}
-      className={`fixed inset-y-0 right-0 z-[90] bg-card border-l border-border md:translate-x-0 md:static md:block shadow-2xl md:shadow-none flex flex-col transition-transform duration-300 ease-out pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${isOpen ? "translate-x-0" : "translate-x-full"} ${isSidebarResizing ? "transition-none" : ""}`}
+      ref={sidebarRef}
+      style={{ 
+        width: `${sidebarWidth}px`,
+        transform: sidebarSwipeOffset > 0 ? `translateX(${sidebarSwipeOffset}px)` : undefined
+      }}
+      className={`fixed inset-y-0 right-0 z-[90] bg-card border-l border-border md:translate-x-0 md:static md:block shadow-2xl md:shadow-none flex flex-col transition-transform duration-300 ease-out pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${isOpen ? "translate-x-0" : "translate-x-full"} ${isSidebarResizing ? "transition-none" : ""} ${sidebarSwipeOffset > 0 ? "transition-none" : ""}`}
+      onTouchStart={handleSidebarSwipeStart}
+      onTouchMove={handleSidebarSwipeMove}
+      onTouchEnd={handleSidebarSwipeEnd}
     >
       {/* Resize Handle - Left side */}
       <div
@@ -531,6 +549,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Top Section - User Profile - Reduced height and simplified styling */}
       <div className="h-12 px-4 flex items-center bg-card shrink-0 md:border-b-0">
         <div className="flex items-center gap-2.5 w-full">
+          {/* Language & Theme buttons - left side */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onOpenLanguagePopup && (
+              <motion.button 
+                onClick={onOpenLanguagePopup} 
+                whileHover={{ scale: 1.05, y: -1 }} 
+                whileTap={{ scale: 0.95 }} 
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-card border border-border shadow-sm text-muted-foreground hover:text-primary hover:border-primary/30 transition-all duration-200 group" 
+                title="تغيير اللغة"
+              >
+                <Languages size={18} strokeWidth={2} className="group-hover:scale-110 transition-transform" />
+              </motion.button>
+            )}
+            {toggleTheme && (
+              <motion.button 
+                onClick={() => { if (navigator.vibrate) navigator.vibrate(15); toggleTheme(); }} 
+                whileHover={{ scale: 1.05, y: -1 }} 
+                whileTap={{ scale: 0.95 }} 
+                className={`w-9 h-9 flex items-center justify-center rounded-xl border shadow-sm transition-all duration-200 group ${isDarkMode ? 'bg-card border-border text-amber-500 hover:border-amber-500/30' : 'bg-card border-border text-indigo-500 hover:border-indigo-500/30'}`}
+                title={isDarkMode ? "الوضع الفاتح" : "الوضع الداكن"}
+              >
+                {isDarkMode ? <Sun size={18} strokeWidth={2} className="group-hover:scale-110 transition-transform" /> : <Moon size={18} strokeWidth={2} className="group-hover:scale-110 transition-transform" />}
+              </motion.button>
+            )}
+          </div>
           <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center overflow-hidden border border-border shrink-0">
             {user?.avatar_url ? <img src={user.avatar_url} alt="User" className="w-full h-full object-cover" /> : isGuest ? <User size={18} className="text-muted-foreground" /> : <span className="text-sm font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>}
           </div>
@@ -571,39 +614,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      <div className="px-0 pt-0 shrink-0 relative z-0 bg-transparent">
-        {/* Mode Switcher */}
-        <div className="flex bg-secondary/30 rounded-2xl p-1 border border-border/30 relative min-w-[200px]">
-          <button onClick={() => { 
-            if (navigator.vibrate) navigator.vibrate(15); onNavigate("requests-mode"); 
-          }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${mode === "requests" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>
-            {mode === "requests" && (
-              <motion.div 
-                layoutId="active-sidebar-tab"
-                className="absolute inset-0 rounded-xl bg-primary shadow-lg z-0"
-                transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
-              />
-            )}
-            <span className="relative z-10">طلباتي</span>
-            <span className={`relative z-10 inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "requests" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userRequests.length}</span>
-          </button>
-          <button onClick={() => { 
-            if (navigator.vibrate) navigator.vibrate(15); onNavigate("offers-mode"); 
-          }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${mode === "offers" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>
-            {mode === "offers" && (
-              <motion.div 
-                layoutId="active-sidebar-tab"
-                className="absolute inset-0 rounded-xl bg-primary shadow-lg z-0"
-                transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
-              />
-            )}
-            <span className="relative z-10">عروضي</span>
-            <span className={`relative z-10 inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "offers" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userOffers.length}</span>
-          </button>
-        </div>
-      </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar px-2 touch-pan-y relative z-10" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} style={{ paddingTop: '10px' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar px-2 touch-pan-y relative z-10 pt-2" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         {mode === "requests" ? (
           <>
             {/* Create Request Button - Between switch and dropdown */}
@@ -835,6 +847,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
+
+        {/* Mode Switcher - moved below conversations */}
+        <div className="px-2 py-2 border-t border-border bg-card z-20 shrink-0">
+          <div className="flex bg-secondary/30 rounded-2xl p-1 border border-border/30 relative min-w-[200px]">
+            <button onClick={() => { 
+              if (navigator.vibrate) navigator.vibrate(15); onNavigate("requests-mode"); 
+            }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${mode === "requests" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>
+              {mode === "requests" && (
+                <motion.div 
+                  layoutId="active-sidebar-tab"
+                  className="absolute inset-0 rounded-xl bg-primary shadow-lg z-0"
+                  transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
+                />
+              )}
+              <span className="relative z-10">طلباتي</span>
+              <span className={`relative z-10 inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "requests" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userRequests.length}</span>
+            </button>
+            <button onClick={() => { 
+              if (navigator.vibrate) navigator.vibrate(15); onNavigate("offers-mode"); 
+            }} className={`flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-200 relative flex items-center justify-center gap-2 ${mode === "offers" ? "text-white" : "text-muted-foreground hover:text-foreground"}`}>
+              {mode === "offers" && (
+                <motion.div 
+                  layoutId="active-sidebar-tab"
+                  className="absolute inset-0 rounded-xl bg-primary shadow-lg z-0"
+                  transition={{ type: "spring", stiffness: 500, damping: 35, mass: 0.5 }}
+                />
+              )}
+              <span className="relative z-10">عروضي</span>
+              <span className={`relative z-10 inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-colors ${mode === "offers" ? "bg-white/20 text-white" : "bg-primary/10 text-primary"}`}>{userOffers.length}</span>
+            </button>
+          </div>
+        </div>
 
         <div className="p-4 border-t border-border bg-card z-20 shrink-0">
           <div className="flex items-center gap-3 w-full">
