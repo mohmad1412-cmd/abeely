@@ -461,8 +461,52 @@ const App: React.FC = () => {
     
     const initializeAuth = async () => {
       try {
+        // تحقق أولاً إذا كان هذا OAuth callback
+        const isOAuthCallback = window.location.search.includes("code=") || 
+                                window.location.hash.includes("access_token") ||
+                                window.location.hash.includes("error");
+        
+        if (isOAuthCallback) {
+          console.log("🔐 OAuth callback detected, waiting for Supabase to process...");
+          // انتظر أطول للسماح لـ Supabase بمعالجة OAuth callback
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // حاول الحصول على الجلسة من الـ URL
+          const { data, error } = await supabase.auth.getSession();
+          
+          if (error) {
+            console.error("❌ OAuth getSession error:", error);
+          }
+          
+          if (data?.session?.user && isMounted) {
+            console.log("✅ OAuth session found:", data.session.user.email);
+            
+            // تحميل أو إنشاء الـ profile
+            let profile = await getCurrentUser();
+            
+            // إذا لم يوجد profile، انتظر قليلاً (قد يكون الـ trigger يعمل)
+            if (!profile) {
+              console.log("⏳ Profile not found, waiting for trigger...");
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              profile = await getCurrentUser();
+            }
+            
+            if (profile && isMounted) {
+              setUser(profile);
+            }
+            
+            setIsGuest(false);
+            localStorage.removeItem("abeely_guest_mode");
+            setAppView("main");
+            setAuthLoading(false);
+            
+            // تنظيف URL
+            window.history.replaceState({}, document.title, window.location.pathname || "/");
+            return;
+          }
+        }
+        
         // انتظر قليلاً للسماح لـ Supabase بمعالجة أي OAuth callback
-        // هذا ضروري لأن getSession قد يُستدعى قبل أن يتم معالجة الـ URL
         await new Promise(resolve => setTimeout(resolve, 100));
         
         // تحقق من وجود session
@@ -527,12 +571,23 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("🔐 Auth state changed:", event, session?.user?.email);
       
-      if (event === "SIGNED_IN" && session?.user && isMounted) {
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user && isMounted) {
         console.log("✅ User signed in:", session.user.email);
-        const profile = await getCurrentUser();
+        
+        // تحميل أو انتظار إنشاء الـ profile
+        let profile = await getCurrentUser();
+        
+        // إذا لم يوجد profile، انتظر قليلاً (قد يكون الـ trigger يعمل)
+        if (!profile && isMounted) {
+          console.log("⏳ Profile not found, waiting for trigger...");
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          profile = await getCurrentUser();
+        }
+        
         if (profile && isMounted) {
           setUser(profile);
         }
+        
         setIsGuest(false);
         localStorage.removeItem("abeely_guest_mode");
         setAppView("main");
