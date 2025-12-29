@@ -16,6 +16,7 @@ import { SplashScreen } from "./components/SplashScreen";
 import { AuthPage } from "./components/AuthPage";
 import { Messages } from "./components/Messages";
 import { CreateRequestV2 } from "./components/CreateRequestV2";
+import { GlobalAIOrb } from "./components/GlobalAIOrb";
 
 
 // Types & Data
@@ -83,6 +84,7 @@ const App: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isProcessingOAuth, setIsProcessingOAuth] = useState(false);
 
   // ==========================================
   // Global State
@@ -461,49 +463,85 @@ const App: React.FC = () => {
     
     const initializeAuth = async () => {
       try {
-        // تحقق أولاً إذا كان هذا OAuth callback
-        const isOAuthCallback = window.location.search.includes("code=") || 
-                                window.location.hash.includes("access_token") ||
-                                window.location.hash.includes("error");
+        // تحقق أولاً إذا كان هذا OAuth callback مع PKCE code
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const hasAccessToken = window.location.hash.includes("access_token");
+        const hasError = window.location.hash.includes("error") || urlParams.get('error');
         
-        if (isOAuthCallback) {
-          console.log("🔐 OAuth callback detected, waiting for Supabase to process...");
-          // انتظر أطول للسماح لـ Supabase بمعالجة OAuth callback
-          await new Promise(resolve => setTimeout(resolve, 500));
+        if (code || hasAccessToken) {
+          console.log("🔐 OAuth callback detected:", code ? "PKCE code" : "access_token");
+          setIsProcessingOAuth(true);
           
-          // حاول الحصول على الجلسة من الـ URL
-          const { data, error } = await supabase.auth.getSession();
-          
-          if (error) {
-            console.error("❌ OAuth getSession error:", error);
+          // إذا كان هناك code (PKCE flow)، استبدله بـ session
+          if (code) {
+            console.log("🔄 Exchanging PKCE code for session...");
+            const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+            
+            if (exchangeError) {
+              console.error("❌ PKCE exchange error:", exchangeError);
+              // نظف URL وأعد المحاولة
+              window.history.replaceState({}, document.title, window.location.pathname || "/");
+              setIsProcessingOAuth(false);
+              // سيتم التعامل مع الـ auth عبر onAuthStateChange
+            } else if (exchangeData?.session?.user && isMounted) {
+              console.log("✅ PKCE session obtained:", exchangeData.session.user.email);
+              
+              // تحميل أو إنشاء الـ profile
+              let profile = await getCurrentUser();
+              
+              if (!profile) {
+                console.log("⏳ Profile not found, waiting for trigger...");
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                profile = await getCurrentUser();
+              }
+              
+              if (profile && isMounted) {
+                setUser(profile);
+              }
+              
+              setIsGuest(false);
+              localStorage.removeItem("abeely_guest_mode");
+              setIsProcessingOAuth(false);
+              setAppView("main");
+              setAuthLoading(false);
+              
+              // تنظيف URL
+              window.history.replaceState({}, document.title, window.location.pathname || "/");
+              return;
+            }
+          } else if (hasAccessToken) {
+            // Implicit flow (hash contains access_token)
+            // Supabase detectSessionInUrl سيتعامل معه تلقائياً
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const { data } = await supabase.auth.getSession();
+            
+            if (data?.session?.user && isMounted) {
+              let profile = await getCurrentUser();
+              if (!profile) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                profile = await getCurrentUser();
+              }
+              if (profile && isMounted) setUser(profile);
+              
+              setIsGuest(false);
+              localStorage.removeItem("abeely_guest_mode");
+              setIsProcessingOAuth(false);
+              setAppView("main");
+              setAuthLoading(false);
+              window.history.replaceState({}, document.title, window.location.pathname || "/");
+              return;
+            }
           }
           
-          if (data?.session?.user && isMounted) {
-            console.log("✅ OAuth session found:", data.session.user.email);
-            
-            // تحميل أو إنشاء الـ profile
-            let profile = await getCurrentUser();
-            
-            // إذا لم يوجد profile، انتظر قليلاً (قد يكون الـ trigger يعمل)
-            if (!profile) {
-              console.log("⏳ Profile not found, waiting for trigger...");
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              profile = await getCurrentUser();
-            }
-            
-            if (profile && isMounted) {
-              setUser(profile);
-            }
-            
-            setIsGuest(false);
-            localStorage.removeItem("abeely_guest_mode");
-            setAppView("main");
-            setAuthLoading(false);
-            
-            // تنظيف URL
-            window.history.replaceState({}, document.title, window.location.pathname || "/");
-            return;
-          }
+          // تنظيف URL إذا لم ننجح
+          window.history.replaceState({}, document.title, window.location.pathname || "/");
+          setIsProcessingOAuth(false);
+        }
+        
+        if (hasError) {
+          console.error("❌ OAuth error in URL");
+          window.history.replaceState({}, document.title, window.location.pathname || "/");
         }
         
         // انتظر قليلاً للسماح لـ Supabase بمعالجة أي OAuth callback
@@ -560,10 +598,14 @@ const App: React.FC = () => {
       } catch (err) {
         console.error("Auth init error:", err);
         if (isMounted) {
+          setIsProcessingOAuth(false);
           setAppView("auth");
         }
       } finally {
-        if (isMounted) setAuthLoading(false);
+        if (isMounted) {
+          setAuthLoading(false);
+          setIsProcessingOAuth(false);
+        }
       }
     };
 
@@ -584,19 +626,20 @@ const App: React.FC = () => {
           profile = await getCurrentUser();
         }
         
-        if (profile && isMounted) {
-          setUser(profile);
-        }
-        
-        setIsGuest(false);
-        localStorage.removeItem("abeely_guest_mode");
-        setAppView("main");
-        setAuthLoading(false);
-        
-        // تنظيف URL
-        if (window.location.search.includes("code=") || window.location.hash.includes("access_token")) {
-          window.history.replaceState({}, document.title, window.location.pathname || "/");
-        }
+          if (profile && isMounted) {
+            setUser(profile);
+          }
+          
+          setIsGuest(false);
+          localStorage.removeItem("abeely_guest_mode");
+          setIsProcessingOAuth(false);
+          setAppView("main");
+          setAuthLoading(false);
+          
+          // تنظيف URL
+          if (window.location.search.includes("code=") || window.location.hash.includes("access_token")) {
+            window.history.replaceState({}, document.title, window.location.pathname || "/");
+          }
       } else if (event === "TOKEN_REFRESHED" && session?.user && isMounted) {
         // تحديث الـ profile فقط
         const profile = await getCurrentUser();
@@ -622,8 +665,9 @@ const App: React.FC = () => {
   // Splash Screen Complete Handler
   // ==========================================
   const handleSplashComplete = useCallback(() => {
-    if (authLoading) {
-      // Still loading auth, wait
+    // إذا كنا نعالج OAuth callback، لا تنتقل لـ auth
+    if (authLoading || isProcessingOAuth) {
+      console.log("⏳ Splash complete but still loading auth or processing OAuth...");
       return;
     }
 
@@ -634,7 +678,7 @@ const App: React.FC = () => {
     } else {
       setAppView("auth");
     }
-  }, [authLoading, user, isGuest]);
+  }, [authLoading, user, isGuest, isProcessingOAuth]);
 
   // ==========================================
   // Connection Retry Handler
@@ -2031,6 +2075,14 @@ const App: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Global AI Orb (Add Button) */}
+      <GlobalAIOrb
+        currentView={view}
+        onNavigate={() => {
+          handleNavigate("create-request");
+        }}
+      />
     </div>
   );
 };
