@@ -90,7 +90,42 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
     
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+    // حاول جلب الـ profile
+    let { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    // إذا لم يوجد profile، أنشئ واحداً سريعاً
+    if ((!profile || error) && user.id) {
+      const displayName =
+        (user.user_metadata?.full_name as string | undefined) ||
+        (user.user_metadata?.name as string | undefined) ||
+        (user.email ? user.email.split('@')[0] : 'مستخدم جديد');
+
+      const { data: upserted, error: upsertError } = await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          phone: user.phone ?? null,
+          email: user.email ?? null,
+          display_name: displayName,
+          role: 'user',
+          is_guest: false,
+          is_verified: !!(user.phone || user.email),
+        })
+        .select()
+        .single();
+
+      if (upsertError) {
+        console.error('Error creating profile:', upsertError);
+        return null;
+      }
+
+      profile = upserted as any;
+    }
+
     return profile as UserProfile;
   } catch (err) {
     console.error('Error getting current user:', err);
