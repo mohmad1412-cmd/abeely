@@ -1,11 +1,7 @@
 import React, { useState } from 'react';
 import { Review } from '../types';
-import { StarRating } from './ui/StarRating';
 import { Badge } from './ui/Badge';
-import { MapPin, Calendar, Briefcase, Award, CheckCircle, Clock, DollarSign } from 'lucide-react';
-import { format } from 'date-fns';
-import { ar } from 'date-fns/locale';
-import { Button } from './ui/Button';
+import { Calendar, Briefcase, Award, CheckCircle, Clock, DollarSign } from 'lucide-react';
 import { UnifiedHeader } from './ui/UnifiedHeader';
 
 interface ProfileProps {
@@ -116,17 +112,9 @@ export const Profile: React.FC<ProfileProps> = ({
                     {profileRole === 'requester' ? 'صاحب مشاريع ورائد أعمال' : 'مطور ويب وخبير تقني شامل'}
                   </p>
                   <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
-                    <Badge variant="outline"><MapPin size={12} className="ml-1"/> الرياض، السعودية</Badge>
                     <Badge variant="outline"><Calendar size={12} className="ml-1"/> عضو منذ 2023</Badge>
                     {profileRole === 'provider' && <Badge variant="success"><CheckCircle size={12} className="ml-1"/> هوية موثقة</Badge>}
                   </div>
-                </div>
-                <div className="flex flex-col items-center bg-background/50 p-3 rounded-lg border border-border backdrop-blur-sm">
-                  <span className="text-xs text-muted-foreground mb-1">التقييم العام</span>
-                  <StarRating rating={userRating} size={20} className="mb-1" />
-                  <span className="text-[11px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full mt-1">
-                    {userReviews.length} مراجعة
-                  </span>
                 </div>
               </div>
               
@@ -162,45 +150,6 @@ export const Profile: React.FC<ProfileProps> = ({
             </div>
           </div>
 
-          {/* Reviews Section */}
-          <div>
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              التقييمات والمراجعات
-              <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-primary/10 text-primary px-1.5 text-[11px] font-bold">
-                {userReviews.length}
-              </span>
-            </h2>
-            
-            <div className="grid gap-4">
-              {userReviews.length === 0 ? (
-                <div className="text-center p-8 bg-secondary/20 rounded-xl border border-dashed">
-                  <p className="text-muted-foreground">لا توجد تقييمات حتى الآن</p>
-                </div>
-              ) : (
-                userReviews.map(review => (
-                  <div key={review.id} className="bg-card p-5 rounded-xl border border-border hover:shadow-sm transition-shadow">
-                    <div className="flex justify-between items-start mb-3">
-                       <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center font-bold text-muted-foreground">
-                            {review.authorName[0]}
-                          </div>
-                          <div>
-                            <div className="font-bold text-sm">{review.authorName}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {format(review.date, 'PPP', { locale: ar })}
-                            </div>
-                          </div>
-                       </div>
-                       <StarRating rating={review.rating} size={14} />
-                    </div>
-                    <p className="text-sm text-foreground/90 leading-relaxed bg-secondary/20 p-3 rounded-lg">
-                      "{review.comment}"
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
         </div>
       </div>
     </div>
