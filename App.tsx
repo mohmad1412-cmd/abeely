@@ -44,6 +44,7 @@ import {
   archiveOffer,
   archiveRequest,
   checkSupabaseConnection,
+  createRequestFromChat,
   fetchArchivedOffers,
   fetchArchivedRequests,
   fetchMyOffers,
@@ -73,6 +74,94 @@ import { App as CapacitorApp } from "@capacitor/app";
 
 // Auth Views
 type AppView = "splash" | "auth" | "main" | "connection-error";
+
+// Mobile Overlay Component with Swipe Support
+const MobileOverlay: React.FC<{ 
+  onClose: () => void; 
+  sidebarWidth: number;
+}> = ({ onClose, sidebarWidth }) => {
+  const startXRef = useRef<number | null>(null);
+  const startYRef = useRef<number | null>(null);
+  const isHorizontalRef = useRef<boolean | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const velocityRef = useRef(0);
+  const lastXRef = useRef(0);
+  const lastTimeRef = useRef(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    startXRef.current = touch.clientX;
+    startYRef.current = touch.clientY;
+    lastXRef.current = touch.clientX;
+    lastTimeRef.current = Date.now();
+    isHorizontalRef.current = null;
+    velocityRef.current = 0;
+    setSwipeOffset(0);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (startXRef.current === null || startYRef.current === null) return;
+    
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - startXRef.current;
+    const deltaY = touch.clientY - startYRef.current;
+    
+    // حساب السرعة
+    const now = Date.now();
+    const timeDelta = now - lastTimeRef.current;
+    if (timeDelta > 0) {
+      velocityRef.current = (touch.clientX - lastXRef.current) / timeDelta;
+    }
+    lastXRef.current = touch.clientX;
+    lastTimeRef.current = now;
+    
+    // تحديد اتجاه السحب
+    if (isHorizontalRef.current === null && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+      isHorizontalRef.current = Math.abs(deltaX) > Math.abs(deltaY);
+    }
+    
+    if (!isHorizontalRef.current) return;
+    
+    // السحب لليسار فقط للإغلاق
+    if (deltaX < 0) {
+      const offset = Math.min(Math.abs(deltaX), sidebarWidth);
+      setSwipeOffset(offset);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    const threshold = sidebarWidth * 0.25;
+    const velocityThreshold = 0.3;
+    
+    if (swipeOffset > threshold || velocityRef.current < -velocityThreshold) {
+      if (navigator.vibrate) navigator.vibrate(10);
+      onClose();
+    }
+    
+    startXRef.current = null;
+    startYRef.current = null;
+    isHorizontalRef.current = null;
+    setSwipeOffset(0);
+  };
+
+  const opacity = Math.max(0.5 - (swipeOffset / sidebarWidth * 0.5), 0);
+  const blur = Math.max(4 - (swipeOffset / sidebarWidth * 4), 0);
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] md:hidden"
+      style={{
+        background: `rgba(0, 0, 0, ${opacity})`,
+        backdropFilter: `blur(${blur}px)`,
+        transition: swipeOffset === 0 ? 'all 0.3s cubic-bezier(0.32, 0.72, 0, 1)' : 'none',
+      }}
+      onClick={onClose}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    />
+  );
+};
 
 const App: React.FC = () => {
   // ==========================================
@@ -1695,6 +1784,13 @@ const App: React.FC = () => {
                 onClearAll={handleClearNotifications}
                 onSignOut={handleSignOut}
                 onMarkRequestAsRead={handleRequestRead}
+                onOfferCreated={async () => {
+                  // Reload user's offers after creating a new one
+                  if (user?.id) {
+                    const offers = await fetchMyOffers(user.id);
+                    setMyOffers(offers.filter((o) => o.status !== "archived"));
+                  }
+                }}
               />
             </div>
           )
@@ -1915,11 +2011,11 @@ const App: React.FC = () => {
   // Main App
   return (
     <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
-      {/* Mobile Overlay */}
+      {/* Mobile Overlay with Swipe Support */}
       {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-[80] md:hidden backdrop-blur-sm transition-opacity"
-          onClick={() => setIsSidebarOpen(false)}
+        <MobileOverlay 
+          onClose={() => setIsSidebarOpen(false)} 
+          sidebarWidth={340}
         />
       )}
 

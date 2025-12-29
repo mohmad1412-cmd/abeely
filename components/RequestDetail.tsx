@@ -120,6 +120,7 @@ interface RequestDetailProps {
   onClearAll: () => void;
   onSignOut: () => void;
   onMarkRequestAsRead?: (id: string) => void;
+  onOfferCreated?: () => void; // Callback when a new offer is successfully created
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
@@ -139,7 +140,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     onMarkAsRead,
     onClearAll,
     onSignOut,
-    onMarkRequestAsRead
+    onMarkRequestAsRead,
+    onOfferCreated
   },
 ) => {
   const [negotiationOpen, setNegotiationOpen] = useState(false);
@@ -2400,6 +2402,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                 }
                                 
                                 setOfferSubmitted(true);
+                                
+                                // Notify parent that offer was created (to update myOffers state)
+                                if (onOfferCreated) {
+                                  onOfferCreated();
+                                }
                                 
                                 // Reset form
                                 setOfferPrice("");

@@ -515,7 +515,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         width: `${sidebarWidth}px`,
         transform: sidebarSwipeOffset > 0 ? `translateX(${sidebarSwipeOffset}px)` : undefined
       }}
-      className={`fixed inset-y-0 right-0 z-[90] bg-card border-l border-border md:translate-x-0 md:static md:block shadow-2xl md:shadow-none flex flex-col transition-transform duration-300 ease-out pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${isOpen ? "translate-x-0" : "translate-x-full"} ${isSidebarResizing ? "transition-none" : ""} ${sidebarSwipeOffset > 0 ? "transition-none" : ""}`}
+      className={`fixed inset-y-0 right-0 z-[90] bg-card border-l border-border md:translate-x-0 md:static md:block shadow-2xl md:shadow-none flex flex-col pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${isOpen ? "translate-x-0" : "translate-x-full"} ${isSidebarResizing ? "transition-none" : ""} ${sidebarSwipeOffset > 0 ? "transition-none" : "transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"}`}
       onTouchStart={handleSidebarSwipeStart}
       onTouchMove={handleSidebarSwipeMove}
       onTouchEnd={handleSidebarSwipeEnd}

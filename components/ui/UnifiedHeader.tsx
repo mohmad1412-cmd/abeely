@@ -344,13 +344,13 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   whileTap={{ scale: 0.92 }}
                 >
                   {/* Outer Glow - Same as ball */}
-                  <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-primary/30 via-teal-500/20 to-primary/30 blur-md group-hover:blur-lg transition-all duration-500 animate-pulse" />
+                  <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-primary/30 via-teal-500/20 to-primary/30 blur-md group-hover:blur-lg transition-all duration-500 animate-pulse pointer-events-none" />
                   
                   {/* Main Button Body - Same gradient as ball */}
-                  <div className="absolute inset-0 rounded-full bg-gradient-to-br from-primary via-primary to-teal-600 shadow-[0_8px_25px_rgba(30,150,140,0.4),0_4px_12px_rgba(30,150,140,0.3)] group-hover:shadow-[0_10px_35px_rgba(30,150,140,0.5),0_5px_18px_rgba(30,150,140,0.4)] transition-all duration-500" />
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-br from-primary via-primary to-teal-600 shadow-[0_8px_25px_rgba(30,150,140,0.4),0_4px_12px_rgba(30,150,140,0.3)] group-hover:shadow-[0_10px_35px_rgba(30,150,140,0.5),0_5px_18px_rgba(30,150,140,0.4)] transition-all duration-500 pointer-events-none" />
                   
                   {/* Inner shine - Same as ball */}
-                  <div className="absolute inset-0 rounded-full overflow-hidden">
+                  <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
                     <div className="absolute inset-0 bg-gradient-to-b from-white/25 via-transparent to-transparent" />
                   </div>
 
@@ -377,8 +377,8 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   </motion.div>
 
                   {/* Sparkles matching ball halo */}
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-white/50 rounded-full blur-[2px] animate-pulse" />
-                  <div className="absolute -bottom-1 -left-1 w-1.5 h-1.5 bg-teal-300/40 rounded-full blur-[1px] animate-bounce" />
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-white/50 rounded-full blur-[2px] animate-pulse pointer-events-none" />
+                  <div className="absolute -bottom-1 -left-1 w-1.5 h-1.5 bg-teal-300/40 rounded-full blur-[1px] animate-bounce pointer-events-none" />
                 </motion.button>
               </div>
             )}
@@ -418,11 +418,11 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                 
                 {/* Outer Glow - Only when canSubmit */}
                 {canSubmit && (
-                  <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-primary/30 via-teal-500/20 to-primary/30 blur-md group-hover:blur-lg transition-all duration-500 animate-pulse" />
+                  <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-primary/30 via-teal-500/20 to-primary/30 blur-md group-hover:blur-lg transition-all duration-500 animate-pulse pointer-events-none" />
                 )}
                 
                 {/* Main Button Body */}
-                <div className={`absolute inset-0 rounded-full transition-all duration-500 ${
+                <div className={`absolute inset-0 rounded-full transition-all duration-500 pointer-events-none ${
                   canSubmit 
                     ? "bg-gradient-to-br from-primary via-primary to-teal-600 shadow-[0_8px_25px_rgba(30,150,140,0.4),0_4px_12px_rgba(30,150,140,0.3)] group-hover:shadow-[0_10px_35px_rgba(30,150,140,0.5),0_5px_18px_rgba(30,150,140,0.4)]"
                     : "bg-muted"
@@ -430,7 +430,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                 
                 {/* Inner shine - Only when canSubmit */}
                 {canSubmit && (
-                  <div className="absolute inset-0 rounded-full overflow-hidden">
+                  <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
                     <div className="absolute inset-0 bg-gradient-to-b from-white/25 via-transparent to-transparent" />
                   </div>
                 )}
@@ -463,8 +463,8 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                 {/* Sparkles - Only when canSubmit */}
                 {canSubmit && (
                   <>
-                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-white/50 rounded-full blur-[2px] animate-pulse" />
-                    <div className="absolute -bottom-1 -left-1 w-1.5 h-1.5 bg-teal-300/40 rounded-full blur-[1px] animate-bounce" />
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-white/50 rounded-full blur-[2px] animate-pulse pointer-events-none" />
+                    <div className="absolute -bottom-1 -left-1 w-1.5 h-1.5 bg-teal-300/40 rounded-full blur-[1px] animate-bounce pointer-events-none" />
                   </>
                 )}
               </motion.button>
