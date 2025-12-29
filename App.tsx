@@ -498,25 +498,22 @@ const App: React.FC = () => {
             } else if (exchangeData?.session?.user && isMounted) {
               console.log("✅ PKCE session obtained:", exchangeData.session.user.email);
               
-              // تحميل أو إنشاء الـ profile
-              let profile = await getCurrentUser();
-              
-              if (!profile) {
-                console.log("⏳ Profile not found, waiting for trigger...");
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                profile = await getCurrentUser();
-              }
-              
-              if (profile && isMounted) {
-                setUser(profile);
-              }
-              
+              // انتقل لـ main فوراً
               setIsGuest(false);
               localStorage.removeItem("abeely_guest_mode");
               setIsProcessingOAuth(false);
               setAppView("main");
               setAuthLoading(false);
               sessionStorage.removeItem(codeProcessedKey);
+              
+              // تحميل الـ profile في الخلفية
+              getCurrentUser().then(profile => {
+                if (profile && isMounted) {
+                  console.log("👤 Profile loaded:", profile.display_name);
+                  setUser(profile);
+                }
+              }).catch(err => console.error("Profile error:", err));
+              
               return;
             }
           } else if (hasAccessToken) {
@@ -628,20 +625,8 @@ const App: React.FC = () => {
         // تنظيف sessionStorage
         sessionStorage.removeItem('oauth_code_processed');
         
-        // تحميل أو انتظار إنشاء الـ profile
-        let profile = await getCurrentUser();
-        
-        // إذا لم يوجد profile، انتظر قليلاً (قد يكون الـ trigger يعمل)
-        if (!profile && isMounted) {
-          console.log("⏳ Profile not found, waiting for trigger...");
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          profile = await getCurrentUser();
-        }
-        
-        if (profile && isMounted) {
-          setUser(profile);
-        }
-        
+        // انتقل لـ main فوراً - لا تنتظر profile
+        console.log("🚀 Transitioning to main view immediately...");
         setIsGuest(false);
         localStorage.removeItem("abeely_guest_mode");
         setIsProcessingOAuth(false);
@@ -652,6 +637,16 @@ const App: React.FC = () => {
         if (window.location.search.includes("code=") || window.location.hash.includes("access_token")) {
           window.history.replaceState({}, document.title, window.location.pathname || "/");
         }
+        
+        // تحميل الـ profile في الخلفية
+        getCurrentUser().then(profile => {
+          if (profile && isMounted) {
+            console.log("👤 Profile loaded:", profile.display_name);
+            setUser(profile);
+          }
+        }).catch(err => {
+          console.error("Profile load error:", err);
+        });
       } else if (event === "TOKEN_REFRESHED" && session?.user && isMounted) {
         // تحديث الـ profile فقط
         const profile = await getCurrentUser();
