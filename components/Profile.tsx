@@ -187,13 +187,13 @@ export const Profile: React.FC<ProfileProps> = ({
               )}
             </div>
             
-            <div className="flex-1 text-center md:text-right z-10">
+            <div className="flex-1 text-center md:text-right z-10 w-full">
               <div className="flex flex-col md:flex-row items-center md:items-start justify-between mb-2">
-                <div className="flex-1">
+                <div className="flex-1 w-full">
                   {/* Name with Edit */}
                   <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
                     {isEditingName ? (
-                      <div className="flex items-center gap-2 flex-1 max-w-md">
+                      <div className="flex items-center gap-2 flex-1 w-full">
                         <input
                           type="text"
                           value={displayName}
