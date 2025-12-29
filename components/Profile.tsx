@@ -247,7 +247,7 @@ export const Profile: React.FC<ProfileProps> = ({
               {/* Bio with Edit */}
               <div className="relative">
                 {isEditingBio ? (
-                  <div className="flex flex-col gap-2 max-w-2xl mx-auto md:mx-0">
+                  <div className="flex flex-col gap-2 w-full">
                     <textarea
                       value={bio}
                       onChange={(e) => setBio(e.target.value)}
@@ -282,7 +282,7 @@ export const Profile: React.FC<ProfileProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-start justify-center md:justify-start gap-3 max-w-2xl mx-auto md:mx-0">
+                  <div className="flex items-start justify-center md:justify-start gap-3 w-full">
                     <p className="text-sm leading-relaxed text-muted-foreground flex-1 pr-0">
                       {bio}
                     </p>
