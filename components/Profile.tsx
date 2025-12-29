@@ -135,7 +135,7 @@ export const Profile: React.FC<ProfileProps> = ({
       <div className="flex-1 overflow-y-auto no-scrollbar">
         <div className="container mx-auto max-w-4xl p-4 md:p-8">
           {/* Header Profile Card */}
-          <div className="bg-card border border-border rounded-xl p-6 shadow-sm mb-8 flex flex-col md:flex-row items-center md:items-start gap-6 relative overflow-visible">
+          <div className="bg-card border border-border rounded-xl p-6 shadow-sm mb-8 flex flex-col md:flex-row items-center md:items-start gap-6 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-l from-primary/10 to-transparent -z-0 rounded-t-xl"></div>
             
             <div className="relative w-24 h-24 md:w-32 md:h-32 shrink-0 z-10 group">
@@ -191,49 +191,63 @@ export const Profile: React.FC<ProfileProps> = ({
               <div className="flex flex-col md:flex-row items-center md:items-start justify-between mb-2">
                 <div className="flex-1 w-full">
                   {/* Name with Edit */}
-                  <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
+                  <div className="w-full mb-2">
                     {isEditingName ? (
-                      <div className="flex items-center gap-2 flex-1 w-full relative">
-                        <input
-                          type="text"
-                          value={displayName}
-                          onChange={(e) => {
-                            if (e.target.value.length <= 60) {
-                              setDisplayName(e.target.value);
-                            }
-                          }}
-                          maxLength={60}
-                          className="flex-1 text-2xl font-bold bg-background border border-border rounded-lg px-3 py-1 pr-16 focus:outline-none focus:ring-2 focus:ring-primary"
-                          autoFocus
-                        />
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
-                          <span className={displayName.length >= 50 ? 'text-orange-500 font-medium' : ''}>
-                            {displayName.length}
-                          </span>
-                          <span className="text-muted-foreground"> / 60</span>
+                      <div className="flex flex-col gap-2 w-full">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={displayName}
+                            onChange={(e) => {
+                              if (e.target.value.length <= 60) {
+                                setDisplayName(e.target.value);
+                              }
+                            }}
+                            maxLength={60}
+                            className="w-full text-2xl font-bold bg-background border border-border rounded-lg px-3 py-2 pr-20 focus:outline-none focus:ring-2 focus:ring-primary"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleSaveName();
+                              } else if (e.key === 'Escape') {
+                                setIsEditingName(false);
+                                setDisplayName('خالد عبد الله');
+                              }
+                            }}
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                            <span className={displayName.length >= 50 ? 'text-orange-500 font-medium' : ''}>
+                              {displayName.length}
+                            </span>
+                            <span className="text-muted-foreground"> / 60</span>
+                          </div>
                         </div>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                          onClick={handleSaveName}
-                          className="p-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
-                        >
-                          <Check size={18} />
-                        </motion.button>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => {
-                            setIsEditingName(false);
-                            setDisplayName('خالد عبد الله');
-                          }}
-                          className="p-1.5 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
-                        >
-                          <X size={18} />
-                        </motion.button>
+                        <div className="flex items-center justify-end gap-2">
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={handleSaveName}
+                            className="px-4 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors text-sm font-medium flex items-center gap-2"
+                          >
+                            <Check size={16} />
+                            حفظ
+                          </motion.button>
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => {
+                              setIsEditingName(false);
+                              setDisplayName('خالد عبد الله');
+                            }}
+                            className="px-4 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors text-sm font-medium flex items-center gap-2"
+                          >
+                            <X size={16} />
+                            إلغاء
+                          </motion.button>
+                        </div>
                       </div>
                     ) : (
-                      <>
+                      <div className="flex items-center justify-center md:justify-start gap-2">
                         <h1 className="text-2xl font-bold">{displayName}</h1>
                         <motion.button
                           whileHover={{ scale: 1.1 }}
@@ -244,7 +258,7 @@ export const Profile: React.FC<ProfileProps> = ({
                         >
                           <Edit2 size={18} />
                         </motion.button>
-                      </>
+                      </div>
                     )}
                   </div>
                   
