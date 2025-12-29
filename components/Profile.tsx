@@ -282,20 +282,34 @@ export const Profile: React.FC<ProfileProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-start justify-center md:justify-start gap-3 w-full">
-                    <p className="text-sm leading-relaxed text-muted-foreground flex-1 pr-0">
-                      {bio}
-                    </p>
+                  bio.trim() === '' ? (
                     <motion.button
-                      whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.9 }}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
                       onClick={() => setIsEditingBio(true)}
-                      className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-primary shrink-0 mt-0.5"
-                      title="تعديل التعريف"
+                      className="w-full text-center md:text-right py-3 px-4 rounded-lg border-2 border-dashed border-border hover:border-primary/50 bg-secondary/20 hover:bg-secondary/40 transition-all text-muted-foreground hover:text-primary"
                     >
-                      <Edit2 size={16} />
+                      <div className="flex items-center justify-center md:justify-start gap-2">
+                        <Edit2 size={18} />
+                        <span className="text-sm font-medium">أضف تعريف بنفسك</span>
+                      </div>
                     </motion.button>
-                  </div>
+                  ) : (
+                    <div className="flex items-start justify-center md:justify-start gap-3 w-full">
+                      <p className="text-sm leading-relaxed text-muted-foreground flex-1 pr-0">
+                        {bio}
+                      </p>
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => setIsEditingBio(true)}
+                        className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-primary shrink-0 mt-0.5"
+                        title="تعديل التعريف"
+                      >
+                        <Edit2 size={16} />
+                      </motion.button>
+                    </div>
+                  )
                 )}
               </div>
             </div>
