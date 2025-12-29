@@ -469,9 +469,21 @@ const App: React.FC = () => {
         const hasAccessToken = window.location.hash.includes("access_token");
         const hasError = window.location.hash.includes("error") || urlParams.get('error');
         
-        if (code || hasAccessToken) {
+        // منع معالجة الـ code أكثر من مرة
+        const codeProcessedKey = 'oauth_code_processed';
+        const alreadyProcessed = sessionStorage.getItem(codeProcessedKey) === code;
+        
+        if ((code || hasAccessToken) && !alreadyProcessed) {
           console.log("🔐 OAuth callback detected:", code ? "PKCE code" : "access_token");
           setIsProcessingOAuth(true);
+          
+          // حفظ الـ code لمنع إعادة المعالجة
+          if (code) {
+            sessionStorage.setItem(codeProcessedKey, code);
+          }
+          
+          // تنظيف URL فوراً لمنع إعادة المعالجة عند refresh
+          window.history.replaceState({}, document.title, window.location.pathname || "/");
           
           // إذا كان هناك code (PKCE flow)، استبدله بـ session
           if (code) {
@@ -480,8 +492,7 @@ const App: React.FC = () => {
             
             if (exchangeError) {
               console.error("❌ PKCE exchange error:", exchangeError);
-              // نظف URL وأعد المحاولة
-              window.history.replaceState({}, document.title, window.location.pathname || "/");
+              sessionStorage.removeItem(codeProcessedKey);
               setIsProcessingOAuth(false);
               // سيتم التعامل مع الـ auth عبر onAuthStateChange
             } else if (exchangeData?.session?.user && isMounted) {
@@ -505,14 +516,11 @@ const App: React.FC = () => {
               setIsProcessingOAuth(false);
               setAppView("main");
               setAuthLoading(false);
-              
-              // تنظيف URL
-              window.history.replaceState({}, document.title, window.location.pathname || "/");
+              sessionStorage.removeItem(codeProcessedKey);
               return;
             }
           } else if (hasAccessToken) {
             // Implicit flow (hash contains access_token)
-            // Supabase detectSessionInUrl سيتعامل معه تلقائياً
             await new Promise(resolve => setTimeout(resolve, 500));
             const { data } = await supabase.auth.getSession();
             
@@ -529,14 +537,15 @@ const App: React.FC = () => {
               setIsProcessingOAuth(false);
               setAppView("main");
               setAuthLoading(false);
-              window.history.replaceState({}, document.title, window.location.pathname || "/");
               return;
             }
           }
           
-          // تنظيف URL إذا لم ننجح
-          window.history.replaceState({}, document.title, window.location.pathname || "/");
           setIsProcessingOAuth(false);
+        } else if (alreadyProcessed) {
+          console.log("⏭️ OAuth code already processed, skipping...");
+          // الـ code تمت معالجته، انتظر الـ onAuthStateChange
+          setIsProcessingOAuth(true);
         }
         
         if (hasError) {
@@ -616,6 +625,9 @@ const App: React.FC = () => {
       if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user && isMounted) {
         console.log("✅ User signed in:", session.user.email);
         
+        // تنظيف sessionStorage
+        sessionStorage.removeItem('oauth_code_processed');
+        
         // تحميل أو انتظار إنشاء الـ profile
         let profile = await getCurrentUser();
         
@@ -626,20 +638,20 @@ const App: React.FC = () => {
           profile = await getCurrentUser();
         }
         
-          if (profile && isMounted) {
-            setUser(profile);
-          }
-          
-          setIsGuest(false);
-          localStorage.removeItem("abeely_guest_mode");
-          setIsProcessingOAuth(false);
-          setAppView("main");
-          setAuthLoading(false);
-          
-          // تنظيف URL
-          if (window.location.search.includes("code=") || window.location.hash.includes("access_token")) {
-            window.history.replaceState({}, document.title, window.location.pathname || "/");
-          }
+        if (profile && isMounted) {
+          setUser(profile);
+        }
+        
+        setIsGuest(false);
+        localStorage.removeItem("abeely_guest_mode");
+        setIsProcessingOAuth(false);
+        setAppView("main");
+        setAuthLoading(false);
+        
+        // تنظيف URL
+        if (window.location.search.includes("code=") || window.location.hash.includes("access_token")) {
+          window.history.replaceState({}, document.title, window.location.pathname || "/");
+        }
       } else if (event === "TOKEN_REFRESHED" && session?.user && isMounted) {
         // تحديث الـ profile فقط
         const profile = await getCurrentUser();
