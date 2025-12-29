@@ -546,34 +546,90 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </motion.button>
         )}
       </AnimatePresence>
+      {/* Floating Action Buttons - Outside sidebar, to the left */}
+      <div className="absolute top-4 -left-14 flex flex-col gap-2 z-50">
+        {/* Settings Button */}
+        {user && !isGuest && (
+          <motion.button 
+            initial={{ opacity: 0, x: 20, scale: 0.8 }}
+            animate={{ 
+              opacity: 1, 
+              x: 0, 
+              scale: 1,
+              y: [0, -3, 0],
+            }}
+            transition={{
+              opacity: { duration: 0.3, delay: 0.1 },
+              x: { duration: 0.4, delay: 0.1, type: "spring", stiffness: 300 },
+              scale: { duration: 0.3, delay: 0.1 },
+              y: { duration: 3, repeat: Infinity, ease: "easeInOut", delay: 0 },
+            }}
+            whileHover={{ scale: 1.15, rotate: 90 }} 
+            whileTap={{ scale: 0.9 }} 
+            onClick={() => onNavigate("settings")} 
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-card border border-border shadow-lg text-muted-foreground hover:text-primary hover:border-primary/30 hover:shadow-xl transition-all duration-200 group backdrop-blur-sm" 
+            title="الإعدادات"
+          >
+            <Settings size={18} strokeWidth={2} />
+          </motion.button>
+        )}
+        
+        {/* Theme Toggle Button */}
+        {toggleTheme && (
+          <motion.button 
+            initial={{ opacity: 0, x: 20, scale: 0.8 }}
+            animate={{ 
+              opacity: 1, 
+              x: 0, 
+              scale: 1,
+              y: [0, -4, 0],
+            }}
+            transition={{
+              opacity: { duration: 0.3, delay: 0.2 },
+              x: { duration: 0.4, delay: 0.2, type: "spring", stiffness: 300 },
+              scale: { duration: 0.3, delay: 0.2 },
+              y: { duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 },
+            }}
+            whileHover={{ scale: 1.15, rotate: 15 }} 
+            whileTap={{ scale: 0.9 }} 
+            onClick={() => { if (navigator.vibrate) navigator.vibrate(15); toggleTheme(); }} 
+            className={`w-10 h-10 flex items-center justify-center rounded-xl border shadow-lg transition-all duration-200 group backdrop-blur-sm hover:shadow-xl ${isDarkMode ? 'bg-card border-border text-amber-500 hover:border-amber-500/30' : 'bg-card border-border text-indigo-500 hover:border-indigo-500/30'}`}
+            title={isDarkMode ? "الوضع الفاتح" : "الوضع الداكن"}
+          >
+            {isDarkMode ? <Sun size={18} strokeWidth={2} /> : <Moon size={18} strokeWidth={2} />}
+          </motion.button>
+        )}
+        
+        {/* Language Button */}
+        {onOpenLanguagePopup && (
+          <motion.button 
+            initial={{ opacity: 0, x: 20, scale: 0.8 }}
+            animate={{ 
+              opacity: 1, 
+              x: 0, 
+              scale: 1,
+              y: [0, -2, 0],
+            }}
+            transition={{
+              opacity: { duration: 0.3, delay: 0.3 },
+              x: { duration: 0.4, delay: 0.3, type: "spring", stiffness: 300 },
+              scale: { duration: 0.3, delay: 0.3 },
+              y: { duration: 3.5, repeat: Infinity, ease: "easeInOut", delay: 1 },
+            }}
+            whileHover={{ scale: 1.15, rotate: -10 }} 
+            whileTap={{ scale: 0.9 }} 
+            onClick={onOpenLanguagePopup} 
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-card border border-border shadow-lg text-muted-foreground hover:text-primary hover:border-primary/30 hover:shadow-xl transition-all duration-200 group backdrop-blur-sm" 
+            title="تغيير اللغة"
+          >
+            <Languages size={18} strokeWidth={2} />
+          </motion.button>
+        )}
+      </div>
+
       {/* Top Section - User Profile - Reduced height and simplified styling */}
-      <div className="h-12 px-4 flex items-center bg-card shrink-0 md:border-b-0">
-        <div className="flex items-center gap-2.5 w-full">
-          {/* Language & Theme buttons - far left */}
-          <div className="flex items-center gap-1.5 shrink-0 order-last">
-            {onOpenLanguagePopup && (
-              <motion.button 
-                onClick={onOpenLanguagePopup} 
-                whileHover={{ scale: 1.05, y: -1 }} 
-                whileTap={{ scale: 0.95 }} 
-                className="w-9 h-9 flex items-center justify-center rounded-xl bg-card border border-border shadow-sm text-muted-foreground hover:text-primary hover:border-primary/30 transition-all duration-200 group" 
-                title="تغيير اللغة"
-              >
-                <Languages size={18} strokeWidth={2} className="group-hover:scale-110 transition-transform" />
-              </motion.button>
-            )}
-            {toggleTheme && (
-              <motion.button 
-                onClick={() => { if (navigator.vibrate) navigator.vibrate(15); toggleTheme(); }} 
-                whileHover={{ scale: 1.05, y: -1 }} 
-                whileTap={{ scale: 0.95 }} 
-                className={`w-9 h-9 flex items-center justify-center rounded-xl border shadow-sm transition-all duration-200 group ${isDarkMode ? 'bg-card border-border text-amber-500 hover:border-amber-500/30' : 'bg-card border-border text-indigo-500 hover:border-indigo-500/30'}`}
-                title={isDarkMode ? "الوضع الفاتح" : "الوضع الداكن"}
-              >
-                {isDarkMode ? <Sun size={18} strokeWidth={2} className="group-hover:scale-110 transition-transform" /> : <Moon size={18} strokeWidth={2} className="group-hover:scale-110 transition-transform" />}
-              </motion.button>
-            )}
-          </div>
+      <div className="h-12 px-3 flex items-center bg-card shrink-0 md:border-b-0">
+        <div className="flex items-center gap-2 w-full">
           <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center overflow-hidden border border-border shrink-0">
             {user?.avatar_url ? <img src={user.avatar_url} alt="User" className="w-full h-full object-cover" /> : isGuest ? <User size={18} className="text-muted-foreground" /> : <span className="text-sm font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>}
           </div>
@@ -598,17 +654,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               title="تسجيل الدخول"
             >
               <LogIn size={18} strokeWidth={2} className="group-hover:scale-110 transition-transform" />
-            </motion.button>
-          )}
-          {user && !isGuest && (
-            <motion.button 
-              whileHover={{ scale: 1.05, y: -1 }} 
-              whileTap={{ scale: 0.95 }} 
-              onClick={() => onNavigate("settings")} 
-              className="w-9 h-9 flex items-center justify-center rounded-xl bg-card border border-border shadow-sm text-muted-foreground hover:text-primary hover:border-primary/30 transition-all duration-200 shrink-0 group" 
-              title="الإعدادات"
-            >
-              <Settings size={18} strokeWidth={2} className="group-hover:rotate-90 transition-transform duration-300" />
             </motion.button>
           )}
         </div>

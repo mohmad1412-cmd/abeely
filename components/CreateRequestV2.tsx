@@ -548,17 +548,30 @@ const GlowingField: React.FC<{
 
       {/* Resize Handle for Multiline - Full width bottom edge */}
       {multiline && (
-        <div
+        <motion.div
           onMouseDown={handleResizeStart}
           onTouchStart={handleResizeStart}
           className={`absolute bottom-0 left-0 right-0 h-6 flex items-center justify-center cursor-ns-resize select-none rounded-b-2xl transition-colors ${isResizing ? 'bg-primary/10' : 'hover:bg-primary/5'}`}
           style={{ touchAction: 'none' }}
+          whileTap={{ scale: 0.98 }}
         >
-          <div className="flex flex-col gap-0.5 pointer-events-none">
-            <div className="w-10 h-0.5 rounded-full bg-primary" />
-            <div className="w-10 h-0.5 rounded-full bg-primary" />
-          </div>
-        </div>
+          <motion.div 
+            className="flex flex-col gap-0.5 pointer-events-none"
+            animate={isResizing ? { scale: 1.2, gap: '3px' } : { scale: 1, gap: '2px' }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+          >
+            <motion.div 
+              className="h-0.5 rounded-full bg-primary"
+              animate={isResizing ? { width: 48 } : { width: 40 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            />
+            <motion.div 
+              className="h-0.5 rounded-full bg-primary"
+              animate={isResizing ? { width: 48 } : { width: 40 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            />
+          </motion.div>
+        </motion.div>
       )}
     </motion.div>
   );
