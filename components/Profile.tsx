@@ -248,13 +248,26 @@ export const Profile: React.FC<ProfileProps> = ({
               <div className="relative">
                 {isEditingBio ? (
                   <div className="flex flex-col gap-2 w-full">
-                    <textarea
-                      value={bio}
-                      onChange={(e) => setBio(e.target.value)}
-                      rows={4}
-                      className="w-full text-sm leading-relaxed bg-background border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-                      autoFocus
-                    />
+                    <div className="relative">
+                      <textarea
+                        value={bio}
+                        onChange={(e) => {
+                          if (e.target.value.length <= 200) {
+                            setBio(e.target.value);
+                          }
+                        }}
+                        rows={4}
+                        maxLength={200}
+                        className="w-full text-sm leading-relaxed bg-background border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                        autoFocus
+                      />
+                      <div className="absolute bottom-2 left-3 text-xs text-muted-foreground">
+                        <span className={bio.length >= 180 ? 'text-orange-500 font-medium' : ''}>
+                          {bio.length}
+                        </span>
+                        <span className="text-muted-foreground"> / 200</span>
+                      </div>
+                    </div>
                     <div className="flex items-center justify-end gap-2">
                       <motion.button
                         whileHover={{ scale: 1.05 }}
