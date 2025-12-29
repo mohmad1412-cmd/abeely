@@ -737,30 +737,61 @@ const App: React.FC = () => {
 
   // Watch for auth loading completion after splash
   useEffect(() => {
-    if (appView === "splash" && !authLoading) {
+    if (appView === "splash" && !authLoading && !isProcessingOAuth) {
       // Minimal delay - just enough for smooth transition
       const timer = setTimeout(() => {
         handleSplashComplete();
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [authLoading, appView, handleSplashComplete]);
+  }, [authLoading, isProcessingOAuth, appView, handleSplashComplete]);
 
-  // Failsafe: Force exit splash after maximum time (3 seconds)
+  // انتقل لـ main فوراً عندما يتم تعيين user أثناء OAuth
+  useEffect(() => {
+    if (appView === "splash" && user && !authLoading) {
+      console.log("✅ User detected during splash, transitioning to main...");
+      setAppView("main");
+      // تنظيف URL
+      if (window.location.search.includes("code=")) {
+        window.history.replaceState({}, document.title, window.location.pathname || "/");
+      }
+    }
+  }, [appView, user, authLoading]);
+
+  // Failsafe: Force exit splash after maximum time (5 seconds)
+  // لكن إذا كان OAuth قيد المعالجة، انتظر أكثر
   useEffect(() => {
     if (appView !== "splash") return;
     
+    // تحقق إذا كان هناك OAuth code في URL
+    const hasOAuthCode = window.location.search.includes("code=") || 
+                         window.location.hash.includes("access_token");
+    
+    // إذا كان OAuth، انتظر وقتاً أطول (10 ثواني)
+    const timeout = hasOAuthCode ? 10000 : 5000;
+    
     const failsafeTimer = setTimeout(() => {
-      console.warn("⚠️ Splash failsafe triggered - forcing exit");
+      console.warn("⚠️ Splash failsafe triggered - forcing exit after", timeout, "ms");
       if (appView === "splash") {
         setAuthLoading(false);
-        // إذا لم يتم تحديد أي شيء بعد 3 ثواني، اذهب لصفحة تسجيل الدخول
-        setAppView("auth");
+        setIsProcessingOAuth(false);
+        // تحقق إذا هناك user الآن
+        if (user) {
+          setAppView("main");
+        } else if (isGuest) {
+          setAppView("main");
+        } else {
+          // نظف URL أولاً
+          if (window.location.search.includes("code=")) {
+            window.history.replaceState({}, document.title, window.location.pathname || "/");
+          }
+          setAppView("auth");
+        }
       }
-    }, 3000);
+    }, timeout);
 
     return () => clearTimeout(failsafeTimer);
-  }, [appView]);
+  }, [appView, user, isGuest]);
 
   // ==========================================
   // Theme Handling
