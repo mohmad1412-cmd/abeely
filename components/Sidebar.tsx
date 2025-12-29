@@ -615,7 +615,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
 
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar px-2 touch-pan-y relative z-10 pt-2" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden no-scrollbar px-2 touch-pan-y relative z-10 pt-2">
         {mode === "requests" ? (
           <>
             {/* Create Request Button - Between switch and dropdown */}
@@ -880,24 +880,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        <div className="p-4 border-t border-border bg-card z-20 shrink-0">
-          <div className="flex items-center gap-3 w-full">
-            {toggleTheme && (
-              <motion.button onClick={() => { if (navigator.vibrate) navigator.vibrate(15); toggleTheme(); }} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className={`flex-1 flex items-center justify-center gap-3 h-11 rounded-xl border transition-all ${isDarkMode ? 'bg-white border-white text-slate-900 hover:bg-white/90' : 'bg-slate-900 border-slate-900 text-white hover:bg-slate-800'}`} title={isDarkMode ? "الوضع الفاتح" : "الوضع الداكن"}>
-                <div className="flex items-center gap-2.5">
-                  <Sun size={20} className={!isDarkMode ? "text-amber-500 opacity-100" : "text-slate-400 opacity-60"} />
-                  <ArrowLeftRight size={16} className={`${isDarkMode ? 'text-slate-400' : 'text-slate-500'} transition-transform duration-300 ${isDarkMode ? 'rotate-180' : ''}`} />
-                  <Moon size={20} className={isDarkMode ? "text-indigo-600 opacity-100" : "text-slate-400 opacity-60"} />
-                </div>
-              </motion.button>
-            )}
-            {onOpenLanguagePopup && (
-              <motion.button onClick={onOpenLanguagePopup} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border border-border bg-secondary/50 hover:bg-secondary/80 text-foreground transition-all" title="تغيير اللغة">
-                <Languages size={18} className="text-muted-foreground" /><span className="text-xs font-bold">العربية</span>
-              </motion.button>
-            )}
-          </div>
-        </div>
       </div>
     </aside>
   );
