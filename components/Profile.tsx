@@ -247,13 +247,13 @@ export const Profile: React.FC<ProfileProps> = ({
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-center md:justify-start gap-2">
-                        <h1 className="text-2xl font-bold">{displayName}</h1>
+                      <div className="flex items-center justify-center md:justify-start gap-2 w-full">
+                        <h1 className="text-2xl font-bold flex-1">{displayName}</h1>
                         <motion.button
                           whileHover={{ scale: 1.1 }}
                           whileTap={{ scale: 0.9 }}
                           onClick={() => setIsEditingName(true)}
-                          className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-primary"
+                          className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-primary shrink-0"
                           title="تعديل الاسم"
                         >
                           <Edit2 size={18} />
