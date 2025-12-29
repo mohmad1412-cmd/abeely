@@ -107,8 +107,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [offersSheetLevel, setOffersSheetLevel] = useState(0);
   
   // Sidebar width resize state
-  const DEFAULT_WIDTH = 340;
-  const MIN_WIDTH = 340;
+  const DEFAULT_WIDTH = 300;
+  const MIN_WIDTH = 280;
   const MAX_WIDTH = 600;
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH);
   const [isSidebarResizing, setIsSidebarResizing] = useState(false);

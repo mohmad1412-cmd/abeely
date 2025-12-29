@@ -555,8 +555,8 @@ const GlowingField: React.FC<{
           style={{ touchAction: 'none' }}
         >
           <div className="flex flex-col gap-0.5 pointer-events-none">
-            <div className={`w-10 h-0.5 rounded-full transition-colors ${isResizing ? 'bg-primary' : 'bg-primary/50'}`} />
-            <div className={`w-10 h-0.5 rounded-full transition-colors ${isResizing ? 'bg-primary' : 'bg-primary/50'}`} />
+            <div className="w-10 h-0.5 rounded-full bg-primary" />
+            <div className="w-10 h-0.5 rounded-full bg-primary" />
           </div>
         </div>
       )}
