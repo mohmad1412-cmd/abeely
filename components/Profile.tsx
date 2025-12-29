@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Review } from '../types';
 import { Badge } from './ui/Badge';
-import { Calendar, Briefcase, Award, CheckCircle, Clock, DollarSign, Edit2, X, Check } from 'lucide-react';
+import { Calendar, Briefcase, Award, CheckCircle, Clock, DollarSign, Edit2, X, Check, Camera } from 'lucide-react';
 import { UnifiedHeader } from './ui/UnifiedHeader';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -57,6 +57,9 @@ export const Profile: React.FC<ProfileProps> = ({
   const [bio, setBio] = useState(profileRole === 'provider' 
     ? 'مهتم ببناء الحلول الرقمية المبتكرة. لدي خبرة واسعة في إدارة المشاريع التقنية والتعامل مع فرق العمل عن بعد. أسعى دائماً للجودة والاحترافية في العمل.'
     : 'أبحث دائماً عن محترفين لتنفيذ مشاريعي التقنية بدقة وجودة عالية. أقدر الالتزام بالوقت والتواصل الفعال.');
+  const [avatarUrl, setAvatarUrl] = useState('https://picsum.photos/200/200');
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSaveName = () => {
     // هنا يمكن إضافة حفظ الاسم في قاعدة البيانات
@@ -66,6 +69,41 @@ export const Profile: React.FC<ProfileProps> = ({
   const handleSaveBio = () => {
     // هنا يمكن إضافة حفظ التعريف في قاعدة البيانات
     setIsEditingBio(false);
+  };
+
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // معاينة الصورة
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveAvatar = () => {
+    if (avatarPreview) {
+      // هنا يمكن إضافة رفع الصورة إلى قاعدة البيانات/التخزين
+      setAvatarUrl(avatarPreview);
+      setAvatarPreview(null);
+      // إعادة تعيين input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleCancelAvatar = () => {
+    setAvatarPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   return (
@@ -100,8 +138,53 @@ export const Profile: React.FC<ProfileProps> = ({
           <div className="bg-card border border-border rounded-xl p-6 shadow-sm mb-8 flex flex-col md:flex-row items-center md:items-start gap-6 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-l from-primary/10 to-transparent -z-0"></div>
             
-            <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-secondary overflow-hidden border-4 border-background shadow-md shrink-0 z-10">
-              <img src="https://picsum.photos/200/200" alt="User" className="w-full h-full object-cover" />
+            <div className="relative w-24 h-24 md:w-32 md:h-32 shrink-0 z-10 group">
+              <div className="w-full h-full rounded-full bg-secondary overflow-hidden border-4 border-background shadow-md">
+                <img 
+                  src={avatarPreview || avatarUrl} 
+                  alt="User" 
+                  className="w-full h-full object-cover" 
+                />
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
+              {avatarPreview ? (
+                <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 rounded-full">
+                  <motion.button
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={handleSaveAvatar}
+                    className="p-2 rounded-full bg-primary text-white hover:bg-primary/90 transition-colors"
+                    title="حفظ"
+                  >
+                    <Check size={18} />
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={handleCancelAvatar}
+                    className="p-2 rounded-full bg-secondary text-foreground hover:bg-secondary/80 transition-colors"
+                    title="إلغاء"
+                  >
+                    <X size={18} />
+                  </motion.button>
+                </div>
+              ) : (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleAvatarClick}
+                  className="absolute bottom-0 right-0 p-2 rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 transition-colors opacity-0 group-hover:opacity-100"
+                  title="تعديل الصورة"
+                >
+                  <Camera size={16} />
+                </motion.button>
+              )}
             </div>
             
             <div className="flex-1 text-center md:text-right z-10">
