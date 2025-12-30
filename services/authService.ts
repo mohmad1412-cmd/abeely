@@ -17,14 +17,153 @@ export interface UserProfile {
   created_at: string;
 }
 
+// Google Identity Services types
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: any) => void;
+          prompt: (callback?: (notification: any) => void) => void;
+          renderButton: (element: HTMLElement, config: any) => void;
+          disableAutoSelect: () => void;
+        };
+        oauth2: {
+          initTokenClient: (config: any) => any;
+          initCodeClient: (config: any) => any;
+        };
+      };
+    };
+  }
+}
+
 // Check if running in Capacitor (mobile app)
 function isCapacitor(): boolean {
   return typeof (window as any)?.Capacitor !== 'undefined';
 }
 
+// Google Client ID from environment
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
 /**
- * بدء تسجيل الدخول عبر OAuth (Google/Apple)
- * Supabase يتعامل مع الـ callback تلقائياً بسبب detectSessionInUrl: true
+ * فتح نافذة منبثقة للـ OAuth
+ */
+function openPopupWindow(url: string, name: string): Window | null {
+  const width = 500;
+  const height = 600;
+  const left = window.screenX + (window.outerWidth - width) / 2;
+  const top = window.screenY + (window.outerHeight - height) / 2;
+  
+  return window.open(
+    url,
+    name,
+    `width=${width},height=${height},left=${left},top=${top},popup=yes,scrollbars=yes,resizable=yes`
+  );
+}
+
+/**
+ * تسجيل الدخول عبر Google باستخدام نافذة منبثقة (popup)
+ * يستخدم Supabase OAuth مع popup يدوي
+ * الـ popup يشارك نفس localStorage مع النافذة الأصلية لذا PKCE يعمل!
+ */
+export async function signInWithGooglePopup(): Promise<{ success: boolean; error?: string }> {
+  return new Promise(async (resolve) => {
+    try {
+      // مسح guest mode
+      localStorage.removeItem("abeely_guest_mode");
+      
+      console.log("🔐 Starting Google popup sign-in...");
+
+      // الحصول على رابط OAuth من Supabase
+      // نستخدم نفس الـ origin - الـ popup يشارك localStorage مع النافذة الأصلية
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+          skipBrowserRedirect: true, // لا تقم بـ redirect، سنفتح popup
+          queryParams: { prompt: 'select_account' },
+        },
+      });
+
+      if (error) {
+        console.error("❌ OAuth error:", error);
+        resolve({ success: false, error: error.message });
+        return;
+      }
+
+      if (!data?.url) {
+        resolve({ success: false, error: 'فشل الحصول على رابط الدخول' });
+        return;
+      }
+
+      console.log("✅ Got OAuth URL, opening popup...");
+      
+      // فتح popup
+      const popup = openPopupWindow(data.url, 'google_signin');
+      
+      if (!popup) {
+        console.error("❌ Popup blocked!");
+        resolve({ success: false, error: 'تم حظر النافذة المنبثقة. يرجى السماح للنوافذ المنبثقة.' });
+        return;
+      }
+
+      // الاستماع لتغييرات auth state
+      let resolved = false;
+      
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        console.log("🔐 Auth state in popup flow:", event);
+        
+        if (event === 'SIGNED_IN' && session?.user && !resolved) {
+          resolved = true;
+          console.log("✅ User signed in via popup:", session.user.email);
+          
+          // إغلاق الـ popup إذا كان مفتوحاً
+          try {
+            if (popup && !popup.closed) {
+              popup.close();
+            }
+          } catch (e) {
+            // تجاهل أخطاء إغلاق النافذة
+          }
+          
+          subscription.unsubscribe();
+          clearInterval(popupChecker);
+          resolve({ success: true });
+        }
+      });
+
+      // تحقق دوري إذا أغلق المستخدم الـ popup
+      const popupChecker = setInterval(() => {
+        if (popup.closed && !resolved) {
+          console.log("⚠️ Popup closed by user");
+          resolved = true;
+          subscription.unsubscribe();
+          clearInterval(popupChecker);
+          resolve({ success: false, error: 'تم إغلاق نافذة تسجيل الدخول' });
+        }
+      }, 500);
+
+      // Timeout بعد 2 دقيقة
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          subscription.unsubscribe();
+          clearInterval(popupChecker);
+          try { popup.close(); } catch (e) {}
+          resolve({ success: false, error: 'انتهت مهلة تسجيل الدخول' });
+        }
+      }, 120000);
+
+    } catch (err: any) {
+      console.error('❌ Google Sign-In exception:', err);
+      resolve({ success: false, error: err.message || 'حدث خطأ أثناء تسجيل الدخول' });
+    }
+  });
+}
+
+/**
+ * بدء تسجيل الدخول عبر OAuth (Apple فقط أو كـ fallback لـ Google)
+ * يستخدم redirect في نفس النافذة
  */
 export async function signInWithOAuth(provider: 'google' | 'apple'): Promise<{ success: boolean; error?: string }> {
   try {
@@ -32,10 +171,9 @@ export async function signInWithOAuth(provider: 'google' | 'apple'): Promise<{ s
     localStorage.removeItem("abeely_guest_mode");
     
     // الحصول على الـ redirect URL الصحيح
-    // يجب أن يكون نفس الـ URL المسجل في Supabase Dashboard و Google Console
     const redirectUrl = window.location.origin;
     
-    console.log("🔐 Starting OAuth with redirect to:", redirectUrl);
+    console.log("🔐 Starting OAuth redirect to:", redirectUrl);
 
     // Handle Capacitor (mobile)
     if (isCapacitor()) {
@@ -62,7 +200,7 @@ export async function signInWithOAuth(provider: 'google' | 'apple'): Promise<{ s
       return { success: false, error: 'فشل الحصول على رابط الدخول' };
     }
 
-    // Web: استخدام redirect مباشرة
+    // Web: استخدام redirect في نفس النافذة
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
@@ -77,7 +215,7 @@ export async function signInWithOAuth(provider: 'google' | 'apple'): Promise<{ s
     }
 
     console.log("✅ OAuth initiated, redirecting...", data);
-    // المتصفح سيعيد التوجيه تلقائياً
+    // المتصفح سيعيد التوجيه تلقائياً في نفس النافذة
     return { success: true };
   } catch (err: any) {
     console.error('❌ OAuth exception:', err);
@@ -141,6 +279,31 @@ export async function signOut() {
 
 export function onAuthStateChange(callback: (event: string, session: any) => void) {
   return supabase.auth.onAuthStateChange(callback);
+}
+
+/**
+ * تحديث الملف الشخصي للمستخدم
+ */
+export async function updateProfile(userId: string, updates: Partial<UserProfile>): Promise<{ success: boolean; data?: UserProfile; error?: string }> {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Error updating profile:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log('✅ Profile updated:', data);
+    return { success: true, data: data as UserProfile };
+  } catch (err: any) {
+    console.error('❌ Exception updating profile:', err);
+    return { success: false, error: err.message || 'حدث خطأ أثناء تحديث الملف الشخصي' };
+  }
 }
 
 export async function signInWithEmail(email: string): Promise<{ success: boolean; error?: string }> {

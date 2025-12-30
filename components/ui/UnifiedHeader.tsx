@@ -36,6 +36,7 @@ interface UnifiedHeaderProps {
   onMarkAsRead: (id: string) => void;
   onClearAll: () => void;
   onSignOut: () => void;
+  onNotificationClick?: (notification: any) => void; // Callback للتنقل عند النقر على الإشعار
   backButton?: boolean;
   onBack?: () => void;
   closeIcon?: boolean; // Use X icon instead of arrow for back button
@@ -87,6 +88,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   onMarkAsRead,
   onClearAll,
   onSignOut,
+  onNotificationClick,
   backButton,
   onBack,
   closeIcon = false,
@@ -720,6 +722,12 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   onClose={() => setIsNotifOpen(false)}
                   onMarkAsRead={onMarkAsRead}
                   onClearAll={onClearAll}
+                  onNotificationClick={(notification) => {
+                    setIsNotifOpen(false);
+                    if (onNotificationClick) {
+                      onNotificationClick(notification);
+                    }
+                  }}
                 />
               </div>
             )}

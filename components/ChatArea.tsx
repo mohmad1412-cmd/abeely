@@ -570,6 +570,7 @@ interface ChatAreaProps {
   titleKey: number;
   notifications: any[];
   onMarkAsRead: (id: string) => void;
+  onNotificationClick?: (notification: any) => void;
   onClearAll: () => void;
   onSignOut: () => void;
 }
@@ -597,6 +598,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   titleKey,
   notifications,
   onMarkAsRead,
+  onNotificationClick,
   onClearAll,
   onSignOut
 }) => {

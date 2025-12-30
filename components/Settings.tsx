@@ -13,6 +13,7 @@ interface SettingsProps {
   userPreferences?: UserPreferences;
   onUpdatePreferences?: (prefs: UserPreferences) => void;
   user?: UserProfile | null;
+  onUpdateProfile?: (updates: Partial<UserProfile>) => Promise<void>;
   onSignOut?: () => void;
   // Unified Header Props
   isSidebarOpen: boolean;
@@ -27,6 +28,7 @@ interface SettingsProps {
   titleKey: number;
   notifications: any[];
   onMarkAsRead: (id: string) => void;
+  onNotificationClick?: (notification: any) => void;
   onClearAll: () => void;
   isGuest?: boolean;
 }
@@ -52,6 +54,7 @@ export const Settings: React.FC<SettingsProps> = ({
   },
   onUpdatePreferences,
   user = null,
+  onUpdateProfile,
   onSignOut,
   isSidebarOpen,
   setIsSidebarOpen,
@@ -65,6 +68,7 @@ export const Settings: React.FC<SettingsProps> = ({
   titleKey,
   notifications,
   onMarkAsRead,
+  onNotificationClick,
   onClearAll,
   isGuest = false,
 }) => {
@@ -170,6 +174,7 @@ export const Settings: React.FC<SettingsProps> = ({
         titleKey={titleKey}
         notifications={notifications}
         onMarkAsRead={onMarkAsRead}
+        onNotificationClick={onNotificationClick}
         onClearAll={onClearAll}
         onSignOut={onSignOut || (() => {})}
         onGoToMarketplace={onBack}
@@ -207,8 +212,10 @@ export const Settings: React.FC<SettingsProps> = ({
                           autoFocus
                         />
                         <button
-                          onClick={() => {
-                            // TODO: Save name
+                          onClick={async () => {
+                            if (onUpdateProfile && editedName.trim()) {
+                              await onUpdateProfile({ display_name: editedName.trim() });
+                            }
                             setIsEditingName(false);
                           }}
                           className="text-xs text-primary hover:underline"

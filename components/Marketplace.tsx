@@ -75,6 +75,7 @@ interface MarketplaceProps {
   titleKey: number;
   notifications: any[];
   onMarkAsRead: (id: string) => void;
+  onNotificationClick?: (notification: any) => void;
   onClearAll: () => void;
   onSignOut: () => void;
   isLoading?: boolean;
@@ -116,6 +117,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   titleKey,
   notifications,
   onMarkAsRead,
+  onNotificationClick,
   onClearAll,
   onSignOut,
   isLoading = false,
@@ -686,6 +688,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             titleKey={titleKey}
             notifications={notifications}
             onMarkAsRead={onMarkAsRead}
+            onNotificationClick={onNotificationClick}
             onClearAll={onClearAll}
             onSignOut={onSignOut}
             currentView="marketplace"
@@ -789,39 +792,32 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 // أيقونة ثابتة عند وجود فلاتر نشطة
                 <Filter size={18} strokeWidth={2.5} />
               ) : (
-                // أيقونة متحركة عند عدم وجود فلاتر
-                <>
-                  <motion.div
-                    animate={{ 
-                      x: iconToggle ? 0 : -20,
-                      opacity: iconToggle ? 1 : 0
-                    }}
-                    transition={{ 
-                      type: "spring", 
-                      stiffness: 300, 
-                      damping: 25,
-                      duration: 0.4
-                    }}
-                    className="absolute inset-0 flex items-center justify-center"
-                  >
-                    <Filter size={18} strokeWidth={2} />
-                  </motion.div>
-                  <motion.div
-                    animate={{ 
-                      x: iconToggle ? 20 : 0,
-                      opacity: iconToggle ? 0 : 1
-                    }}
-                    transition={{ 
-                      type: "spring", 
-                      stiffness: 300, 
-                      damping: 25,
-                      duration: 0.4
-                    }}
-                    className="absolute inset-0 flex items-center justify-center"
-                  >
-                    <Search size={18} strokeWidth={2} />
-                  </motion.div>
-                </>
+                // أيقونة متحركة عند عدم وجود فلاتر - fade فقط بدون حركة جانبية لتجنب الارتجاج
+                <AnimatePresence mode="wait" initial={false}>
+                  {iconToggle ? (
+                    <motion.div
+                      key="filter-icon"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="flex items-center justify-center"
+                    >
+                      <Filter size={18} strokeWidth={2} />
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="search-icon"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="flex items-center justify-center"
+                    >
+                      <Search size={18} strokeWidth={2} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               )}
             </div>
             {/* Badge رقمي يظهر عدد الفلاتر النشطة */}

@@ -1222,3 +1222,125 @@ export async function acceptOffer(
     return { success: false, error: 'حدث خطأ غير متوقع' };
   }
 }
+
+/**
+ * بدء التفاوض على عرض معين
+ * - يغير حالة العرض إلى "negotiating"
+ * - يرسل إشعار للعارض
+ * - ينشئ محادثة بين الطرفين
+ */
+export async function startNegotiation(
+  requestId: string,
+  offerId: string,
+  userId: string
+): Promise<{ success: boolean; error?: string; conversationId?: string }> {
+  try {
+    // 1. التحقق من أن المستخدم هو صاحب الطلب
+    const { data: request, error: requestError } = await supabase
+      .from('requests')
+      .select('author_id, title')
+      .eq('id', requestId)
+      .single();
+
+    if (requestError || !request) {
+      return { success: false, error: 'الطلب غير موجود' };
+    }
+
+    if (request.author_id !== userId) {
+      return { success: false, error: 'غير مصرح لك ببدء التفاوض على هذا العرض' };
+    }
+
+    // 2. جلب بيانات العرض
+    const { data: offer, error: offerError } = await supabase
+      .from('offers')
+      .select('id, provider_id, title, status, is_negotiable')
+      .eq('id', offerId)
+      .eq('request_id', requestId)
+      .single();
+
+    if (offerError || !offer) {
+      return { success: false, error: 'العرض غير موجود' };
+    }
+
+    // التحقق من أن العرض قابل للتفاوض
+    if (!offer.is_negotiable) {
+      return { success: false, error: 'هذا العرض غير قابل للتفاوض' };
+    }
+
+    // التحقق من أن العرض في حالة تسمح ببدء التفاوض
+    if (offer.status !== 'pending') {
+      return { success: false, error: 'لا يمكن بدء التفاوض على هذا العرض في حالته الحالية' };
+    }
+
+    // 3. تحديث حالة العرض إلى "negotiating"
+    const { error: updateError } = await supabase
+      .from('offers')
+      .update({ status: 'negotiating' })
+      .eq('id', offerId);
+
+    if (updateError) {
+      console.error('خطأ في تحديث حالة العرض:', updateError);
+      return { success: false, error: 'فشل في بدء التفاوض' };
+    }
+
+    // 4. إنشاء أو جلب المحادثة بين الطرفين
+    let conversationId: string | undefined;
+    try {
+      // البحث عن محادثة موجودة
+      const { data: existingConv } = await supabase
+        .from('conversations')
+        .select('id')
+        .or(`and(participant1_id.eq.${userId},participant2_id.eq.${offer.provider_id}),and(participant1_id.eq.${offer.provider_id},participant2_id.eq.${userId})`)
+        .eq('request_id', requestId)
+        .eq('offer_id', offerId)
+        .single();
+
+      if (existingConv) {
+        conversationId = existingConv.id;
+      } else {
+        // إنشاء محادثة جديدة
+        const { data: newConv, error: convError } = await supabase
+          .from('conversations')
+          .insert({
+            participant1_id: userId,
+            participant2_id: offer.provider_id,
+            request_id: requestId,
+            offer_id: offerId,
+            last_message_preview: 'بدأ التفاوض على هذا العرض',
+            last_message_at: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+
+        if (!convError && newConv) {
+          conversationId = newConv.id;
+        }
+      }
+    } catch (convErr) {
+      console.warn('تحذير: فشل في إنشاء المحادثة:', convErr);
+    }
+
+    // 5. إرسال إشعار للعارض
+    try {
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: offer.provider_id,
+          type: 'status',
+          title: '🤝 بدأ التفاوض على عرضك!',
+          message: `صاحب الطلب "${request.title}" يريد التفاوض معك على عرضك`,
+          link_to: `/request/${requestId}`,
+          related_request_id: requestId,
+          related_offer_id: offerId
+        });
+    } catch (notifErr) {
+      console.warn('تحذير: فشل في إرسال الإشعار:', notifErr);
+    }
+
+    console.log('✅ تم بدء التفاوض بنجاح');
+    return { success: true, conversationId };
+  } catch (error) {
+    console.error('خطأ في بدء التفاوض:', error);
+    return { success: false, error: 'حدث خطأ غير متوقع' };
+  }
+}

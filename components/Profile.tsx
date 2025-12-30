@@ -18,11 +18,13 @@ interface ProfileProps {
   unreadCount: number;
   hasUnreadMessages: boolean;
   user: any;
+  onUpdateProfile?: (updates: any) => Promise<void>;
   setView: (view: any) => void;
   setPreviousView: (view: any) => void;
   titleKey: number;
   notifications: any[];
   onMarkAsRead: (id: string) => void;
+  onNotificationClick?: (notification: any) => void;
   onClearAll: () => void;
   onSignOut: () => void;
   onBack: () => void;
@@ -41,11 +43,13 @@ export const Profile: React.FC<ProfileProps> = ({
   unreadCount,
   hasUnreadMessages,
   user,
+  onUpdateProfile,
   setView,
   setPreviousView,
   titleKey,
   notifications,
   onMarkAsRead,
+  onNotificationClick,
   onClearAll,
   onSignOut,
   onBack,
@@ -66,8 +70,10 @@ export const Profile: React.FC<ProfileProps> = ({
     setDisplayName(user?.display_name || '');
   }, [user?.display_name]);
 
-  const handleSaveName = () => {
-    // هنا يمكن إضافة حفظ الاسم في قاعدة البيانات
+  const handleSaveName = async () => {
+    if (onUpdateProfile && displayName.trim()) {
+      await onUpdateProfile({ display_name: displayName.trim() });
+    }
     setIsEditingName(false);
   };
 
@@ -128,6 +134,7 @@ export const Profile: React.FC<ProfileProps> = ({
         titleKey={titleKey}
         notifications={notifications}
         onMarkAsRead={onMarkAsRead}
+        onNotificationClick={onNotificationClick}
         onClearAll={onClearAll}
         onSignOut={onSignOut}
         onGoToMarketplace={onBack}

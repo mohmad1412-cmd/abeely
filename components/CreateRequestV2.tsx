@@ -254,6 +254,7 @@ interface CreateRequestV2Props {
   titleKey: number;
   notifications: any[];
   onMarkAsRead: (id: string) => void;
+  onNotificationClick?: (notification: any) => void;
   onClearAll: () => void;
   onSignOut: () => void;
   isGuest?: boolean;
@@ -805,6 +806,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   titleKey,
   notifications,
   onMarkAsRead,
+  onNotificationClick,
   onClearAll,
   onSignOut,
   isGuest,
@@ -1357,6 +1359,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         titleKey={titleKey}
         notifications={notifications}
         onMarkAsRead={onMarkAsRead}
+        onNotificationClick={onNotificationClick}
         onClearAll={onClearAll}
         onSignOut={onSignOut}
         onGoToMarketplace={onGoToMarketplace}

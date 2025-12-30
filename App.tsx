@@ -281,6 +281,7 @@ const App: React.FC = () => {
   const [requestToEdit, setRequestToEdit] = useState<Request | null>(null); // الطلب المراد تعديله
   const [scrollToOfferSection, setScrollToOfferSection] = useState(false);
   const [navigatedFromSidebar, setNavigatedFromSidebar] = useState(false); // لتتبع مصدر التنقل
+  const [highlightOfferId, setHighlightOfferId] = useState<string | null>(null); // لتمييز العرض عند النقر على إشعار
 
   // Save state when switching modes to restore when coming back
   const [savedOffersModeState, setSavedOffersModeState] = useState<
@@ -594,6 +595,10 @@ const App: React.FC = () => {
   // ==========================================
   // Auth Initialization & State Listener
   // ==========================================
+  
+  // تحقق إذا كنا في popup (للـ OAuth)
+  const isInPopup = !!window.opener;
+  
   useEffect(() => {
     let isMounted = true;
 
@@ -613,7 +618,7 @@ const App: React.FC = () => {
         const alreadyProcessed = sessionStorage.getItem(codeProcessedKey) === code;
         
         if ((code || hasAccessToken) && !alreadyProcessed) {
-          console.log("🔐 OAuth callback detected:", code ? "PKCE code" : "access_token");
+          console.log("🔐 OAuth callback detected:", code ? "PKCE code" : "access_token", isInPopup ? "(in popup)" : "");
           setIsProcessingOAuth(true);
           
           // حفظ الـ code لمنع إعادة المعالجة
@@ -633,9 +638,23 @@ const App: React.FC = () => {
               console.error("❌ PKCE exchange error:", exchangeError);
               sessionStorage.removeItem(codeProcessedKey);
               setIsProcessingOAuth(false);
+              
+              // إذا كنا في popup، أغلقه
+              if (isInPopup) {
+                console.log("❌ Closing popup due to error...");
+                setTimeout(() => window.close(), 1000);
+              }
               // سيتم التعامل مع الـ auth عبر onAuthStateChange
             } else if (exchangeData?.session?.user && isMounted) {
               console.log("✅ PKCE session obtained:", exchangeData.session.user.email);
+              
+              // إذا كنا في popup، أغلقه - النافذة الأصلية ستستلم الـ auth state change
+              if (isInPopup) {
+                console.log("✅ Closing popup after successful auth...");
+                sessionStorage.removeItem(codeProcessedKey);
+                setTimeout(() => window.close(), 500);
+                return;
+              }
               
               // انتقل لـ main فوراً
               setIsGuest(false);
@@ -1532,6 +1551,39 @@ const App: React.FC = () => {
     );
   };
 
+  // معالجة النقر على إشعار للتنقل للعرض/الطلب
+  const handleNotificationClick = (notification: Notification) => {
+    // إذا كان الإشعار من نوع عرض جديد
+    if (notification.type === 'offer' && notification.relatedRequest) {
+      // البحث عن الطلب المرتبط
+      const targetRequest = allRequests.find(r => r.id === notification.relatedRequest?.id) 
+        || myRequests.find(r => r.id === notification.relatedRequest?.id);
+      
+      if (targetRequest) {
+        setSelectedRequest(targetRequest);
+        setScrollToOfferSection(true);
+        // تمييز العرض المحدد
+        if (notification.relatedOffer) {
+          setHighlightOfferId(notification.relatedOffer.id);
+          // إزالة التمييز بعد 3 ثواني
+          setTimeout(() => setHighlightOfferId(null), 3000);
+        }
+        setView("request-detail");
+        if (window.innerWidth < 768) setIsSidebarOpen(false);
+      }
+    }
+    // إذا كان الإشعار من نوع رسالة
+    else if (notification.type === 'message') {
+      setView("messages");
+      if (window.innerWidth < 768) setIsSidebarOpen(false);
+    }
+    // إذا كان هناك رابط linkTo
+    else if (notification.linkTo) {
+      // يمكن معالجة الروابط المختلفة هنا
+      console.log('Navigate to:', notification.linkTo);
+    }
+  };
+
   const handleRequestRead = (requestId: string) => {
     setUnreadInterestsCount((prev) => Math.max(0, prev - 1));
   };
@@ -1786,6 +1838,7 @@ const App: React.FC = () => {
             titleKey={titleKey}
             notifications={notifications}
             onMarkAsRead={handleMarkAsRead}
+            onNotificationClick={handleNotificationClick}
             onClearAll={handleClearNotifications}
             onSignOut={isGuest ? handleGoToLogin : handleSignOut}
             isGuest={isGuest}
@@ -1855,6 +1908,7 @@ const App: React.FC = () => {
                   titleKey={titleKey}
                   notifications={notifications}
                   onMarkAsRead={handleMarkAsRead}
+                  onNotificationClick={handleNotificationClick}
                   onClearAll={handleClearNotifications}
                   onSignOut={handleSignOut}
                 />
@@ -1894,6 +1948,7 @@ const App: React.FC = () => {
                 isGuest={isGuest}
                 scrollToOfferSection={scrollToOfferSection}
                 navigatedFromSidebar={navigatedFromSidebar}
+                highlightOfferId={highlightOfferId}
                 onNavigateToMessages={async (
                   conversationId,
                   userId,
@@ -1947,6 +2002,7 @@ const App: React.FC = () => {
                 titleKey={titleKey}
                 notifications={notifications}
                 onMarkAsRead={handleMarkAsRead}
+                onNotificationClick={handleNotificationClick}
                 onClearAll={handleClearNotifications}
                 onSignOut={handleSignOut}
                 onMarkRequestAsRead={handleRequestRead}
@@ -1980,6 +2036,15 @@ const App: React.FC = () => {
                 setUserPreferences(prefs);
               }}
               user={user}
+              onUpdateProfile={async (updates) => {
+                if (user?.id) {
+                  const { updateProfile } = await import('./services/authService');
+                  const result = await updateProfile(user.id, updates);
+                  if (result.success && result.data) {
+                    setUser(result.data);
+                  }
+                }
+              }}
               onBack={() => {
                 if (previousView) {
                   setView(previousView);
@@ -2004,6 +2069,7 @@ const App: React.FC = () => {
               titleKey={titleKey}
               notifications={notifications}
               onMarkAsRead={handleMarkAsRead}
+              onNotificationClick={handleNotificationClick}
               onClearAll={handleClearNotifications}
               isGuest={isGuest}
             />
@@ -2025,11 +2091,21 @@ const App: React.FC = () => {
               unreadCount={unreadCount}
               hasUnreadMessages={hasUnreadMessages}
               user={user}
+              onUpdateProfile={async (updates) => {
+                if (user?.id) {
+                  const { updateProfile } = await import('./services/authService');
+                  const result = await updateProfile(user.id, updates);
+                  if (result.success && result.data) {
+                    setUser(result.data);
+                  }
+                }
+              }}
               setView={setView}
               setPreviousView={setPreviousView}
               titleKey={titleKey}
               notifications={notifications}
               onMarkAsRead={handleMarkAsRead}
+              onNotificationClick={handleNotificationClick}
               onClearAll={handleClearNotifications}
               onSignOut={isGuest ? handleGoToLogin : handleSignOut}
               onBack={() => {
@@ -2076,6 +2152,7 @@ const App: React.FC = () => {
               titleKey={titleKey}
               notifications={notifications}
               onMarkAsRead={handleMarkAsRead}
+              onNotificationClick={handleNotificationClick}
               onClearAll={handleClearNotifications}
               onSignOut={isGuest ? handleGoToLogin : handleSignOut}
               isGuest={isGuest}
@@ -2103,6 +2180,7 @@ const App: React.FC = () => {
               titleKey={titleKey}
               notifications={notifications}
               onMarkAsRead={handleMarkAsRead}
+              onNotificationClick={handleNotificationClick}
               onClearAll={handleClearNotifications}
               onSignOut={isGuest ? handleGoToLogin : handleSignOut}
               isGuest={isGuest}

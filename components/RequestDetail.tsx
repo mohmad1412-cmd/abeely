@@ -67,7 +67,7 @@ import {
   Message as ChatMessage,
   Conversation,
 } from "../services/messagesService";
-import { acceptOffer, createOffer } from "../services/requestsService";
+import { acceptOffer, createOffer, startNegotiation } from "../services/requestsService";
 import { uploadOfferAttachments, isImageFile, validateFile, formatFileSize } from "../services/storageService";
 import { supabase } from "../services/supabaseClient";
 
@@ -79,6 +79,7 @@ interface RequestDetailProps {
   isGuest?: boolean;
   scrollToOfferSection?: boolean;
   navigatedFromSidebar?: boolean; // لتحديد إذا كان التنقل من الشريط الجانبي
+  highlightOfferId?: string | null; // لتمييز عرض معين عند النقر على إشعار
   onNavigateToMessages?: (conversationId?: string, userId?: string, requestId?: string, offerId?: string) => void;
   autoTranslateRequests?: boolean;
   currentLanguage?: 'ar' | 'en' | 'ur';
@@ -120,6 +121,7 @@ interface RequestDetailProps {
   titleKey: number;
   notifications: any[];
   onMarkAsRead: (id: string) => void;
+  onNotificationClick?: (notification: any) => void;
   onClearAll: () => void;
   onSignOut: () => void;
   onMarkRequestAsRead?: (id: string) => void;
@@ -129,7 +131,7 @@ interface RequestDetailProps {
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
-  { request, mode, myOffer, onBack, isGuest = false, scrollToOfferSection = false, navigatedFromSidebar = false, onNavigateToMessages, autoTranslateRequests = false, currentLanguage = 'ar', onCompleteRequest, savedOfferForm, onOfferFormChange, savedScrollPosition = 0, onScrollPositionChange,
+  { request, mode, myOffer, onBack, isGuest = false, scrollToOfferSection = false, navigatedFromSidebar = false, highlightOfferId = null, onNavigateToMessages, autoTranslateRequests = false, currentLanguage = 'ar', onCompleteRequest, savedOfferForm, onOfferFormChange, savedScrollPosition = 0, onScrollPositionChange,
     // Unified Header Props
     isSidebarOpen,
     setIsSidebarOpen,
@@ -143,6 +145,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     titleKey,
     notifications,
     onMarkAsRead,
+    onNotificationClick,
     onClearAll,
     onSignOut,
     onMarkRequestAsRead,
@@ -173,6 +176,28 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [guestOfferVerificationStep, setGuestOfferVerificationStep] = useState<'none' | 'phone' | 'otp'>(savedOfferForm?.guestVerificationStep || 'none');
   const [guestOfferPhone, setGuestOfferPhone] = useState(savedOfferForm?.guestPhone || "");
   const [guestOfferOTP, setGuestOfferOTP] = useState(savedOfferForm?.guestOTP || "");
+  const [guestOfferError, setGuestOfferError] = useState<string | null>(null);
+  
+  // ترجمة رسائل الخطأ من Supabase للعربية
+  const translateAuthError = (error: string): string => {
+    const errorMap: Record<string, string> = {
+      'Token has expired or is invalid': 'انتهت صلاحية رمز التحقق. يرجى طلب رمز جديد.',
+      'Invalid OTP': 'رمز التحقق غير صحيح',
+      'OTP expired': 'انتهت صلاحية رمز التحقق',
+      'Phone number is invalid': 'رقم الجوال غير صحيح',
+      'Rate limit exceeded': 'تم تجاوز الحد المسموح. انتظر قليلاً ثم حاول مرة أخرى.',
+      'For security purposes, you can only request this after': 'لأسباب أمنية، يمكنك طلب رمز جديد بعد',
+    };
+    
+    // البحث عن ترجمة مطابقة أو جزئية
+    for (const [key, value] of Object.entries(errorMap)) {
+      if (error.toLowerCase().includes(key.toLowerCase())) {
+        return value;
+      }
+    }
+    
+    return error;
+  };
   
   // Track previous savedOfferForm to prevent unnecessary updates
   const prevSavedFormRef = useRef<typeof savedOfferForm>(null);
@@ -405,6 +430,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     if (mode !== "offers" || !myOffer) return false;
     // يمكنه المحادثة إذا تم اعتماد عرضه
     if (myOffer.status === "accepted") return true;
+    // أو إذا بدأ صاحب الطلب التفاوض
+    if (myOffer.status === "negotiating") return true;
     // أو إذا سمح بالتفاوض وتوجد محادثة سابقة (بدأها صاحب الطلب)
     if (myOffer.isNegotiable && hasExistingConversation) return true;
     return false;
@@ -413,6 +440,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   // State لقبول العرض
   const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
   const [acceptOfferError, setAcceptOfferError] = useState<string | null>(null);
+  
+  // State لبدء التفاوض
+  const [isStartingNegotiation, setIsStartingNegotiation] = useState(false);
+  const [startNegotiationError, setStartNegotiationError] = useState<string | null>(null);
 
   // دالة قبول العرض
   const handleAcceptOffer = async (offerId: string) => {
@@ -444,6 +475,37 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       setAcceptOfferError('حدث خطأ غير متوقع');
     } finally {
       setIsAcceptingOffer(false);
+    }
+  };
+
+  // دالة بدء التفاوض
+  const handleStartNegotiation = async (offerId: string) => {
+    if (!user?.id || isGuest) {
+      setStartNegotiationError('يجب تسجيل الدخول لبدء التفاوض');
+      return;
+    }
+
+    setIsStartingNegotiation(true);
+    setStartNegotiationError(null);
+
+    try {
+      const result = await startNegotiation(request.id, offerId, user.id);
+      
+      if (!result.success) {
+        setStartNegotiationError(result.error || 'فشل في بدء التفاوض');
+        return;
+      }
+
+      // فتح نافذة المحادثة بعد بدء التفاوض
+      setNegotiationOpen(true);
+      
+      // إعادة تحميل الصفحة لعرض التغييرات
+      window.location.reload();
+    } catch (error) {
+      console.error('خطأ في بدء التفاوض:', error);
+      setStartNegotiationError('حدث خطأ غير متوقع');
+    } finally {
+      setIsStartingNegotiation(false);
     }
   };
 
@@ -920,6 +982,27 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     }
   }, [scrollToOfferSection, handleScrollToOfferSection, isMyRequest]);
 
+  // Scroll to highlighted offer with flash animation
+  useEffect(() => {
+    if (highlightOfferId && scrollContainerRef.current) {
+      // Wait for the offers to render
+      setTimeout(() => {
+        const offerElement = document.getElementById(`offer-${highlightOfferId}`);
+        if (offerElement && scrollContainerRef.current) {
+          // Scroll the offer into view
+          const containerRect = scrollContainerRef.current.getBoundingClientRect();
+          const offerRect = offerElement.getBoundingClientRect();
+          const scrollTop = scrollContainerRef.current.scrollTop + offerRect.top - containerRect.top - 100;
+          
+          scrollContainerRef.current.scrollTo({
+            top: scrollTop,
+            behavior: 'smooth'
+          });
+        }
+      }, 600);
+    }
+  }, [highlightOfferId]);
+
 
   // Offer section continuous pulse when NOT visible
   useEffect(() => {
@@ -1062,6 +1145,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         titleKey={titleKey}
         notifications={notifications}
         onMarkAsRead={onMarkAsRead}
+        onNotificationClick={onNotificationClick}
         onClearAll={onClearAll}
         onSignOut={onSignOut}
         backButton
@@ -1515,12 +1599,39 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     {request.offers.map((offer, index) => (
                       <motion.div
                         key={offer.id}
+                        id={`offer-${offer.id}`}
                         variants={{
                           hidden: { opacity: 0, y: 20, scale: 0.95 },
                           show: { opacity: 1, y: 0, scale: 1 }
                         }}
                         whileHover={{ scale: 1.01, y: -2 }}
-                        className="bg-card border border-border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all relative"
+                        animate={highlightOfferId === offer.id ? {
+                          boxShadow: [
+                            "0 0 0 0 rgba(var(--primary-rgb), 0)",
+                            "0 0 20px 4px rgba(var(--primary-rgb), 0.6)",
+                            "0 0 30px 8px rgba(var(--primary-rgb), 0.4)",
+                            "0 0 20px 4px rgba(var(--primary-rgb), 0.6)",
+                            "0 0 0 0 rgba(var(--primary-rgb), 0)"
+                          ],
+                          scale: [1, 1.02, 1, 1.01, 1],
+                          borderColor: [
+                            "rgb(var(--border))",
+                            "rgb(var(--primary))",
+                            "rgb(var(--primary))",
+                            "rgb(var(--primary))",
+                            "rgb(var(--border))"
+                          ]
+                        } : undefined}
+                        transition={highlightOfferId === offer.id ? {
+                          duration: 2,
+                          ease: "easeInOut",
+                          times: [0, 0.25, 0.5, 0.75, 1]
+                        } : undefined}
+                        className={`bg-card border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all relative ${
+                          highlightOfferId === offer.id 
+                            ? 'border-primary ring-2 ring-primary/30' 
+                            : 'border-border'
+                        }`}
                       >
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex items-center gap-3">
@@ -1592,11 +1703,15 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                 ? (
                                   <Button
                                     size="sm"
-                                    className="flex-1 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border-transparent h-10 text-sm font-bold shadow-sm"
-                                    onClick={() =>
-                                      setNegotiationOpen(!negotiationOpen)}
+                                    className="flex-1 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border-transparent h-10 text-sm font-bold shadow-sm disabled:opacity-70"
+                                    onClick={() => handleStartNegotiation(offer.id)}
+                                    disabled={isStartingNegotiation || isGuest}
                                   >
-                                    <MessageCircle size={18} className="ml-2" />
+                                    {isStartingNegotiation ? (
+                                      <Loader2 size={18} className="animate-spin ml-2" />
+                                    ) : (
+                                      <MessageCircle size={18} className="ml-2" />
+                                    )}
                                     {" "}
                                     بدء التفاوض
                                   </Button>
@@ -1612,6 +1727,20 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                   </Button>
                                 )}
                             </>
+                          )}
+                          
+                          {/* عرض رسائل الأخطاء */}
+                          {acceptOfferError && (
+                            <div className="w-full mt-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-xs flex items-center gap-2">
+                              <AlertCircle size={14} />
+                              {acceptOfferError}
+                            </div>
+                          )}
+                          {startNegotiationError && (
+                            <div className="w-full mt-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-xs flex items-center gap-2">
+                              <AlertCircle size={14} />
+                              {startNegotiationError}
+                            </div>
                           )}
 
                           {/* NEGOTIATING ACTIONS */}
@@ -1694,6 +1823,29 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 {/* CASE 1: I ALREADY HAVE AN OFFER */}
                 {isMyOffer && myOffer && (
                   <div className="space-y-4 mt-4">
+                    {/* Negotiation Started Alert - Show when requester started negotiation */}
+                    {myOffer.status === "negotiating" && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        className="p-4 rounded-xl bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-200 dark:border-blue-800"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                            <MessageCircle size={20} className="text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-bold text-blue-700 dark:text-blue-400 text-sm">
+                              🎉 صاحب الطلب بدأ التفاوض معك!
+                            </h4>
+                            <p className="text-xs text-blue-600/80 dark:text-blue-400/70 mt-0.5">
+                              يمكنك الآن التواصل والتفاوض على التفاصيل
+                            </p>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+
                     {/* Complete Request Button - Only for accepted offers */}
                     {myOffer.status === "accepted" && request.status === "assigned" && onCompleteRequest && (
                       <motion.button
@@ -2496,30 +2648,55 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     <input
                       type="tel"
                       value={guestOfferPhone}
-                      onChange={(e) => setGuestOfferPhone(e.target.value)}
+                      onChange={(e) => {
+                        setGuestOfferPhone(e.target.value);
+                        setGuestOfferError(null);
+                      }}
                       placeholder="5XX XXX XXX"
-                      className="w-full h-12 px-4 pr-16 text-right rounded-lg border-2 border-border bg-background text-base outline-none transition-all focus:border-primary"
+                      className={`w-full h-12 px-4 pr-16 text-right rounded-lg border-2 bg-background text-base outline-none transition-all focus:border-primary ${
+                        guestOfferError ? 'border-red-500' : 'border-border'
+                      }`}
                       dir="ltr"
                     />
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">+966</span>
                   </div>
+                  
+                  {/* عرض رسالة الخطأ */}
+                  <AnimatePresence>
+                    {guestOfferError && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+                      >
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                          <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
+                            {guestOfferError}
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  
                   <div className="flex gap-2">
                     <button
                       onClick={async () => {
                         if (!guestOfferPhone.trim()) {
-                          alert("يرجى إدخال رقم الجوال");
+                          setGuestOfferError("يرجى إدخال رقم الجوال");
                           return;
                         }
                         setIsSendingOfferOTP(true);
+                        setGuestOfferError(null);
                         const result = await verifyGuestPhone(guestOfferPhone);
                         setIsSendingOfferOTP(false);
                         if (result.success) {
                           setGuestOfferVerificationStep('otp');
-                          if (result.verificationCode) {
-                            alert(`رمز التحقق (للتطوير فقط): ${result.verificationCode}`);
-                          }
+                          setGuestOfferError(null);
                         } else {
-                          alert(result.error || "فشل إرسال رمز التحقق");
+                          const translatedError = translateAuthError(result.error || "فشل إرسال رمز التحقق");
+                          setGuestOfferError(translatedError);
                         }
                       }}
                       disabled={isSendingOfferOTP}
@@ -2531,6 +2708,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       onClick={() => {
                         setGuestOfferVerificationStep('none');
                         setGuestOfferPhone("");
+                        setGuestOfferError(null);
                       }}
                       className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
                     >
@@ -2549,20 +2727,46 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   <input
                     type="text"
                     value={guestOfferOTP}
-                    onChange={(e) => setGuestOfferOTP(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    onChange={(e) => {
+                      setGuestOfferOTP(e.target.value.replace(/\D/g, '').slice(0, 6));
+                      setGuestOfferError(null); // مسح الخطأ عند الكتابة
+                    }}
                     placeholder="000000"
-                    className="w-full h-12 px-4 text-center rounded-lg border-2 border-border bg-background text-2xl font-bold tracking-widest outline-none transition-all focus:border-primary"
+                    className={`w-full h-12 px-4 text-center rounded-lg border-2 bg-background text-2xl font-bold tracking-widest outline-none transition-all focus:border-primary ${
+                      guestOfferError ? 'border-red-500' : 'border-border'
+                    }`}
                     dir="ltr"
                     maxLength={6}
                   />
+                  
+                  {/* عرض رسالة الخطأ */}
+                  <AnimatePresence>
+                    {guestOfferError && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+                      >
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                          <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
+                            {guestOfferError}
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  
                   <div className="flex gap-2">
                     <button
                       onClick={async () => {
                         if (guestOfferOTP.length !== 6) {
-                          alert("يرجى إدخال رمز التحقق المكون من 6 أرقام");
+                          setGuestOfferError("يرجى إدخال رمز التحقق المكون من 6 أرقام");
                           return;
                         }
                         setIsVerifyingOfferOTP(true);
+                        setGuestOfferError(null);
                         const result = await confirmGuestPhone(guestOfferPhone, guestOfferOTP);
                         setIsVerifyingOfferOTP(false);
                         if (result.success) {
@@ -2571,10 +2775,12 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                             navigator.vibrate([30, 50, 30]);
                           }
                           setGuestOfferVerificationStep('none');
+                          setGuestOfferError(null);
                           // TODO: Submit offer
-                          alert("تم التحقق بنجاح! سيتم إرسال العرض قريباً");
                         } else {
-                          alert(result.error || "رمز التحقق غير صحيح");
+                          // ترجمة رسالة الخطأ للعربية
+                          const translatedError = translateAuthError(result.error || "رمز التحقق غير صحيح");
+                          setGuestOfferError(translatedError);
                           setGuestOfferOTP("");
                         }
                       }}
@@ -2587,12 +2793,35 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       onClick={() => {
                         setGuestOfferVerificationStep('phone');
                         setGuestOfferOTP("");
+                        setGuestOfferError(null);
                       }}
                       className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
                     >
                       رجوع
                     </button>
                   </div>
+                  
+                  {/* زر إعادة إرسال الرمز */}
+                  <button
+                    onClick={async () => {
+                      setIsSendingOfferOTP(true);
+                      setGuestOfferError(null);
+                      const result = await verifyGuestPhone(guestOfferPhone);
+                      setIsSendingOfferOTP(false);
+                      if (result.success) {
+                        setGuestOfferOTP("");
+                        // إظهار رسالة نجاح مؤقتة
+                        setGuestOfferError(null);
+                      } else {
+                        const translatedError = translateAuthError(result.error || "فشل إرسال رمز التحقق");
+                        setGuestOfferError(translatedError);
+                      }
+                    }}
+                    disabled={isSendingOfferOTP}
+                    className="w-full text-center text-sm text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+                  >
+                    {isSendingOfferOTP ? "جاري إعادة الإرسال..." : "لم يصلك الرمز؟ إعادة الإرسال"}
+                  </button>
                 </div>
               )}
             </motion.div>

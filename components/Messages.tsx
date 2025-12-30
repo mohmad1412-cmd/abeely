@@ -41,6 +41,7 @@ interface MessagesProps {
   titleKey: number;
   notifications: any[];
   onMarkAsRead: (id: string) => void;
+  onNotificationClick?: (notification: any) => void;
   onClearAll: () => void;
   onSignOut: () => void;
   isGuest?: boolean;
@@ -62,6 +63,7 @@ export const Messages: React.FC<MessagesProps> = ({
   titleKey,
   notifications,
   onMarkAsRead,
+  onNotificationClick,
   onClearAll,
   onSignOut,
   isGuest = false,
@@ -243,6 +245,7 @@ export const Messages: React.FC<MessagesProps> = ({
           titleKey={titleKey}
           notifications={notifications}
           onMarkAsRead={onMarkAsRead}
+          onNotificationClick={onNotificationClick}
           onClearAll={onClearAll}
           onSignOut={onSignOut}
           onGoToMarketplace={onBack}

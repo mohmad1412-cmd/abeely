@@ -11,6 +11,7 @@ interface NotificationsPopoverProps {
   onClose: () => void;
   onMarkAsRead: (id: string) => void;
   onClearAll: () => void;
+  onNotificationClick?: (notification: Notification) => void; // Callback للتنقل عند النقر على الإشعار
 }
 
 // Stagger animation variants
@@ -47,7 +48,8 @@ export const NotificationsPopover: React.FC<NotificationsPopoverProps> = ({
   isOpen,
   onClose,
   onMarkAsRead,
-  onClearAll
+  onClearAll,
+  onNotificationClick
 }) => {
   const unreadCount = (notifications || []).filter(n => !n.isRead).length;
 
@@ -130,7 +132,13 @@ export const NotificationsPopover: React.FC<NotificationsPopoverProps> = ({
                       layout
                       whileHover={{ backgroundColor: "rgba(var(--primary-rgb), 0.05)" }}
                       className={`p-4 cursor-pointer transition-colors ${!notification.isRead ? 'bg-primary/5' : ''}`}
-                      onClick={() => onMarkAsRead(notification.id)}
+                      onClick={() => {
+                        onMarkAsRead(notification.id);
+                        // إذا كان هناك callback للنقر على الإشعار، استخدمه
+                        if (onNotificationClick) {
+                          onNotificationClick(notification);
+                        }
+                      }}
                     >
                       <div className="flex justify-between items-start gap-3">
                         <div className="flex-1">

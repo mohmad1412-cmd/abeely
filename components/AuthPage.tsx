@@ -15,6 +15,7 @@ import {
   sendOTP,
   verifyOTP,
   signInWithOAuth,
+  signInWithGooglePopup,
   signInWithEmail,
   isValidSaudiPhone,
 } from '../services/authService';
@@ -67,6 +68,30 @@ const AuthToast: React.FC<{ message: string; type?: 'error' | 'info'; onClose: (
   </motion.div>
 );
 
+// ترجمة رسائل الخطأ من Supabase للعربية
+const translateAuthError = (error: string): string => {
+  const errorMap: Record<string, string> = {
+    'Token has expired or is invalid': 'انتهت صلاحية رمز التحقق. يرجى طلب رمز جديد.',
+    'Invalid OTP': 'رمز التحقق غير صحيح',
+    'OTP expired': 'انتهت صلاحية رمز التحقق',
+    'Phone number is invalid': 'رقم الجوال غير صحيح',
+    'Rate limit exceeded': 'تم تجاوز الحد المسموح. انتظر قليلاً ثم حاول مرة أخرى.',
+    'For security purposes, you can only request this after': 'لأسباب أمنية، يمكنك طلب رمز جديد بعد',
+    'Invalid login credentials': 'بيانات الدخول غير صحيحة',
+    'Email not confirmed': 'البريد الإلكتروني غير مؤكد',
+    'User not found': 'المستخدم غير موجود',
+  };
+  
+  // البحث عن ترجمة مطابقة أو جزئية
+  for (const [key, value] of Object.entries(errorMap)) {
+    if (error.toLowerCase().includes(key.toLowerCase())) {
+      return value;
+    }
+  }
+  
+  return error;
+};
+
 export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode }) => {
   const [step, setStep] = useState<AuthStep>('welcome');
   const [phone, setPhone] = useState('');
@@ -109,7 +134,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
       setStep('otp');
       setPhone(cleanPhone); // حفظ الرقم المنظف
     } else {
-      setError(result.error || 'فشل إرسال رمز التحقق');
+      // ترجمة رسالة الخطأ للعربية
+      const translatedError = translateAuthError(result.error || 'فشل إرسال رمز التحقق');
+      setError(translatedError);
     }
   };
 
@@ -137,7 +164,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
         onAuthenticated();
       }, 1000);
     } else {
-      setError(result.error || 'رمز التحقق غير صحيح');
+      // ترجمة رسالة الخطأ للعربية
+      const translatedError = translateAuthError(result.error || 'رمز التحقق غير صحيح');
+      setError(translatedError);
     }
   };
 
@@ -178,21 +207,44 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
     }
   };
 
-  // Handle OAuth sign in (Google/Apple) - يستخدم redirect مباشرة
+  // Handle OAuth sign in
   const handleOAuthSignIn = async (provider: 'google' | 'apple') => {
     setError('');
     setIsLoading(true);
-    setToastMessage(`جاري التحويل إلى ${provider === 'google' ? 'Google' : 'Apple'}...`);
-    setToastType('info');
     
-    const result = await signInWithOAuth(provider);
-    
-    // لن نصل هنا عادةً لأن المتصفح سيعيد التوجيه
-    // لكن في حالة الخطأ:
-    if (!result.success && result.error) {
+    if (provider === 'google') {
+      // استخدام Google popup الحقيقي
+      setToastMessage('جاري فتح نافذة Google...');
+      setToastType('info');
+      
+      const result = await signInWithGooglePopup();
+      
       setIsLoading(false);
-      setToastMessage(result.error);
-      setToastType('error');
+      
+      if (result.success) {
+        setToastMessage('تم تسجيل الدخول بنجاح! ✅');
+        setToastType('info');
+        setShowSuccess(true);
+        
+        setTimeout(() => {
+          onAuthenticated();
+        }, 800);
+      } else if (result.error) {
+        setToastMessage(result.error);
+        setToastType('error');
+      }
+    } else {
+      // Apple يستخدم redirect
+      setToastMessage('جاري التحويل إلى Apple...');
+      setToastType('info');
+      
+      const result = await signInWithOAuth(provider);
+      
+      if (!result.success && result.error) {
+        setIsLoading(false);
+        setToastMessage(result.error);
+        setToastType('error');
+      }
     }
   };
 
