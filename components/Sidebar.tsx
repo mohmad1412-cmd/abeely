@@ -913,7 +913,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 const statusConfig = getStatusConfig();
                 
                 return (
-                  <motion.button
+                  <motion.div
                     key={req.id}
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -921,7 +921,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     whileHover={{ scale: 1.02, x: -4 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => onSelectRequest(req, false, true)}
-                    className="w-full text-right bg-card hover:bg-secondary/80 border border-border p-3 pt-4 rounded-xl transition-colors group relative shadow-sm hover:shadow-md"
+                    className="w-full text-right bg-card hover:bg-secondary/80 border border-border p-3 pt-4 rounded-xl transition-colors group relative shadow-sm hover:shadow-md cursor-pointer"
                   >
                     {/* Floating Label */}
                     <span className="absolute -top-2.5 right-3 bg-card px-2 text-[11px] font-bold text-primary">
@@ -1078,7 +1078,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span>بانتظار العروض...</span>
                       </div>
                     )}
-                  </motion.button>
+                  </motion.div>
                 );
               })}
             </div>
@@ -1131,7 +1131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 const contactStatus = getContactStatus();
                 
                 return (
-                  <motion.button
+                  <motion.div
                     key={offer.id}
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -1139,7 +1139,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     whileHover={{ scale: 1.02, x: -4 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => onSelectOffer(offer, true)}
-                    className="w-full text-right bg-card hover:bg-secondary/80 border border-border p-3 pt-4 rounded-xl transition-colors group relative shadow-sm hover:shadow-md"
+                    className="w-full text-right bg-card hover:bg-secondary/80 border border-border p-3 pt-4 rounded-xl transition-colors group relative shadow-sm hover:shadow-md cursor-pointer"
                   >
                     {/* Floating Label for Offer */}
                     <span className="absolute -top-2.5 right-3 bg-card px-2 text-[11px] font-bold text-primary">
@@ -1304,7 +1304,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                       );
                     })()}
-                  </motion.button>
+                  </motion.div>
                 );
               })}
             </div>

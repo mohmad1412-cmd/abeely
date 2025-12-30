@@ -58,24 +58,49 @@ export async function getConversations(): Promise<Conversation[]> {
     }
     if (!user) return [];
 
-    const { data, error } = await supabase
+    // First fetch conversations without joins to avoid foreign key issues
+    const { data: convData, error: convError } = await supabase
       .from('conversations')
-      .select(`
-        *,
-        participant1:profiles!conversations_participant1_id_fkey(id, display_name, avatar_url),
-        participant2:profiles!conversations_participant2_id_fkey(id, display_name, avatar_url)
-      `)
+      .select('*')
       .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`)
       .order('last_message_at', { ascending: false, nullsFirst: false });
 
-    if (error) {
-      console.error('Supabase error in getConversations:', error);
-      // If table doesn't exist or RLS issue, return empty array instead of throwing
-      if (error.code === '42P01' || error.code === 'PGRST116') {
+    if (convError) {
+      console.error('Supabase error in getConversations:', convError);
+      if (convError.code === '42P01' || convError.code === 'PGRST116') {
         return [];
       }
-      throw error;
+      throw convError;
     }
+
+    // Fetch profiles separately to avoid foreign key relationship issues
+    const participantIds = new Set<string>();
+    (convData || []).forEach(conv => {
+      participantIds.add(conv.participant1_id);
+      participantIds.add(conv.participant2_id);
+    });
+
+    let profilesMap: Record<string, any> = {};
+    if (participantIds.size > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, display_name, avatar_url')
+        .in('id', Array.from(participantIds));
+      
+      (profiles || []).forEach(p => {
+        profilesMap[p.id] = p;
+      });
+    }
+
+    const data = (convData || []).map(conv => ({
+      ...conv,
+      participant1: profilesMap[conv.participant1_id] || null,
+      participant2: profilesMap[conv.participant2_id] || null,
+    }));
+
+    const error = null;
+
+    // Error already handled above
 
     // Transform data to include other_user and unread_count
     const conversations = await Promise.all(
@@ -178,18 +203,31 @@ export async function getConversation(conversationId: string): Promise<Conversat
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const { data, error } = await supabase
+    // Fetch conversation without explicit foreign key joins
+    const { data: convData, error: convError } = await supabase
       .from('conversations')
-      .select(`
-        *,
-        participant1:profiles!conversations_participant1_id_fkey(id, display_name, avatar_url),
-        participant2:profiles!conversations_participant2_id_fkey(id, display_name, avatar_url)
-      `)
+      .select('*')
       .eq('id', conversationId)
       .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`)
       .single();
 
-    if (error) throw error;
+    if (convError) throw convError;
+
+    // Fetch profiles separately
+    const participantIds = [convData.participant1_id, convData.participant2_id];
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, display_name, avatar_url')
+      .in('id', participantIds);
+    
+    const profilesMap: Record<string, any> = {};
+    (profiles || []).forEach(p => { profilesMap[p.id] = p; });
+
+    const data = {
+      ...convData,
+      participant1: profilesMap[convData.participant1_id] || null,
+      participant2: profilesMap[convData.participant2_id] || null,
+    };
 
     const otherUserId = data.participant1_id === user.id 
       ? data.participant2_id 
@@ -231,19 +269,33 @@ export async function getMessages(conversationId: string, limit = 50): Promise<M
 
     if (!conv) return [];
 
-    const { data, error } = await supabase
+    // Fetch messages without explicit foreign key joins
+    const { data: messagesData, error: messagesError } = await supabase
       .from('messages')
-      .select(`
-        *,
-        sender:profiles!messages_sender_id_fkey(id, display_name, avatar_url)
-      `)
+      .select('*')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
       .limit(limit);
 
-    if (error) throw error;
+    if (messagesError) throw messagesError;
 
-    return (data || []).reverse() as Message[]; // Reverse to show oldest first
+    // Fetch sender profiles separately
+    const senderIds = [...new Set((messagesData || []).map(m => m.sender_id))];
+    let sendersMap: Record<string, any> = {};
+    if (senderIds.length > 0) {
+      const { data: senders } = await supabase
+        .from('profiles')
+        .select('id, display_name, avatar_url')
+        .in('id', senderIds);
+      (senders || []).forEach(s => { sendersMap[s.id] = s; });
+    }
+
+    const data = (messagesData || []).map(m => ({
+      ...m,
+      sender: sendersMap[m.sender_id] || null,
+    }));
+
+    return data.reverse() as Message[]; // Reverse to show oldest first
   } catch (error) {
     console.error('Error fetching messages:', error);
     return [];
@@ -261,22 +313,30 @@ export async function sendMessage(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const { data, error } = await supabase
+    // Insert message
+    const { data: insertedMsg, error: insertError } = await supabase
       .from('messages')
       .insert({
         conversation_id: conversationId,
         sender_id: user.id,
         content: content.trim(),
       })
-      .select(`
-        *,
-        sender:profiles!messages_sender_id_fkey(id, display_name, avatar_url)
-      `)
+      .select('*')
       .single();
 
-    if (error) throw error;
+    if (insertError) throw insertError;
 
-    return data as Message;
+    // Fetch sender profile separately
+    const { data: senderProfile } = await supabase
+      .from('profiles')
+      .select('id, display_name, avatar_url')
+      .eq('id', user.id)
+      .single();
+
+    return {
+      ...insertedMsg,
+      sender: senderProfile || null,
+    } as Message;
   } catch (error) {
     console.error('Error sending message:', error);
     return null;
@@ -339,17 +399,22 @@ export function subscribeToMessages(
       },
       async (payload) => {
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          // Fetch full message with sender data
-          const { data } = await supabase
+          // Fetch full message
+          const { data: msgData } = await supabase
             .from('messages')
-            .select(`
-              *,
-              sender:profiles!messages_sender_id_fkey(id, display_name, avatar_url)
-            `)
+            .select('*')
             .eq('id', payload.new.id)
             .single();
 
-          if (data) {
+          if (msgData) {
+            // Fetch sender profile separately
+            const { data: senderProfile } = await supabase
+              .from('profiles')
+              .select('id, display_name, avatar_url')
+              .eq('id', msgData.sender_id)
+              .single();
+
+            const data = { ...msgData, sender: senderProfile || null };
             callback(data as Message, payload.eventType as 'INSERT' | 'UPDATE');
           }
         }
