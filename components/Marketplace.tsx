@@ -41,6 +41,7 @@ import { Badge } from "./ui/Badge";
 import { AnimatePresence, motion } from "framer-motion";
 import { CardsGridSkeleton } from "./ui/LoadingSkeleton";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
+import { FullScreenCardView } from "./ui/FullScreenCardView";
 
 interface MarketplaceProps {
   requests: Request[];
@@ -2073,105 +2074,15 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           </motion.div>
         )}
 
-        {/* Fullscreen Snap View - وضع ملء الشاشة */}
-        {displayMode === "fullscreen" && (
-          <motion.div
-            key="fullscreen-view"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="snap-y snap-mandatory h-[calc(100vh-200px)] overflow-y-auto scroll-smooth"
-            style={{ scrollSnapType: 'y mandatory' }}
-          >
-            {filteredRequests.map((req, index) => {
-              const myOffer = myOffers.find(o => o.requestId === req.id);
-              const requestAuthorId = (req as any).authorId || (req as any).author_id || req.author;
-              const isMyRequest = !!user?.id && requestAuthorId === user.id;
-              
-              return (
-                <motion.div
-                  key={req.id}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="snap-center h-[calc(100vh-220px)] p-2"
-                  style={{ scrollSnapAlign: 'center' }}
-                >
-                  <div 
-                    onClick={() => {
-                      if (navigator.vibrate) navigator.vibrate(15);
-                      onSelectRequest(req);
-                    }}
-                    className="h-full bg-card border border-border rounded-3xl overflow-hidden cursor-pointer flex flex-col shadow-lg"
-                  >
-                    {/* صورة كبيرة */}
-                    <div className="h-1/2 bg-gradient-to-br from-secondary to-muted relative overflow-hidden">
-                      {req.images && req.images[0] ? (
-                        <img src={req.images[0]} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="text-center">
-                            <ImageIcon size={48} className="text-muted-foreground/30 mx-auto mb-2" />
-                            <span className="text-sm text-muted-foreground">لا توجد صورة</span>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Badge */}
-                      {isMyRequest && (
-                        <div className="absolute top-4 right-4 w-10 h-10 rounded-full bg-primary flex items-center justify-center shadow-lg">
-                          <User size={18} className="text-white" />
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* المحتوى */}
-                    <div className="flex-1 p-5 flex flex-col">
-                      <h2 className="text-2xl font-bold mb-2">{req.title}</h2>
-                      <p className="text-muted-foreground text-sm line-clamp-2 mb-4">{req.description || 'لا يوجد وصف'}</p>
-                      
-                      <div className="grid grid-cols-2 gap-3 mb-4">
-                        {req.location && (
-                          <div className="flex items-center gap-2 text-sm">
-                            <MapPin size={14} className="text-primary" />
-                            <span className="truncate">{req.location}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2 text-sm">
-                          <Clock size={14} className="text-primary" />
-                          <span>{new Date(req.createdAt).toLocaleDateString('ar-SA')}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <DollarSign size={14} className="text-primary" />
-                          <span>{req.budgetMin || req.budgetMax ? `${req.budgetMin || '؟'} - ${req.budgetMax || '؟'}` : 'غير محددة'}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <Eye size={14} className="text-primary" />
-                          <span>{req.viewCount || 0} مشاهدة</span>
-                        </div>
-                      </div>
-                      
-                      <div className="mt-auto">
-                        {myOffer ? (
-                          <div className="w-full py-3 rounded-xl bg-primary/10 text-primary text-center font-bold">
-                            ✓ قدمت عرضاً
-                          </div>
-                        ) : req.status === 'completed' || req.status === 'archived' ? (
-                          <div className="w-full py-3 rounded-xl bg-muted text-muted-foreground text-center font-bold flex items-center justify-center gap-2">
-                            <Lock size={16} />
-                            الطلب منتهي
-                          </div>
-                        ) : (
-                          <button className="w-full py-3 rounded-xl bg-primary text-white font-bold hover:bg-primary/90 transition-colors">
-                            تقديم عرض
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </motion.div>
+        {/* Fullscreen Snap View - وضع ملء الشاشة (مثل TikTok) */}
+        {displayMode === "fullscreen" && filteredRequests.length > 0 && (
+          <FullScreenCardView
+            requests={filteredRequests}
+            myOffers={myOffers}
+            userId={user?.id}
+            onSelectRequest={onSelectRequest}
+            onClose={() => setDisplayMode("cards")}
+          />
         )}
 
         {/* Cards Grid - وضع الكروت الافتراضي */}
