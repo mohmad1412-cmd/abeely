@@ -7,7 +7,7 @@ type RequestInsert = {
   author_id?: string;
   title: string;
   description: string;
-  status: "draft" | "active" | "assigned" | "completed" | "archived";
+  status: "active" | "assigned" | "completed" | "archived";
   is_public: boolean;
   budget_min?: string;
   budget_max?: string;
@@ -162,30 +162,64 @@ export async function createRequestFromChat(
     const msg = e?.message || "";
     const code = e?.code || "";
 
-    // Fallback: if missing column (e.g., interested_categories triggers), try draft/non-public to bypass triggers
-    const isMissingColumn = code === "42703" || msg.includes("interested_categories");
-    if (!isMissingColumn) {
+    // Fallback: if trigger fails (e.g., interested_categories missing), create as non-public first then update
+    const isTriggerError = code === "42703" || msg.includes("interested_categories") || msg.includes("categories");
+    if (!isTriggerError) {
       throw err;
     }
 
+    console.log("⚠️ Trigger error detected, using fallback method (create non-public, then update)");
+
+    // الخطوة 1: إنشاء الطلب كغير عام (لتجاوز الـ trigger)
     const fallbackPayload: RequestInsert = {
       ...payload,
-      status: "draft",
-      is_public: false,
+      status: "active",
+      is_public: false, // غير عام لتجاوز الـ trigger
     };
 
     try {
-      const data = await (async () => {
-        const { data, error } = await supabase.from("requests").insert(fallbackPayload).select("id").single();
-        if (error || !data?.id) {
-          throw error || new Error("Fallback insert failed");
-        }
-        return data;
-      })();
+      const { data: insertedData, error: insertError } = await supabase
+        .from("requests")
+        .insert(fallbackPayload)
+        .select("id")
+        .single();
 
-      // Skip categories linking in fallback to avoid more errors
-      return data;
+      if (insertError || !insertedData?.id) {
+        console.error("Fallback insert failed:", insertError);
+        throw insertError || new Error("Fallback insert failed");
+      }
+
+      console.log("✅ Request created (non-public):", insertedData.id);
+
+      // الخطوة 2: تحديث الطلب ليصبح عاماً
+      const { error: updateError } = await supabase
+        .from("requests")
+        .update({ is_public: true })
+        .eq("id", insertedData.id);
+
+      if (updateError) {
+        console.warn("Failed to make request public:", updateError);
+        // لا نرمي خطأ، الطلب تم إنشاؤه على أي حال
+      } else {
+        console.log("✅ Request made public");
+      }
+
+      // الخطوة 3: ربط التصنيفات
+      try {
+        const categories = draftData.categories || [];
+        await linkCategoriesByLabels(insertedData.id, categories);
+        console.log("✅ Categories linked");
+      } catch (catErr) {
+        console.warn("Failed to link categories in fallback:", catErr);
+        // نحاول إضافة "غير محدد" على الأقل
+        try {
+          await linkCategories(insertedData.id, ['unspecified']);
+        } catch (_) {}
+      }
+
+      return insertedData;
     } catch (fallbackErr) {
+      console.error("Fallback method failed:", fallbackErr);
       throw fallbackErr;
     }
   }
@@ -462,6 +496,101 @@ export async function fetchOffersForRequest(requestId: string): Promise<Offer[]>
     location: offer.location || "",
     images: [],
   }));
+}
+
+/**
+ * Fetch offers for all user's requests (received offers)
+ * Returns a map of requestId -> offers array
+ */
+export async function fetchOffersForUserRequests(userId: string): Promise<Map<string, Offer[]>> {
+  // First, get all request IDs for this user
+  const { data: requests, error: requestsError } = await supabase
+    .from("requests")
+    .select("id")
+    .eq("author_id", userId);
+
+  if (requestsError) {
+    console.error("Error fetching user requests:", requestsError);
+    return new Map();
+  }
+
+  const requestIds = (requests || []).map(r => r.id);
+  if (requestIds.length === 0) return new Map();
+
+  // Fetch all offers for these requests
+  const { data: offers, error: offersError } = await supabase
+    .from("offers")
+    .select("*")
+    .in("request_id", requestIds)
+    .order("created_at", { ascending: false });
+
+  if (offersError) {
+    console.error("Error fetching offers for user requests:", offersError);
+    return new Map();
+  }
+
+  // Group offers by request ID
+  const offersMap = new Map<string, Offer[]>();
+  (offers || []).forEach((offer: any) => {
+    const transformed: Offer = {
+      id: offer.id,
+      requestId: offer.request_id,
+      providerId: offer.provider_id,
+      providerName: offer.provider_name,
+      title: offer.title,
+      description: offer.description || "",
+      price: offer.price || "",
+      deliveryTime: offer.delivery_time || "",
+      status: offer.status,
+      createdAt: new Date(offer.created_at),
+      isNegotiable: offer.is_negotiable ?? true,
+      location: offer.location || "",
+      images: [],
+    };
+    
+    const existingOffers = offersMap.get(offer.request_id) || [];
+    existingOffers.push(transformed);
+    offersMap.set(offer.request_id, existingOffers);
+  });
+
+  return offersMap;
+}
+
+/**
+ * Migrate user's draft requests to active (one-time migration)
+ * This is needed to update old draft requests to the new active-only system
+ */
+export async function migrateUserDraftRequests(userId: string): Promise<number> {
+  try {
+    // Get all draft requests for this user
+    const { data: draftRequests, error: fetchError } = await supabase
+      .from("requests")
+      .select("id")
+      .eq("author_id", userId)
+      .eq("status", "draft");
+
+    if (fetchError || !draftRequests?.length) {
+      return 0;
+    }
+
+    // Update all draft requests to active
+    const { error: updateError } = await supabase
+      .from("requests")
+      .update({ status: "active", is_public: true })
+      .eq("author_id", userId)
+      .eq("status", "draft");
+
+    if (updateError) {
+      console.error("Error migrating draft requests:", updateError);
+      return 0;
+    }
+
+    console.log(`Migrated ${draftRequests.length} draft requests to active`);
+    return draftRequests.length;
+  } catch (error) {
+    console.error("Error in migrateUserDraftRequests:", error);
+    return 0;
+  }
 }
 
 /**
@@ -828,6 +957,100 @@ export function subscribeToNewRequests(
   return () => {
     supabase.removeChannel(channel);
   };
+}
+
+/**
+ * تحديث طلب موجود
+ * يتحقق من أن المستخدم هو صاحب الطلب قبل التحديث
+ */
+export async function updateRequest(
+  requestId: string,
+  userId: string,
+  draftData: AIDraft
+): Promise<{ id: string } | null> {
+  console.log("=== updateRequest called ===");
+  console.log("requestId:", requestId);
+  console.log("userId:", userId);
+  console.log("draftData:", draftData);
+  
+  try {
+    // 1. التحقق من أن المستخدم هو صاحب الطلب
+    const { data: existingRequest, error: checkError } = await supabase
+      .from('requests')
+      .select('author_id')
+      .eq('id', requestId)
+      .single();
+
+    console.log("Existing request check:", { existingRequest, checkError });
+
+    if (checkError || !existingRequest) {
+      console.error('الطلب غير موجود:', checkError);
+      return null;
+    }
+
+    if (existingRequest.author_id !== userId) {
+      console.error('غير مصرح لك بتعديل هذا الطلب:', {
+        requestAuthorId: existingRequest.author_id,
+        currentUserId: userId
+      });
+      return null;
+    }
+
+    // 2. تحديث بيانات الطلب
+    const updatePayload = {
+      title: (draftData.title || draftData.summary || "طلب جديد").slice(0, 120),
+      description: draftData.description || draftData.summary || "",
+      budget_min: draftData.budgetMin,
+      budget_max: draftData.budgetMax,
+      budget_type: (draftData.budgetType as any) ||
+        ((draftData.budgetMin || draftData.budgetMax) ? "fixed" : "negotiable"),
+      location: draftData.location,
+      delivery_from: draftData.deliveryTime,
+    };
+
+    console.log("Update payload:", updatePayload);
+
+    const { error: updateError } = await supabase
+      .from('requests')
+      .update(updatePayload)
+      .eq('id', requestId);
+
+    console.log("Update result:", { updateError });
+
+    if (updateError) {
+      console.error('خطأ في تحديث الطلب:', updateError);
+      return null;
+    }
+    
+    console.log("Request updated successfully!");
+
+    // 3. تحديث التصنيفات - دائماً نحدث التصنيفات عند التعديل
+    try {
+      // حذف التصنيفات القديمة
+      await supabase
+        .from('request_categories')
+        .delete()
+        .eq('request_id', requestId);
+      
+      // إضافة التصنيفات الجديدة (أو "غير محدد" إذا لم يكن هناك تصنيفات)
+      const categories = draftData.categories && draftData.categories.length > 0 
+        ? draftData.categories 
+        : []; // سيتم إضافة "غير محدد" تلقائياً في linkCategoriesByLabels
+      await linkCategoriesByLabels(requestId, categories);
+      console.log("Categories updated:", categories.length > 0 ? categories : ['غير محدد (افتراضي)']);
+    } catch (catErr) {
+      console.warn('Failed to update categories:', catErr);
+      // نحاول إضافة "غير محدد" على الأقل
+      try {
+        await linkCategories(requestId, ['unspecified']);
+      } catch (_) {}
+    }
+
+    return { id: requestId };
+  } catch (error) {
+    console.error('خطأ في تحديث الطلب:', error);
+    return null;
+  }
 }
 
 /**

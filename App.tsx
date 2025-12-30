@@ -49,10 +49,13 @@ import {
   fetchArchivedRequests,
   fetchMyOffers,
   fetchMyRequests,
+  fetchOffersForUserRequests,
   fetchRequestsPaginated,
+  migrateUserDraftRequests,
   subscribeToNewRequests,
   unarchiveOffer,
   unarchiveRequest,
+  updateRequest,
 } from "./services/requestsService";
 import {
   getUnreadInterestsCount,
@@ -76,14 +79,16 @@ import { App as CapacitorApp } from "@capacitor/app";
 type AppView = "splash" | "auth" | "main" | "connection-error";
 
 // Mobile Overlay Component with Swipe Support
+// ✅ الخلفية ثابتة أثناء السحب - فقط السايد بار يتحرك (مثل السحب من الداخل تماماً)
 const MobileOverlay: React.FC<{ 
   onClose: () => void; 
   sidebarWidth: number;
-}> = ({ onClose, sidebarWidth }) => {
+  onSwipeProgress?: (offset: number) => void;
+}> = ({ onClose, sidebarWidth, onSwipeProgress }) => {
   const startXRef = useRef<number | null>(null);
   const startYRef = useRef<number | null>(null);
   const isHorizontalRef = useRef<boolean | null>(null);
-  const [swipeOffset, setSwipeOffset] = useState(0);
+  const swipeOffsetRef = useRef(0);
   const velocityRef = useRef(0);
   const lastXRef = useRef(0);
   const lastTimeRef = useRef(0);
@@ -96,7 +101,8 @@ const MobileOverlay: React.FC<{
     lastTimeRef.current = Date.now();
     isHorizontalRef.current = null;
     velocityRef.current = 0;
-    setSwipeOffset(0);
+    swipeOffsetRef.current = 0;
+    onSwipeProgress?.(0);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -125,7 +131,9 @@ const MobileOverlay: React.FC<{
     // ✅ السحب لليمين للإغلاق (deltaX > 0 = السحب نحو اليمين)
     if (deltaX > 0) {
       const offset = Math.min(deltaX, sidebarWidth);
-      setSwipeOffset(offset);
+      swipeOffsetRef.current = offset;
+      // ✅ فقط تحريك السايد بار - بدون تغيير الخلفية
+      onSwipeProgress?.(offset);
     }
   };
 
@@ -135,7 +143,7 @@ const MobileOverlay: React.FC<{
     const velocityThreshold = 0.3;
     
     // ✅ velocity > 0 يعني السحب لليمين بسرعة
-    if (swipeOffset > threshold || velocityRef.current > velocityThreshold) {
+    if (swipeOffsetRef.current > threshold || velocityRef.current > velocityThreshold) {
       if (navigator.vibrate) navigator.vibrate(10);
       onClose();
     }
@@ -143,19 +151,16 @@ const MobileOverlay: React.FC<{
     startXRef.current = null;
     startYRef.current = null;
     isHorizontalRef.current = null;
-    setSwipeOffset(0);
+    swipeOffsetRef.current = 0;
+    onSwipeProgress?.(0);
   };
-
-  // حساب الشفافية والضبابية بناءً على السحب
-  const dynamicOpacity = Math.max(0.55 - (swipeOffset / sidebarWidth * 0.55), 0);
-  const dynamicBlur = Math.max(8 - (swipeOffset / sidebarWidth * 8), 0);
 
   return (
     <motion.div
       initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
       animate={{ 
         opacity: 1, 
-        backdropFilter: `blur(${dynamicBlur}px)`,
+        backdropFilter: "blur(8px)",
       }}
       exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
       transition={{ 
@@ -164,9 +169,10 @@ const MobileOverlay: React.FC<{
       }}
       className="fixed inset-0 z-[80] md:hidden"
       style={{
-        background: `rgba(0, 0, 0, ${swipeOffset > 0 ? dynamicOpacity : 0.55})`,
-        backdropFilter: swipeOffset > 0 ? `blur(${dynamicBlur}px)` : undefined,
-        WebkitBackdropFilter: swipeOffset > 0 ? `blur(${dynamicBlur}px)` : undefined,
+        // ✅ الخلفية ثابتة تماماً - لا تتغير أثناء السحب
+        background: "rgba(0, 0, 0, 0.55)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
       }}
       onClick={onClose}
       onTouchStart={handleTouchStart}
@@ -196,6 +202,7 @@ const App: React.FC = () => {
   const [previousView, setPreviousView] = useState<ViewState | null>(null);
   const [titleKey, setTitleKey] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [overlaySwipeOffset, setOverlaySwipeOffset] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
   
   // Sidebar handle position (percentage from top, 0-100)
@@ -234,6 +241,7 @@ const App: React.FC = () => {
     new Set(),
   ); // الطلبات المشاهدة من قاعدة البيانات
   const [myOffers, setMyOffers] = useState<Offer[]>([]);
+  const [receivedOffersMap, setReceivedOffersMap] = useState<Map<string, Offer[]>>(new Map()); // العروض المستلمة على طلبات المستخدم
   const [archivedRequests, setArchivedRequests] = useState<Request[]>([]);
   const [archivedOffers, setArchivedOffers] = useState<Offer[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
@@ -270,6 +278,7 @@ const App: React.FC = () => {
   // Selection State
   // ==========================================
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
+  const [requestToEdit, setRequestToEdit] = useState<Request | null>(null); // الطلب المراد تعديله
   const [scrollToOfferSection, setScrollToOfferSection] = useState(false);
   const [navigatedFromSidebar, setNavigatedFromSidebar] = useState(false); // لتتبع مصدر التنقل
 
@@ -990,6 +999,9 @@ const App: React.FC = () => {
 
     const loadUserData = async () => {
       try {
+        // ترقية الطلبات القديمة من "مسودة" إلى "نشط" (مرة واحدة لكل مستخدم)
+        await migrateUserDraftRequests(user.id);
+        
         await Promise.all([
           fetchMyRequests(user.id).then((reqs) =>
             setMyRequests(reqs.filter((r) => r.status !== "archived"))
@@ -997,6 +1009,7 @@ const App: React.FC = () => {
           fetchMyOffers(user.id).then((offers) =>
             setMyOffers(offers.filter((o) => o.status !== "archived"))
           ),
+          fetchOffersForUserRequests(user.id).then(setReceivedOffersMap),
           fetchArchivedRequests(user.id).then(setArchivedRequests),
           fetchArchivedOffers(user.id).then(setArchivedOffers),
         ]);
@@ -1555,6 +1568,10 @@ const App: React.FC = () => {
         const offers = await fetchMyOffers(user.id);
         setMyOffers(offers.filter((o) => o.status !== "archived"));
 
+        // جلب العروض المستلمة على طلبات المستخدم
+        const receivedOffers = await fetchOffersForUserRequests(user.id);
+        setReceivedOffersMap(receivedOffers);
+
         // Reload archived items
         const archivedReqs = await fetchArchivedRequests(user.id);
         setArchivedRequests(archivedReqs);
@@ -1665,9 +1682,9 @@ const App: React.FC = () => {
             onGoToMarketplace={() => {
               handleNavigate("marketplace");
             }}
-            onPublish={async (request): Promise<string | null> => {
+            onPublish={async (request, isEditing, editRequestId): Promise<string | null> => {
               try {
-                console.log("Publishing request:", request);
+                console.log(isEditing ? "Updating request:" : "Publishing request:", request);
 
                 // التحقق من البيانات الأساسية
                 if (!request.description || !request.location) {
@@ -1691,21 +1708,46 @@ const App: React.FC = () => {
                 
                 console.log("Draft data to be sent:", draftData);
                 
-                // إنشاء الطلب في قاعدة البيانات
-                const createdRequest = await createRequestFromChat(user?.id || null, draftData);
+                let resultId: string | null = null;
                 
-                console.log("Request created successfully:", createdRequest);
+                // إذا كان تعديل، استخدم updateRequest
+                if (isEditing && editRequestId && user?.id) {
+                  console.log("=== UPDATE MODE ===");
+                  console.log("isEditing:", isEditing);
+                  console.log("editRequestId:", editRequestId);
+                  console.log("userId:", user?.id);
+                  console.log("draftData:", draftData);
+                  const updatedRequest = await updateRequest(editRequestId, user.id, draftData);
+                  if (updatedRequest) {
+                    console.log("Request updated successfully:", updatedRequest);
+                    resultId = updatedRequest.id;
+                  } else {
+                    console.error("Failed to update request - updateRequest returned null");
+                    return null;
+                  }
+                } else {
+                  console.log("=== CREATE MODE ===");
+                  console.log("isEditing:", isEditing);
+                  console.log("editRequestId:", editRequestId);
+                  console.log("userId:", user?.id);
+                  // إنشاء طلب جديد
+                  const createdRequest = await createRequestFromChat(user?.id || null, draftData);
+                  console.log("Request created successfully:", createdRequest);
+                  resultId = createdRequest?.id || null;
+                }
                 
                 // إعادة تحميل البيانات في الخلفية
                 reloadData().catch(console.error);
                 
-                // إرجاع ID الطلب المنشأ
-                return createdRequest?.id || null;
+                // إرجاع ID الطلب
+                return resultId;
               } catch (error) {
-                console.error("Error publishing request:", error);
+                console.error("Error publishing/updating request:", error);
                 return null;
               }
             }}
+            requestToEdit={requestToEdit}
+            onClearRequestToEdit={() => setRequestToEdit(null)}
             onGoToRequest={(requestId) => {
               // البحث عن الطلب في القائمة أو إنشاء كائن مؤقت
               const foundRequest = [...myRequests, ...allRequests].find(r => r.id === requestId);
@@ -1758,15 +1800,21 @@ const App: React.FC = () => {
           />
         );
       case "marketplace":
+        // دمج طلبات المستخدم مع الطلبات العامة (مع إزالة التكرارات)
+        const mergedRequests = user?.id 
+          ? [...myRequests.filter(r => !allRequests.some(ar => ar.id === r.id)), ...allRequests]
+          : allRequests;
         return (
           <div className="h-full flex flex-col overflow-hidden relative">
             {allRequests && Array.isArray(allRequests)
               ? (
                 <Marketplace
-                  requests={allRequests}
+                  requests={mergedRequests}
                   interestsRequests={interestsRequests}
                   unreadInterestsCount={unreadInterestsCount}
                   myOffers={myOffers}
+                  receivedOffersMap={receivedOffersMap}
+                  userId={user?.id}
                   onSelectRequest={handleSelectRequest}
                   userInterests={userInterests}
                   onUpdateInterests={(interests) => {
@@ -1823,13 +1871,18 @@ const App: React.FC = () => {
           </div>
         );
       case "request-detail":
-        return selectedRequest
+        // إثراء الطلب بالعروض المستلمة إذا كان المستخدم هو صاحب الطلب
+        const enrichedRequest = selectedRequest ? {
+          ...selectedRequest,
+          offers: receivedOffersMap.get(selectedRequest.id) || selectedRequest.offers || []
+        } : null;
+        return enrichedRequest
           ? (
             <div className="h-full flex flex-col overflow-hidden">
               <RequestDetail
-                request={selectedRequest}
+                request={enrichedRequest}
                 mode={mode}
-                myOffer={getMyOfferOnRequest(selectedRequest.id)}
+                myOffer={getMyOfferOnRequest(enrichedRequest.id)}
                 onBack={() => {
                   setSelectedRequest(null);
                   setScrollToOfferSection(false);
@@ -1898,6 +1951,13 @@ const App: React.FC = () => {
                 onSignOut={handleSignOut}
                 onMarkRequestAsRead={handleRequestRead}
                 onArchiveRequest={handleArchiveRequest}
+                onEditRequest={(request) => {
+                  // تعيين الطلب للتعديل
+                  console.log("=== EDIT REQUEST TRIGGERED ===");
+                  console.log("Request to edit:", request);
+                  console.log("Request ID:", request.id);
+                  setRequestToEdit(request);
+                }}
                 onOfferCreated={async () => {
                   // Reload user's offers after creating a new one
                   if (user?.id) {
@@ -2131,6 +2191,7 @@ const App: React.FC = () => {
           <MobileOverlay 
             onClose={() => setIsSidebarOpen(false)} 
             sidebarWidth={340}
+            onSwipeProgress={setOverlaySwipeOffset}
           />
         )}
       </AnimatePresence>
@@ -2152,6 +2213,7 @@ const App: React.FC = () => {
         userRequests={myRequests}
         allRequests={allRequests}
         userOffers={myOffers}
+        receivedOffersMap={receivedOffersMap}
         archivedRequests={archivedRequests}
         archivedOffers={archivedOffers}
         onSelectRequest={handleSelectRequest}
@@ -2173,6 +2235,7 @@ const App: React.FC = () => {
         isDarkMode={isDarkMode}
         toggleTheme={() => setIsDarkMode(!isDarkMode)}
         onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
+        externalSwipeOffset={overlaySwipeOffset}
       />
 
       {/* Main Content */}

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MapPin,
@@ -237,9 +237,12 @@ const simpleExtraction = (message: string): ExtractedData => {
 
 interface CreateRequestV2Props {
   onBack: () => void;
-  onPublish: (request: Partial<Request>) => Promise<string | null>; // Returns request ID on success
+  onPublish: (request: Partial<Request>, isEditing?: boolean, requestId?: string) => Promise<string | null>; // Returns request ID on success
   onGoToRequest?: (requestId: string) => void; // Navigate to created request
   onGoToMarketplace?: () => void; // Navigate back to marketplace
+  // Request to edit (if editing existing request)
+  requestToEdit?: Request | null;
+  onClearRequestToEdit?: () => void; // Clear after editing is done
   // Header props
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
@@ -790,6 +793,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   onPublish,
   onGoToRequest,
   onGoToMarketplace,
+  requestToEdit,
+  onClearRequestToEdit,
   isSidebarOpen,
   setIsSidebarOpen,
   mode,
@@ -812,14 +817,43 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   setIsAiLoading,
   aiSendHandlerRef,
 }) => {
+  // ==========================================
+  // نوع لتخزين القيم المحفوظة (snapshot)
+  // ==========================================
+  interface SavedValues {
+    title: string;
+    description: string;
+    location: string;
+    budget: string;
+    deliveryTime: string;
+    category: string;
+  }
+  
+  // ==========================================
+  // حالة التعديل
+  // ==========================================
+  
+  // حفظ ID الطلب للتعديل (لا يتغير حتى الخروج من الصفحة)
+  const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
+  
+  // القيم المحفوظة آخر مرة (للمقارنة)
+  const [savedValues, setSavedValues] = useState<SavedValues | null>(null);
+  
+  // هل تم الحفظ مرة واحدة على الأقل؟
+  const [hasSavedOnce, setHasSavedOnce] = useState(false);
+  
+  // ==========================================
   // Core fields
+  // ==========================================
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // ==========================================
   // Additional fields
+  // ==========================================
   const [additionalFields, setAdditionalFields] = useState<AdditionalField[]>([
     {
       id: "budget",
@@ -847,18 +881,174 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // Show additional fields only when AI suggests them
   const [showAdditionalFields, setShowAdditionalFields] = useState(false);
 
+  // ==========================================
+  // دالة لاستخراج القيم الحالية كـ snapshot
+  // ==========================================
+  const getCurrentValues = useCallback((): SavedValues => {
+    const budgetField = additionalFields.find(f => f.id === "budget");
+    const deliveryField = additionalFields.find(f => f.id === "deliveryTime");
+    const categoryField = additionalFields.find(f => f.id === "category");
+    
+    return {
+      title: title.trim(),
+      description: description.trim(),
+      location: location.trim(),
+      budget: budgetField?.enabled ? budgetField.value.trim() : "",
+      deliveryTime: deliveryField?.enabled ? deliveryField.value.trim() : "",
+      category: categoryField?.enabled ? categoryField.value.trim() : "",
+    };
+  }, [title, description, location, additionalFields]);
+
+  // ==========================================
+  // دالة للمقارنة بين القيم الحالية والمحفوظة
+  // ==========================================
+  const hasChangesFromSaved = useCallback((): boolean => {
+    if (!savedValues) return false;
+    
+    const current = getCurrentValues();
+    
+    // مقارنة كل حقل
+    if (current.title !== savedValues.title) return true;
+    if (current.description !== savedValues.description) return true;
+    if (current.location !== savedValues.location) return true;
+    if (current.budget !== savedValues.budget) return true;
+    if (current.deliveryTime !== savedValues.deliveryTime) return true;
+    if (current.category !== savedValues.category) return true;
+    
+    return false;
+  }, [savedValues, getCurrentValues]);
+
+  // ==========================================
+  // حساب حالة الزر في وضع التعديل
+  // ==========================================
+  const editButtonState = useMemo(() => {
+    if (!editingRequestId) {
+      return { canSave: false, isSaved: false };
+    }
+    
+    const hasChanges = hasChangesFromSaved();
+    
+    return {
+      // يمكن الحفظ فقط إذا هناك تغييرات
+      canSave: hasChanges,
+      // تم الحفظ إذا حفظنا مرة وليس هناك تغييرات
+      isSaved: hasSavedOnce && !hasChanges,
+    };
+  }, [editingRequestId, hasChangesFromSaved, hasSavedOnce]);
+
+  // ==========================================
+  // تعبئة الحقول عند التعديل
+  // ==========================================
+  useEffect(() => {
+    if (requestToEdit) {
+      // حفظ ID الطلب للتعديل
+      setEditingRequestId(requestToEdit.id);
+      
+      // تصفير حالة الحفظ
+      setHasSavedOnce(false);
+      
+      // تعبئة العنوان والوصف والموقع
+      const newTitle = requestToEdit.title || "";
+      const newDescription = requestToEdit.description || "";
+      const newLocation = requestToEdit.location || "";
+      
+      setTitle(newTitle);
+      setDescription(newDescription);
+      setLocation(newLocation);
+      
+      // حساب قيم الحقول الإضافية
+      let budgetValue = "";
+      if (requestToEdit.budgetMin && requestToEdit.budgetMax) {
+        budgetValue = `${requestToEdit.budgetMin} - ${requestToEdit.budgetMax}`;
+      } else if (requestToEdit.budgetMin || requestToEdit.budgetMax) {
+        budgetValue = requestToEdit.budgetMin || requestToEdit.budgetMax || "";
+      }
+      
+      const deliveryValue = requestToEdit.deliveryTimeFrom || "";
+      const categoryValue = requestToEdit.categories?.join("، ") || "";
+      
+      // تعبئة الحقول الإضافية
+      setAdditionalFields(prevFields => {
+        return prevFields.map(field => {
+          if (field.id === "budget" && budgetValue) {
+            return { ...field, value: budgetValue, enabled: true };
+          }
+          if (field.id === "deliveryTime" && deliveryValue) {
+            return { ...field, value: deliveryValue, enabled: true };
+          }
+          if (field.id === "category" && categoryValue) {
+            return { ...field, value: categoryValue, enabled: true };
+          }
+          return field;
+        });
+      });
+      
+      // إظهار الحقول الإضافية إذا كانت مفعّلة
+      if (budgetValue || deliveryValue || categoryValue) {
+        setShowAdditionalFields(true);
+      }
+      
+      // إظهار العنوان
+      if (newTitle) {
+        setShowTitle(true);
+      }
+      
+      // حفظ القيم كـ snapshot أولي
+      setSavedValues({
+        title: newTitle.trim(),
+        description: newDescription.trim(),
+        location: newLocation.trim(),
+        budget: budgetValue.trim(),
+        deliveryTime: deliveryValue.trim(),
+        category: categoryValue.trim(),
+      });
+    }
+  }, [requestToEdit]);
+
   // Handle back - immediate navigation
   const handleBack = useCallback(() => {
     if (navigator.vibrate) navigator.vibrate(12);
+    // مسح الطلب للتعديل عند الخروج
+    if (onClearRequestToEdit) {
+      onClearRequestToEdit();
+    }
     onBack();
-  }, [onBack]);
+  }, [onBack, onClearRequestToEdit]);
 
   // Glowing states
   const [glowingFields, setGlowingFields] = useState<Set<string>>(new Set());
   const [showTitle, setShowTitle] = useState(false);
+  
+  // AI connection state
+  const [isAIConnected, setIsAIConnected] = useState<boolean | null>(null); // null = لم يتم الفحص بعد
+  const [showManualTitle, setShowManualTitle] = useState(false);
+  const [titleShake, setTitleShake] = useState(false);
 
-  // Check if can submit
-  const canSubmit = !!(description.trim() && location.trim());
+  // Check AI connection on mount
+  useEffect(() => {
+    const checkAI = async () => {
+      const client = getAIClient();
+      if (!client) {
+        setIsAIConnected(false);
+        setShowManualTitle(true);
+        return;
+      }
+      // Try a quick test
+      try {
+        const model = client.getGenerativeModel({ model: "gemini-2.0-flash-001" });
+        await model.generateContent("test");
+        setIsAIConnected(true);
+      } catch {
+        setIsAIConnected(false);
+        setShowManualTitle(true);
+      }
+    };
+    checkAI();
+  }, []);
+
+  // Check if can submit - يحتاج عنوان إذا AI غير متصل
+  const needsManualTitle = isAIConnected === false && !title.trim();
+  const canSubmit = !!(description.trim() && location.trim() && (isAIConnected !== false || title.trim()));
   
   // Submit states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1120,8 +1310,24 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       deliveryTimeFrom: additionalFields.find((f) => f.id === "deliveryTime" && f.enabled)?.value,
     };
 
-    console.log("Publishing request with data:", request);
-    return await onPublish(request);
+    // تحديد ما إذا كان تعديل أو إنشاء جديد
+    const isEditing = !!editingRequestId;
+    console.log(isEditing ? "Updating request:" : "Publishing request:", request);
+    console.log("editingRequestId:", editingRequestId);
+    
+    // تمرير معلومات التعديل إذا كنا في وضع التعديل
+    const result = await onPublish(request, isEditing, editingRequestId || undefined);
+    
+    // تحديث حالة الحفظ
+    if (result) {
+      if (isEditing) {
+        // تم الحفظ بنجاح - تحديث القيم المحفوظة
+        setSavedValues(getCurrentValues());
+        setHasSavedOnce(true);
+      }
+    }
+    
+    return result;
   };
 
   return (
@@ -1135,8 +1341,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       <SuccessNotification
         isVisible={showSuccessNotification}
         onHide={() => setShowSuccessNotification(false)}
-        message="تم إرسال طلبك بنجاح!"
-        subMessage="انتظر العروض قريباً"
+        message={editingRequestId ? "تم تحديث طلبك بنجاح!" : "تم إرسال طلبك بنجاح!"}
+        subMessage={editingRequestId ? "التغييرات محفوظة" : "انتظر العروض قريباً"}
       />
       
       {/* Header */}
@@ -1154,41 +1360,91 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         onClearAll={onClearAll}
         onSignOut={onSignOut}
         onGoToMarketplace={onGoToMarketplace}
-        title="إنشاء طلب جديد"
+        title={editingRequestId ? "تعديل الطلب" : "إنشاء طلب جديد"}
         hideModeToggle
         isGuest={isGuest}
         showSubmitButton
-        canSubmit={canSubmit}
+        canSubmit={editingRequestId ? editButtonState.canSave : canSubmit}
+        isEditMode={!!editingRequestId}
+        editButtonIsSaved={editButtonState.isSaved}
         onSubmit={async () => {
-          // استدعاء فوري بدون تحقق إضافي (UnifiedHeader يتحقق بالفعل)
-          console.log("Submit button clicked - calling handlePublish");
-          if (navigator.vibrate) navigator.vibrate(15);
+          const isEditing = !!editingRequestId;
+          console.log("=== onSubmit called ===");
+          console.log("Mode:", isEditing ? "EDITING" : "CREATING");
+          console.log("editingRequestId:", editingRequestId);
+          console.log("Current values:", { 
+            title, 
+            description: description.slice(0, 50) + "...", 
+            location,
+            isAIConnected,
+            additionalFields: additionalFields.map(f => ({ id: f.id, enabled: f.enabled, value: f.value }))
+          });
+          
+          // في وضع التعديل - لا تفعل شيء إذا لا توجد تغييرات
+          if (isEditing && !editButtonState.canSave) {
+            console.log("No changes to save - returning");
+            return;
+          }
           
           try {
             // التحقق من البيانات الأساسية
             if (!description.trim() || !location.trim()) {
-              console.error("Missing required fields:", { description: !!description.trim(), location: !!location.trim() });
+              console.error("Missing required fields:", { 
+                hasDescription: !!description.trim(), 
+                hasLocation: !!location.trim() 
+              });
+              if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
               return;
             }
+            
+            // إذا AI غير متصل ولا يوجد عنوان - اهتزاز وإظهار حقل العنوان
+            if (isAIConnected === false && !title.trim()) {
+              console.log("AI not connected and no title - showing manual title field");
+              if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100]);
+              setShowManualTitle(true);
+              setTitleShake(true);
+              setTimeout(() => setTitleShake(false), 600);
+              return;
+            }
+            
+            // استخراج العنوان من الوصف إذا لم يكن موجوداً
+            let finalTitle = title.trim();
+            if (!finalTitle && description.trim()) {
+              // استخراج عنوان ذكي من الوصف
+              const desc = description.trim();
+              // أخذ أول جملة أو أول 50 حرف
+              const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
+              finalTitle = firstSentence.length > 50 
+                ? firstSentence.slice(0, 47) + "..." 
+                : firstSentence;
+              console.log("Auto-generated title from description:", finalTitle);
+              setTitle(finalTitle);
+            }
 
+            console.log("Validation passed - starting submission...");
+            if (navigator.vibrate) navigator.vibrate(15);
+            
             // بدء الإرسال
             setIsSubmitting(true);
             
-            // نشر الطلب
+            // نشر/تحديث الطلب
             const requestId = await handlePublish();
             
             if (requestId) {
-              // نجاح الإرسال
+              // نجاح الإرسال/التحديث
               setCreatedRequestId(requestId);
               setSubmitSuccess(true);
               setIsSubmitting(false);
               
-              // إخفاء بعد 3 ثواني إذا لم يضغط المستخدم
-              setTimeout(() => {
-                if (onGoToRequest && requestId) {
-                  onGoToRequest(requestId);
-                }
-              }, 3000);
+              if (!isEditing) {
+                // في وضع الإنشاء فقط - انتقال للطلب بعد 3 ثواني
+                setTimeout(() => {
+                  if (onGoToRequest && requestId) {
+                    onGoToRequest(requestId);
+                  }
+                }, 3000);
+              }
+              // في وضع التعديل - نبقى في الصفحة والزر سيتحول تلقائياً لـ "تم الحفظ"
             } else {
               // فشل الإرسال
               setIsSubmitting(false);
@@ -1202,21 +1458,83 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           }
         }}
         isSubmitting={isSubmitting}
-        submitSuccess={submitSuccess}
+        submitSuccess={editingRequestId ? editButtonState.isSaved : submitSuccess}
         onGoToRequest={() => {
-          if (createdRequestId && onGoToRequest) {
+          if (editingRequestId) {
+            // في وضع التعديل وتم الحفظ - العودة للصفحة السابقة
+            handleBack();
+          } else if (createdRequestId && onGoToRequest) {
             onGoToRequest(createdRequestId);
           }
         }}
-        justBecameReady={justBecameReady}
+        justBecameReady={editingRequestId ? false : justBecameReady}
       />
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto px-4 py-6 pb-24">
-        {/* Dynamic Title */}
-        <AnimatePresence>
-          {showTitle && title && (
+        {/* Dynamic Title - يظهر كـ text إذا AI متصل، أو كحقل إدخال إذا غير متصل */}
+        <AnimatePresence mode="wait">
+          {/* حقل العنوان اليدوي - يظهر إذا AI غير متصل */}
+          {showManualTitle && (
             <motion.div
+              key="manual-title"
+              initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+              animate={{ 
+                opacity: 1, 
+                height: "auto", 
+                marginBottom: 16,
+                x: titleShake ? [0, -10, 10, -10, 10, -5, 5, 0] : 0
+              }}
+              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+              transition={{ 
+                duration: 0.3,
+                x: { duration: 0.5, ease: "easeInOut" }
+              }}
+              className="overflow-hidden"
+            >
+              <div className="relative">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileText size={16} className="text-amber-500" />
+                  <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                    عنوان الطلب (مطلوب)
+                  </span>
+                  {isAIConnected === false && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                      AI غير متصل
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="اكتب عنواناً واضحاً لطلبك..."
+                  className={`w-full px-4 py-3 rounded-xl border-2 transition-all duration-300 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none ${
+                    titleShake 
+                      ? "border-red-400 ring-2 ring-red-200 dark:ring-red-900/50" 
+                      : needsManualTitle
+                        ? "border-amber-300 dark:border-amber-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-900/50"
+                        : "border-border focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  }`}
+                />
+                {!title.trim() && needsManualTitle && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-xs text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1"
+                  >
+                    <span>⚠️</span>
+                    <span>أضف عنواناً لطلبك حتى تتمكن من الإرسال</span>
+                  </motion.p>
+                )}
+              </div>
+            </motion.div>
+          )}
+          
+          {/* العنوان المُستخرج من AI - يظهر كـ text عادي */}
+          {!showManualTitle && showTitle && title && (
+            <motion.div
+              key="ai-title"
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}

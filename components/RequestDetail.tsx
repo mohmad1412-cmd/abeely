@@ -125,6 +125,7 @@ interface RequestDetailProps {
   onMarkRequestAsRead?: (id: string) => void;
   onOfferCreated?: () => void; // Callback when a new offer is successfully created
   onArchiveRequest?: (id: string) => void;
+  onEditRequest?: (request: Request) => void; // Callback to edit the request
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
@@ -146,7 +147,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     onSignOut,
     onMarkRequestAsRead,
     onOfferCreated,
-    onArchiveRequest
+    onArchiveRequest,
+    onEditRequest
   },
 ) => {
   const [negotiationOpen, setNegotiationOpen] = useState(false);
@@ -962,6 +964,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     if (setPreviousView) {
       setPreviousView("request-detail");
     }
+    // تمرير الطلب للتعديل
+    if (onEditRequest) {
+      onEditRequest(request);
+    }
     setView("create-request");
   };
 
@@ -1450,7 +1456,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3 }}
           >
-            {mode === "requests" && (
+            {mode === "requests" && isMyRequest && (
               <div className="space-y-4">
                 {/* Complete Request Button for Requester - After approving an offer */}
                 {request.status === "assigned" && onCompleteRequest && (
@@ -1683,7 +1689,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
             )}
 
             {/* ================= PROVIDER VIEW ================= */}
-            {mode === "offers" && (
+            {!isMyRequest && (
               <>
                 {/* CASE 1: I ALREADY HAVE AN OFFER */}
                 {isMyOffer && myOffer && (

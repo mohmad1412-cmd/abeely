@@ -44,6 +44,8 @@ interface MarketplaceProps {
   interestsRequests?: Request[]; // طلبات اهتماماتي فقط
   unreadInterestsCount?: number; // عدد الطلبات غير المقروءة في اهتماماتي
   myOffers: Offer[]; // Pass myOffers to check application status
+  receivedOffersMap?: Map<string, Offer[]>; // العروض المستلمة على طلبات المستخدم
+  userId?: string; // معرف المستخدم الحالي
   onSelectRequest: (req: Request, scrollToOffer?: boolean, fromSidebar?: boolean) => void;
   userInterests: string[];
   onUpdateInterests: (interests: string[]) => void;
@@ -83,6 +85,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   interestsRequests = [],
   unreadInterestsCount = 0,
   myOffers,
+  receivedOffersMap = new Map(),
+  userId,
   onSelectRequest,
   userInterests,
   onUpdateInterests,
@@ -2000,8 +2004,19 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                    onSelectRequest(req);
                  }}
               >
+                {/* My Request Indicator - مؤشر طلبي الخاص */}
+                {isMyRequest && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="absolute top-3 left-3 z-20 w-7 h-7 rounded-full bg-teal-600 backdrop-blur-sm flex items-center justify-center shadow-md border border-white/30"
+                    title="هذا طلبك"
+                  >
+                    <User size={14} className="text-white" />
+                  </motion.div>
+                )}
                 {/* Viewed Indicator - مؤشر المشاهدة (فتحت هذا الطلب سابقاً) */}
-                {viewedRequestIds.has(req.id) && (
+                {!isMyRequest && viewedRequestIds.has(req.id) && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -2009,15 +2024,6 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     title="فتحت هذا الطلب سابقاً"
                   >
                     <Eye size={14} className="text-white/80" />
-                  </motion.div>
-                )}
-                {isMyRequest && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="absolute top-3 right-3 z-20 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm dark:bg-amber-500/10 dark:text-amber-100 dark:border-amber-400/30"
-                  >
-                    طلبي
                   </motion.div>
                 )}
                 {/* Image Section */}
@@ -2078,6 +2084,40 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   <p className="text-muted-foreground text-xs line-clamp-2 leading-relaxed mt-1">
                     {req.description}
                   </p>
+                  
+                  {/* Categories Labels */}
+                  {req.categories && req.categories.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {req.categories.slice(0, 3).map((catLabel, idx) => {
+                        // البحث عن التصنيف للحصول على الإيموجي
+                        const categoryObj = AVAILABLE_CATEGORIES.find(
+                          c => c.label === catLabel || c.id === catLabel
+                        );
+                        const emoji = categoryObj?.emoji || '📦';
+                        const displayLabel = categoryObj?.label || catLabel;
+                        const isUnspecified = catLabel === 'غير محدد' || catLabel === 'unspecified';
+                        
+                        return (
+                          <span
+                            key={idx}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                              isUnspecified 
+                                ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                                : 'bg-primary/10 text-primary'
+                            }`}
+                          >
+                            <span>{isUnspecified ? '❓' : emoji}</span>
+                            <span className="truncate max-w-[80px]">{isUnspecified ? 'غير محدد' : displayLabel}</span>
+                          </span>
+                        );
+                      })}
+                      {req.categories.length > 3 && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground">
+                          +{req.categories.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="px-5 pb-5 flex-1 flex flex-col relative">
@@ -2157,46 +2197,44 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         منتهي
                       </div>
                     ) : isMyRequest ? (
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.96 }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
-                          onSelectRequest(req, false); // Open request without scrolling to offer section
-                        }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onTouchStart={(e) => e.stopPropagation()}
-                        className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gradient-to-r from-primary to-teal-600 text-white shadow-md hover:shadow-lg transition-all relative overflow-hidden"
-                      >
-                        {/* Shimmer effect */}
-                        <span 
-                          className="absolute inset-0 pointer-events-none animate-shimmer-diagonal" 
-                          style={{
-                            background: 'linear-gradient(315deg, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.15) 50%, transparent 65%, transparent 100%)',
-                            backgroundSize: '200% 200%'
-                          }} 
-                        />
-                        <User size={14} className="relative z-10" />
-                        <span className="relative z-10 flex items-center gap-1">
-                          طلبي
-                          {(req.offers?.length || 0) > 0 && (
-                            <span className="text-yellow-200 font-bold text-[10px] animate-pulse whitespace-nowrap">
-                              (عروض جديدة!)
-                            </span>
-                          )}
-                        </span>
-                        {/* Notification badge for offers count */}
-                        {(req.offers?.length || 0) > 0 && (
-                          <motion.span
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="absolute -top-1.5 -left-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg z-20 border-2 border-white dark:border-gray-900"
+                      (() => {
+                        const receivedOffers = receivedOffersMap.get(req.id) || [];
+                        const offersCount = receivedOffers.length;
+                        return (
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.96 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
+                              onSelectRequest(req, false); // Open request without scrolling to offer section
+                            }}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onTouchStart={(e) => e.stopPropagation()}
+                            className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800 text-primary border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all relative overflow-hidden"
                           >
-                            {req.offers?.length}
-                          </motion.span>
-                        )}
-                      </motion.button>
+                            <User size={14} className="text-primary" />
+                            <span className="flex items-center gap-1">
+                              طلبي
+                              {offersCount > 0 && (
+                                <span className="text-primary/70 font-bold text-[10px] animate-pulse whitespace-nowrap">
+                                  ({offersCount} {offersCount === 1 ? 'عرض' : 'عروض'})
+                                </span>
+                              )}
+                            </span>
+                            {/* Notification badge for offers count */}
+                            {offersCount > 0 && (
+                              <motion.span
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="absolute -top-1.5 -left-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg z-20 border-2 border-white dark:border-gray-900"
+                              >
+                                {offersCount}
+                              </motion.span>
+                            )}
+                          </motion.button>
+                        );
+                      })()
                     ) : myOffer ? (
                         <motion.div
                           initial={{ scale: 0.9, opacity: 0 }}

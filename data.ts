@@ -11,6 +11,17 @@ export const AVAILABLE_CATEGORIES: Category[] = [
   { id: 'transport', label: 'نقل وخدمات لوجستية', emoji: '🚚' },
   { id: 'health', label: 'صحة ولياقة', emoji: '🩺' },
   { id: 'translation', label: 'ترجمة ولغات', emoji: '🌐' },
+  { id: 'education', label: 'تعليم وتدريب', emoji: '📚' },
+  { id: 'legal', label: 'قانون واستشارات', emoji: '⚖️' },
+  { id: 'finance', label: 'مالية ومحاسبة', emoji: '💰' },
+  { id: 'photography', label: 'تصوير وفيديو', emoji: '📷' },
+  { id: 'events', label: 'مناسبات وحفلات', emoji: '🎉' },
+  { id: 'beauty', label: 'تجميل وعناية', emoji: '💅' },
+  { id: 'cleaning', label: 'تنظيف وخدمات منزلية', emoji: '🧹' },
+  { id: 'food', label: 'طعام ومطاعم', emoji: '🍽️' },
+  { id: 'car', label: 'سيارات وقطع غيار', emoji: '🚗' },
+  { id: 'other', label: 'أخرى', emoji: '📦' },
+  { id: 'unspecified', label: 'غير محدد', emoji: '❓' },
 ];
 
 export const MOCK_REQUESTS: Request[] = [

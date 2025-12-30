@@ -40,6 +40,7 @@ interface SidebarProps {
   userRequests: Request[];
   allRequests?: Request[];
   userOffers: Offer[];
+  receivedOffersMap?: Map<string, Offer[]>; // العروض المستلمة على طلبات المستخدم
   archivedRequests?: Request[];
   archivedOffers?: Offer[];
   onSelectRequest: (req: Request, scrollToOffer?: boolean, fromSidebar?: boolean) => void;
@@ -66,6 +67,8 @@ interface SidebarProps {
   // Profile role switcher
   profileRole?: 'requester' | 'provider';
   onProfileRoleChange?: (role: 'requester' | 'provider') => void;
+  // External swipe offset (from MobileOverlay)
+  externalSwipeOffset?: number;
 }
 
 
@@ -77,6 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   userRequests,
   allRequests = [],
   userOffers,
+  receivedOffersMap = new Map(),
   archivedRequests = [],
   archivedOffers = [],
   onSelectRequest,
@@ -98,6 +102,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenLanguagePopup,
   profileRole = 'provider',
   onProfileRoleChange,
+  externalSwipeOffset = 0,
 }) => {
   const [reqFilter, setReqFilter] = useState<"active" | "approved" | "all" | "completed">("active");
   const [offerFilter, setOfferFilter] = useState<"all" | "accepted" | "pending" | "completed">("all");
@@ -613,7 +618,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const filteredRequests = (() => {
     const allReqs = [...userRequests, ...(archivedRequests || [])];
     if (reqFilter === "all") return allReqs.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-    if (reqFilter === "active") return userRequests.filter(req => req.status === "active" || req.status === "draft");
+    // معاملة "draft" كـ "active" للتوافق مع البيانات القديمة
+    if (reqFilter === "active") return userRequests.filter(req => req.status === "active" || (req.status as any) === "draft");
     if (reqFilter === "approved") return userRequests.filter(req => req.status === "assigned");
     return allReqs.filter(req => req.status === "completed" || req.status === "archived");
   })();
@@ -633,7 +639,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const counts = {
     requests: {
       all: userRequests.length + (archivedRequests?.length || 0),
-      active: userRequests.filter(req => req.status === "active" || req.status === "draft").length,
+      // معاملة "draft" كـ "active" للتوافق مع البيانات القديمة
+      active: userRequests.filter(req => req.status === "active" || (req.status as any) === "draft").length,
       approved: userRequests.filter(req => req.status === "assigned").length,
       completed: [...userRequests, ...(archivedRequests || [])].filter(req => req.status === "completed" || req.status === "archived").length
     },
@@ -645,14 +652,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
+  // دمج offset الداخلي والخارجي
+  const combinedSwipeOffset = Math.max(sidebarSwipeOffset, externalSwipeOffset);
+  
   return (
     <aside 
       ref={sidebarRef}
       style={{ 
         width: `${sidebarWidth}px`,
-        transform: sidebarSwipeOffset > 0 ? `translateX(${sidebarSwipeOffset}px)` : undefined
+        transform: combinedSwipeOffset > 0 ? `translateX(${combinedSwipeOffset}px)` : undefined
       }}
-      className={`fixed inset-y-0 right-0 z-[90] bg-card border-l border-border md:translate-x-0 md:static md:block shadow-2xl md:shadow-none flex flex-col pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${isOpen ? "translate-x-0" : "translate-x-full"} ${isSidebarResizing ? "transition-none" : ""} ${sidebarSwipeOffset > 0 ? "transition-none" : "transition-[transform,opacity,box-shadow] duration-[400ms] ease-[cubic-bezier(0.22,1,0.36,1)]"} ${hasUnreadMessages ? "sidebar-has-notifications" : ""}`}
+      className={`fixed inset-y-0 right-0 z-[90] bg-card border-l border-border md:translate-x-0 md:static md:block shadow-2xl md:shadow-none flex flex-col pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${isOpen ? "translate-x-0" : "translate-x-full"} ${isSidebarResizing ? "transition-none" : ""} ${combinedSwipeOffset > 0 ? "transition-none" : "transition-[transform,opacity,box-shadow] duration-[400ms] ease-[cubic-bezier(0.22,1,0.36,1)]"} ${hasUnreadMessages ? "sidebar-has-notifications" : ""}`}
     >
       {/* Magical notification sparkle lines - gentle reminder */}
       {hasUnreadMessages && (
@@ -881,8 +891,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </motion.div>
               )}
               {filteredRequests.map((req, index) => {
-                // Get offers for this request
-                const requestOffers = userOffers.filter(o => o.requestId === req.id);
+                // Get received offers for this request from the map
+                const requestOffers = receivedOffersMap.get(req.id) || [];
                 const acceptedOffer = requestOffers.find(o => o.status === 'accepted');
                 const pendingOffers = requestOffers.filter(o => o.status === 'pending' || o.status === 'negotiating');
                 
@@ -896,9 +906,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   }
                   if (req.status === 'archived') {
                     return { text: "مؤرشف", color: "bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400", icon: "📦" };
-                  }
-                  if (req.status === 'draft') {
-                    return { text: "مسودة", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", icon: "📝" };
                   }
                   return { text: "نشط", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400", icon: "🟢" };
                 };

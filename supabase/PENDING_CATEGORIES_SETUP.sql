@@ -273,3 +273,4 @@ END $$;
 -- لعرض التصنيفات للـ AI:
 -- SELECT * FROM get_categories_for_ai();
 
+

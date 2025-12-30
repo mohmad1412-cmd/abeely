@@ -4,7 +4,7 @@ export interface Request {
   description: string;
   author: string;
   createdAt: Date;
-  status: 'draft' | 'active' | 'assigned' | 'completed' | 'archived';
+  status: 'active' | 'assigned' | 'completed' | 'archived';
   messages: Message[];
   offers: Offer[];
   isPublic?: boolean;
