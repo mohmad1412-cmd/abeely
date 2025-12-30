@@ -1399,3 +1399,191 @@ button, a, input, textarea, select {
     );
 }
 
+/* ========================================
+   TALL CARD VIEW STYLES
+   Snap-to-center horizontal scroll with haptic feel
+   ======================================== */
+
+/* Smooth horizontal scroll container */
+.tall-cards-scroll {
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+}
+
+.tall-cards-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+/* Individual card snap point */
+.tall-card-item {
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+}
+
+/* Active card glow effect */
+.tall-card-active {
+    box-shadow: 
+        0 0 0 2px var(--primary),
+        0 25px 50px -12px rgba(30, 150, 140, 0.25),
+        0 0 40px rgba(30, 150, 140, 0.15);
+}
+
+.dark .tall-card-active {
+    box-shadow: 
+        0 0 0 2px var(--primary),
+        0 25px 50px -12px rgba(45, 181, 169, 0.35),
+        0 0 50px rgba(45, 181, 169, 0.2);
+}
+
+/* Inactive card fade */
+.tall-card-inactive {
+    opacity: 0.5;
+    transform: scale(0.88);
+}
+
+/* ========================================
+   TEXT CARD VIEW STYLES
+   Minimal, clean list view
+   ======================================== */
+
+.text-card-item {
+    transition: all 0.2s ease;
+}
+
+.text-card-item:active {
+    transform: scale(0.98);
+    background: var(--secondary);
+}
+
+/* Subtle hover line effect */
+.text-card-item::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    opacity: 0.5;
+}
+
+/* ========================================
+   VIEW MODE TRANSITION EFFECTS
+   Smooth transitions between display modes
+   ======================================== */
+
+@keyframes view-mode-slide-in {
+    0% {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes view-mode-slide-out {
+    0% {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+}
+
+.animate-view-mode-in {
+    animation: view-mode-slide-in 0.25s ease-out forwards;
+}
+
+.animate-view-mode-out {
+    animation: view-mode-slide-out 0.2s ease-in forwards;
+}
+
+/* ========================================
+   COLLAPSIBLE HEADER STYLES
+   Smooth scroll-reactive header animations
+   ======================================== */
+
+.collapsible-header {
+    transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                backdrop-filter 0.3s ease,
+                box-shadow 0.3s ease;
+}
+
+.collapsible-header-expanded {
+    height: 140px;
+}
+
+.collapsible-header-collapsed {
+    height: 60px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+.dark .collapsible-header-collapsed {
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* ========================================
+   CARD SNAP INDICATOR DOTS
+   Progress indicators for tall card view
+   ======================================== */
+
+.snap-indicator {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.snap-indicator-active {
+    width: 24px;
+    background: var(--primary);
+}
+
+.snap-indicator-inactive {
+    width: 8px;
+    background: var(--muted-foreground);
+    opacity: 0.3;
+}
+
+.snap-indicator-inactive:hover {
+    opacity: 0.5;
+    transform: scale(1.2);
+}
+
+/* ========================================
+   MINIMAL LOADING STATES
+   Clean, non-intrusive loading indicators
+   ======================================== */
+
+.minimal-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid transparent;
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Dot pulse loading */
+@keyframes dot-pulse {
+    0%, 80%, 100% {
+        transform: scale(0.6);
+        opacity: 0.5;
+    }
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.dot-pulse-1 { animation: dot-pulse 1.4s ease-in-out infinite; animation-delay: 0s; }
+.dot-pulse-2 { animation: dot-pulse 1.4s ease-in-out infinite; animation-delay: 0.2s; }
+.dot-pulse-3 { animation: dot-pulse 1.4s ease-in-out infinite; animation-delay: 0.4s; }
+
