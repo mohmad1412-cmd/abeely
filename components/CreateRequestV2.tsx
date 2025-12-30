@@ -16,6 +16,7 @@ import {
   Calendar,
   Image,
   Paperclip,
+  Plus,
 } from "lucide-react";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
 import { Request } from "../types";

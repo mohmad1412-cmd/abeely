@@ -10,11 +10,6 @@ const config: CapacitorConfig = {
   appId: 'com.servicelink.app',
   appName: 'ServiceLink',
   webDir: 'dist',
-  // App Links Configuration
-  app: {
-    // Deep linking URLs
-    customUrlScheme: 'abeely',
-  },
   // Android App Links
   android: {
     allowMixedContent: true,

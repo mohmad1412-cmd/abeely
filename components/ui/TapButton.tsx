@@ -10,7 +10,8 @@ interface RippleItem {
 
 type TapButtonVariant = 'primary' | 'secondary' | 'ghost' | 'outline' | 'danger' | 'success' | 'icon';
 
-interface TapButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface TapButtonProps {
+  children?: React.ReactNode;
   /** Button style variant */
   variant?: TapButtonVariant;
   /** Size of the button */
@@ -23,6 +24,18 @@ interface TapButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   haptic?: boolean;
   /** Custom ripple color */
   rippleColor?: string;
+  /** CSS class name */
+  className?: string;
+  /** Disabled state */
+  disabled?: boolean;
+  /** Click handler */
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  /** Button type */
+  type?: 'button' | 'submit' | 'reset';
+  /** Title attribute */
+  title?: string;
+  /** Aria label */
+  'aria-label'?: string;
 }
 
 /**
@@ -45,7 +58,9 @@ export const TapButton: React.FC<TapButtonProps> = ({
   className = '',
   disabled,
   onClick,
-  ...props
+  type = 'button',
+  title,
+  'aria-label': ariaLabel,
 }) => {
   const [ripples, setRipples] = useState<RippleItem[]>([]);
   const [isPressed, setIsPressed] = useState(false);
@@ -173,8 +188,10 @@ export const TapButton: React.FC<TapButtonProps> = ({
       onTouchEnd={handleTouchEnd}
       onClick={handleClick}
       disabled={disabled}
+      type={type}
+      title={title}
+      aria-label={ariaLabel}
       whileHover={{ scale: disabled ? 1 : 1.02 }}
-      {...props}
     >
       {/* Ripple effects */}
       <AnimatePresence>
