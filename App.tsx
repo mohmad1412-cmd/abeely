@@ -17,6 +17,9 @@ import { AuthPage } from "./components/AuthPage";
 import { Messages } from "./components/Messages";
 import { CreateRequestV2 } from "./components/CreateRequestV2";
 import { GlobalFloatingOrb } from "./components/GlobalFloatingOrb";
+import { BottomNavigation, BottomNavTab } from "./components/BottomNavigation";
+import { MyRequests } from "./components/MyRequests";
+import { MyOffers } from "./components/MyOffers";
 
 
 // Types & Data
@@ -229,6 +232,7 @@ const App: React.FC = () => {
   });
   const [isModeSwitching, setIsModeSwitching] = useState(false);
   const [profileRole, setProfileRole] = useState<'requester' | 'provider'>('provider'); // Temporary state for button animation
+  const [activeBottomTab, setActiveBottomTab] = useState<BottomNavTab>("marketplace");
 
   // ==========================================
   // Data State
@@ -1857,61 +1861,98 @@ const App: React.FC = () => {
         const mergedRequests = user?.id 
           ? [...myRequests.filter(r => !allRequests.some(ar => ar.id === r.id)), ...allRequests]
           : allRequests;
+        
+        // Render based on active bottom tab
+        if (activeBottomTab === "my-requests") {
+          return (
+            <div className="h-full flex flex-col overflow-hidden relative">
+              <MyRequests
+                requests={myRequests}
+                archivedRequests={archivedRequests}
+                receivedOffersMap={receivedOffersMap}
+                onSelectRequest={handleSelectRequest}
+                userId={user?.id}
+                viewedRequestIds={viewedRequestIds}
+              />
+            </div>
+          );
+        }
+        
+        if (activeBottomTab === "my-offers") {
+          return (
+            <div className="h-full flex flex-col overflow-hidden relative">
+              <MyOffers
+                offers={myOffers}
+                archivedOffers={archivedOffers}
+                allRequests={allRequests}
+                onSelectRequest={handleSelectRequest}
+                userId={user?.id}
+                viewedRequestIds={viewedRequestIds}
+              />
+            </div>
+          );
+        }
+        
+        // Default: marketplace
         return (
           <div className="h-full flex flex-col overflow-hidden relative">
             {allRequests && Array.isArray(allRequests)
               ? (
-                <Marketplace
-                  requests={mergedRequests}
-                  interestsRequests={interestsRequests}
-                  unreadInterestsCount={unreadInterestsCount}
-                  myOffers={myOffers}
-                  receivedOffersMap={receivedOffersMap}
-                  userId={user?.id}
-                  onSelectRequest={handleSelectRequest}
-                  userInterests={userInterests}
-                  onUpdateInterests={(interests) => {
-                    setUserPreferences((prev) => ({
-                      ...prev,
-                      interestedCategories: interests,
-                    }));
-                  }}
-                  interestedCities={userPreferences.interestedCities}
-                  onUpdateCities={(cities) => {
-                    setUserPreferences((prev) => ({
-                      ...prev,
-                      interestedCities: cities,
-                    }));
-                  }}
-                  hasMore={marketplaceHasMore}
-                  isLoadingMore={marketplaceIsLoadingMore}
-                  isLoading={isLoadingData}
-                  onLoadMore={loadMoreMarketplaceRequests}
-                  onRefresh={reloadData}
-                  loadError={requestsLoadError}
-                  savedScrollPosition={marketplaceScrollPos}
-                  onScrollPositionChange={setMarketplaceScrollPos}
-                  // Viewed requests from Backend
-                  viewedRequestIds={viewedRequestIds}
-                  // Header integration props
-                  isSidebarOpen={isSidebarOpen}
-                  setIsSidebarOpen={setIsSidebarOpen}
-                  mode={mode}
-                  toggleMode={toggleMode}
-                  isModeSwitching={isModeSwitching}
-                  unreadCount={unreadCount}
-                  hasUnreadMessages={hasUnreadMessages}
-                  user={user}
-                  isGuest={isGuest}
-                  setView={setView}
-                  setPreviousView={setPreviousView}
-                  titleKey={titleKey}
-                  notifications={notifications}
-                  onMarkAsRead={handleMarkAsRead}
-                  onNotificationClick={handleNotificationClick}
-                  onClearAll={handleClearNotifications}
-                  onSignOut={handleSignOut}
-                />
+                <div className="flex flex-col h-full">
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <Marketplace
+                    requests={mergedRequests}
+                    interestsRequests={interestsRequests}
+                    unreadInterestsCount={unreadInterestsCount}
+                    myOffers={myOffers}
+                    receivedOffersMap={receivedOffersMap}
+                    userId={user?.id}
+                    onSelectRequest={handleSelectRequest}
+                    userInterests={userInterests}
+                    onUpdateInterests={(interests) => {
+                      setUserPreferences((prev) => ({
+                        ...prev,
+                        interestedCategories: interests,
+                      }));
+                    }}
+                    interestedCities={userPreferences.interestedCities}
+                    onUpdateCities={(cities) => {
+                      setUserPreferences((prev) => ({
+                        ...prev,
+                        interestedCities: cities,
+                      }));
+                    }}
+                    hasMore={marketplaceHasMore}
+                    isLoadingMore={marketplaceIsLoadingMore}
+                    isLoading={isLoadingData}
+                    onLoadMore={loadMoreMarketplaceRequests}
+                    onRefresh={reloadData}
+                    loadError={requestsLoadError}
+                    savedScrollPosition={marketplaceScrollPos}
+                    onScrollPositionChange={setMarketplaceScrollPos}
+                    // Viewed requests from Backend
+                    viewedRequestIds={viewedRequestIds}
+                    // Header integration props
+                    isSidebarOpen={isSidebarOpen}
+                    setIsSidebarOpen={setIsSidebarOpen}
+                    mode={mode}
+                    toggleMode={toggleMode}
+                    isModeSwitching={isModeSwitching}
+                    unreadCount={unreadCount}
+                    hasUnreadMessages={hasUnreadMessages}
+                    user={user}
+                    isGuest={isGuest}
+                    setView={setView}
+                    setPreviousView={setPreviousView}
+                    titleKey={titleKey}
+                    notifications={notifications}
+                    onMarkAsRead={handleMarkAsRead}
+                    onNotificationClick={handleNotificationClick}
+                    onClearAll={handleClearNotifications}
+                    onSignOut={handleSignOut}
+                    />
+                  </div>
+                </div>
               )
               : (
                 <div className="flex items-center justify-center h-full">
@@ -1943,6 +1984,7 @@ const App: React.FC = () => {
                   setNavigatedFromSidebar(false);
                   // الرجوع دائماً للماركت بليس
                   setView("marketplace");
+                  setActiveBottomTab("marketplace");
                   // Marketplace will restore scroll position via savedScrollPosition prop
                 }}
                 isGuest={isGuest}
@@ -2262,6 +2304,7 @@ const App: React.FC = () => {
 
   // Main App
   return (
+    <>
     <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
       {/* Mobile Overlay with Swipe Support - Ultra Smooth Animation */}
       <AnimatePresence mode="wait">
@@ -2416,6 +2459,7 @@ const App: React.FC = () => {
         </AnimatePresence>
       </main>
 
+
       {/* Language Popup */}
       <AnimatePresence>
         {isLanguagePopupOpen && (
@@ -2566,6 +2610,17 @@ const App: React.FC = () => {
         isVisible={!(isSidebarOpen && view === "create-request")}
       />
     </div>
+    
+    {/* Bottom Navigation - Outside the overflow-hidden container */}
+    {view === "marketplace" && (
+      <BottomNavigation
+        activeTab={activeBottomTab}
+        onTabChange={(tab) => {
+          setActiveBottomTab(tab);
+        }}
+      />
+    )}
+    </>
   );
 };
 
