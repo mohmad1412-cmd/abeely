@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
 import { Offer, Request } from "../types";
 import { AVAILABLE_CATEGORIES } from "../data";
 import {
@@ -33,15 +33,16 @@ import {
   Eye,
   WifiOff,
   LayoutGrid,
-  List,
-  Layers,
+  CreditCard,
+  AlignJustify,
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
 import { AnimatePresence, motion } from "framer-motion";
 import { CardsGridSkeleton } from "./ui/LoadingSkeleton";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
-import { FullScreenCardsView } from "./ui/FullScreenCardsView";
+import { TextCardView } from "./ui/TextCardView";
+import { ViewModeToolbar, ViewMode, ViewModeCompact } from "./ui/ViewModeToolbar";
 
 interface MarketplaceProps {
   requests: Request[];
@@ -128,43 +129,9 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 }) => {
   // View mode state - "all" or "interests"
   const [viewMode, setViewMode] = useState<"all" | "interests">("all");
-  
-  // Display mode state - "cards" (default), "list" (compact text), "fullscreen" (snap scroll)
-  const [displayMode, setDisplayMode] = useState<"cards" | "list" | "fullscreen">("cards");
-  
-  // Snap card view index
-  const [snapCardIndex, setSnapCardIndex] = useState(0);
-  
-  // Locally viewed requests (persisted in localStorage)
-  const [localViewedIds, setLocalViewedIds] = useState<Set<string>>(() => {
-    try {
-      const stored = localStorage.getItem('viewedRequestIds');
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
-  
-  // Combined viewed IDs (backend + local)
-  const allViewedRequestIds = React.useMemo(() => {
-    const combined = new Set(localViewedIds);
-    if (backendViewedIds) {
-      backendViewedIds.forEach(id => combined.add(id));
-    }
-    return combined;
-  }, [localViewedIds, backendViewedIds]);
-  
-  // Mark request as viewed
-  const markAsViewed = useCallback((requestId: string) => {
-    setLocalViewedIds(prev => {
-      const updated = new Set(prev);
-      updated.add(requestId);
-      // Save to localStorage (keep last 500)
-      const array = Array.from(updated).slice(-500);
-      localStorage.setItem('viewedRequestIds', JSON.stringify(array));
-      return new Set(array);
-    });
-  }, []);
+
+  // Display mode state - "grid" or "text"
+  const [displayMode, setDisplayMode] = useState<ViewMode>("grid");
 
   // Scroll state for glass header animation
   const [isScrolled, setIsScrolled] = useState(false);
@@ -820,6 +787,43 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             )}
 
             <div className="flex items-center gap-2">
+                {/* View Mode Selector */}
+                <div className="hidden sm:flex items-center bg-secondary/40 backdrop-blur-sm rounded-xl p-0.5 gap-0.5 border border-border/30">
+                  {[
+                    { id: 'grid' as ViewMode, icon: <LayoutGrid className="w-4 h-4" /> },
+                    { id: 'text' as ViewMode, icon: <AlignJustify className="w-4 h-4" /> },
+                  ].map((mode) => (
+                    <button
+                      key={mode.id}
+                      onClick={() => {
+                        if (navigator.vibrate) navigator.vibrate(8);
+                        setDisplayMode(mode.id);
+                      }}
+                      className={`relative w-9 h-9 flex items-center justify-center rounded-lg transition-all ${
+                        displayMode === mode.id
+                          ? 'text-white'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {displayMode === mode.id && (
+                        <motion.div
+                          layoutId="display-mode-active"
+                          className="absolute inset-0 bg-primary rounded-lg shadow-sm"
+                          transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                        />
+                      )}
+                      <span className="relative z-10">{mode.icon}</span>
+                    </button>
+                  ))}
+                </div>
+                
+                {/* Mobile View Mode Toggle */}
+                <ViewModeCompact
+                  currentMode={displayMode}
+                  onChange={setDisplayMode}
+                  className="sm:hidden"
+                />
+                
                 <button
                 onClick={() => setIsSearchPageOpen(true)}
                 className={`relative w-11 h-11 flex items-center justify-center rounded-xl border transition-all active:scale-95 ${
@@ -872,52 +876,6 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               </motion.span>
             )}
           </button>
-          
-          {/* Display Mode Switcher - مبدّل وضع العرض */}
-          <div className="flex items-center bg-card border border-border rounded-xl overflow-hidden">
-            <button
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(10);
-                setDisplayMode("cards");
-              }}
-              className={`w-9 h-9 flex items-center justify-center transition-all ${
-                displayMode === "cards" 
-                  ? 'bg-primary text-white' 
-                  : 'text-muted-foreground hover:text-primary hover:bg-secondary/50'
-              }`}
-              title="عرض الكروت"
-            >
-              <LayoutGrid size={16} strokeWidth={2} />
-            </button>
-            <button
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(10);
-                setDisplayMode("list");
-              }}
-              className={`w-9 h-9 flex items-center justify-center transition-all border-x border-border ${
-                displayMode === "list" 
-                  ? 'bg-primary text-white' 
-                  : 'text-muted-foreground hover:text-primary hover:bg-secondary/50'
-              }`}
-              title="عرض القائمة"
-            >
-              <List size={16} strokeWidth={2} />
-            </button>
-            <button
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(10);
-                setDisplayMode("fullscreen");
-              }}
-              className={`w-9 h-9 flex items-center justify-center transition-all ${
-                displayMode === "fullscreen" 
-                  ? 'bg-primary text-white' 
-                  : 'text-muted-foreground hover:text-primary hover:bg-secondary/50'
-              }`}
-              title="عرض ملء الشاشة"
-            >
-              <Layers size={16} strokeWidth={2} />
-            </button>
-          </div>
           </div>
           </motion.div>
 
@@ -2029,119 +1987,58 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           </div>
         )}
 
-        {/* List View - وضع القائمة المضغوطة */}
-        {displayMode === "list" && (
-          <motion.div
-            key="list-view"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="space-y-2"
-          >
-            {filteredRequests.map((req, index) => {
-              const myOffer = myOffers.find(o => o.requestId === req.id);
-              const requestAuthorId = (req as any).authorId || (req as any).author_id || req.author;
-              const isMyRequest = !!user?.id && requestAuthorId === user.id;
-              const isViewed = allViewedRequestIds.has(req.id);
-              
-              return (
-                <motion.div
-                  key={req.id}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.02 }}
-                  onClick={() => {
-                    if (navigator.vibrate) navigator.vibrate(10);
-                    markAsViewed(req.id);
-                    onSelectRequest(req);
-                  }}
-                  className={`border border-border rounded-xl p-3 cursor-pointer hover:bg-secondary/30 active:scale-[0.99] transition-all flex items-center gap-3 ${
-                    isViewed 
-                      ? 'bg-muted/30 opacity-75' 
-                      : 'bg-card'
-                  }`}
-                >
-                  {/* صورة مصغرة أو أيقونة */}
-                  <div className="w-12 h-12 rounded-lg bg-secondary/50 flex items-center justify-center overflow-hidden shrink-0">
-                    {req.images && req.images[0] ? (
-                      <img src={req.images[0]} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <ImageIcon size={18} className="text-muted-foreground" />
-                    )}
-                  </div>
-                  
-                  {/* المحتوى */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className={`font-bold text-sm truncate ${isViewed ? 'text-muted-foreground' : ''}`}>{req.title}</h3>
-                      {isViewed && (
-                        <Eye size={12} className="shrink-0 text-muted-foreground/50" />
-                      )}
-                      {isMyRequest && (
-                        <span className="shrink-0 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                          <User size={10} className="text-white" />
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                      {req.location && (
-                        <span className="flex items-center gap-1">
-                          <MapPin size={10} />
-                          <span className="truncate max-w-[80px]">{req.location}</span>
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1">
-                        <Clock size={10} />
-                        {new Date(req.createdAt).toLocaleDateString('ar-SA')}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {/* الحالة */}
-                  <div className="shrink-0">
-                    {myOffer ? (
-                      <span className="px-2 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
-                        عرضت
-                      </span>
-                    ) : req.status === 'completed' || req.status === 'archived' ? (
-                      <span className="px-2 py-1 rounded-full bg-muted text-muted-foreground text-[10px] font-bold flex items-center gap-1">
-                        <Lock size={10} />
-                        منتهي
-                      </span>
-                    ) : (
-                      <ChevronDown size={16} className="text-muted-foreground -rotate-90" />
-                    )}
-                  </div>
-                </motion.div>
-              );
-            })}
-          </motion.div>
-        )}
-
-        {/* Fullscreen Snap View - وضع ملء الشاشة المتقدم (TikTok Style) */}
-        {displayMode === "fullscreen" && filteredRequests.length > 0 && (
-          <FullScreenCardsView
-            requests={filteredRequests}
-            myOffers={myOffers}
-            userId={user?.id}
-            onSelectRequest={(req) => {
-              markAsViewed(req.id);
-              onSelectRequest(req);
-            }}
-            onClose={() => setDisplayMode("cards")}
-            initialIndex={snapCardIndex}
-            viewedRequestIds={allViewedRequestIds}
-          />
-        )}
-
-        {/* Cards Grid - وضع الكروت الافتراضي */}
-        {displayMode === "cards" && (
-        <motion.div 
-          key={`grid-${searchCategories.join(',')}-${searchCities.join(',')}-${searchTerm}-${searchBudgetMin}-${searchBudgetMax}`}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-        >
+        {/* Content Views - Grid / Text */}
+        <AnimatePresence mode="wait">
+          {displayMode === 'text' ? (
+            <motion.div
+              key="text-view"
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -30 }}
+              transition={{ duration: 0.25 }}
+            >
+              <TextCardView
+                requests={filteredRequests}
+                myOffers={myOffers}
+                receivedOffersMap={receivedOffersMap}
+                userId={user?.id}
+                viewedRequestIds={viewedRequestIds}
+                onSelectRequest={(req) => {
+                  if (isGuest) {
+                    setGuestViewedIds(prev => {
+                      const newSet = new Set(prev);
+                      newSet.add(req.id);
+                      try {
+                        localStorage.setItem('guestViewedRequestIds', JSON.stringify([...newSet]));
+                      } catch (e) {
+                        console.error('Error saving guest viewed requests:', e);
+                      }
+                      return newSet;
+                    });
+                  }
+                  onSelectRequest(req);
+                }}
+                onLoadMore={onLoadMore}
+                hasMore={hasMore}
+                isLoadingMore={isLoadingMore}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="grid-view"
+              initial={{ opacity: 0, x: -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 30 }}
+              transition={{ duration: 0.25 }}
+            >
+              {/* Original Grid View */}
+              <motion.div 
+                key={`grid-${searchCategories.join(',')}-${searchCities.join(',')}-${searchTerm}-${searchBudgetMin}-${searchBudgetMax}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.2 }}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              >
           {filteredRequests.map((req, index) => {
             const myOffer = getMyOffer(req.id);
             const requestAuthorId = (req as any).authorId || (req as any).author_id || req.author;
@@ -2189,7 +2086,6 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                        return newSet;
                      });
                    }
-                   markAsViewed(req.id);
                    onSelectRequest(req);
                  }}
               >
@@ -2551,8 +2447,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               </motion.div>
             );
           })}
-        </motion.div>
-        )}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Load more sentinel + indicator - Only show when we have data */}
         {filteredRequests.length > 0 && (
