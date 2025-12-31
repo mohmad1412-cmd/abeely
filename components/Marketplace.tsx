@@ -41,7 +41,7 @@ import { Badge } from "./ui/Badge";
 import { AnimatePresence, motion } from "framer-motion";
 import { CardsGridSkeleton } from "./ui/LoadingSkeleton";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
-import { SnapCardView } from "./ui/SnapCardView";
+import { FullScreenCardsView } from "./ui/FullScreenCardsView";
 
 interface MarketplaceProps {
   requests: Request[];
@@ -2117,17 +2117,19 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           </motion.div>
         )}
 
-        {/* Fullscreen Snap View - وضع ملء الشاشة المتقدم */}
+        {/* Fullscreen Snap View - وضع ملء الشاشة المتقدم (TikTok Style) */}
         {displayMode === "fullscreen" && filteredRequests.length > 0 && (
-          <SnapCardView
+          <FullScreenCardsView
             requests={filteredRequests}
-            currentIndex={snapCardIndex}
-            onIndexChange={setSnapCardIndex}
-            onSelectRequest={onSelectRequest}
-            onClose={() => setDisplayMode("cards")}
             myOffers={myOffers}
             userId={user?.id}
-            isGuest={isGuest}
+            onSelectRequest={(req) => {
+              markAsViewed(req.id);
+              onSelectRequest(req);
+            }}
+            onClose={() => setDisplayMode("cards")}
+            initialIndex={snapCardIndex}
+            viewedRequestIds={allViewedRequestIds}
           />
         )}
 
