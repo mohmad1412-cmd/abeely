@@ -1,385 +1,284 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
-import { Request, Offer } from "../../types";
-import { AVAILABLE_CATEGORIES } from "../../data";
-import {
-  MapPin,
-  Clock,
-  DollarSign,
-  User,
-  MessageCircle,
-  CheckCircle,
-  ImageIcon,
-  ChevronUp,
+import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from "framer-motion";
+import { 
+  MapPin, 
+  Clock, 
+  DollarSign, 
+  MessageCircle, 
+  ChevronUp, 
   ChevronDown,
-  Heart,
+  Eye,
+  User,
+  Sparkles,
+  ArrowLeft,
   Share2,
+  Heart,
   X,
-  Send,
+  Check,
+  Send
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { formatDistanceToNow } from "date-fns";
+import { Request, Offer } from "../../types";
+import { format, formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
-
-// ========================================
-// 🎯 FULLSCREEN CARDS VIEW
-// عرض كروت بملء الشاشة مع snap scrolling
-// مستوحى من TikTok/Instagram Reels
-// ========================================
 
 interface FullScreenCardViewProps {
   requests: Request[];
+  currentIndex: number;
+  onIndexChange: (index: number) => void;
+  onSelectRequest: (request: Request) => void;
+  onClose: () => void;
   myOffers?: Offer[];
   userId?: string;
-  onSelectRequest: (request: Request) => void;
-  onClose?: () => void;
-  initialIndex?: number;
-  viewedRequestIds?: Set<string>;
-  currentIndex?: number;
-  onIndexChange?: (index: number) => void;
   isGuest?: boolean;
 }
 
-// Time ago formatter
-const getTimeAgo = (date: Date | string): string => {
-  try {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return formatDistanceToNow(d, { addSuffix: true, locale: ar });
-  } catch {
-    return "";
-  }
-};
-
-// Price formatter
-const formatPrice = (min?: string, max?: string): string => {
-  if (!min && !max) return "";
-  if (min && max) return `${min} - ${max}`;
-  if (min) return `من ${min}`;
-  if (max) return `حتى ${max}`;
-  return "";
-};
-
+// ============================================
 // Single Card Component
-const SnapCard: React.FC<{
+// ============================================
+const RequestCard: React.FC<{
   request: Request;
   isActive: boolean;
+  onTap: () => void;
   myOffer?: Offer;
-  isMyRequest: boolean;
-  onClick: () => void;
-}> = ({ request, isActive, myOffer, isMyRequest, onClick }) => {
-  const hasImage = request.images && request.images.length > 0;
-  const price = formatPrice(request.budgetMin, request.budgetMax);
-  const timeAgo = getTimeAgo(request.createdAt);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [liked, setLiked] = useState(false);
+  index: number;
+}> = ({ request, isActive, onTap, myOffer, index }) => {
+  const [showDetails, setShowDetails] = useState(false);
+  
+  // Format time ago
+  const timeAgo = request.createdAt 
+    ? formatDistanceToNow(new Date(request.createdAt), { addSuffix: true, locale: ar })
+    : "";
 
-  // Auto-advance images when active
-  useEffect(() => {
-    if (!isActive || !request.images || request.images.length <= 1) return;
-    
-    const interval = setInterval(() => {
-      setCurrentImageIndex(prev => (prev + 1) % request.images!.length);
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [isActive, request.images]);
-
-  const handleLike = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setLiked(!liked);
-    if (navigator.vibrate) navigator.vibrate(15);
-  };
-
-  const handleShare = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (navigator.vibrate) navigator.vibrate(15);
-    // Could implement share functionality
-    if (navigator.share) {
-      navigator.share({
-        title: request.title,
-        text: request.description,
-        url: window.location.href,
-      }).catch(() => {});
-    }
-  };
+  // Get first category
+  const firstCategory = request.categories?.[0] || "";
+  
+  // Status badge
+  const hasOffer = !!myOffer;
+  const offerAccepted = myOffer?.status === "accepted";
 
   return (
-    <div className="h-full w-full snap-center snap-always relative flex flex-col bg-black">
-      {/* Background Image */}
-      <div className="absolute inset-0">
-        {hasImage ? (
-          <>
-            <motion.img
-              key={currentImageIndex}
-              src={request.images![currentImageIndex]}
-              alt=""
-              className="w-full h-full object-cover"
-              initial={{ opacity: 0, scale: 1.1 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5 }}
-            />
-            {/* Multiple images indicator */}
-            {request.images!.length > 1 && (
-              <div className="absolute top-16 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
-                {request.images!.map((_, idx) => (
-                  <div
-                    key={idx}
-                    className={`h-1 rounded-full transition-all duration-300 ${
-                      idx === currentImageIndex ? 'w-6 bg-white' : 'w-1.5 bg-white/40'
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        ) : (
-          <div 
-            className="w-full h-full flex items-center justify-center"
-            style={{
-              background: `linear-gradient(135deg, 
-                hsl(${Math.abs(request.id.charCodeAt(0) * 10) % 360}, 60%, 25%) 0%, 
-                hsl(${(Math.abs(request.id.charCodeAt(0) * 10) + 60) % 360}, 70%, 15%) 100%)`
-            }}
-          >
-            <div className="text-center space-y-4">
-              <div className="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center mx-auto">
-                <ImageIcon size={48} className="text-white/20" />
-              </div>
-            </div>
-          </div>
-        )}
+    <motion.div
+      className="absolute inset-4 rounded-3xl overflow-hidden"
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ 
+        opacity: isActive ? 1 : 0.3,
+        scale: isActive ? 1 : 0.95,
+      }}
+      transition={{ 
+        type: "spring", 
+        stiffness: 300, 
+        damping: 30 
+      }}
+      onClick={onTap}
+    >
+      {/* Gradient Background */}
+      <div 
+        className="absolute inset-0"
+        style={{
+          background: `linear-gradient(135deg, 
+            hsl(${(index * 40) % 360}, 60%, 25%) 0%, 
+            hsl(${(index * 40 + 60) % 360}, 70%, 15%) 100%)`
+        }}
+      />
+      
+      {/* Decorative Pattern */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-10 right-10 w-40 h-40 rounded-full border-2 border-white/30" />
+        <div className="absolute bottom-20 left-5 w-20 h-20 rounded-full border border-white/20" />
+        <div className="absolute top-1/2 right-1/4 w-60 h-60 rounded-full border border-white/10" />
+      </div>
+
+      {/* Content Container */}
+      <div className="relative h-full flex flex-col justify-between p-6 text-white">
         
-        {/* Gradient Overlays */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40" />
-      </div>
-
-      {/* Top Bar - Safe Area */}
-      <div className="absolute top-0 left-0 right-0 z-30 pt-[env(safe-area-inset-top,12px)] px-4 pb-2">
-        <div className="flex items-center justify-between">
-          {/* Indicators */}
-          <div className="flex gap-2">
-            {isMyRequest && (
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="px-3 py-1.5 rounded-full bg-primary/90 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 shadow-lg"
-              >
-                <User size={12} />
-                طلبي
-              </motion.div>
+        {/* Top Section - Category & Time */}
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2">
+            {firstCategory && (
+              <span className="px-3 py-1.5 rounded-full bg-white/20 backdrop-blur-sm text-sm font-medium">
+                {firstCategory}
+              </span>
             )}
-            {myOffer && (
-              <motion.div
+            {hasOffer && (
+              <motion.span 
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                className="px-3 py-1.5 rounded-full bg-emerald-500/90 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 shadow-lg"
+                className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                  offerAccepted 
+                    ? "bg-emerald-500/90 text-white" 
+                    : "bg-amber-500/90 text-white"
+                }`}
               >
-                <CheckCircle size={12} />
-                قدمت عرض
-              </motion.div>
+                {offerAccepted ? "✓ معتمد" : "⏳ بانتظار"}
+              </motion.span>
             )}
           </div>
-
-          {/* Time */}
-          {timeAgo && (
-            <span className="text-white/70 text-xs font-medium backdrop-blur-sm bg-black/30 px-2.5 py-1 rounded-full">
-              {timeAgo}
-            </span>
-          )}
+          
+          <span className="text-white/60 text-sm flex items-center gap-1">
+            <Clock size={14} />
+            {timeAgo}
+          </span>
         </div>
-      </div>
 
-      {/* Side Actions */}
-      <div className="absolute left-4 bottom-48 z-30 flex flex-col gap-4">
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          className={`w-12 h-12 rounded-full backdrop-blur-md flex items-center justify-center border border-white/20 transition-colors ${
-            liked ? 'bg-red-500/90 text-white' : 'bg-white/10 text-white'
-          }`}
-          onClick={handleLike}
-        >
-          <Heart size={24} fill={liked ? 'currentColor' : 'none'} />
-        </motion.button>
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white border border-white/20"
-          onClick={handleShare}
-        >
-          <Share2 size={22} />
-        </motion.button>
-        {request.offersCount !== undefined && request.offersCount > 0 && (
-          <div className="flex flex-col items-center text-white">
-            <div className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20">
-              <MessageCircle size={22} />
-            </div>
-            <span className="text-xs font-bold mt-1">{request.offersCount}</span>
-          </div>
-        )}
-      </div>
+        {/* Middle Section - Title & Description */}
+        <div className="flex-1 flex flex-col justify-center py-8">
+          <motion.h2 
+            className="text-3xl md:text-4xl font-bold mb-4 leading-tight"
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.1 }}
+          >
+            {request.title || request.description?.slice(0, 50) || "طلب جديد"}
+          </motion.h2>
+          
+          <motion.p 
+            className="text-lg text-white/80 leading-relaxed line-clamp-4"
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2 }}
+          >
+            {request.description}
+          </motion.p>
+        </div>
 
-      {/* Bottom Content */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 p-6 pb-[calc(env(safe-area-inset-bottom,20px)+80px)]">
-        {/* Categories */}
-        {request.categories && request.categories.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-3">
-            {request.categories.slice(0, 3).map((cat, idx) => {
-              const catObj = AVAILABLE_CATEGORIES.find(c => c.label === cat || c.id === cat);
-              return (
-                <span
-                  key={idx}
-                  className="px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-white text-xs font-medium border border-white/10"
-                >
-                  {catObj?.emoji} {catObj?.label || cat}
+        {/* Bottom Section - Details */}
+        <div className="space-y-4">
+          {/* Location & Budget */}
+          <div className="flex flex-wrap gap-3">
+            {request.location && (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-sm">
+                <MapPin size={18} />
+                <span className="font-medium">{request.location}</span>
+              </div>
+            )}
+            
+            {(request.budgetMin || request.budgetMax) && (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-sm">
+                <DollarSign size={18} />
+                <span className="font-medium">
+                  {request.budgetMin && request.budgetMax 
+                    ? `${request.budgetMin} - ${request.budgetMax} ر.س`
+                    : request.budgetMin 
+                      ? `من ${request.budgetMin} ر.س`
+                      : `حتى ${request.budgetMax} ر.س`
+                  }
                 </span>
-              );
-            })}
+              </div>
+            )}
           </div>
-        )}
 
-        {/* Title */}
-        <h2 className="font-bold text-2xl text-white leading-tight mb-2 drop-shadow-lg">
-          {request.title}
-        </h2>
+          {/* Stats Row */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4 text-white/60">
+              <span className="flex items-center gap-1">
+                <Eye size={16} />
+                {request.viewCount || 0}
+              </span>
+              <span className="flex items-center gap-1">
+                <MessageCircle size={16} />
+                {request.offersCount || request.offers?.length || 0}
+              </span>
+            </div>
+            
+            {/* Author */}
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                <User size={16} />
+              </div>
+              <span className="text-white/70 text-sm">
+                {request.authorName || "مستخدم"}
+              </span>
+            </div>
+          </div>
 
-        {/* Description */}
-        <p className="text-white/80 text-base leading-relaxed line-clamp-3 mb-4">
-          {request.description}
-        </p>
-
-        {/* Meta Info */}
-        <div className="flex items-center gap-4 text-white/70 text-sm mb-6">
-          {request.location && (
-            <span className="flex items-center gap-1.5">
-              <MapPin size={16} />
-              {request.location}
+          {/* Action Hint */}
+          <motion.div 
+            className="flex justify-center pt-4"
+            animate={{ y: [0, 5, 0] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          >
+            <span className="text-white/40 text-sm flex items-center gap-2">
+              <ChevronUp size={20} />
+              اسحب للأعلى للمزيد
             </span>
-          )}
-          {price && (
-            <span className="flex items-center gap-1.5 text-primary font-bold">
-              <DollarSign size={16} />
-              {price} ر.س
-            </span>
-          )}
+          </motion.div>
         </div>
-
-        {/* CTA Button */}
-        <motion.button
-          whileTap={{ scale: 0.95 }}
-          onClick={onClick}
-          className="w-full py-4 bg-primary text-white rounded-2xl font-bold text-lg shadow-xl shadow-primary/30 active:shadow-primary/20 flex items-center justify-center gap-2"
-        >
-          <Send size={20} />
-          {isMyRequest ? "إدارة الطلب" : myOffer ? "عرض عرضي" : "قدم عرضك الآن"}
-        </motion.button>
       </div>
-    </div>
+
+      {/* Glow Effect on Active */}
+      {isActive && (
+        <motion.div 
+          className="absolute inset-0 rounded-3xl pointer-events-none"
+          initial={{ boxShadow: "0 0 0 0 rgba(30, 150, 140, 0)" }}
+          animate={{ 
+            boxShadow: [
+              "0 0 0 0 rgba(30, 150, 140, 0)",
+              "0 0 60px 10px rgba(30, 150, 140, 0.3)",
+              "0 0 0 0 rgba(30, 150, 140, 0)"
+            ] 
+          }}
+          transition={{ duration: 2, repeat: Infinity }}
+        />
+      )}
+    </motion.div>
   );
 };
 
+// ============================================
 // Main Component
+// ============================================
 export const FullScreenCardView: React.FC<FullScreenCardViewProps> = ({
   requests,
-  myOffers = [],
-  userId,
+  currentIndex,
+  onIndexChange,
   onSelectRequest,
   onClose,
-  initialIndex = 0,
-  viewedRequestIds = new Set(),
-  currentIndex: externalIndex,
-  onIndexChange,
+  myOffers = [],
+  userId,
+  isGuest = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [internalIndex, setInternalIndex] = useState(initialIndex);
-  const currentIndex = externalIndex ?? internalIndex;
-  const lastScrollTime = useRef(0);
-  const isScrolling = useRef(false);
-
-  // Get my offer on a request
-  const getMyOffer = useCallback((requestId: string) => {
+  const [isDragging, setIsDragging] = useState(false);
+  const [direction, setDirection] = useState<"up" | "down" | null>(null);
+  
+  // Touch tracking
+  const touchStartY = useRef(0);
+  const touchCurrentY = useRef(0);
+  const lastVelocity = useRef(0);
+  
+  // Get my offer for current request
+  const getMyOffer = (requestId: string) => {
     return myOffers.find(o => o.requestId === requestId);
-  }, [myOffers]);
-
-  // Check if user owns request
-  const isMyRequest = useCallback((request: Request) => {
-    if (!userId) return false;
-    const authorId = (request as any).authorId || (request as any).author_id || request.author;
-    return authorId === userId;
-  }, [userId]);
-
-  // Update index
-  const setCurrentIndex = useCallback((newIndex: number) => {
-    if (onIndexChange) {
-      onIndexChange(newIndex);
-    } else {
-      setInternalIndex(newIndex);
-    }
-  }, [onIndexChange]);
-
-  // Snap scroll handler with haptic feedback
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleScroll = () => {
-      if (isScrolling.current) return;
-
-      const scrollTop = container.scrollTop;
-      const cardHeight = container.clientHeight;
-      const newIndex = Math.round(scrollTop / cardHeight);
-
-      if (newIndex !== currentIndex && newIndex >= 0 && newIndex < requests.length) {
-        // Haptic feedback on card change
-        const now = Date.now();
-        if (now - lastScrollTime.current > 100) {
-          if (navigator.vibrate) navigator.vibrate(10);
-          lastScrollTime.current = now;
-        }
-        setCurrentIndex(newIndex);
-      }
-    };
-
-    const handleScrollEnd = () => {
-      isScrolling.current = false;
-    };
-
-    container.addEventListener('scroll', handleScroll, { passive: true });
-    container.addEventListener('scrollend', handleScrollEnd, { passive: true });
-
-    return () => {
-      container.removeEventListener('scroll', handleScroll);
-      container.removeEventListener('scrollend', handleScrollEnd);
-    };
-  }, [currentIndex, requests.length, setCurrentIndex]);
-
-  // Scroll to initial index on mount
-  useEffect(() => {
-    if (containerRef.current && initialIndex > 0) {
-      const cardHeight = containerRef.current.clientHeight;
-      containerRef.current.scrollTop = initialIndex * cardHeight;
-    }
-  }, [initialIndex]);
-
-  // Navigation functions
-  const goToPrevious = () => {
-    if (currentIndex > 0 && containerRef.current) {
-      isScrolling.current = true;
-      const cardHeight = containerRef.current.clientHeight;
-      containerRef.current.scrollTo({
-        top: (currentIndex - 1) * cardHeight,
-        behavior: 'smooth'
-      });
-      if (navigator.vibrate) navigator.vibrate(10);
-    }
   };
 
-  const goToNext = () => {
-    if (currentIndex < requests.length - 1 && containerRef.current) {
-      isScrolling.current = true;
-      const cardHeight = containerRef.current.clientHeight;
-      containerRef.current.scrollTo({
-        top: (currentIndex + 1) * cardHeight,
-        behavior: 'smooth'
-      });
-      if (navigator.vibrate) navigator.vibrate(10);
+  // Handle snap scroll with haptic
+  const snapToIndex = useCallback((newIndex: number) => {
+    if (newIndex < 0 || newIndex >= requests.length) return;
+    if (newIndex === currentIndex) return;
+    
+    // Haptic feedback
+    if (navigator.vibrate) {
+      navigator.vibrate(10);
+    }
+    
+    onIndexChange(newIndex);
+  }, [currentIndex, requests.length, onIndexChange]);
+
+  // Handle drag end with velocity
+  const handleDragEnd = (e: any, info: PanInfo) => {
+    setIsDragging(false);
+    
+    const velocity = info.velocity.y;
+    const offset = info.offset.y;
+    const threshold = 100;
+    const velocityThreshold = 500;
+    
+    if (offset < -threshold || velocity < -velocityThreshold) {
+      // Swipe up - next
+      snapToIndex(currentIndex + 1);
+    } else if (offset > threshold || velocity > velocityThreshold) {
+      // Swipe down - previous
+      snapToIndex(currentIndex - 1);
     }
   };
 
@@ -388,14 +287,14 @@ export const FullScreenCardView: React.FC<FullScreenCardViewProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowUp" || e.key === "k") {
         e.preventDefault();
-        goToPrevious();
+        snapToIndex(currentIndex - 1);
       } else if (e.key === "ArrowDown" || e.key === "j") {
         e.preventDefault();
-        goToNext();
+        snapToIndex(currentIndex + 1);
       } else if (e.key === "Enter") {
         e.preventDefault();
         onSelectRequest(requests[currentIndex]);
-      } else if (e.key === "Escape" && onClose) {
+      } else if (e.key === "Escape") {
         e.preventDefault();
         onClose();
       }
@@ -403,98 +302,207 @@ export const FullScreenCardView: React.FC<FullScreenCardViewProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentIndex, requests, onSelectRequest, onClose]);
+  }, [currentIndex, requests, snapToIndex, onSelectRequest, onClose]);
+
+  // Wheel navigation
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let wheelTimeout: NodeJS.Timeout;
+    let accumulatedDelta = 0;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      
+      accumulatedDelta += e.deltaY;
+      
+      clearTimeout(wheelTimeout);
+      wheelTimeout = setTimeout(() => {
+        if (Math.abs(accumulatedDelta) > 50) {
+          if (accumulatedDelta > 0) {
+            snapToIndex(currentIndex + 1);
+          } else {
+            snapToIndex(currentIndex - 1);
+          }
+        }
+        accumulatedDelta = 0;
+      }, 50);
+    };
+
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => container.removeEventListener("wheel", handleWheel);
+  }, [currentIndex, snapToIndex]);
 
   return (
     <motion.div
+      ref={containerRef}
+      className="fixed inset-0 z-[200] bg-black overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-black"
     >
-      {/* Close Button */}
-      {onClose && (
-        <motion.button
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={onClose}
-          className="absolute top-[calc(env(safe-area-inset-top,12px)+8px)] right-4 z-50 w-10 h-10 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center text-white border border-white/20"
-        >
-          <X size={20} />
-        </motion.button>
-      )}
-
-      {/* Progress Indicator */}
-      <div className="absolute top-[calc(env(safe-area-inset-top,12px)+8px)] left-4 z-50 text-white/70 text-sm font-medium backdrop-blur-sm bg-black/30 px-3 py-1.5 rounded-full">
-        {currentIndex + 1} / {requests.length}
-      </div>
-
-      {/* Navigation Arrows - Desktop */}
-      <div className="hidden md:flex absolute right-16 z-40 flex-col gap-4 top-1/2 -translate-y-1/2">
-        <motion.button
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={goToPrevious}
-          disabled={currentIndex === 0}
-          className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white border border-white/20 disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <ChevronUp size={24} />
-        </motion.button>
-        <motion.button
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={goToNext}
-          disabled={currentIndex === requests.length - 1}
-          className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white border border-white/20 disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <ChevronDown size={24} />
-        </motion.button>
-      </div>
-
-      {/* Cards Container - Snap Scroll */}
-      <div
-        ref={containerRef}
-        className="h-full w-full overflow-y-auto snap-y snap-mandatory no-scrollbar"
-        style={{ scrollSnapType: 'y mandatory' }}
-      >
-        {requests.map((request, index) => (
-          <div
-            key={request.id}
-            className="h-full w-full snap-start snap-always"
-            style={{ scrollSnapAlign: 'start' }}
+      {/* Header */}
+      <div className="absolute top-0 left-0 right-0 z-10 p-4">
+        <div className="flex items-center justify-between">
+          <motion.button
+            onClick={onClose}
+            className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center text-white"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
           >
-            <SnapCard
-              request={request}
-              isActive={index === currentIndex}
-              myOffer={getMyOffer(request.id)}
-              isMyRequest={isMyRequest(request)}
-              onClick={() => onSelectRequest(request)}
-            />
+            <X size={24} />
+          </motion.button>
+          
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-md text-white">
+            <span className="font-bold">{currentIndex + 1}</span>
+            <span className="text-white/50">/</span>
+            <span className="text-white/70">{requests.length}</span>
           </div>
-        ))}
+          
+          <motion.button
+            onClick={() => onSelectRequest(requests[currentIndex])}
+            className="px-5 py-2.5 rounded-2xl bg-primary text-white font-bold flex items-center gap-2"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Send size={18} />
+            قدّم عرض
+          </motion.button>
+        </div>
       </div>
 
-      {/* Bottom Navigation Dots */}
-      <div className="absolute bottom-[calc(env(safe-area-inset-bottom,20px)+8px)] left-1/2 -translate-x-1/2 z-40 flex gap-1.5">
-        {requests.slice(Math.max(0, currentIndex - 2), Math.min(requests.length, currentIndex + 3)).map((_, idx) => {
-          const actualIndex = Math.max(0, currentIndex - 2) + idx;
-          return (
-            <motion.div
-              key={actualIndex}
-              animate={{
-                scale: actualIndex === currentIndex ? 1.2 : 1,
-                opacity: actualIndex === currentIndex ? 1 : 0.5,
-              }}
-              className={`h-1.5 rounded-full transition-all ${
-                actualIndex === currentIndex ? 'w-6 bg-primary' : 'w-1.5 bg-white/50'
-              }`}
-            />
-          );
-        })}
+      {/* Cards Container with Drag */}
+      <motion.div
+        className="h-full w-full"
+        drag="y"
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={0.2}
+        onDragStart={() => setIsDragging(true)}
+        onDragEnd={handleDragEnd}
+      >
+        <AnimatePresence mode="popLayout">
+          {requests.map((request, index) => {
+            // Only render nearby cards for performance
+            if (Math.abs(index - currentIndex) > 2) return null;
+            
+            return (
+              <motion.div
+                key={request.id}
+                className="absolute inset-0"
+                initial={{ 
+                  y: index > currentIndex ? "100%" : "-100%",
+                  opacity: 0 
+                }}
+                animate={{ 
+                  y: `${(index - currentIndex) * 100}%`,
+                  opacity: Math.abs(index - currentIndex) <= 1 ? 1 : 0
+                }}
+                exit={{ 
+                  y: index > currentIndex ? "100%" : "-100%",
+                  opacity: 0 
+                }}
+                transition={{ 
+                  type: "spring", 
+                  stiffness: 300, 
+                  damping: 30 
+                }}
+              >
+                <RequestCard
+                  request={request}
+                  isActive={index === currentIndex}
+                  onTap={() => {
+                    if (!isDragging) {
+                      onSelectRequest(request);
+                    }
+                  }}
+                  myOffer={getMyOffer(request.id)}
+                  index={index}
+                />
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* Navigation Dots */}
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2">
+        {requests.slice(0, Math.min(10, requests.length)).map((_, index) => (
+          <motion.button
+            key={index}
+            className={`w-2 h-2 rounded-full transition-all ${
+              index === currentIndex 
+                ? "bg-primary w-2 h-6" 
+                : "bg-white/30"
+            }`}
+            onClick={() => snapToIndex(index)}
+            whileHover={{ scale: 1.5 }}
+          />
+        ))}
+        {requests.length > 10 && (
+          <span className="text-white/50 text-xs text-center">+{requests.length - 10}</span>
+        )}
+      </div>
+
+      {/* Navigation Hints */}
+      <AnimatePresence>
+        {currentIndex > 0 && (
+          <motion.div
+            className="absolute top-20 left-1/2 -translate-x-1/2 text-white/40 flex flex-col items-center"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+          >
+            <ChevronUp size={24} />
+            <span className="text-xs">السابق</span>
+          </motion.div>
+        )}
+        
+        {currentIndex < requests.length - 1 && (
+          <motion.div
+            className="absolute bottom-20 left-1/2 -translate-x-1/2 text-white/40 flex flex-col items-center"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+          >
+            <span className="text-xs">التالي</span>
+            <ChevronDown size={24} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Quick Actions (Bottom) */}
+      <div className="absolute bottom-0 left-0 right-0 p-4 pb-8">
+        <div className="flex justify-center gap-4">
+          <motion.button
+            className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+          >
+            <Share2 size={22} />
+          </motion.button>
+          
+          <motion.button
+            className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+          >
+            <Heart size={22} />
+          </motion.button>
+          
+          <motion.button
+            onClick={() => onSelectRequest(requests[currentIndex])}
+            className="w-14 h-14 rounded-full bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/30"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+          >
+            <Check size={26} />
+          </motion.button>
+        </div>
       </div>
     </motion.div>
   );
 };
 
 export default FullScreenCardView;
+

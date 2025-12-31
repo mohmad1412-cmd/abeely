@@ -35,14 +35,12 @@ import {
   LayoutGrid,
   List,
   Layers,
-  Maximize2,
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
 import { AnimatePresence, motion } from "framer-motion";
 import { CardsGridSkeleton } from "./ui/LoadingSkeleton";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
-import { FullScreenCardView } from "./ui/FullScreenCardView";
 import { SnapCardView } from "./ui/SnapCardView";
 
 interface MarketplaceProps {
@@ -131,10 +129,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   // View mode state - "all" or "interests"
   const [viewMode, setViewMode] = useState<"all" | "interests">("all");
   
-  // Display mode state - "cards" (default), "list" (compact text), "fullscreen" (TikTok style), "snap" (gradient cards)
-  const [displayMode, setDisplayMode] = useState<"cards" | "list" | "fullscreen" | "snap">("cards");
+  // Display mode state - "cards" (default), "list" (compact text), "fullscreen" (snap scroll)
+  const [displayMode, setDisplayMode] = useState<"cards" | "list" | "fullscreen">("cards");
   
-  // Snap card index for SnapCardView
+  // Snap card view index
   const [snapCardIndex, setSnapCardIndex] = useState(0);
 
   // Scroll state for glass header animation
@@ -877,20 +875,6 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             <button
               onClick={() => {
                 if (navigator.vibrate) navigator.vibrate(10);
-                setDisplayMode("snap");
-              }}
-              className={`w-9 h-9 flex items-center justify-center transition-all border-l border-border ${
-                displayMode === "snap" 
-                  ? 'bg-primary text-white' 
-                  : 'text-muted-foreground hover:text-primary hover:bg-secondary/50'
-              }`}
-              title="كروت متدرجة"
-            >
-              <Layers size={16} strokeWidth={2} />
-            </button>
-            <button
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(10);
                 setDisplayMode("fullscreen");
               }}
               className={`w-9 h-9 flex items-center justify-center transition-all ${
@@ -898,9 +882,9 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   ? 'bg-primary text-white' 
                   : 'text-muted-foreground hover:text-primary hover:bg-secondary/50'
               }`}
-              title="ملء الشاشة (TikTok)"
+              title="عرض ملء الشاشة"
             >
-              <Maximize2 size={16} strokeWidth={2} />
+              <Layers size={16} strokeWidth={2} />
             </button>
           </div>
           </div>
@@ -2093,27 +2077,17 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           </motion.div>
         )}
 
-        {/* Fullscreen Snap View - وضع ملء الشاشة (مثل TikTok) */}
+        {/* Fullscreen Snap View - وضع ملء الشاشة المتقدم */}
         {displayMode === "fullscreen" && filteredRequests.length > 0 && (
-          <FullScreenCardView
-            requests={filteredRequests}
-            myOffers={myOffers}
-            userId={user?.id}
-            onSelectRequest={onSelectRequest}
-            onClose={() => setDisplayMode("cards")}
-          />
-        )}
-
-        {/* Snap Card View - وضع الكروت المتدرجة */}
-        {displayMode === "snap" && filteredRequests.length > 0 && (
           <SnapCardView
             requests={filteredRequests}
             currentIndex={snapCardIndex}
             onIndexChange={setSnapCardIndex}
-            myOffers={myOffers}
-            userId={user?.id}
             onSelectRequest={onSelectRequest}
             onClose={() => setDisplayMode("cards")}
+            myOffers={myOffers}
+            userId={user?.id}
+            isGuest={isGuest}
           />
         )}
 
