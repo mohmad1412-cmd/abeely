@@ -11,6 +11,7 @@ import {
   ImageIcon,
   ChevronUp,
   ChevronDown,
+  Heart,
   Share2,
   X,
   Send,
@@ -69,6 +70,7 @@ const SnapCard: React.FC<{
   const price = formatPrice(request.budgetMin, request.budgetMax);
   const timeAgo = getTimeAgo(request.createdAt);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [liked, setLiked] = useState(false);
 
   // Auto-advance images when active
   useEffect(() => {
@@ -80,6 +82,12 @@ const SnapCard: React.FC<{
 
     return () => clearInterval(interval);
   }, [isActive, request.images]);
+
+  const handleLike = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLiked(!liked);
+    if (navigator.vibrate) navigator.vibrate(15);
+  };
 
   const handleShare = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -182,6 +190,15 @@ const SnapCard: React.FC<{
 
       {/* Side Actions */}
       <div className="absolute left-4 bottom-48 z-30 flex flex-col gap-4">
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          className={`w-12 h-12 rounded-full backdrop-blur-md flex items-center justify-center border border-white/20 transition-colors ${
+            liked ? 'bg-red-500/90 text-white' : 'bg-white/10 text-white'
+          }`}
+          onClick={handleLike}
+        >
+          <Heart size={24} fill={liked ? 'currentColor' : 'none'} />
+        </motion.button>
         <motion.button
           whileTap={{ scale: 0.9 }}
           className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white border border-white/20"

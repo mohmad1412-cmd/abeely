@@ -898,7 +898,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   ? 'bg-primary text-white' 
                   : 'text-muted-foreground hover:text-primary hover:bg-secondary/50'
               }`}
-              title="ملء الشاشة"
+              title="ملء الشاشة (TikTok)"
             >
               <Maximize2 size={16} strokeWidth={2} />
             </button>
