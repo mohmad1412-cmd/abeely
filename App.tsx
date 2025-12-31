@@ -229,6 +229,7 @@ const App: React.FC = () => {
     radarWords: [],
     notifyOnInterest: true,
     roleMode: "requester",
+    showNameToApprovedProvider: true,
   });
   const [isModeSwitching, setIsModeSwitching] = useState(false);
   const [profileRole, setProfileRole] = useState<'requester' | 'provider'>('provider'); // Temporary state for button animation
@@ -1818,11 +1819,12 @@ const App: React.FC = () => {
                   description: "",
                   location: "",
                   status: "active",
-                  authorId: user?.id || null,
-                  authorName: user?.user_metadata?.full_name || user?.email || "مستخدم",
+                  author: user?.id || "guest",
+                  authorName: user?.email?.split("@")[0] || "مستخدم",
                   isPublic: true,
-                  createdAt: new Date().toISOString(),
+                  createdAt: new Date(),
                   offers: [],
+                  messages: [],
                   offersCount: 0,
                   viewCount: 0,
                 };

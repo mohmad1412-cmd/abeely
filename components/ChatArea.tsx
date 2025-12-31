@@ -2743,13 +2743,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                            setIsSendingOTP(true);
                            const result = await verifyGuestPhone(guestPhone);
                            setIsSendingOTP(false);
-                           if (result.success) {
-                             setGuestStep('otp');
-                             // Show code in development (remove in production!)
-                             if (result.verificationCode) {
-                               alert(`رمز التحقق (للتطوير فقط): ${result.verificationCode}`);
-                             }
-                           } else {
+                          if (result.success) {
+                            setGuestStep('otp');
+                          } else {
                              alert(result.error || "فشل إرسال رمز التحقق");
                            }
                          }}

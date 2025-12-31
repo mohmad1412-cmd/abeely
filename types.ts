@@ -37,6 +37,9 @@ export interface Request {
     lng: number;
     address?: string;
   };
+  // Stats
+  viewCount?: number;
+  offersCount?: number;
 }
 
 
