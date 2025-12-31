@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from "react";
 import { Offer, Request } from "../types";
 import { AVAILABLE_CATEGORIES } from "../data";
 import {
@@ -134,6 +134,37 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   
   // Snap card view index
   const [snapCardIndex, setSnapCardIndex] = useState(0);
+  
+  // Locally viewed requests (persisted in localStorage)
+  const [localViewedIds, setLocalViewedIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('viewedRequestIds');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  
+  // Combined viewed IDs (backend + local)
+  const allViewedRequestIds = React.useMemo(() => {
+    const combined = new Set(localViewedIds);
+    if (backendViewedIds) {
+      backendViewedIds.forEach(id => combined.add(id));
+    }
+    return combined;
+  }, [localViewedIds, backendViewedIds]);
+  
+  // Mark request as viewed
+  const markAsViewed = useCallback((requestId: string) => {
+    setLocalViewedIds(prev => {
+      const updated = new Set(prev);
+      updated.add(requestId);
+      // Save to localStorage (keep last 500)
+      const array = Array.from(updated).slice(-500);
+      localStorage.setItem('viewedRequestIds', JSON.stringify(array));
+      return new Set(array);
+    });
+  }, []);
 
   // Scroll state for glass header animation
   const [isScrolled, setIsScrolled] = useState(false);
@@ -2010,6 +2041,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               const myOffer = myOffers.find(o => o.requestId === req.id);
               const requestAuthorId = (req as any).authorId || (req as any).author_id || req.author;
               const isMyRequest = !!user?.id && requestAuthorId === user.id;
+              const isViewed = allViewedRequestIds.has(req.id);
               
               return (
                 <motion.div
@@ -2019,9 +2051,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   transition={{ delay: index * 0.02 }}
                   onClick={() => {
                     if (navigator.vibrate) navigator.vibrate(10);
+                    markAsViewed(req.id);
                     onSelectRequest(req);
                   }}
-                  className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:bg-secondary/30 active:scale-[0.99] transition-all flex items-center gap-3"
+                  className={`border border-border rounded-xl p-3 cursor-pointer hover:bg-secondary/30 active:scale-[0.99] transition-all flex items-center gap-3 ${
+                    isViewed 
+                      ? 'bg-muted/30 opacity-75' 
+                      : 'bg-card'
+                  }`}
                 >
                   {/* صورة مصغرة أو أيقونة */}
                   <div className="w-12 h-12 rounded-lg bg-secondary/50 flex items-center justify-center overflow-hidden shrink-0">
@@ -2035,7 +2072,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   {/* المحتوى */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-sm truncate">{req.title}</h3>
+                      <h3 className={`font-bold text-sm truncate ${isViewed ? 'text-muted-foreground' : ''}`}>{req.title}</h3>
+                      {isViewed && (
+                        <Eye size={12} className="shrink-0 text-muted-foreground/50" />
+                      )}
                       {isMyRequest && (
                         <span className="shrink-0 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
                           <User size={10} className="text-white" />
@@ -2147,6 +2187,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                        return newSet;
                      });
                    }
+                   markAsViewed(req.id);
                    onSelectRequest(req);
                  }}
               >
