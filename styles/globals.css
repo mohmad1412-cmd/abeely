@@ -8,8 +8,10 @@
 
 :root {
     /* Core Colors - Light Mode */
-    --background: #ffffff;
+    /* خلفية خفيفة جداً بلمسة من لون الهوية */
+    --background: #f8fafa;
     --foreground: #0f172a;
+    /* الكروت أفتح قليلاً - قريبة للأبيض */
     --card: #ffffff;
     --card-foreground: #0f172a;
     --popover: #ffffff;
@@ -86,6 +88,11 @@ html {
 
 body {
     background-color: var(--background);
+    /* خلفية خفيفة جداً مع gradient من لون الهوية */
+    background-image: 
+        radial-gradient(ellipse at 0% 0%, rgba(30, 150, 140, 0.03) 0%, transparent 50%),
+        radial-gradient(ellipse at 100% 100%, rgba(21, 54, 89, 0.02) 0%, transparent 50%);
+    background-attachment: fixed;
     color: var(--foreground);
     font-family: 'IBM Plex Sans Arabic', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -95,6 +102,12 @@ body {
     line-height: 1.7;
     font-weight: 400;
     letter-spacing: -0.01em;
+}
+
+.dark body {
+    background-image: 
+        radial-gradient(ellipse at 0% 0%, rgba(45, 181, 169, 0.04) 0%, transparent 50%),
+        radial-gradient(ellipse at 100% 100%, rgba(21, 54, 89, 0.03) 0%, transparent 50%);
 }
 
 /* ========================================
