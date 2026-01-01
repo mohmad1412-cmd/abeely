@@ -1748,6 +1748,20 @@ const App: React.FC = () => {
                 archivedRequests={archivedRequests}
                 receivedOffersMap={receivedOffersMap}
                 onSelectRequest={handleSelectRequest}
+                user={user}
+                isGuest={isGuest}
+                onNavigateToProfile={() => {
+                  setPreviousView(view);
+                  setView("profile");
+                }}
+                onNavigateToSettings={() => {
+                  setPreviousView(view);
+                  setView("settings");
+                }}
+                onSignOut={isGuest ? handleGoToLogin : handleSignOut}
+                isDarkMode={isDarkMode}
+                toggleTheme={() => setIsDarkMode(!isDarkMode)}
+                onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
                 onArchiveRequest={async (requestId) => {
                   try {
                     await archiveRequest(requestId);
@@ -1800,6 +1814,20 @@ const App: React.FC = () => {
                 archivedOffers={archivedOffers}
                 allRequests={allRequests}
                 onSelectRequest={handleSelectRequest}
+                user={user}
+                isGuest={isGuest}
+                onNavigateToProfile={() => {
+                  setPreviousView(view);
+                  setView("profile");
+                }}
+                onNavigateToSettings={() => {
+                  setPreviousView(view);
+                  setView("settings");
+                }}
+                onSignOut={isGuest ? handleGoToLogin : handleSignOut}
+                isDarkMode={isDarkMode}
+                toggleTheme={() => setIsDarkMode(!isDarkMode)}
+                onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
                 onSelectOffer={(offer) => handleSelectOffer(offer, false)}
                 onArchiveOffer={async (offerId) => {
                   try {

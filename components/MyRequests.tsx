@@ -1,22 +1,23 @@
-import React, { useState, useRef, useMemo } from "react";
+import React, { useState, useRef, useMemo, useEffect } from "react";
 import { Request, Offer } from "../types";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   FileText,
   MapPin,
   Calendar,
   Briefcase,
-  User,
   Archive,
   ArchiveRestore,
   MessageCircle,
   ArrowUpDown,
   Clock,
+  User,
 } from "lucide-react";
 import { FaHandPointUp } from "react-icons/fa";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { FloatingFilterIsland } from "./ui/FloatingFilterIsland";
+import { UnifiedHeader } from "./ui/UnifiedHeader";
 
 type RequestFilter = "active" | "approved" | "all" | "completed";
 type SortOrder = "updatedAt" | "createdAt";
@@ -31,6 +32,15 @@ interface MyRequestsProps {
   onOpenChat?: (requestId: string, offer: Offer) => void;
   userId?: string;
   viewedRequestIds?: Set<string>;
+  // Profile dropdown props
+  user?: any;
+  isGuest?: boolean;
+  onNavigateToProfile?: () => void;
+  onNavigateToSettings?: () => void;
+  onSignOut?: () => void;
+  isDarkMode?: boolean;
+  toggleTheme?: () => void;
+  onOpenLanguagePopup?: () => void;
 }
 
 export const MyRequests: React.FC<MyRequestsProps> = ({
@@ -43,11 +53,50 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   onOpenChat,
   userId,
   viewedRequestIds = new Set(),
+  user,
+  isGuest = false,
+  onNavigateToProfile,
+  onNavigateToSettings,
+  onSignOut,
+  isDarkMode = false,
+  toggleTheme,
+  onOpenLanguagePopup,
 }) => {
+  // Header compression state - for smooth scroll animations
+  const [isHeaderCompressed, setIsHeaderCompressed] = useState(false);
+  const lastScrollY = useRef(0);
+  const headerRef = useRef<HTMLDivElement>(null);
+  
   // Filter & Sort States
   const [reqFilter, setReqFilter] = useState<RequestFilter>("active");
   const [sortOrder, setSortOrder] = useState<SortOrder>("createdAt");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Scroll Listener for header compression - same logic as Marketplace
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const scrollTop = container.scrollTop;
+      const scrollDelta = scrollTop - lastScrollY.current;
+      
+      if (scrollTop < 50) {
+        // Always show when near top
+        setIsHeaderCompressed(false);
+      } else if (scrollDelta > 10) {
+        // Scrolling down - compress header
+        setIsHeaderCompressed(true);
+      } else if (scrollDelta < -10) {
+        // Scrolling up - expand header
+        setIsHeaderCompressed(false);
+      }
+      lastScrollY.current = scrollTop;
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Counts
   const counts = useMemo(() => {
@@ -137,9 +186,58 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-background">
+    <div 
+      ref={scrollContainerRef}
+      className="h-full overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar overflow-y-auto"
+    >
+      {/* Sticky Header Wrapper - Unified with main header - same structure as Marketplace */}
+      <div 
+        ref={headerRef}
+        className="sticky top-0 z-[60] overflow-visible"
+      >
+        <div className="flex flex-col overflow-visible">
+          {/* Main Header Content - Hides when scrolling down */}
+          <motion.div
+            animate={{
+              height: isHeaderCompressed ? 0 : 'auto',
+              opacity: isHeaderCompressed ? 0 : 1,
+            }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            style={{ overflow: isHeaderCompressed ? 'hidden' : 'visible' }}
+            className="px-4"
+          >
+            <UnifiedHeader
+              mode="requests"
+              toggleMode={() => {}}
+              isModeSwitching={false}
+              unreadCount={0}
+              hasUnreadMessages={false}
+              user={user}
+              setView={() => {}}
+              setPreviousView={() => {}}
+              titleKey={reqFilter === "all" ? 0 : reqFilter === "active" ? 1 : reqFilter === "approved" ? 2 : 3}
+              notifications={[]}
+              onMarkAsRead={() => {}}
+              onNotificationClick={() => {}}
+              onClearAll={() => {}}
+              onSignOut={onSignOut || (() => {})}
+              currentView="my-requests"
+              transparent={true}
+              hideActionButtons={true}
+              onNavigateToProfile={onNavigateToProfile}
+              onNavigateToSettings={onNavigateToSettings}
+              isGuest={isGuest}
+              isDarkMode={isDarkMode}
+              toggleTheme={toggleTheme}
+              onOpenLanguagePopup={onOpenLanguagePopup}
+              title="طلباتي"
+            />
+          </motion.div>
+        </div>
+      </div>
+
       {/* Content with Floating Filter Island */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 pb-24">
+      <div className="px-4 pb-24">
         {/* Floating Filter Island */}
         <FloatingFilterIsland 
           filters={filterConfigs}

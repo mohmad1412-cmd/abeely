@@ -42,8 +42,8 @@ import { Badge } from "./ui/Badge";
 import { AnimatePresence, motion } from "framer-motion";
 import { CardsGridSkeleton } from "./ui/LoadingSkeleton";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
-import { TextCardView } from "./ui/TextCardView";
-import { ViewModeToolbar, ViewMode, ViewModeCompact } from "./ui/ViewModeToolbar";
+import CompactListView from "./ui/CompactListView";
+type ViewMode = "grid" | "text";
 
 interface MarketplaceProps {
   requests: Request[];
@@ -781,6 +781,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               isDarkMode={isDarkMode}
               toggleTheme={toggleTheme}
               onOpenLanguagePopup={onOpenLanguagePopup}
+              title="سوق الطلبات"
             />
           </motion.div>
 
@@ -1214,11 +1215,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         className="fixed z-[99] sm:hidden"
         style={{ left: 24, bottom: 180 }}
       >
-        <ViewModeCompact
-          currentMode={displayMode}
-          onChange={setDisplayMode}
-          className="shadow-lg"
-        />
+        <motion.button
+          onClick={() => setDisplayMode(displayMode === 'grid' ? 'text' : 'grid')}
+          className="w-10 h-10 rounded-xl bg-card/95 backdrop-blur-xl border border-border shadow-lg flex items-center justify-center text-foreground hover:bg-primary hover:text-white transition-colors"
+          whileTap={{ scale: 0.95 }}
+          title={displayMode === 'grid' ? 'عرض القائمة' : 'عرض الكروت'}
+        >
+          {displayMode === 'grid' ? <AlignJustify size={18} /> : <LayoutGrid size={18} />}
+        </motion.button>
       </motion.div>
 
       {/* Floating Scroll to Top Button - Same position as the orb */}
@@ -2218,11 +2222,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               exit={{ opacity: 0, x: -30 }}
               transition={{ duration: 0.25 }}
             >
-              <TextCardView
+              <CompactListView
                 requests={filteredRequests}
                 myOffers={myOffers}
-                receivedOffersMap={receivedOffersMap}
                 userId={user?.id}
+                isGuest={isGuest}
                 viewedRequestIds={viewedRequestIds}
                 onSelectRequest={(req) => {
                   if (isGuest) {
@@ -2517,7 +2521,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             }}
                             onPointerDown={(e) => e.stopPropagation()}
                             onTouchStart={(e) => e.stopPropagation()}
-                            className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800 text-primary border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all relative overflow-hidden"
+                            className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800 text-primary border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all relative overflow-visible"
                           >
                             <User size={14} className="text-primary" />
                             <span className="flex items-center gap-1">
@@ -2533,7 +2537,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                               <motion.span
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
-                                className="absolute -top-1.5 -left-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg z-20 border-2 border-white dark:border-gray-900"
+                                className="absolute -top-2.5 -left-2.5 min-w-[20px] h-[20px] px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg z-30 border-2 border-white dark:border-gray-900"
                               >
                                 {offersCount}
                               </motion.span>

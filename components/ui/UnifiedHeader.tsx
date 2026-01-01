@@ -257,9 +257,10 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           </motion.button>
         ) : null}
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-1">
           {!backButton && (
-            <div className="relative" ref={profileDropdownRef}>
+            <>
+              <div className="relative" ref={profileDropdownRef}>
               <motion.button
                 onClick={() => {
                   if (navigator.vibrate) navigator.vibrate(8);
@@ -423,10 +424,18 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   </>
                 )}
               </AnimatePresence>
-            </div>
+              </div>
+              {/* Page Title - only when no back button */}
+              {title && (
+                <h1 className="text-xl font-bold text-foreground text-right ml-auto">
+                  {title}
+                </h1>
+              )}
+            </>
           )}
-          <h1 className="font-bold text-base text-foreground flex flex-col gap-0.5">
-            {!backButton ? null : (
+          {/* Title for pages with back button */}
+          {backButton && (
+            <h1 className="font-bold text-base text-foreground flex flex-col gap-0.5">
               <AnimatePresence mode="wait">
                 {backButton && isScrolled ? (
                   <motion.span
@@ -457,8 +466,8 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   </motion.span>
                 )}
               </AnimatePresence>
-            )}
-          </h1>
+            </h1>
+          )}
         </div>
       </div>
 
@@ -875,11 +884,11 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                 }}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.96 }}
-                className="relative flex items-center gap-2 h-11 px-4 rounded-xl group active:scale-95 bg-primary/10 border border-primary/30 hover:border-primary/50 hover:bg-primary/15 overflow-hidden"
+                className="relative flex items-center gap-2 h-11 px-4 rounded-xl group active:scale-95 bg-primary/10 border border-primary/30 hover:border-primary/50 hover:bg-primary/15 overflow-visible"
               >
                 {/* Shimmer effect */}
                 <span 
-                  className="absolute inset-0 pointer-events-none animate-shimmer-diagonal" 
+                  className="absolute inset-0 pointer-events-none animate-shimmer-diagonal rounded-xl overflow-hidden" 
                   style={{
                     background: 'linear-gradient(315deg, transparent 0%, transparent 35%, rgba(30, 150, 140, 0.1) 50%, transparent 65%, transparent 100%)',
                     backgroundSize: '200% 200%'
@@ -901,7 +910,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   <motion.span
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
-                    className="absolute -top-1.5 -left-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg z-20 border-2 border-white dark:border-gray-900"
+                    className="absolute -top-2.5 -left-2.5 min-w-[20px] h-[20px] px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg z-30 border-2 border-white dark:border-gray-900"
                   >
                     {myRequestOffersCount}
                   </motion.span>

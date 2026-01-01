@@ -110,6 +110,70 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
     return () => container.removeEventListener('scroll', handleScroll);
   }, [scrollContainerRef, handleScroll]);
   
+  // Calculate dropdown position to prevent overflow
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  
+  useEffect(() => {
+    if (!openDropdownId) {
+      setDropdownStyle({});
+      return;
+    }
+    
+    const buttonElement = dropdownRefs.current.get(openDropdownId);
+    if (!buttonElement) return;
+    
+    const updateDropdownPosition = () => {
+      const rect = buttonElement.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const dropdownWidth = 256; // w-64 = 256px
+      const margin = 16;
+      
+      const style: React.CSSProperties = {};
+      
+      // Calculate horizontal position - prevent overflow on right side
+      const spaceOnRight = viewportWidth - rect.left;
+      if (spaceOnRight < dropdownWidth + margin) {
+        // Not enough space on right, align to right edge with margin
+        style.right = margin;
+        style.left = 'auto';
+      } else {
+        // Enough space, use left positioning
+        style.left = 0;
+        style.right = 'auto';
+      }
+      
+      // Calculate vertical position - prevent overflow on bottom
+      const spaceBelow = viewportHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const estimatedDropdownHeight = 300; // approximate max height
+      
+      if (spaceBelow < estimatedDropdownHeight && spaceAbove > spaceBelow) {
+        // Show above button
+        style.bottom = viewportHeight - rect.top + 8; // 8px = mt-2
+        style.top = 'auto';
+      } else {
+        // Show below button (default)
+        style.top = '100%';
+        style.bottom = 'auto';
+      }
+      
+      setDropdownStyle(style);
+    };
+    
+    // Initial calculation
+    updateDropdownPosition();
+    
+    // Recalculate on resize and scroll
+    window.addEventListener('resize', updateDropdownPosition);
+    window.addEventListener('scroll', updateDropdownPosition, true);
+    
+    return () => {
+      window.removeEventListener('resize', updateDropdownPosition);
+      window.removeEventListener('scroll', updateDropdownPosition, true);
+    };
+  }, [openDropdownId]);
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -237,12 +301,18 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.95 }}
                     transition={{ duration: 0.2, ease: "easeOut" }}
-                    className="absolute top-full right-0 mt-2 min-w-[160px] bg-card/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl z-50 overflow-hidden"
+                    className="absolute w-64 bg-card dark:bg-card border border-border rounded-3xl shadow-2xl z-50 overflow-hidden"
+                    style={{
+                      ...dropdownStyle,
+                      marginTop: dropdownStyle.bottom ? 0 : 8, // mt-2 only when below
+                      maxHeight: 'calc(100vh - 120px)',
+                      overflowY: 'auto',
+                    }}
                   >
-                    <div className="p-2">
+                    <div className="p-3">
                       {filter.options.map((option, optIdx) => (
                         <React.Fragment key={option.value}>
-                          {optIdx > 0 && <div className="my-1 border-t border-border/50" />}
+                          {optIdx > 0 && <div className="my-1.5 border-t border-white/20 dark:border-slate-700/50" />}
                           <motion.button
                             whileTap={{ scale: 0.98 }}
                             onClick={() => {
@@ -250,10 +320,10 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
                               filter.onChange(option.value);
                               setOpenDropdownId(null);
                             }}
-                            className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                            className={`w-full flex items-center justify-between gap-4 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
                               filter.value === option.value 
-                                ? "bg-primary/10 text-primary" 
-                                : "text-foreground hover:bg-secondary/50"
+                                ? "bg-primary/15 text-primary dark:bg-primary/20" 
+                                : "text-foreground hover:bg-white/50 dark:hover:bg-slate-800/50"
                             }`}
                           >
                             <div className="flex items-center gap-2">

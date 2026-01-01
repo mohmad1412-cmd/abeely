@@ -294,7 +294,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
                     if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
                     onSelectRequest(req, false);
                   }}
-                  className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800 text-primary border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all relative overflow-hidden"
+                  className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800 text-primary border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all relative overflow-visible"
                 >
                   <User size={14} className="text-primary" />
                   <span className="flex items-center gap-1">
@@ -309,7 +309,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
                     <motion.span
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
-                      className="absolute -top-1.5 -left-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg z-20 border-2 border-white dark:border-gray-900"
+                      className="absolute -top-2.5 -left-2.5 min-w-[20px] h-[20px] px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg z-30 border-2 border-white dark:border-gray-900"
                     >
                       {offersCount}
                     </motion.span>
