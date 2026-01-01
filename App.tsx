@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, LayoutGroup } from "framer-motion";
 import { Check, X } from "lucide-react";
 import { UnifiedHeader } from "./components/ui/UnifiedHeader";
 
@@ -17,7 +17,7 @@ import { SplashScreen } from "./components/SplashScreen";
 import { AuthPage } from "./components/AuthPage";
 import { Messages } from "./components/Messages";
 import { CreateRequestV2 } from "./components/CreateRequestV2";
-import { GlobalFloatingOrb } from "./components/GlobalFloatingOrb";
+import { GlobalFloatingOrb, VoiceProcessingStatus } from "./components/GlobalFloatingOrb";
 
 
 // Types & Data
@@ -39,6 +39,11 @@ import {
   markNotificationAsRead,
   subscribeToNotifications,
 } from "./services/notificationsService";
+
+import {
+  getTotalUnreadMessagesCount,
+  subscribeToUnreadCount,
+} from "./services/messagesService";
 
 // Services
 import {
@@ -73,6 +78,7 @@ import {
 } from "./services/authService";
 import { FullScreenLoading } from "./components/ui/LoadingSkeleton";
 import { ConnectionError } from "./components/ui/ConnectionError";
+import { SwipeBackWrapper } from "./components/ui/SwipeBackWrapper";
 import { parseRoute, updateUrl, routeTypeToViewState, ParsedRoute } from "./services/routingService";
 import { App as CapacitorApp } from "@capacitor/app";
 
@@ -197,8 +203,14 @@ const App: React.FC = () => {
   ]);
   // Ref to CreateRequestV2's handleSend function
   const aiSendHandlerRef = useRef<((audioBlob?: Blob) => Promise<void>) | null>(null);
+  // Ref to CreateRequestV2's handleVoiceSend function
+  const voiceSendHandlerRef = useRef<((audioBlob: Blob) => Promise<void>) | null>(null);
+  // Voice processing status (updated by CreateRequestV2)
+  const [voiceProcessingStatus, setVoiceProcessingStatus] = useState<VoiceProcessingStatus>({ stage: 'idle' });
   // Track if scroll-to-top button is visible (to hide floating orb)
   const [isScrollButtonVisible, setIsScrollButtonVisible] = useState(false);
+  // Track if marketplace header is compressed (for floating orb animation)
+  const [isMarketplaceHeaderCompressed, setIsMarketplaceHeaderCompressed] = useState(false);
 
   // ==========================================
   // Scroll Persistence
@@ -959,8 +971,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (appView !== "main" || view !== "marketplace") return;
     if (loadingRef.current) return;
-    if (allRequests.length === 0 || requestsLoadError) {
-      // Trigger reload if no data or error
+    // فقط حمّل البيانات إذا لم يكن هناك طلبات (وليس عند وجود خطأ لتجنب الحلقة)
+    if (allRequests.length === 0) {
       const reloadData = async () => {
         loadingRef.current = true;
         try {
@@ -988,7 +1000,7 @@ const App: React.FC = () => {
       };
       reloadData();
     }
-  }, [view, appView, allRequests.length, requestsLoadError]);
+  }, [view, appView, allRequests.length]); // إزالة requestsLoadError من dependencies لمنع الحلقة
 
   // ==========================================
   // Auto-Retry: Check Connection & Reload Data
@@ -1103,8 +1115,14 @@ const App: React.FC = () => {
       setNotifications((prev) => [newNotif, ...prev]);
     });
 
+    // Subscribe to unread messages count
+    const unsubscribeMessages = subscribeToUnreadCount(user.id, (count) => {
+      setHasUnreadMessages(count > 0);
+    });
+
     return () => {
       unsubscribe();
+      unsubscribeMessages();
     };
   }, [appView, user?.id]);
 
@@ -1606,11 +1624,13 @@ const App: React.FC = () => {
     switch (view) {
       case "create-request":
         // استخدام واجهة إنشاء الطلب الجديدة (V2)
+        const handleCreateRequestBack = () => {
+          handleNavigate("marketplace");
+        };
         return (
+          <SwipeBackWrapper onBack={handleCreateRequestBack} className="h-full">
           <CreateRequestV2
-            onBack={() => {
-              handleNavigate("marketplace");
-            }}
+            onBack={handleCreateRequestBack}
             onGoToMarketplace={() => {
               handleNavigate("marketplace");
             }}
@@ -1736,10 +1756,14 @@ const App: React.FC = () => {
             isAiLoading={isAiLoading}
             setIsAiLoading={setIsAiLoading}
             aiSendHandlerRef={aiSendHandlerRef}
+            // Voice processing props (for GlobalFloatingOrb)
+            voiceSendHandlerRef={voiceSendHandlerRef}
+            setVoiceProcessingStatus={setVoiceProcessingStatus}
           />
+          </SwipeBackWrapper>
         );
       case "marketplace":
-        // Render based on active bottom tab
+        // Render based on active bottom tab - NO animations for smooth instant switching
         if (activeBottomTab === "my-requests") {
           return (
             <div className="h-full flex flex-col overflow-hidden relative">
@@ -1798,9 +1822,7 @@ const App: React.FC = () => {
               />
               <BottomNavigation
                 activeTab={activeBottomTab}
-                onTabChange={(tab) => {
-                  setActiveBottomTab(tab);
-                }}
+                onTabChange={setActiveBottomTab}
               />
             </div>
           );
@@ -1868,9 +1890,7 @@ const App: React.FC = () => {
               />
               <BottomNavigation
                 activeTab={activeBottomTab}
-                onTabChange={(tab) => {
-                  setActiveBottomTab(tab);
-                }}
+                onTabChange={setActiveBottomTab}
               />
             </div>
           );
@@ -1934,6 +1954,7 @@ const App: React.FC = () => {
                     onClearAll={handleClearNotifications}
                     onSignOut={isGuest ? handleGoToLogin : handleSignOut}
                     onScrollButtonVisibilityChange={setIsScrollButtonVisible}
+                    onHeaderCompressionChange={setIsMarketplaceHeaderCompressed}
                     onNavigateToProfile={() => {
                       setPreviousView(view);
                       setView("profile");
@@ -1971,21 +1992,22 @@ const App: React.FC = () => {
           ...selectedRequest,
           offers: receivedOffersMap.get(selectedRequest.id) || selectedRequest.offers || []
         } : null;
+        const handleRequestDetailBack = () => {
+          setSelectedRequest(null);
+          setScrollToOfferSection(false);
+          setNavigatedFromSidebar(false);
+          // الرجوع دائماً للماركت بليس
+          setView("marketplace");
+          // Marketplace will restore scroll position via savedScrollPosition prop
+        };
         return enrichedRequest
           ? (
-            <div className="h-full flex flex-col overflow-hidden">
+            <SwipeBackWrapper onBack={handleRequestDetailBack} className="h-full flex flex-col overflow-hidden">
               <RequestDetail
                 request={enrichedRequest}
                 mode={mode}
                 myOffer={getMyOfferOnRequest(enrichedRequest.id)}
-                onBack={() => {
-                  setSelectedRequest(null);
-                  setScrollToOfferSection(false);
-                  setNavigatedFromSidebar(false);
-                  // الرجوع دائماً للماركت بليس
-                  setView("marketplace");
-                  // Marketplace will restore scroll position via savedScrollPosition prop
-                }}
+                onBack={handleRequestDetailBack}
                 isGuest={isGuest}
                 scrollToOfferSection={scrollToOfferSection}
                 navigatedFromSidebar={navigatedFromSidebar}
@@ -2069,12 +2091,22 @@ const App: React.FC = () => {
                   setView("settings");
                 }}
               />
-            </div>
+            </SwipeBackWrapper>
           )
           : null;
       case "settings":
+        const handleSettingsBack = () => {
+          if (previousView) {
+            setView(previousView);
+            setPreviousView(null);
+          } else {
+            handleNavigate(
+              mode === "requests" ? "create-request" : "marketplace",
+            );
+          }
+        };
         return (
-          <div className="h-full flex flex-col overflow-hidden">
+          <SwipeBackWrapper onBack={handleSettingsBack} className="h-full flex flex-col overflow-hidden">
             <Settings
               isDarkMode={isDarkMode}
               toggleTheme={() => setIsDarkMode(!isDarkMode)}
@@ -2092,16 +2124,7 @@ const App: React.FC = () => {
                   }
                 }
               }}
-              onBack={() => {
-                if (previousView) {
-                  setView(previousView);
-                  setPreviousView(null);
-                } else {
-                  handleNavigate(
-                    mode === "requests" ? "create-request" : "marketplace",
-                  );
-                }
-              }}
+              onBack={handleSettingsBack}
               onSignOut={isGuest ? handleGoToLogin : handleSignOut}
               // Header integration props
               mode={mode}
@@ -2126,11 +2149,21 @@ const App: React.FC = () => {
                 setView("settings");
               }}
             />
-          </div>
+          </SwipeBackWrapper>
         );
       case "profile":
+        const handleProfileBack = () => {
+          if (previousView) {
+            setView(previousView);
+            setPreviousView(null);
+          } else {
+            handleNavigate(
+              mode === "requests" ? "create-request" : "marketplace",
+            );
+          }
+        };
         return (
-          <div className="h-full flex flex-col overflow-hidden">
+          <SwipeBackWrapper onBack={handleProfileBack} className="h-full flex flex-col overflow-hidden">
             <Profile
               userReviews={reviews}
               userRating={userRating}
@@ -2159,16 +2192,7 @@ const App: React.FC = () => {
               onNotificationClick={handleNotificationClick}
               onClearAll={handleClearNotifications}
               onSignOut={isGuest ? handleGoToLogin : handleSignOut}
-              onBack={() => {
-                if (previousView) {
-                  setView(previousView);
-                  setPreviousView(null);
-                } else {
-                  handleNavigate(
-                    mode === "requests" ? "create-request" : "marketplace",
-                  );
-                }
-              }}
+              onBack={handleProfileBack}
               isGuest={isGuest}
               onNavigateToProfile={() => {
                 setPreviousView(view);
@@ -2179,22 +2203,23 @@ const App: React.FC = () => {
                 setView("settings");
               }}
             />
-          </div>
+          </SwipeBackWrapper>
         );
       case "messages":
+        const handleMessagesBack = () => {
+          if (previousView) {
+            setView(previousView);
+            setPreviousView(null);
+          } else {
+            handleNavigate(
+              mode === "requests" ? "create-request" : "marketplace",
+            );
+          }
+        };
         return (
-          <div className="h-full flex flex-col overflow-hidden relative">
+          <SwipeBackWrapper onBack={handleMessagesBack} className="h-full flex flex-col overflow-hidden relative">
             <Messages
-              onBack={() => {
-                if (previousView) {
-                  setView(previousView);
-                  setPreviousView(null);
-                } else {
-                  handleNavigate(
-                    mode === "requests" ? "create-request" : "marketplace",
-                  );
-                }
-              }}
+              onBack={handleMessagesBack}
               onSelectConversation={(conversationId) => {
                 setView("conversation");
               }}
@@ -2222,13 +2247,14 @@ const App: React.FC = () => {
                 setView("settings");
               }}
             />
-          </div>
+          </SwipeBackWrapper>
         );
       case "conversation":
+        const handleConversationBack = () => setView("messages");
         return (
-          <div className="h-full flex flex-col overflow-hidden">
+          <SwipeBackWrapper onBack={handleConversationBack} className="h-full flex flex-col overflow-hidden">
             <Messages
-              onBack={() => setView("messages")}
+              onBack={handleConversationBack}
               onSelectConversation={(conversationId) => {
                 // Already in conversation view
               }}
@@ -2256,7 +2282,7 @@ const App: React.FC = () => {
                 setView("settings");
               }}
             />
-          </div>
+          </SwipeBackWrapper>
         );
       default:
         return (
@@ -2349,9 +2375,11 @@ const App: React.FC = () => {
           ref={scrollContainerRef}
           className="flex-1 min-h-0 bg-background relative overflow-hidden h-full"
         >
-          <div className="absolute inset-0 flex flex-col overflow-auto">
-            {renderContent()}
-          </div>
+          <LayoutGroup>
+            <div className="absolute inset-0 flex flex-col overflow-auto">
+              {renderContent()}
+            </div>
+          </LayoutGroup>
         </div>
       </main>
 
@@ -2485,28 +2513,26 @@ const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Global Floating Orb - appears on all pages */}
-      {/* Hide AI orb when sidebar is open during create-request, but keep navigate orb visible */}
-      {/* Also hide when viewing other people's requests (not your own) */}
+      {/* Global Floating Orb */}
+      {/* Navigate mode: marketplace - shows Plus icon to navigate to create-request */}
+      {/* Voice mode: create-request - shows Mic icon for voice input */}
       <GlobalFloatingOrb
-        mode={view === "create-request" ? "ai" : "navigate"}
+        mode={view === "create-request" ? "voice" : "navigate"}
         onNavigate={() => handleNavigate("create-request")}
-        aiMessages={aiMessages}
-        inputValue={aiInput}
-        onInputChange={setAiInput}
-        onSend={async (audioBlob) => {
-          // إذا كنا في صفحة create-request وهناك handler مسجل، استخدمه
-          if (view === "create-request" && aiSendHandlerRef.current) {
-            await aiSendHandlerRef.current(audioBlob);
+        onVoiceSend={async (audioBlob) => {
+          if (voiceSendHandlerRef.current) {
+            await voiceSendHandlerRef.current(audioBlob);
           }
         }}
-        isLoading={isAiLoading}
-        position={aiOrbPosition}
-        onPositionChange={setAiOrbPosition}
+        processingStatus={voiceProcessingStatus}
         isVisible={
+          // Show on marketplace and create-request only
+          (view === "marketplace" || view === "create-request") &&
+          // Hide when viewing other people's requests
           !(view === "request-detail" && selectedRequest && selectedRequest.authorId !== user?.id)
         }
         hideForScrollButton={isScrollButtonVisible && view === "marketplace"}
+        isHeaderCompressed={isMarketplaceHeaderCompressed && view === "marketplace"}
       />
     </div>
   );

@@ -1,6 +1,13 @@
 import { supabase } from './supabaseClient';
 
 // ==========================================
+// Constants
+// ==========================================
+
+const MESSAGE_ATTACHMENTS_BUCKET = 'message-attachments';
+const VOICE_MESSAGES_BUCKET = 'voice-messages';
+
+// ==========================================
 // Types
 // ==========================================
 
@@ -25,6 +32,15 @@ export interface Conversation {
   unread_count?: number;
 }
 
+export interface MessageAttachment {
+  id?: string;
+  file_url: string;
+  file_name: string;
+  file_type: 'image' | 'video' | 'audio' | 'document';
+  file_size?: number;
+  thumbnail_url?: string;
+}
+
 export interface Message {
   id: string;
   conversation_id: string;
@@ -34,6 +50,11 @@ export interface Message {
   read_at: string | null;
   created_at: string;
   updated_at: string;
+  // New fields for attachments and audio
+  attachments?: MessageAttachment[];
+  audio_url?: string | null;
+  audio_duration?: number | null;
+  message_type?: 'text' | 'audio' | 'image' | 'file' | 'mixed';
   // Joined data
   sender?: {
     id: string;
@@ -303,15 +324,36 @@ export async function getMessages(conversationId: string, limit = 50): Promise<M
 }
 
 /**
- * Send a message
+ * Send a message with optional attachments and audio
  */
 export async function sendMessage(
   conversationId: string,
-  content: string
+  content: string,
+  options?: {
+    attachments?: MessageAttachment[];
+    audioUrl?: string;
+    audioDuration?: number;
+  }
 ): Promise<Message | null> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
+
+    // Determine message type
+    let messageType: Message['message_type'] = 'text';
+    if (options?.audioUrl) {
+      messageType = 'audio';
+    } else if (options?.attachments && options.attachments.length > 0) {
+      const hasImages = options.attachments.some(a => a.file_type === 'image');
+      const hasOther = options.attachments.some(a => a.file_type !== 'image');
+      if (content.trim() || (hasImages && hasOther)) {
+        messageType = 'mixed';
+      } else if (hasImages) {
+        messageType = 'image';
+      } else {
+        messageType = 'file';
+      }
+    }
 
     // Insert message
     const { data: insertedMsg, error: insertError } = await supabase
@@ -320,6 +362,10 @@ export async function sendMessage(
         conversation_id: conversationId,
         sender_id: user.id,
         content: content.trim(),
+        attachments: options?.attachments || [],
+        audio_url: options?.audioUrl || null,
+        audio_duration: options?.audioDuration || null,
+        message_type: messageType,
       })
       .select('*')
       .single();
@@ -612,5 +658,204 @@ export async function getConversationClosedReason(conversationId: string): Promi
   } catch {
     return null;
   }
+}
+
+// ==========================================
+// File Upload Functions
+// ==========================================
+
+/**
+ * Generate unique file name
+ */
+function generateFileName(originalName: string, prefix: string): string {
+  const timestamp = Date.now();
+  const randomString = Math.random().toString(36).substring(2, 8);
+  const extension = originalName.split('.').pop() || 'file';
+  return `${prefix}/${timestamp}-${randomString}.${extension}`;
+}
+
+/**
+ * Upload a file attachment for messages
+ */
+export async function uploadMessageAttachment(
+  file: File,
+  conversationId: string
+): Promise<MessageAttachment | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const filePath = generateFileName(file.name, `${conversationId}/${user.id}`);
+    
+    const { data, error } = await supabase.storage
+      .from(MESSAGE_ATTACHMENTS_BUCKET)
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) {
+      console.error('Upload error:', error);
+      return null;
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from(MESSAGE_ATTACHMENTS_BUCKET)
+      .getPublicUrl(data.path);
+
+    // Determine file type
+    let fileType: MessageAttachment['file_type'] = 'document';
+    if (file.type.startsWith('image/')) {
+      fileType = 'image';
+    } else if (file.type.startsWith('video/')) {
+      fileType = 'video';
+    } else if (file.type.startsWith('audio/')) {
+      fileType = 'audio';
+    }
+
+    return {
+      file_url: urlData.publicUrl,
+      file_name: file.name,
+      file_type: fileType,
+      file_size: file.size,
+    };
+  } catch (error) {
+    console.error('Error uploading attachment:', error);
+    return null;
+  }
+}
+
+/**
+ * Upload multiple file attachments
+ */
+export async function uploadMessageAttachments(
+  files: File[],
+  conversationId: string
+): Promise<MessageAttachment[]> {
+  const attachments: MessageAttachment[] = [];
+  
+  for (const file of files) {
+    const attachment = await uploadMessageAttachment(file, conversationId);
+    if (attachment) {
+      attachments.push(attachment);
+    }
+  }
+  
+  return attachments;
+}
+
+/**
+ * Upload voice message recording
+ */
+export async function uploadVoiceMessage(
+  audioBlob: Blob,
+  conversationId: string,
+  duration: number
+): Promise<{ url: string; duration: number } | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const timestamp = Date.now();
+    const filePath = `${conversationId}/${user.id}/${timestamp}.webm`;
+    
+    const { data, error } = await supabase.storage
+      .from(VOICE_MESSAGES_BUCKET)
+      .upload(filePath, audioBlob, {
+        cacheControl: '3600',
+        contentType: 'audio/webm',
+        upsert: false
+      });
+
+    if (error) {
+      console.error('Voice upload error:', error);
+      return null;
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from(VOICE_MESSAGES_BUCKET)
+      .getPublicUrl(data.path);
+
+    return {
+      url: urlData.publicUrl,
+      duration: Math.round(duration),
+    };
+  } catch (error) {
+    console.error('Error uploading voice message:', error);
+    return null;
+  }
+}
+
+// ==========================================
+// Unread Messages Count
+// ==========================================
+
+/**
+ * Get total unread messages count for current user
+ */
+export async function getTotalUnreadMessagesCount(): Promise<number> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 0;
+
+    // Get all conversations for the user
+    const { data: conversations, error: convError } = await supabase
+      .from('conversations')
+      .select('id')
+      .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`);
+
+    if (convError || !conversations || conversations.length === 0) return 0;
+
+    const conversationIds = conversations.map(c => c.id);
+
+    // Count unread messages across all conversations
+    const { count, error: countError } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .in('conversation_id', conversationIds)
+      .eq('is_read', false)
+      .neq('sender_id', user.id);
+
+    if (countError) return 0;
+    return count || 0;
+  } catch (error) {
+    console.error('Error getting unread count:', error);
+    return 0;
+  }
+}
+
+/**
+ * Subscribe to unread messages count changes
+ */
+export function subscribeToUnreadCount(
+  userId: string,
+  callback: (count: number) => void
+) {
+  // Initial count
+  getTotalUnreadMessagesCount().then(callback);
+
+  // Subscribe to message changes
+  const channel = supabase
+    .channel(`unread-messages:${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'messages',
+      },
+      async () => {
+        // Recalculate count on any message change
+        const count = await getTotalUnreadMessagesCount();
+        callback(count);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
 

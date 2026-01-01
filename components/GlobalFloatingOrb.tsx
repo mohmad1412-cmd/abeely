@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  Mic,
+  Check,
+  Loader2,
+  X,
   Sparkles,
   Plus,
-  X,
-  Mic,
-  Send,
-  Loader2,
   ArrowLeft,
   ArrowRight,
 } from "lucide-react";
@@ -14,142 +14,139 @@ import {
 // ============================================
 // Types
 // ============================================
-interface AIMessage {
-  id: string;
-  text: string;
-  timestamp: Date;
+export interface VoiceProcessingStatus {
+  stage: 'idle' | 'recording' | 'received' | 'processing' | 'done' | 'error';
+  message?: string;
 }
 
 interface GlobalFloatingOrbProps {
-  // Mode: "ai" for create-request page, "navigate" for other pages
-  mode: "ai" | "navigate";
+  // Mode: "navigate" for marketplace, "voice" for create-request page
+  mode: "navigate" | "voice";
   // Navigation callback (for navigate mode)
   onNavigate?: () => void;
-  // AI mode props
-  aiMessages?: AIMessage[];
-  inputValue?: string;
-  onInputChange?: (value: string) => void;
-  onSend?: (audioBlob?: Blob) => void;
-  isLoading?: boolean;
-  // Position persistence (deprecated - now fixed position)
-  position?: { x: number; y: number };
-  onPositionChange?: (pos: { x: number; y: number }) => void;
+  // Callback when voice recording is sent (for voice mode)
+  onVoiceSend?: (audioBlob: Blob) => void;
+  // Processing status (for voice mode)
+  processingStatus?: VoiceProcessingStatus;
   // Visibility control
   isVisible?: boolean;
   // Hide when scroll-to-top button is visible
   hideForScrollButton?: boolean;
-  // Custom element to render above the orb
-  topElement?: React.ReactNode;
+  // Header compressed state - fade out when header is compressed
+  isHeaderCompressed?: boolean;
 }
 
 // ============================================
-// Glass Panel (AI Questions) - Shows last 2 messages with fade
+// Voice Status Panel - Shows processing status
 // ============================================
-const GlassPanel: React.FC<{
-  messages: AIMessage[];
+const VoiceStatusPanel: React.FC<{
+  status: VoiceProcessingStatus;
   isVisible: boolean;
-  isLoading?: boolean;
-}> = ({ messages, isVisible, isLoading = false }) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  
-  // Only keep unique messages (no duplicates)
-  const uniqueMessages = messages.filter((msg, index, self) => 
-    index === self.findIndex(m => m.text === msg.text)
-  );
-  
-  // Show only last 2 messages
-  const visibleMessages = uniqueMessages.slice(-2);
+  onClose: () => void;
+}> = ({ status, isVisible, onClose }) => {
+  if (!isVisible || status.stage === 'idle' || status.stage === 'recording') return null;
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  const getStatusContent = () => {
+    switch (status.stage) {
+      case 'received':
+        return {
+          icon: <Check size={20} className="text-green-500" />,
+          title: 'تم استلام الرسالة الصوتية',
+          subtitle: 'جاري تحويلها إلى نص...',
+          showLoader: true,
+        };
+      case 'processing':
+        return {
+          icon: <Sparkles size={20} className="text-primary" />,
+          title: 'جاري تحليل الطلب',
+          subtitle: status.message || 'الذكاء الاصطناعي يعمل على طلبك...',
+          showLoader: true,
+        };
+      case 'done':
+        return {
+          icon: <Check size={20} className="text-green-500" />,
+          title: 'تم!',
+          subtitle: status.message || 'تم تجهيز طلبك',
+          showLoader: false,
+        };
+      case 'error':
+        return {
+          icon: <X size={20} className="text-red-500" />,
+          title: 'حدث خطأ',
+          subtitle: status.message || 'حاول مرة أخرى',
+          showLoader: false,
+        };
+      default:
+        return null;
     }
-  }, [uniqueMessages, isLoading]);
+  };
 
-  // Show panel if loading or has messages
-  if (!isVisible || (visibleMessages.length === 0 && !isLoading)) return null;
+  const content = getStatusContent();
+  if (!content) return null;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 10 }}
-      className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl overflow-hidden"
+      initial={{ opacity: 0, y: 10, scale: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 10, scale: 0.9 }}
+      className="absolute bottom-full left-0 mb-3 rounded-2xl overflow-hidden min-w-[200px]"
       style={{
-        background: "rgba(255, 255, 255, 0.9)",
+        background: "rgba(255, 255, 255, 0.95)",
         backdropFilter: "blur(20px)",
         border: "1px solid rgba(30, 150, 140, 0.2)",
-        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.1)",
+        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.15)",
       }}
     >
-      <div className="dark:bg-[rgba(10,10,15,0.9)] relative">
-        {/* Fade overlay for older messages */}
-        {uniqueMessages.length > 2 && (
-          <div 
-            className="absolute top-0 left-0 right-0 h-6 z-10 pointer-events-none"
-            style={{
-              background: "linear-gradient(to bottom, rgba(255,255,255,0.9), transparent)"
-            }}
-          />
-        )}
-        
-        <div
-          ref={scrollRef}
-          className="overflow-y-auto max-h-[120px] p-3 space-y-2"
-        >
-          {visibleMessages.map((msg, index) => (
-            <motion.div
-              key={msg.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ 
-                opacity: index === 0 && visibleMessages.length > 1 ? 0.6 : 1, 
-                y: 0 
-              }}
-              exit={{ opacity: 0, y: -20 }}
-              className="flex items-start gap-2"
-            >
-              <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <Sparkles size={10} className="text-primary" />
-              </div>
-              <p className="text-sm text-foreground leading-relaxed">{msg.text}</p>
-            </motion.div>
-          ))}
+      <div className="dark:bg-[rgba(10,10,15,0.95)] p-4">
+        <div className="flex items-start gap-3">
+          {/* Status Icon */}
+          <motion.div 
+            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+              status.stage === 'error' ? 'bg-red-100 dark:bg-red-900/30' :
+              status.stage === 'done' ? 'bg-green-100 dark:bg-green-900/30' :
+              'bg-primary/10'
+            }`}
+            animate={content.showLoader ? { scale: [1, 1.05, 1] } : {}}
+            transition={{ duration: 1.5, repeat: Infinity }}
+          >
+            {content.icon}
+          </motion.div>
           
-          {/* Loading/Analyzing Animation */}
-          {isLoading && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-start gap-2"
-            >
-              <motion.div 
-                className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0"
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ duration: 1, repeat: Infinity }}
-              >
-                <Sparkles size={10} className="text-primary" />
-              </motion.div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm text-muted-foreground">جاري التحليل</span>
-                <motion.div className="flex gap-0.5">
-                  {[0, 1, 2].map((i) => (
-                    <motion.span
-                      key={i}
-                      className="w-1.5 h-1.5 rounded-full bg-primary"
-                      animate={{ 
-                        opacity: [0.3, 1, 0.3],
-                        scale: [0.8, 1.2, 0.8]
-                      }}
-                      transition={{ 
-                        duration: 0.8, 
-                        repeat: Infinity, 
-                        delay: i * 0.2 
-                      }}
-                    />
-                  ))}
-                </motion.div>
+          {/* Text Content */}
+          <div className="flex-1 min-w-0">
+            <h4 className="font-medium text-foreground text-sm">{content.title}</h4>
+            <p className="text-xs text-muted-foreground mt-0.5">{content.subtitle}</p>
+            
+            {/* Progress dots */}
+            {content.showLoader && (
+              <div className="flex gap-1 mt-2">
+                {[0, 1, 2].map((i) => (
+                  <motion.span
+                    key={i}
+                    className="w-1.5 h-1.5 rounded-full bg-primary"
+                    animate={{ 
+                      opacity: [0.3, 1, 0.3],
+                      scale: [0.8, 1.2, 0.8]
+                    }}
+                    transition={{ 
+                      duration: 0.8, 
+                      repeat: Infinity, 
+                      delay: i * 0.2 
+                    }}
+                  />
+                ))}
               </div>
-            </motion.div>
+            )}
+          </div>
+
+          {/* Close button for error/done states */}
+          {(status.stage === 'done' || status.stage === 'error') && (
+            <button
+              onClick={onClose}
+              className="p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            >
+              <X size={14} />
+            </button>
           )}
         </div>
       </div>
@@ -163,88 +160,24 @@ const GlassPanel: React.FC<{
 export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
   mode,
   onNavigate,
-  aiMessages = [],
-  inputValue = "",
-  onInputChange,
-  onSend,
-  isLoading = false,
-  position: externalPosition,
-  onPositionChange,
+  onVoiceSend,
+  processingStatus = { stage: 'idle' },
   isVisible = true,
   hideForScrollButton = false,
-  topElement,
+  isHeaderCompressed = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isExpanded, setIsExpanded] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [showPanel, setShowPanel] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [initialPositionSet, setInitialPositionSet] = useState(false);
   const [isTooltipVisible, setIsTooltipVisible] = useState(true);
   const tooltipTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Constants for sizing
   const BUBBLE_SIZE = 60;
-  const EXPANDED_WIDTH = 320;
-  const EXPANDED_HEIGHT = 56;
-  const GLASS_PANEL_HEIGHT = 140;
-  const MARGIN = 20;
-  const BOTTOM_MARGIN = 40;
-  const TOOLTIP_WIDTH = 130; // Approximate width of tooltip (increased for larger fonts)
-  const TOOLTIP_OFFSET = 12; // mr-3 = 12px
-  
-  // Internal position state
-  const [internalPosition, setInternalPosition] = useState({ x: 20, y: 500 });
-  const position = externalPosition || internalPosition;
-  const setPosition = (pos: { x: number; y: number }) => {
-    setInternalPosition(pos);
-    onPositionChange?.(pos);
-  };
-  
-  // Track keyboard height for mobile
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  
-  // Set initial position on mount
-  useEffect(() => {
-    if (!initialPositionSet && typeof window !== 'undefined') {
-      const safeY = window.innerHeight - 150;
-      setPosition({ x: 20, y: safeY });
-      setInitialPositionSet(true);
-    }
-  }, [initialPositionSet]);
-  
-  // Detect keyboard open/close
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.visualViewport) return;
-    
-    const viewport = window.visualViewport;
-    
-    const handleResize = () => {
-      const heightDiff = window.innerHeight - viewport.height;
-      setKeyboardHeight(heightDiff > 50 ? heightDiff : 0);
-    };
-    
-    viewport.addEventListener('resize', handleResize);
-    viewport.addEventListener('scroll', handleResize);
-    
-    return () => {
-      viewport.removeEventListener('resize', handleResize);
-      viewport.removeEventListener('scroll', handleResize);
-    };
-  }, []);
-  
-  // Move capsule up when keyboard opens while expanded
-  useEffect(() => {
-    if (isExpanded && keyboardHeight > 0) {
-      const safeY = window.innerHeight - keyboardHeight - EXPANDED_HEIGHT - GLASS_PANEL_HEIGHT - MARGIN;
-      if (position.y > safeY) {
-        setPosition({ ...position, y: Math.max(MARGIN + GLASS_PANEL_HEIGHT, safeY) });
-      }
-    }
-  }, [keyboardHeight, isExpanded]);
 
   // Recording timer
   useEffect(() => {
@@ -259,6 +192,52 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
       if (interval) clearInterval(interval);
     };
   }, [isRecording]);
+
+  // Show panel when processing starts
+  useEffect(() => {
+    if (processingStatus.stage !== 'idle' && processingStatus.stage !== 'recording') {
+      setShowPanel(true);
+    }
+    
+    // Auto-hide panel after 'done' state
+    if (processingStatus.stage === 'done') {
+      const timer = setTimeout(() => setShowPanel(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [processingStatus.stage]);
+
+  // Tooltip visibility animation (show/hide cycle) - only for navigate mode
+  useEffect(() => {
+    if (tooltipTimerRef.current) {
+      clearTimeout(tooltipTimerRef.current);
+      tooltipTimerRef.current = null;
+    }
+
+    if (mode !== "navigate") {
+      setIsTooltipVisible(false);
+      return;
+    }
+
+    // Cycle: show for 3 seconds, hide for 4-5 seconds, repeat
+    const cycleTooltip = () => {
+      setIsTooltipVisible(true);
+      tooltipTimerRef.current = setTimeout(() => {
+        setIsTooltipVisible(false);
+        tooltipTimerRef.current = setTimeout(() => {
+          cycleTooltip();
+        }, 5000);
+      }, 3000);
+    };
+
+    cycleTooltip();
+
+    return () => {
+      if (tooltipTimerRef.current) {
+        clearTimeout(tooltipTimerRef.current);
+        tooltipTimerRef.current = null;
+      }
+    };
+  }, [mode]);
 
   // Start recording
   const startRecording = async () => {
@@ -284,7 +263,8 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
         stream.getTracks().forEach((t) => t.stop());
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
         if (audioBlob.size > 0) {
-          onSend?.(audioBlob);
+          setShowPanel(true);
+          onVoiceSend?.(audioBlob);
         }
         setIsRecording(false);
         setRecordingTime(0);
@@ -313,201 +293,17 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
     }
   };
 
-  // Focus input when expanded
-  useEffect(() => {
-    if (isExpanded && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  }, [isExpanded]);
-  
-  // Click outside to close
-  useEffect(() => {
-    if (!isExpanded) return;
-    
-    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsExpanded(false);
-      }
-    };
-    
-    const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('touchstart', handleClickOutside);
-    }, 100);
-    
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, [isExpanded]);
-
-  // Get current bounds based on expanded state
-  const getBounds = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return { minX: MARGIN, maxX: 500, minY: MARGIN, maxY: 500 };
-    }
-    
-    const width = isExpanded ? EXPANDED_WIDTH : BUBBLE_SIZE;
-    const height = isExpanded ? EXPANDED_HEIGHT : BUBBLE_SIZE;
-    const topSpace = isExpanded ? GLASS_PANEL_HEIGHT + 20 : 0;
-    
-    return {
-      minX: MARGIN,
-      maxX: Math.max(MARGIN, window.innerWidth - width - MARGIN),
-      minY: MARGIN + topSpace,
-      maxY: Math.max(MARGIN + topSpace, window.innerHeight - height - BOTTOM_MARGIN)
-    };
-  }, [isExpanded]);
-
-  // Clamp position to keep within screen bounds
-  const clampPosition = useCallback((x: number, y: number) => {
-    const bounds = getBounds();
-    return {
-      x: Math.max(bounds.minX, Math.min(bounds.maxX, x)),
-      y: Math.max(bounds.minY, Math.min(bounds.maxY, y))
-    };
-  }, [getBounds]);
-
-  // Track the actual rendered position
-  const [renderPos, setRenderPos] = useState({ x: position.x, y: position.y });
-  
-  // Update render position when position changes
-  useEffect(() => {
-    const clamped = clampPosition(position.x, position.y);
-    setRenderPos(clamped);
-  }, [position.x, position.y, clampPosition]);
-
-  // Re-clamp when expanded state changes
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const clamped = clampPosition(renderPos.x, renderPos.y);
-      if (clamped.x !== renderPos.x || clamped.y !== renderPos.y) {
-        setRenderPos(clamped);
-        setPosition(clamped);
-      }
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [isExpanded, clampPosition]);
-
-  // Tooltip visibility animation (show/hide cycle)
-  useEffect(() => {
-    // Clear any existing timer
-    if (tooltipTimerRef.current) {
-      clearTimeout(tooltipTimerRef.current);
-      tooltipTimerRef.current = null;
-    }
-
-    if (mode !== "navigate" || isExpanded) {
-      setIsTooltipVisible(false);
-      return;
-    }
-
-    // Cycle: show for 3 seconds, hide for 2 seconds, repeat
-    const cycleTooltip = () => {
-      setIsTooltipVisible(true);
-      tooltipTimerRef.current = setTimeout(() => {
-        setIsTooltipVisible(false);
-        tooltipTimerRef.current = setTimeout(() => {
-          cycleTooltip(); // Repeat cycle
-        }, 2000);
-      }, 3000);
-    };
-
-    // Start the cycle
-    cycleTooltip();
-
-    return () => {
-      if (tooltipTimerRef.current) {
-        clearTimeout(tooltipTimerRef.current);
-        tooltipTimerRef.current = null;
-      }
-    };
-  }, [mode, isExpanded]);
-
-  // Calculate tooltip position and ball offset
-  const getTooltipConfig = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return { 
-        side: 'right' as const, 
-        tooltipX: 0, 
-        ballOffsetX: 0,
-        shouldShowLeft: false
-      };
-    }
-
-    const screenWidth = window.innerWidth;
-    const ballCenterX = renderPos.x + BUBBLE_SIZE / 2;
-    const isOnRightSide = ballCenterX > screenWidth / 2;
-    
-    // Calculate if tooltip would go off screen
-    let shouldShowLeft = false;
-    let tooltipX = 0;
-    let ballOffsetX = 0;
-
-    if (isOnRightSide) {
-      // Ball is on right side, show tooltip on left
-      const tooltipRightEdge = renderPos.x - TOOLTIP_OFFSET;
-      const tooltipLeftEdge = tooltipRightEdge - TOOLTIP_WIDTH;
-      
-      if (tooltipLeftEdge < MARGIN) {
-        // Tooltip would go off screen, move ball inward
-        const neededSpace = MARGIN - tooltipLeftEdge;
-        const maxOffset = renderPos.x - MARGIN; // Don't move ball beyond left margin
-        ballOffsetX = Math.max(-neededSpace, -maxOffset);
-        tooltipX = 0;
-      }
-      shouldShowLeft = true;
-    } else {
-      // Ball is on left side, show tooltip on right
-      const tooltipLeftEdge = renderPos.x + BUBBLE_SIZE + TOOLTIP_OFFSET;
-      const tooltipRightEdge = tooltipLeftEdge + TOOLTIP_WIDTH;
-      
-      if (tooltipRightEdge > screenWidth - MARGIN) {
-        // Tooltip would go off screen, move ball inward
-        const neededSpace = tooltipRightEdge - (screenWidth - MARGIN);
-        const maxOffset = (screenWidth - MARGIN) - (renderPos.x + BUBBLE_SIZE); // Don't move ball beyond right margin
-        ballOffsetX = Math.min(neededSpace, maxOffset);
-        tooltipX = 0;
-      }
-      shouldShowLeft = false;
-    }
-
-    return { 
-      side: isOnRightSide ? 'right' : 'left' as const, 
-      tooltipX, 
-      ballOffsetX,
-      shouldShowLeft
-    };
-  }, [renderPos.x, renderPos.y]);
-  
-  // Handle orb click based on mode
-  const handleOrbClick = () => {
+  // Handle click based on mode
+  const handleClick = () => {
     if (navigator.vibrate) navigator.vibrate(15);
     if (mode === "navigate") {
-      // Navigate to create-request page
       onNavigate?.();
-    } else {
-      // AI mode - expand the input
-      setIsExpanded(true);
     }
+    // Voice mode handles via press-and-hold
   };
 
-  const bounds = getBounds();
-
-  if (!isVisible) return null;
-
-  // Determine which icon to show
-  const OrbIcon = mode === "ai" ? Sparkles : Plus;
-
-  // Calculate tooltip configuration
-  const tooltipConfig = getTooltipConfig();
-  const ballOffsetX = isTooltipVisible && mode === "navigate" && !isExpanded 
-    ? tooltipConfig.ballOffsetX 
-    : 0;
-
   // Hide when scroll button is visible
-  if (hideForScrollButton) {
+  if (hideForScrollButton || !isVisible) {
     return null;
   }
 
@@ -517,91 +313,93 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
       onTapStart={() => setIsPressed(true)}
       onTap={() => setIsPressed(false)}
       onTapCancel={() => setIsPressed(false)}
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.8 }}
+      initial={{ opacity: 0, scale: 0.9, y: -60 }}
+      animate={{ 
+        opacity: (mode === 'navigate' && isHeaderCompressed) ? 0.15 : 1, 
+        scale: (mode === 'navigate' && isHeaderCompressed) ? 0.8 : 1,
+        y: (mode === 'navigate' && isHeaderCompressed) ? -80 : 0,
+      }}
+      exit={{ opacity: 0, scale: 0.8, y: -60 }}
       transition={{
         type: "spring",
-        stiffness: 400,
-        damping: 30,
-        mass: 0.8
+        stiffness: 280,
+        damping: 24,
+        mass: 0.9,
       }}
-      style={{ position: 'fixed', left: 24, bottom: 100 }}
+      style={{ 
+        position: 'fixed', 
+        left: 24, 
+        top: mode === 'navigate' ? 15 : 'auto', 
+        bottom: mode === 'navigate' ? 'auto' : 145,
+        pointerEvents: (mode === 'navigate' && isHeaderCompressed) ? 'none' : 'auto',
+      }}
       className="z-[100] pointer-events-auto"
     >
-      {/* Top Element - Custom element above the orb */}
-      {topElement && (
-        <div className="mb-3">
-          {topElement}
-        </div>
+      {/* Voice Status Panel - only for voice mode */}
+      {mode === "voice" && (
+        <AnimatePresence>
+          {showPanel && (
+            <VoiceStatusPanel 
+              status={processingStatus} 
+              isVisible={showPanel}
+              onClose={() => setShowPanel(false)}
+            />
+          )}
+        </AnimatePresence>
       )}
+
+      {/* "Create Request" Tooltip - only in navigate mode */}
+      <AnimatePresence>
+        {mode === "navigate" && isTooltipVisible && (
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="absolute top-1/2 -translate-y-1/2 left-full ml-3 whitespace-nowrap text-primary text-xs font-medium pointer-events-none z-50 flex items-center gap-2"
+          >
+            <span>أنشئ طلب</span>
+            <ArrowLeft size={18} className="animate-bounce-x" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Floating Animation Wrapper */}
       <motion.div
-        animate={!isExpanded ? {
-          y: [0, -6, 0],
-        } : { y: 0 }}
-        transition={!isExpanded ? {
+        animate={{
+          y: [0, -12, 0],
+        }}
+        transition={{
           duration: 2.5,
           repeat: Infinity,
           ease: "easeInOut"
-        } : { duration: 0.2 }}
+        }}
       >
-        {/* Glass Panel - AI Messages (only in AI mode) */}
-        <AnimatePresence>
-          {mode === "ai" && isExpanded && (
-            <GlassPanel messages={aiMessages} isVisible={isExpanded} isLoading={isLoading} />
-          )}
-        </AnimatePresence>
+        {/* Recording Waves Animation - only for voice mode */}
+        {mode === "voice" && isRecording && (
+          <>
+            {[0, 1, 2].map((i) => (
+              <motion.div
+                key={i}
+                className="absolute inset-0 rounded-full border-2 border-red-500"
+                initial={{ scale: 1, opacity: 0.8 }}
+                animate={{
+                  scale: [1, 1.8, 2.5],
+                  opacity: [0.8, 0.4, 0],
+                }}
+                transition={{
+                  duration: 1.5,
+                  repeat: Infinity,
+                  delay: i * 0.5,
+                  ease: "easeOut",
+                }}
+              />
+            ))}
+          </>
+        )}
 
-        {/* "Create Request" Tooltip - only in navigate mode */}
-        <AnimatePresence>
-          {mode === "navigate" && !isExpanded && isTooltipVisible && (
-            <motion.div
-              initial={{ opacity: 0, x: tooltipConfig.shouldShowLeft ? 20 : -20, scale: 0.8 }}
-              animate={{ 
-                opacity: 1, 
-                x: tooltipConfig.tooltipX, 
-                scale: 1 
-              }}
-              exit={{ 
-                opacity: 0, 
-                x: tooltipConfig.shouldShowLeft ? 10 : -10, 
-                scale: 0.8 
-              }}
-              transition={{ 
-                duration: 0.4, 
-                ease: [0.16, 1, 0.3, 1] // Custom easing for smoothness
-              }}
-              className={`absolute top-1/2 -translate-y-1/2 whitespace-nowrap bg-white/95 dark:bg-[#1a1a24]/95 backdrop-blur-md text-primary px-3 py-1.5 rounded-full text-xs font-medium shadow-xl border border-primary/20 pointer-events-none z-50 flex items-center gap-2 ${
-                tooltipConfig.shouldShowLeft 
-                  ? 'right-full mr-3' 
-                  : 'left-full ml-3'
-              }`}
-              style={{
-                // Prevent tooltip from going off screen
-                maxWidth: typeof window !== 'undefined' 
-                  ? `${Math.min(TOOLTIP_WIDTH, window.innerWidth - MARGIN * 2)}px` 
-                  : 'auto'
-              }}
-            >
-              {tooltipConfig.shouldShowLeft ? (
-                <>
-                  <ArrowRight size={18} className="animate-bounce-x-right" />
-                  <span>أنشئ طلب</span>
-                </>
-              ) : (
-                <>
-                  <span>أنشئ طلب</span>
-                  <ArrowLeft size={18} className="animate-bounce-x" />
-                </>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Soft Animated Halo - Like a real glowing ball */}
-        {!isExpanded && (
+        {/* Soft Animated Halo */}
+        {!(mode === "voice" && isRecording) && (
           <>
             {/* Ground Shadow */}
             <motion.div
@@ -614,7 +412,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
               transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             />
             
-            {/* Soft Outer Halo - Breathing Effect */}
+            {/* Soft Outer Halo */}
             <motion.div
               className="absolute -inset-4 rounded-full pointer-events-none"
               style={{
@@ -632,26 +430,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
               }}
             />
             
-            {/* Inner Halo Ring */}
-            <motion.div
-              className="absolute -inset-2 rounded-full pointer-events-none"
-              style={{
-                background: "radial-gradient(circle, rgba(30,150,140,0.3) 0%, transparent 60%)",
-                filter: "blur(4px)",
-              }}
-              animate={{
-                scale: [1, 1.1, 1],
-                opacity: [0.5, 0.7, 0.5],
-              }}
-              transition={{ 
-                duration: 2, 
-                repeat: Infinity, 
-                ease: "easeInOut",
-                delay: 0.5
-              }}
-            />
-            
-            {/* Ping Ring - Pulsing border effect */}
+            {/* Ping Ring */}
             <motion.div
               className="absolute -inset-1 rounded-full border-2 border-primary/60 pointer-events-none"
               animate={{
@@ -664,230 +443,100 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
                 ease: "easeOut"
               }}
             />
-            
-            {/* Subtle Shine Arc */}
-            <motion.div
-              className="absolute top-1 left-1/4 right-1/4 h-3 rounded-full pointer-events-none"
-              style={{
-                background: "linear-gradient(to bottom, rgba(255,255,255,0.4), transparent)",
-                filter: "blur(2px)",
-              }}
-              animate={{
-                opacity: [0.3, 0.5, 0.3],
-              }}
-              transition={{ 
-                duration: 2, 
-                repeat: Infinity, 
-                ease: "easeInOut" 
-              }}
-            />
           </>
         )}
 
-        {/* Main Input Container */}
-        <motion.div
-          layout
-          className={`relative rounded-full ${
-            isExpanded
-              ? "bg-card border border-primary/30 shadow-xl"
+        {/* Recording Timer Badge - only for voice mode */}
+        {mode === "voice" && isRecording && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.8 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.8 }}
+            className="absolute -top-8 left-1/2 -translate-x-1/2 bg-red-500 text-white text-xs px-3 py-1 rounded-full whitespace-nowrap font-medium"
+          >
+            {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+          </motion.div>
+        )}
+
+        {/* Main Button */}
+        <motion.button
+          className={`relative rounded-full flex items-center justify-center ${
+            mode === "voice" && isRecording
+              ? "bg-red-500"
               : "bg-gradient-to-br from-primary via-primary to-teal-600"
           }`}
           style={{
-            borderRadius: isExpanded ? "28px" : "50%",
-            boxShadow: !isExpanded 
-              ? "0 10px 35px rgba(30,150,140,0.45), 0 5px 18px rgba(30,150,140,0.35), inset 0 -2px 6px rgba(0,0,0,0.1), inset 0 2px 6px rgba(255,255,255,0.2)"
-              : "0 8px 32px rgba(0,0,0,0.15)"
+            width: BUBBLE_SIZE,
+            height: BUBBLE_SIZE,
+            boxShadow: mode === "voice" && isRecording 
+              ? "0 10px 35px rgba(239,68,68,0.45), 0 5px 18px rgba(239,68,68,0.35)"
+              : "0 10px 35px rgba(30,150,140,0.45), 0 5px 18px rgba(30,150,140,0.35), inset 0 -2px 6px rgba(0,0,0,0.1), inset 0 2px 6px rgba(255,255,255,0.2)"
           }}
           animate={{
-            width: isExpanded ? EXPANDED_WIDTH : BUBBLE_SIZE,
-            height: isExpanded ? EXPANDED_HEIGHT : BUBBLE_SIZE,
-            scale: isPressed && !isExpanded ? 0.85 : 1,
-            rotate: 0,
+            scale: isPressed ? 0.85 : (mode === "voice" && isRecording) ? 1.1 : 1,
           }}
-          whileHover={!isExpanded ? { 
-            scale: 1.05,
-          } : {}}
+          whileHover={{ scale: 1.05 }}
           transition={{ 
             type: "spring", 
             stiffness: 400, 
             damping: 25,
-            scale: { type: "spring", stiffness: 600, damping: 15 }
           }}
+          onClick={mode === "navigate" ? handleClick : undefined}
+          onMouseDown={mode === "voice" ? startRecording : undefined}
+          onMouseUp={mode === "voice" ? stopRecording : undefined}
+          onMouseLeave={mode === "voice" ? stopRecording : undefined}
+          onTouchStart={mode === "voice" ? startRecording : undefined}
+          onTouchEnd={mode === "voice" ? stopRecording : undefined}
         >
-          {/* Inner Glow/Shine Effect */}
-          {!isExpanded && (
+          {/* Inner Glow */}
+          <motion.div
+            className="absolute inset-0 rounded-full overflow-hidden"
+            initial={false}
+          >
             <motion.div
-              className="absolute inset-0 rounded-full overflow-hidden"
-              initial={false}
-            >
-              {/* Top shine */}
-              <motion.div
-                className="absolute top-1 left-1/4 right-1/4 h-4 bg-gradient-to-b from-white/30 to-transparent rounded-full blur-sm"
-              />
-              {/* Animated glow pulse */}
-              <motion.div
-                className="absolute inset-0 rounded-full"
-                animate={{
-                  boxShadow: [
-                    "inset 0 0 15px rgba(255,255,255,0.1)",
-                    "inset 0 0 25px rgba(255,255,255,0.2)",
-                    "inset 0 0 15px rgba(255,255,255,0.1)",
-                  ],
-                }}
-                transition={{ duration: 2, repeat: Infinity }}
-              />
-            </motion.div>
-          )}
+              className="absolute top-1 left-1/4 right-1/4 h-4 bg-gradient-to-b from-white/30 to-transparent rounded-full blur-sm"
+            />
+          </motion.div>
 
-          {/* Collapsed State - Icon */}
-          <AnimatePresence mode="popLayout">
-            {!isExpanded ? (
-              <motion.button
-                key="collapsed"
-                initial={{ opacity: 0, scale: 0.5 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.5 }}
-                transition={{ duration: 0.2, type: "spring", stiffness: 500, damping: 30 }}
-                onClick={handleOrbClick}
-                className="absolute inset-0 flex items-center justify-center text-white z-10"
-              >
-                <motion.div
-                  animate={mode === "ai" ? { 
-                    rotate: [0, 5, -5, 0],
-                  } : {
-                    rotate: [0, 90, 90, 0],
-                  }}
-                  transition={mode === "ai" ? { 
-                    duration: 4, 
-                    repeat: Infinity, 
-                    ease: "easeInOut" 
-                  } : {
-                    duration: 2,
-                    repeat: Infinity,
-                    repeatDelay: 10,
-                    ease: "easeInOut"
-                  }}
-                >
-                  <OrbIcon size={26} strokeWidth={2} />
-                </motion.div>
-              </motion.button>
+          {/* Icon based on mode */}
+          <motion.div
+            animate={mode === "voice" && isRecording ? { 
+              scale: [1, 1.2, 1],
+            } : mode === "navigate" ? {
+              rotate: [0, 90, 90, 0],
+            } : {}}
+            transition={mode === "voice" && isRecording ? { 
+              duration: 0.5, 
+              repeat: Infinity, 
+              ease: "easeInOut" 
+            } : {
+              duration: 2,
+              repeat: Infinity,
+              repeatDelay: 10,
+              ease: "easeInOut"
+            }}
+          >
+            {mode === "navigate" ? (
+              <Plus size={26} strokeWidth={2} className="text-white relative z-10" />
             ) : (
-              <motion.div
-                key="expanded"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.1 }}
-                className="flex items-center h-full px-2 gap-1 rounded-full overflow-hidden"
-              >
-                {/* Text Input */}
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => onInputChange?.(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      onSend?.();
-                    }
-                  }}
-                  placeholder="اكتب طلبك هنا..."
-                  className="flex-1 bg-transparent text-sm text-foreground focus:outline-none placeholder:text-muted-foreground/50 text-right min-w-0"
-                  dir="rtl"
-                />
-
-                {/* Mic Button with Recording Animation */}
-                <div className="relative shrink-0">
-                  {/* Recording Waves Animation */}
-                  {isRecording && (
-                    <>
-                      {[0, 1, 2].map((i) => (
-                        <motion.div
-                          key={i}
-                          className="absolute inset-0 rounded-full border-2 border-red-500"
-                          initial={{ scale: 1, opacity: 0.8 }}
-                          animate={{
-                            scale: [1, 1.5, 2],
-                            opacity: [0.8, 0.4, 0],
-                          }}
-                          transition={{
-                            duration: 1.5,
-                            repeat: Infinity,
-                            delay: i * 0.5,
-                            ease: "easeOut",
-                          }}
-                        />
-                      ))}
-                    </>
-                  )}
-                  <button
-                    className={`relative p-2 rounded-full transition-colors z-10 ${
-                      isRecording
-                        ? "bg-red-500 text-white"
-                        : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                    }`}
-                    onMouseDown={startRecording}
-                    onMouseUp={stopRecording}
-                    onMouseLeave={stopRecording}
-                    onTouchStart={startRecording}
-                    onTouchEnd={stopRecording}
-                    title="اضغط مع الاستمرار للتسجيل"
-                  >
-                    <Mic size={18} />
-                  </button>
-                  {/* Recording Time */}
-                  {isRecording && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="absolute -top-6 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap"
-                    >
-                      {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
-                    </motion.div>
-                  )}
-                </div>
-
-                {/* Send Button */}
-                <motion.button
-                  onClick={() => {
-                    if (navigator.vibrate) navigator.vibrate(15);
-                    onSend?.();
-                  }}
-                  disabled={!inputValue.trim() || isLoading}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                    inputValue.trim()
-                      ? "bg-primary text-white shadow-md"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                  whileHover={inputValue.trim() ? { scale: 1.05 } : {}}
-                  whileTap={inputValue.trim() ? { scale: 0.95 } : {}}
-                >
-                  {isLoading ? (
-                    <Loader2 size={18} className="animate-spin" />
-                  ) : (
-                    <Send size={16} className="-rotate-90" />
-                  )}
-                </motion.button>
-
-                {/* Close Button */}
-                <button
-                  onClick={() => {
-                    if (navigator.vibrate) navigator.vibrate(10);
-                    setIsExpanded(false);
-                  }}
-                  className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-colors"
-                >
-                  <X size={16} />
-                </button>
-              </motion.div>
+              <Mic size={26} strokeWidth={2} className="text-white relative z-10" />
             )}
-          </AnimatePresence>
-        </motion.div>
+          </motion.div>
+        </motion.button>
       </motion.div>
+
+      {/* Helper Text - Hold to Record (only for voice mode) */}
+      {mode === "voice" && !isRecording && !showPanel && (
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground whitespace-nowrap"
+        >
+          اضغط مع الاستمرار
+        </motion.p>
+      )}
     </motion.div>
   );
 };
 
 export default GlobalFloatingOrb;
-

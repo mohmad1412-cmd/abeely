@@ -90,6 +90,8 @@ interface UnifiedHeaderProps {
   isDarkMode?: boolean;
   toggleTheme?: () => void;
   onOpenLanguagePopup?: () => void;
+  // Hide profile button
+  hideProfileButton?: boolean;
 }
 
 export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
@@ -141,6 +143,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   isDarkMode = false,
   toggleTheme,
   onOpenLanguagePopup,
+  hideProfileButton = false,
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isLinkCopied, setIsLinkCopied] = useState(false);
@@ -258,9 +261,27 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
         ) : null}
         
         <div className="flex items-center gap-3 flex-1">
-          {!backButton && (
+          {!backButton && !hideProfileButton && (
             <>
-              <div className="relative" ref={profileDropdownRef}>
+              <motion.div 
+                className="relative" 
+                ref={profileDropdownRef}
+                initial={{ opacity: 0, scale: 0.9, y: -60 }}
+                animate={{ 
+                  opacity: isScrolled ? 1 : 0.15,
+                  scale: isScrolled ? 1 : 0.8,
+                  y: isScrolled ? 0 : -80,
+                }}
+                transition={{
+                  type: "spring",
+                  stiffness: 280,
+                  damping: 24,
+                  mass: 0.9,
+                }}
+                style={{
+                  pointerEvents: isScrolled ? 'auto' : 'none',
+                }}
+              >
               <motion.button
                 onClick={() => {
                   if (navigator.vibrate) navigator.vibrate(8);
@@ -424,33 +445,48 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   </>
                 )}
               </AnimatePresence>
-              </div>
+              </motion.div>
               {/* Page Title - only when no back button */}
               {title && (
-                <h1 className="text-xl font-bold text-foreground text-right ml-auto">
+                <motion.h1 
+                  className="text-xl font-bold text-foreground text-right ml-auto"
+                  initial={{ opacity: 0, scale: 0.9, y: -60 }}
+                  animate={{ 
+                    opacity: isScrolled ? 1 : 0.15,
+                    scale: isScrolled ? 1 : 0.8,
+                    y: isScrolled ? 0 : -80,
+                  }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 280,
+                    damping: 24,
+                    mass: 0.9,
+                  }}
+                  style={{
+                    pointerEvents: isScrolled ? 'auto' : 'none',
+                  }}
+                >
                   {title}
-                </h1>
+                </motion.h1>
               )}
             </>
           )}
           {/* Title for pages with back button */}
           {backButton && (
-            <h1 className="font-bold text-base text-foreground flex flex-col gap-0.5">
+            <h1 className="font-bold text-base text-foreground flex flex-col gap-0.5 relative flex-1 min-w-0">
               <AnimatePresence mode="wait">
                 {backButton && isScrolled ? (
-                  <motion.span
-                    key="scrolled-title"
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    className={`font-bold text-sm truncate text-foreground transition-all duration-300 ${
-                      showScrollToOffer && isOfferSectionVisible 
-                        ? 'max-w-[200px] sm:max-w-md' 
-                        : 'max-w-[120px] sm:max-w-xs'
-                    }`}
-                  >
-                    {title}
-                  </motion.span>
+                  <div className="relative flex-1 min-w-0 overflow-visible">
+                    <motion.span
+                      key="scrolled-title"
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      className="font-bold text-sm text-foreground transition-all duration-300 whitespace-nowrap block"
+                    >
+                      {title}
+                    </motion.span>
+                  </div>
                 ) : (
                   <motion.span
                     key={titleKey}
@@ -636,7 +672,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                 } : {
                   scale: 1
                 }}
-                className={`relative flex items-center gap-2 h-11 rounded-full overflow-visible select-none transition-all duration-300 ${
+                className={`relative flex items-center gap-2 h-11 rounded-full overflow-visible select-none transition-all duration-300 translate-y-[1px] ${
                   (submitSuccess || (isEditMode && editButtonIsSaved))
                     ? "px-5 cursor-pointer" 
                     : isSubmitting 

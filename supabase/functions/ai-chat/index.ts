@@ -1,10 +1,13 @@
-import "@supabase/functions-js/edge-runtime.d.ts";
+// @ts-ignore - Supabase Edge Runtime types
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
-const rawKey = Deno.env.get("GEMINI_API_KEY") ||
-  Deno.env.get("VITE_GEMINI_API_KEY") || "";
-const GEMINI_API_KEY = rawKey.trim();
-const MODEL = "gemini-2.0-flash-001";
+// ============================================
+// Configuration - Now using Claude instead of Gemini
+// ============================================
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") || 
+                          Deno.env.get("VITE_ANTHROPIC_API_KEY") || "";
+const MODEL = "claude-sonnet-4-20250514";
 
 // Supabase client للتحقق من التصنيفات
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
@@ -70,7 +73,7 @@ function isKnownCategory(label: string): boolean {
 }
 
 // دالة لاقتراح تصنيف جديد في قاعدة البيانات
-async function suggestNewCategory(label: string, requestId?: string): Promise<void> {
+async function suggestNewCategory(label: string, _requestId?: string): Promise<void> {
   try {
     if (!supabaseUrl || !supabaseServiceKey) {
       console.warn("Supabase not configured, skipping category suggestion");
@@ -97,7 +100,6 @@ async function suggestNewCategory(label: string, requestId?: string): Promise<vo
         suggested_label: label,
         suggested_emoji: '📦',
         suggested_by_ai: true,
-        request_id: requestId || null,
         status: 'pending'
       });
     
@@ -120,6 +122,35 @@ function res(data: unknown, status = 200) {
   });
 }
 
+// ============================================
+// Call Claude API
+// ============================================
+async function callClaude(systemPrompt: string, messages: any[]): Promise<string> {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: messages,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    console.error("Claude API Error:", error);
+    throw new Error(error?.error?.message || "Claude API call failed");
+  }
+
+  const result = await response.json();
+  return result.content?.[0]?.text || "";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return res({ ok: true });
 
@@ -140,12 +171,11 @@ Deno.serve(async (req) => {
     // استخدام chatHistory إذا كان متوفراً، وإلا history (للتوافق مع الكود القديم)
     const conversationHistory = chatHistory.length > 0 ? chatHistory : history;
 
-    if (!GEMINI_API_KEY) {
-      return res({ error: "GEMINI_API_KEY is not configured in Supabase Edge Functions" }, 500);
+    if (!ANTHROPIC_API_KEY) {
+      return res({ error: "ANTHROPIC_API_KEY is not configured in Supabase Edge Functions" }, 500);
     }
 
     let systemInstruction = "";
-    let responseSchema: any = null;
 
     if (mode === "draft") {
       // بناء نص تاريخ المحادثة إذا كان موجوداً
@@ -216,90 +246,67 @@ ${categoriesHint}
 5. التصنيفات يجب أن تكون بالنص العربي الدقيق كما في القائمة
 
 ═══════════════════════════════════════════════════════════════
-`;
-      responseSchema = {
-        type: "object",
-        properties: {
-          isClarification: { type: "boolean" },
-          aiResponse: { type: "string" },
-          aiResponseBefore: { type: "string" },
-          aiResponseAfter: { type: "string" },
-          title: { type: "string" },
-          description: { type: "string" },
-          categories: { type: "array", items: { type: "string" } },
-          budgetMin: { type: "string" },
-          budgetMax: { type: "string" },
-          deliveryTime: { type: "string" },
-          location: { type: "string" },
-          suggestions: { type: "array", items: { type: "string" } }
-        },
-        required: ["isClarification", "aiResponse"]
-      };
+
+أجب بـ JSON فقط بهذا التنسيق (بدون أي نص آخر):
+{
+  "isClarification": boolean,
+  "aiResponse": "ردك للعميل",
+  "aiResponseBefore": "رسالة ترحيبية قصيرة (فقط إذا isClarification: false)",
+  "aiResponseAfter": "نصيحة أو سؤال بعد المسودة (فقط إذا isClarification: false)",
+  "title": "عنوان الطلب (فقط إذا isClarification: false)",
+  "description": "وصف مفصل للطلب (فقط إذا isClarification: false)",
+  "categories": ["فئة1", "فئة2"],
+  "budgetMin": "الحد الأدنى (اختياري)",
+  "budgetMax": "الحد الأقصى (اختياري)",
+  "deliveryTime": "مدة التنفيذ (اختياري)",
+  "location": "الموقع (اختياري)",
+  "suggestions": ["اقتراح1", "اقتراح2"]
+}`;
     } else {
       // Default Chat Mode (original behavior)
       systemInstruction = `أنت مساعد ذكي لمنصة "أبيلي" (منصة طلبات خدمات).
 - بلهجة سعودية ودودة وقصيرة.
 - هدفك جمع معلومتين: (وصف الخدمة) و (المدينة).
-- بمجرد توفر الوصف والمدينة، اجعل is_ready_to_send = true.`;
-      responseSchema = {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          city: { type: "string" },
-          description_brief: { type: "string" },
-          response_to_user: { type: "string" },
-          is_ready_to_send: { type: "boolean" },
-        },
-        required: ["title", "city", "description_brief", "response_to_user", "is_ready_to_send"]
-      };
+- بمجرد توفر الوصف والمدينة، اجعل is_ready_to_send = true.
+
+أجب بـ JSON فقط:
+{
+  "title": "عنوان الطلب",
+  "city": "المدينة",
+  "description_brief": "وصف مختصر",
+  "response_to_user": "ردك للمستخدم",
+  "is_ready_to_send": boolean
+}`;
     }
 
-    // تحويل chatHistory إلى تنسيق Gemini (role + parts)
-    const geminiHistory = conversationHistory.map((msg: any) => ({
-      role: msg.role === 'ai' ? 'model' : 'user',
-      parts: [{ text: msg.text || msg.parts?.[0]?.text || '' }]
+    // تحويل chatHistory إلى تنسيق Claude
+    const claudeMessages: any[] = conversationHistory.map((msg: any) => ({
+      role: msg.role === 'ai' ? 'assistant' : 'user',
+      content: msg.text || msg.parts?.[0]?.text || ''
     }));
     
-    const payload: any = {
-      system_instruction: {
-        parts: [{ text: systemInstruction }],
-      },
-      contents: [
-        ...geminiHistory,
-        { role: "user", parts: [{ text: prompt }] }
-      ],
-      generationConfig: {
-        response_mime_type: "application/json",
-        response_schema: responseSchema,
-      },
-    };
+    // إضافة الرسالة الحالية
+    claudeMessages.push({
+      role: 'user',
+      content: prompt
+    });
 
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      },
-    );
-
-    const j = await r.json();
-    if (!r.ok) {
-      console.error("Google AI Error:", JSON.stringify(j, null, 2));
-      return res(
-        { error: j?.error?.message || "Google AI Error", details: j },
-        r.status,
-      );
-    }
-
-    const rawOutput = j?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+    // استدعاء Claude
+    const rawOutput = await callClaude(systemInstruction, claudeMessages);
+    
+    // محاولة استخراج JSON
     let parsed;
     try {
-      parsed = JSON.parse(rawOutput);
+      // Try to extract JSON from response
+      const jsonMatch = rawOutput.match(/\{[\s\S]*\}/) || rawOutput.match(/```json\s*([\s\S]*?)```/);
+      const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawOutput;
+      parsed = JSON.parse(jsonStr.trim());
     } catch (_e) {
-      parsed = { text: rawOutput };
+      console.warn("Failed to parse JSON, using raw output");
+      parsed = { 
+        aiResponse: rawOutput,
+        isClarification: true 
+      };
     }
 
     // معالجة التصنيفات في وضع draft
@@ -362,6 +369,7 @@ ${categoriesHint}
       timestamp: new Date().toISOString(),
     });
   } catch (e) {
+    console.error("Error in ai-chat:", e);
     return res({ error: String(e) }, 500);
   }
 });

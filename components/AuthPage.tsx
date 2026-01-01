@@ -103,6 +103,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
   const [toastType, setToastType] = useState<'error' | 'info'>('error');
   const [showSuccess, setShowSuccess] = useState(false);
 
+  // Refs للتركيز التلقائي
+  const phoneInputRef = React.useRef<HTMLInputElement>(null);
+  const otpFirstInputRef = React.useRef<HTMLInputElement>(null);
+
   // Auto-dismiss toast after 4 seconds
   useEffect(() => {
     if (toastMessage) {
@@ -112,6 +116,21 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
       return () => clearTimeout(timer);
     }
   }, [toastMessage]);
+
+  // Auto-focus على الحقول عند فتح الصفحة
+  useEffect(() => {
+    if (step === 'welcome') {
+      // تركيز على حقل رقم الهاتف في شاشة الترحيب
+      setTimeout(() => {
+        phoneInputRef.current?.focus();
+      }, 100);
+    } else if (step === 'otp') {
+      // تركيز على أول خانة OTP بعد تأخير قصير
+      setTimeout(() => {
+        otpFirstInputRef.current?.focus();
+      }, 100);
+    }
+  }, [step]);
 
   // Handle phone submission
   const handlePhoneSubmit = async () => {
@@ -141,8 +160,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
   };
 
   // Handle OTP verification
-  const handleOTPVerify = async () => {
-    if (otp.length !== 4) {
+  const handleOTPVerify = async (otpOverride?: string) => {
+    const otpToVerify = otpOverride || otp;
+    
+    if (otpToVerify.length !== 4) {
       setError('يرجى إدخال رمز التحقق المكون من 4 أرقام');
       return;
     }
@@ -151,7 +172,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
     setError('');
     setShowSuccess(false);
 
-    const result = await verifyOTP(phone, otp);
+    const result = await verifyOTP(phone, otpToVerify);
     
     setIsLoading(false);
     
@@ -260,7 +281,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#153659] via-[#0d9488] to-[#153659] flex flex-col relative">
+    <div className="min-h-screen bg-gradient-to-br from-[#153659] via-[#0d9488] to-[#153659] flex flex-col relative overflow-hidden">
       {isLoading && (
         <div className="absolute inset-0 z-[100] bg-black/20 backdrop-blur-sm flex items-center justify-center">
           <BrandSpinner size="lg" />
@@ -291,20 +312,20 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
             onClick={goBack}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="absolute top-4 right-4 mt-[env(safe-area-inset-top,0px)] w-10 h-10 rounded-full flex items-center justify-center transition-all text-white focus:outline-none bg-white/10 backdrop-blur-sm border border-white/20 shadow-lg hover:bg-white/20"
+            className="absolute top-3 right-3 sm:top-4 sm:right-4 mt-[env(safe-area-inset-top,0px)] w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all text-white focus:outline-none bg-white/10 backdrop-blur-sm border border-white/20 shadow-lg hover:bg-white/20"
           >
-            <ArrowRight size={22} strokeWidth={2.5} />
+            <ArrowRight size={20} strokeWidth={2.5} />
           </motion.button>
         )}
       </AnimatePresence>
 
       {/* Content */}
       <LayoutGroup>
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
-        {/* Logo - Animates position between steps */}
+      <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 py-6 sm:py-10">
+        {/* Logo - Animates position between steps - Responsive for 6.3" screens */}
         <motion.div
           layout
-          className="mb-8"
+          className="mb-5 sm:mb-8"
           transition={{ 
             layout: { 
               type: "spring",
@@ -315,7 +336,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
         >
           <motion.div
             layout
-            className="w-28 h-28 rounded-3xl bg-white/20 backdrop-blur-xl flex items-center justify-center shadow-2xl border border-white/30"
+            className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl sm:rounded-3xl bg-white/20 backdrop-blur-xl flex items-center justify-center shadow-2xl border border-white/30"
             animate={{ 
               scale: [1, 1.05, 1],
               rotate: [0, 2, -2, 0]
@@ -326,14 +347,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
               layout: { type: "spring", stiffness: 300, damping: 30 }
             }}
           >
-            <span className="text-6xl font-black text-white drop-shadow-lg">أ</span>
+            <span className="text-4xl sm:text-5xl font-black text-white drop-shadow-lg">أ</span>
           </motion.div>
         </motion.div>
 
         {/* Title */}
         <motion.div
           layout
-          className="text-center mb-8"
+          className="text-center mb-5 sm:mb-8"
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ 
@@ -341,20 +362,23 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
             layout: { type: "spring", stiffness: 300, damping: 30 }
           }}
         >
-          <h1 className="text-3xl font-bold text-white mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-4 sm:mb-5">
             {step === 'welcome' && 'مرحباً بك في أبيلي'}
-            {step === 'phone' && 'الدخول برقم الجوال'}
             {step === 'otp' && 'أدخل رمز التحقق'}
             {step === 'email' && 'الدخول بالبريد الإلكتروني'}
             {step === 'email-sent' && 'تفقد بريدك 📧'}
           </h1>
-          <p className="text-white/70 text-sm">
-            {step === 'welcome' && 'السوق العكسي الذكي - أنت تطلب والعروض تجيك'}
-            {step === 'phone' && 'سنرسل لك رمز تحقق على رقم جوالك'}
-            {step === 'otp' && `أرسلنا رمز التحقق إلى ${phone}`}
-            {step === 'email' && 'سنرسل لك رابط دخول على بريدك'}
-            {step === 'email-sent' && `أرسلنا رابط الدخول إلى ${email}`}
-          </p>
+          <div className="text-white/70 text-sm px-2 space-y-3">
+            {step === 'welcome' && (
+              <>
+                <p>السوق العكسي الذكي</p>
+                <p className="text-white/50">أنت تطلب والعروض تجيك ✨</p>
+              </>
+            )}
+            {step === 'otp' && <p>{`أرسلنا رمز التحقق إلى ${phone}`}</p>}
+            {step === 'email' && <p>سنرسل لك رابط دخول على بريدك</p>}
+            {step === 'email-sent' && <p>{`أرسلنا رابط الدخول إلى ${email}`}</p>}
+          </div>
         </motion.div>
 
         {/* Content Area */}
@@ -369,7 +393,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
           }}
         >
           <AnimatePresence mode="popLayout">
-            {/* Welcome Screen */}
+            {/* Welcome Screen - حقل إدخال الجوال مباشرة */}
             {step === 'welcome' && (
               <motion.div
                 key="welcome"
@@ -381,77 +405,117 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   stiffness: 400,
                   damping: 35
                 }}
-                className="space-y-4"
+                className="space-y-5"
               >
-                {/* Google Login - Primary */}
+                {/* Phone Input Card - تصميم متناسق */}
+                <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 shadow-xl">
+                  <div className="flex items-center gap-3" dir="ltr">
+                    <div className="bg-white/20 rounded-xl px-4 py-3 text-white font-bold text-lg shrink-0 border border-white/10">
+                      966+
+                    </div>
+                    <input
+                      ref={phoneInputRef}
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '');
+                        if (value.length <= 10) {
+                          setPhone(value);
+                        }
+                      }}
+                      placeholder="5XXXXXXXX"
+                      dir="ltr"
+                      className="w-full min-w-0 py-3 px-4 rounded-xl bg-white/10 border border-white/20 text-white text-left text-xl font-semibold placeholder:text-white/30 placeholder:text-base placeholder:font-normal focus:border-white/50 focus:bg-white/15 outline-none transition-all"
+                      maxLength={10}
+                    />
+                  </div>
+                </div>
+
+                {error && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-red-300 text-sm text-center bg-red-500/10 rounded-xl py-2 px-4"
+                  >
+                    {error}
+                  </motion.p>
+                )}
+
                 <button
-                  onClick={() => handleOAuthSignIn('google')}
-                  disabled={isLoading}
-                  className="w-full py-4 px-6 rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transition-all active:scale-[0.98] disabled:opacity-50"
+                  onClick={handlePhoneSubmit}
+                  disabled={isLoading || !isValidSaudiPhone(phone)}
+                  className="w-full py-4 px-6 rounded-2xl bg-white/90 hover:bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-xl shadow-black/10 hover:shadow-2xl transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] text-base"
                 >
-                  <svg className="w-6 h-6" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                  </svg>
-                  <span>الدخول عبر Google</span>
+                  <span>إرسال رمز التحقق</span>
+                  <ChevronLeft size={18} />
                 </button>
 
                 {/* Divider */}
-                <div className="flex items-center gap-4 my-6">
-                  <div className="flex-1 h-px bg-white/20" />
-                  <span className="text-white/50 text-sm">أو</span>
-                  <div className="flex-1 h-px bg-white/20" />
+                <div className="flex items-center gap-4 py-2">
+                  <div className="flex-1 h-px bg-white/20"></div>
+                  <span className="text-white/40 text-xs">أو</span>
+                  <div className="flex-1 h-px bg-white/20"></div>
                 </div>
 
-                {/* Phone Login */}
+                {/* Guest Mode - أوضح وأكثر تناسقاً */}
                 <button
-                  onClick={() => setStep('phone')}
+                  onClick={onGuestMode}
                   disabled={isLoading}
-                  className="w-full py-3 px-6 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  className="w-full py-3 px-6 rounded-xl bg-white/5 hover:bg-white/10 border border-white/20 text-white/70 hover:text-white font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 text-sm"
                 >
-                  <Phone size={18} />
-                  <span>الدخول برقم الجوال</span>
+                  <User size={16} />
+                  <span>تصفح كضيف</span>
                 </button>
 
-                {/* Email Login */}
-                <button
-                  onClick={() => setStep('email')}
-                  disabled={isLoading}
-                  className="w-full py-3 px-6 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                >
-                  <Mail size={18} />
-                  <span>الدخول بالبريد الإلكتروني</span>
-                </button>
+                {/* ============================================
+                    خيارات الدخول المخفية مؤقتاً - يمكن إعادتها لاحقاً
+                    لإعادة التفعيل: غيّر false إلى true
+                    ============================================ */}
+                {false && (
+                  <>
+                    {/* Google Login */}
+                    <button
+                      onClick={() => handleOAuthSignIn('google')}
+                      disabled={isLoading}
+                      className="w-full py-3 sm:py-4 px-4 sm:px-6 rounded-xl sm:rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2.5 sm:gap-3 shadow-lg hover:shadow-xl transition-all active:scale-[0.98] disabled:opacity-50 text-sm sm:text-base"
+                    >
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                      </svg>
+                      <span>الدخول عبر Google</span>
+                    </button>
 
-                {/* Apple Login */}
-                <button
-                  onClick={() => handleOAuthSignIn('apple')}
-                  disabled={isLoading}
-                  className="w-full py-3 px-6 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-                  </svg>
-                  <span>الدخول عبر Apple</span>
-                </button>
+                    {/* Email Login */}
+                    <button
+                      onClick={() => setStep('email')}
+                      disabled={isLoading}
+                      className="w-full py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 text-sm sm:text-base"
+                    >
+                      <Mail size={16} className="sm:w-[18px] sm:h-[18px]" />
+                      <span>الدخول بالبريد الإلكتروني</span>
+                    </button>
 
-                {/* Guest Mode */}
-                <div className="pt-4">
-                  <button
-                    onClick={onGuestMode}
-                    disabled={isLoading}
-                    className="w-full py-3 px-6 rounded-xl border-2 border-white/30 text-white font-medium flex items-center justify-center gap-2 hover:bg-white/10 transition-all disabled:opacity-50"
-                  >
-                    <User size={18} />
-                    <span>الاستمرار كضيف</span>
-                  </button>
-                </div>
+                    {/* Apple Login */}
+                    <button
+                      onClick={() => handleOAuthSignIn('apple')}
+                      disabled={isLoading}
+                      className="w-full py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 text-sm sm:text-base"
+                    >
+                      <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                      </svg>
+                      <span>الدخول عبر Apple</span>
+                    </button>
+                  </>
+                )}
+                {/* ============================================ */}
               </motion.div>
             )}
 
-            {/* Phone Input */}
+            {/* Phone Input - محسن لشاشات 6.3 بوصة */}
             {step === 'phone' && (
               <motion.div
                 key="phone"
@@ -459,13 +523,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -30 }}
                 transition={{ type: "spring", stiffness: 400, damping: 35 }}
-                className="space-y-4"
+                className="space-y-3 sm:space-y-4"
               >
                 <div className="relative flex items-center gap-2" dir="ltr">
-                  <div className="text-white/70 font-bold text-lg shrink-0">
+                  <div className="text-white/70 font-bold text-base sm:text-lg shrink-0">
                     +966
                   </div>
                   <input
+                    ref={phoneInputRef}
                     type="tel"
                     value={phone}
                     onChange={(e) => {
@@ -476,9 +541,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                         setPhone(value);
                       }
                     }}
-                    placeholder="0501234567 أو 501234567"
+                    placeholder="0501234567"
                     dir="ltr"
-                    className="flex-1 py-4 px-4 rounded-2xl bg-white/10 border-2 border-white/20 text-white text-left text-xl font-medium placeholder:text-white/40 focus:border-white/50 outline-none transition-all"
+                    className="flex-1 py-3 sm:py-4 px-3 sm:px-4 rounded-xl sm:rounded-2xl bg-white/10 border-2 border-white/20 text-white text-left text-lg sm:text-xl font-medium placeholder:text-white/40 placeholder:text-sm sm:placeholder:text-base focus:border-white/50 outline-none transition-all"
                     maxLength={10}
                   />
                 </div>
@@ -487,7 +552,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   <motion.p
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="text-red-300 text-sm text-center"
+                    className="text-red-300 text-xs sm:text-sm text-center"
                   >
                     {error}
                   </motion.p>
@@ -496,15 +561,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 <button
                   onClick={handlePhoneSubmit}
                   disabled={isLoading || !isValidSaudiPhone(phone)}
-                  className="w-full py-4 px-6 rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+                  className="w-full py-3 sm:py-4 px-4 sm:px-6 rounded-xl sm:rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] text-sm sm:text-base"
                 >
                   <span>إرسال رمز التحقق</span>
-                  <ChevronLeft size={20} />
+                  <ChevronLeft size={18} />
                 </button>
               </motion.div>
             )}
 
-            {/* OTP Input - تصميم حديث وأنيق */}
+            {/* OTP Input - تصميم حديث وأنيق - محسن لشاشات 6.3 بوصة */}
             {step === 'otp' && (
               <motion.div
                 key="otp"
@@ -512,14 +577,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -30 }}
                 transition={{ type: "spring", stiffness: 400, damping: 35 }}
-                className="space-y-6 relative"
+                className="space-y-4 sm:space-y-6 relative"
               >
                 {/* OTP Boxes Container */}
                 <div className="relative">
                   {/* Glow effect behind inputs */}
                   <div className="absolute inset-0 bg-gradient-to-r from-teal-400/20 via-cyan-400/30 to-teal-400/20 blur-2xl rounded-3xl" />
                   
-                  <div className="relative flex justify-center gap-4" dir="ltr">
+                  <div className="relative flex justify-center gap-2.5 sm:gap-4" dir="ltr">
                     {[0, 1, 2, 3].map((i) => (
                       <motion.div
                         key={i}
@@ -529,6 +594,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                         className="relative"
                       >
                         <input
+                          ref={i === 0 ? otpFirstInputRef : undefined}
                           type="text"
                           inputMode="numeric"
                           maxLength={1}
@@ -540,21 +606,25 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                             const updatedOtp = newOtp.join('');
                             setOtp(updatedOtp);
                             
+                            // مسح الخطأ عند الكتابة
+                            if (error) setError('');
+                            
                             // Auto-focus next input
                             if (val && i < 3) {
                               const next = document.querySelector(`input[data-index="${i + 1}"]`) as HTMLInputElement;
                               next?.focus();
                             }
                             
-                            // Auto-verify when complete
+                            // Auto-verify when complete - استخدام updatedOtp مباشرة لتجنب مشاكل الـ closure
                             if (updatedOtp.length === 4 && !isLoading && !showSuccess) {
-                              setTimeout(() => handleOTPVerify(), 200);
+                              setTimeout(() => handleOTPVerify(updatedOtp), 100);
                             }
                           }}
                           onKeyDown={(e) => {
                             if (e.key === 'Backspace' && !otp[i] && i > 0) {
                               const prev = document.querySelector(`input[data-index="${i - 1}"]`) as HTMLInputElement;
                               prev?.focus();
+                              if (error) setError('');
                             } else if (e.key === 'Enter') {
                               // تفعيل Enter عند اكتمال الرقم (4 أرقام)
                               const currentOtp = otp.split('');
@@ -564,13 +634,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                               if (fullOtp.length === 4 && !isLoading && !showSuccess) {
                                 e.preventDefault();
                                 setOtp(fullOtp);
-                                setTimeout(() => handleOTPVerify(), 50);
+                                handleOTPVerify(fullOtp);
                               }
                             }
                           }}
                           onFocus={(e) => e.target.select()}
                           data-index={i}
-                          className={`w-16 h-20 rounded-2xl text-center text-3xl font-black outline-none transition-all duration-300 ${
+                          className={`w-14 h-16 sm:w-16 sm:h-20 rounded-xl sm:rounded-2xl text-center text-2xl sm:text-3xl font-black outline-none transition-all duration-300 ${
                             otp[i] 
                               ? 'bg-white text-[#153659] shadow-xl shadow-white/30 border-2 border-white' 
                               : 'bg-white/15 text-white border-2 border-white/30 hover:border-white/50 focus:border-white focus:bg-white/25'
@@ -581,7 +651,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                         />
                         {/* Dot indicator under each box */}
                         <motion.div
-                          className={`absolute -bottom-3 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full transition-all duration-300 ${
+                          className={`absolute -bottom-2 sm:-bottom-3 left-1/2 -translate-x-1/2 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full transition-all duration-300 ${
                             otp[i] ? 'bg-teal-400 shadow-lg shadow-teal-400/50' : 'bg-white/30'
                           }`}
                           animate={otp[i] ? { scale: [1, 1.3, 1] } : {}}
@@ -593,12 +663,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 </div>
 
                 {/* Progress bar */}
-                <div className="flex justify-center gap-1 mt-8">
+                <div className="flex justify-center gap-1 mt-5 sm:mt-8">
                   {[0, 1, 2, 3].map((i) => (
                     <motion.div
                       key={i}
-                      className={`h-1 rounded-full transition-all duration-300 ${
-                        i < otp.length ? 'w-8 bg-teal-400' : 'w-4 bg-white/20'
+                      className={`h-0.5 sm:h-1 rounded-full transition-all duration-300 ${
+                        i < otp.length ? 'w-6 sm:w-8 bg-teal-400' : 'w-3 sm:w-4 bg-white/20'
                       }`}
                       animate={i < otp.length ? { opacity: [0.5, 1] } : {}}
                     />
@@ -619,21 +689,22 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                         initial={{ scale: 0, rotate: -180 }}
                         animate={{ scale: [0, 1.2, 1], rotate: 0 }}
                         transition={{ duration: 0.6, times: [0, 0.6, 1] }}
-                        className="w-28 h-28 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-2xl shadow-green-500/50"
+                        className="w-20 h-20 sm:w-28 sm:h-28 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-2xl shadow-green-500/50"
                       >
                         <motion.div
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
                           transition={{ delay: 0.3, type: "spring" }}
                         >
-                          <Check size={56} className="text-white" strokeWidth={3} />
+                          <Check size={40} className="text-white sm:hidden" strokeWidth={3} />
+                          <Check size={56} className="text-white hidden sm:block" strokeWidth={3} />
                         </motion.div>
                       </motion.div>
                       <motion.p
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.4 }}
-                        className="mt-4 text-white font-bold text-xl"
+                        className="mt-3 sm:mt-4 text-white font-bold text-lg sm:text-xl"
                       >
                         ✅ تم التحقق بنجاح
                       </motion.p>
@@ -645,10 +716,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   <motion.div
                     initial={{ opacity: 0, y: -10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    className="bg-red-500/20 backdrop-blur-sm border border-red-400/30 rounded-xl px-4 py-3 flex items-center gap-3"
+                    className="bg-red-500/20 backdrop-blur-sm border border-red-400/30 rounded-xl px-3 py-2.5 sm:px-4 sm:py-3 flex items-center gap-2 sm:gap-3"
                   >
-                    <AlertCircle size={20} className="text-red-300 shrink-0" />
-                    <p className="text-red-200 text-sm">{error}</p>
+                    <AlertCircle size={18} className="text-red-300 shrink-0" />
+                    <p className="text-red-200 text-xs sm:text-sm">{error}</p>
                   </motion.div>
                 )}
 
@@ -657,7 +728,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   disabled={isLoading || otp.length !== 4 || showSuccess}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className={`w-full py-4 px-6 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-xl transition-all duration-300 disabled:cursor-not-allowed ${
+                  className={`w-full py-3 sm:py-4 px-5 sm:px-6 rounded-xl sm:rounded-2xl font-bold flex items-center justify-center gap-2 sm:gap-3 shadow-xl transition-all duration-300 disabled:cursor-not-allowed text-sm sm:text-base ${
                     showSuccess 
                       ? 'bg-gradient-to-r from-green-400 to-emerald-500 text-white shadow-green-500/30' 
                       : otp.length === 4
@@ -667,22 +738,22 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 >
                   {showSuccess ? (
                     <>
-                      <Check size={24} />
+                      <Check size={20} />
                       <span>جاري الدخول...</span>
                     </>
                   ) : (
                     <>
-                      <Shield size={20} />
+                      <Shield size={18} />
                       <span>تأكيد الدخول</span>
                     </>
                   )}
                 </motion.button>
 
-                <div className="flex items-center justify-center gap-2">
+                <div className="flex items-center justify-center gap-1.5 sm:gap-2">
                   <button
                     onClick={() => handlePhoneSubmit()}
                     disabled={isLoading}
-                    className="py-2 px-4 text-white/60 hover:text-white text-sm transition-colors disabled:opacity-50 hover:underline"
+                    className="py-1.5 px-3 sm:py-2 sm:px-4 text-white/60 hover:text-white text-xs sm:text-sm transition-colors disabled:opacity-50 hover:underline"
                   >
                     إعادة الإرسال
                   </button>
@@ -690,7 +761,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   <button
                     onClick={goBack}
                     disabled={isLoading}
-                    className="py-2 px-4 text-white/60 hover:text-white text-sm transition-colors disabled:opacity-50 hover:underline"
+                    className="py-1.5 px-3 sm:py-2 sm:px-4 text-white/60 hover:text-white text-xs sm:text-sm transition-colors disabled:opacity-50 hover:underline"
                   >
                     تغيير الرقم
                   </button>
@@ -698,7 +769,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
               </motion.div>
             )}
 
-            {/* Email Input */}
+            {/* Email Input - محسن لشاشات 6.3 بوصة */}
             {step === 'email' && (
               <motion.div
                 key="email"
@@ -706,7 +777,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -30 }}
                 transition={{ type: "spring", stiffness: 400, damping: 35 }}
-                className="space-y-4"
+                className="space-y-3 sm:space-y-4"
               >
                 <input
                   type="email"
@@ -714,14 +785,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="example@email.com"
                   dir="ltr"
-                  className="w-full py-4 px-6 rounded-2xl bg-white/10 border-2 border-white/20 text-white text-center text-lg placeholder:text-white/40 focus:border-white/50 outline-none transition-all"
+                  className="w-full py-3 sm:py-4 px-4 sm:px-6 rounded-xl sm:rounded-2xl bg-white/10 border-2 border-white/20 text-white text-center text-base sm:text-lg placeholder:text-white/40 focus:border-white/50 outline-none transition-all"
                 />
 
                 {error && (
                   <motion.p
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="text-red-300 text-sm text-center"
+                    className="text-red-300 text-xs sm:text-sm text-center"
                   >
                     {error}
                   </motion.p>
@@ -730,15 +801,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 <button
                   onClick={handleEmailSubmit}
                   disabled={isLoading || !email.includes('@')}
-                  className="w-full py-4 px-6 rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+                  className="w-full py-3 sm:py-4 px-4 sm:px-6 rounded-xl sm:rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] text-sm sm:text-base"
                 >
                   <span>إرسال رابط الدخول</span>
-                  <ChevronLeft size={20} />
+                  <ChevronLeft size={18} />
                 </button>
               </motion.div>
             )}
 
-            {/* Email Sent Confirmation */}
+            {/* Email Sent Confirmation - محسن لشاشات 6.3 بوصة */}
             {step === 'email-sent' && (
               <motion.div
                 key="email-sent"
@@ -746,24 +817,25 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ type: "spring", stiffness: 400, damping: 35 }}
-                className="text-center space-y-6"
+                className="text-center space-y-4 sm:space-y-6"
               >
-                <div className="w-20 h-20 mx-auto rounded-full bg-green-500/20 flex items-center justify-center">
-                  <Check size={40} className="text-green-400" />
+                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-green-500/20 flex items-center justify-center">
+                  <Check size={32} className="text-green-400 sm:hidden" />
+                  <Check size={40} className="text-green-400 hidden sm:block" />
                 </div>
                 
                 <div>
-                  <p className="text-white/80 mb-4">
+                  <p className="text-white/80 mb-3 sm:mb-4 text-sm sm:text-base">
                     أرسلنا رابط الدخول إلى بريدك الإلكتروني
                   </p>
-                  <p className="text-white/50 text-sm">
+                  <p className="text-white/50 text-xs sm:text-sm">
                     افتح الرابط في البريد للدخول مباشرة
                   </p>
                 </div>
 
                 <button
                   onClick={() => setStep('welcome')}
-                  className="text-white/60 hover:text-white text-sm transition-colors"
+                  className="text-white/60 hover:text-white text-xs sm:text-sm transition-colors"
                 >
                   العودة لخيارات الدخول
                 </button>
@@ -774,10 +846,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
       </div>
       </LayoutGroup>
 
-      {/* Security Note */}
-      <div className="pb-8 px-6 text-center pb-[env(safe-area-inset-bottom,0px)]">
-        <div className="flex items-center justify-center gap-2 text-white/40 text-xs">
-          <Shield size={14} />
+      {/* Security Note - محسن لشاشات 6.3 بوصة */}
+      <div className="pb-4 sm:pb-6 px-4 sm:px-6 text-center pb-[env(safe-area-inset-bottom,0px)]">
+        <div className="flex items-center justify-center gap-1.5 sm:gap-2 text-white/40 text-[10px] sm:text-xs">
+          <Shield size={12} className="sm:w-[14px] sm:h-[14px]" />
           <span>بياناتك محمية ومشفرة بالكامل</span>
         </div>
       </div>

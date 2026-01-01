@@ -84,6 +84,7 @@ interface MarketplaceProps {
   onSignOut: () => void;
   isLoading?: boolean;
   onScrollButtonVisibilityChange?: (visible: boolean) => void;
+  onHeaderCompressionChange?: (compressed: boolean) => void;
   onNavigateToProfile?: () => void;
   onNavigateToSettings?: () => void;
   // Theme and language
@@ -131,6 +132,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   onSignOut,
   isLoading = false,
   onScrollButtonVisibilityChange,
+  onHeaderCompressionChange,
   onNavigateToProfile,
   onNavigateToSettings,
   isDarkMode = false,
@@ -553,6 +555,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     onScrollButtonVisibilityChange?.(showScrollToTop || isAtTop);
   }, [showScrollToTop, isAtTop, onScrollButtonVisibilityChange]);
 
+  // Notify parent when header compression state changes
+  useEffect(() => {
+    onHeaderCompressionChange?.(isHeaderCompressed);
+  }, [isHeaderCompressed, onHeaderCompressionChange]);
+
   const handleManageInterests = () => {
     setTempInterests(userInterests);
     setTempCities(interestedCities);
@@ -782,6 +789,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               toggleTheme={toggleTheme}
               onOpenLanguagePopup={onOpenLanguagePopup}
               title="سوق الطلبات"
+              isScrolled={!isHeaderCompressed}
             />
           </motion.div>
 
@@ -791,23 +799,23 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             animate={{ 
               opacity: 1, 
               y: 0,
-              paddingTop: isHeaderCompressed ? 12 : 8,
+              paddingTop: isHeaderCompressed ? 12 : 12,
               paddingLeft: isHeaderCompressed ? 24 : 16,
               paddingRight: isHeaderCompressed ? 24 : 16,
             }}
-            transition={{
-              duration: 0.3,
-              ease: 'easeOut',
-            }}
-            className={`flex items-center justify-center py-1 overflow-visible ${hasActiveFilters ? '' : 'pb-3'}`}
+            transition={{ type: "spring", stiffness: 400, damping: 40 }}
+            className={`flex items-center justify-center overflow-visible ${hasActiveFilters ? '' : 'pb-2'}`}
           >
             {/* Switch Container - Filter button (left) + Tabs/Search (center) + Search button (right) */}
             <motion.div 
+              layoutId="shared-filter-island"
+              layout
               animate={{
                 scale: isHeaderCompressed ? 0.92 : 1,
               }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="flex bg-card/95 backdrop-blur-xl rounded-full p-1 border border-border relative w-full shadow-lg origin-center"
+              transition={{ type: "spring", stiffness: 400, damping: 40 }}
+              className="flex items-center bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border relative mx-auto shadow-lg origin-center w-auto"
+              style={{ minWidth: 280, maxWidth: 400 }}
             >
               {/* Filter Button - Always visible on the left */}
               <motion.button
@@ -815,12 +823,12 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   e.stopPropagation();
                   setIsFiltersPopupOpen(true);
                 }}
-                className={`relative w-9 h-9 flex items-center justify-center rounded-xl transition-all active:scale-95 shrink-0 ${
+                className={`relative w-8 h-8 flex items-center justify-center rounded-full transition-all shrink-0 ${
                   (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax)
                     ? 'bg-primary text-white' 
                     : 'text-muted-foreground hover:text-primary hover:bg-secondary/50'
                 }`}
-                whileTap={{ scale: 0.95 }}
+                whileTap={{ scale: 0.96 }}
               >
                 <Filter size={15} strokeWidth={2.5} />
                 {(searchCategories.length + searchCities.length + (searchBudgetMin || searchBudgetMax ? 1 : 0)) > 0 && (
@@ -835,7 +843,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               </motion.button>
 
               {/* Center Content - Tabs or Search Input */}
-              <div className="flex-1 flex items-center relative">
+              <div className="flex-1 flex items-center relative min-w-0">
                 <AnimatePresence mode="popLayout" initial={false}>
                   {isSearchInputOpen || searchTerm ? (
                     /* Search Input Mode */
@@ -845,7 +853,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       animate={{ x: 0, opacity: 1 }}
                       exit={{ x: 100, opacity: 0 }}
                       transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                      className="flex items-center gap-2 w-full px-2"
+                      className="flex items-center gap-2 flex-1 px-2 min-w-0"
                     >
                       <input
                         ref={searchInputRef}
@@ -903,7 +911,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       initial={{ x: -100, opacity: 0 }}
                       animate={{ x: 0, opacity: 1 }}
                       exit={{ x: -100, opacity: 0 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                      transition={{ type: "spring", stiffness: 400, damping: 40 }}
                       className="flex items-center w-full relative"
                     >
                       {/* Animated capsule indicator */}
@@ -915,10 +923,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             width: '50%',
                             left: viewMode === "all" ? '50%' : '0%',
                           }}
-                          transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 40 }}
                         />
                       )}
-                      <button
+                      <motion.button
+                        whileTap={{ scale: 0.96 }}
                         onClick={() => {
                           if (navigator.vibrate) navigator.vibrate(15);
                           if (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax) {
@@ -926,15 +935,16 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           }
                           setViewMode("all");
                         }}
-                        className={`flex-1 py-2 text-[11px] font-bold rounded-full transition-colors duration-200 relative flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1.5 ${
                           viewMode === "all" && !hasActiveFilters
                             ? "text-white"
                             : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
                         <span className="relative z-10">الكل</span>
-                      </button>
-                      <button
+                      </motion.button>
+                      <motion.button
+                        whileTap={{ scale: 0.96 }}
                         onClick={() => {
                           if (navigator.vibrate) navigator.vibrate(15);
                           if (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax) {
@@ -942,7 +952,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           }
                           setViewMode("interests");
                         }}
-                        className={`flex-1 py-2 text-[11px] font-bold rounded-full transition-colors duration-200 relative flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1.5 ${
                           viewMode === "interests" && !hasActiveFilters
                             ? "text-white"
                             : "text-muted-foreground hover:text-foreground"
@@ -956,7 +966,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             {interestsRequests.length > 0 ? interestsRequests.length : unreadInterestsCount}
                           </span>
                         )}
-                      </button>
+                      </motion.button>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -965,7 +975,6 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               {/* Search Button - Moves from right to left when clicked */}
               <motion.button
                 layout
-                layoutId="search-button-move"
                 onClick={() => {
                   if (navigator.vibrate) navigator.vibrate(10);
                   if (!isSearchInputOpen && !searchTerm) {
@@ -973,14 +982,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     setTimeout(() => searchInputRef.current?.focus(), 100);
                   }
                 }}
-                className={`relative w-9 h-9 flex items-center justify-center rounded-xl transition-colors shrink-0 bg-transparent ${
+                className={`relative w-8 h-8 flex items-center justify-center rounded-full transition-colors shrink-0 bg-transparent ${
                   isSearchInputOpen || searchTerm
-                    ? 'text-primary order-first'
-                    : 'text-muted-foreground hover:text-primary order-last'
+                    ? 'text-primary'
+                    : 'text-muted-foreground hover:text-primary'
                 }`}
-                style={{ order: isSearchInputOpen || searchTerm ? 50 : 99 }}
-                whileTap={{ scale: 0.95 }}
-                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                whileTap={{ scale: 0.96 }}
+                transition={{ type: "spring", stiffness: 400, damping: 40 }}
               >
                 <Search size={15} strokeWidth={2.5} />
               </motion.button>
@@ -1208,6 +1216,44 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         )}
       </AnimatePresence>
 
+      {/* Fixed gradient overlay at top of screen - subtle always, stronger when scrolling up */}
+      {/* Base subtle gradient - always visible */}
+      <div
+        className="fixed top-0 left-0 right-0 h-40 pointer-events-none z-[25]"
+        style={{
+          background: isDarkMode
+            ? 'linear-gradient(to bottom, rgba(9, 9, 11, 0.8) 0%, rgba(9, 9, 11, 0.5) 35%, rgba(9, 9, 11, 0.2) 60%, transparent 100%)'
+            : 'linear-gradient(to bottom, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.5) 35%, rgba(255, 255, 255, 0.2) 60%, transparent 100%)'
+        }}
+      />
+      {/* Stronger gradient - appears when header is expanded (scrolling up) */}
+      <AnimatePresence>
+        {!isHeaderCompressed && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4, ease: "easeInOut" }}
+            className="fixed top-0 left-0 right-0 h-64 pointer-events-none z-[25]"
+            style={{
+              background: isDarkMode
+                ? 'linear-gradient(to bottom, rgba(9, 9, 11, 1) 0%, rgba(9, 9, 11, 0.98) 12%, rgba(9, 9, 11, 0.92) 28%, rgba(9, 9, 11, 0.8) 45%, rgba(9, 9, 11, 0.55) 62%, rgba(9, 9, 11, 0.25) 80%, transparent 100%)'
+                : 'linear-gradient(to bottom, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.98) 12%, rgba(255, 255, 255, 0.92) 28%, rgba(255, 255, 255, 0.8) 45%, rgba(255, 255, 255, 0.55) 62%, rgba(255, 255, 255, 0.25) 80%, transparent 100%)'
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Fixed gradient overlay at bottom of screen - subtle always */}
+      <div
+        className="fixed bottom-0 left-0 right-0 h-40 pointer-events-none z-[25]"
+        style={{
+          background: isDarkMode
+            ? 'linear-gradient(to top, rgba(9, 9, 11, 0.8) 0%, rgba(9, 9, 11, 0.5) 35%, rgba(9, 9, 11, 0.2) 60%, transparent 100%)'
+            : 'linear-gradient(to top, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.5) 35%, rgba(255, 255, 255, 0.2) 60%, transparent 100%)'
+        }}
+      />
+
       {/* Floating View Mode Toggle - Bottom Left, always visible above the orb */}
       <motion.div
         initial={{ opacity: 0, scale: 0.8 }}
@@ -1249,11 +1295,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 }
               }
             }}
-            className="fixed z-[101] w-[60px] h-[60px] flex items-center justify-center rounded-full bg-gradient-to-br from-primary via-primary to-teal-600 text-white transition-all"
+            className="fixed z-[101] w-[60px] h-[60px] flex items-center justify-center rounded-xl bg-card/95 backdrop-blur-xl border border-border shadow-lg text-foreground hover:bg-primary hover:text-white transition-colors"
             style={{ 
               left: 24,
               bottom: 100,
-              boxShadow: '0 10px 35px rgba(30,150,140,0.45), 0 5px 18px rgba(30,150,140,0.35), inset 0 -2px 6px rgba(0,0,0,0.1), inset 0 2px 6px rgba(255,255,255,0.2)'
             }}
           >
             <motion.div
@@ -2257,13 +2302,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               transition={{ duration: 0.25 }}
             >
               {/* Original Grid View */}
-              <motion.div 
-                key={`grid-${searchCategories.join(',')}-${searchCities.join(',')}-${searchTerm}-${searchBudgetMin}-${searchBudgetMax}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.2 }}
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-              >
+              <div className="relative">
+                <motion.div 
+                  key={`grid-${searchCategories.join(',')}-${searchCities.join(',')}-${searchTerm}-${searchBudgetMin}-${searchBudgetMax}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.2 }}
+                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative"
+                >
           {filteredRequests.map((req, index) => {
             const myOffer = getMyOffer(req.id);
             const requestAuthorId = (req as any).authorId || (req as any).author_id || req.author;
@@ -2673,6 +2719,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             );
           })}
               </motion.div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

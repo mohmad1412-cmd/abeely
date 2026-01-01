@@ -1,5 +1,21 @@
 import { supabase } from './supabaseClient';
 
+// ======================================
+// 🔧 Development Mode - أرقام الاختبار
+// ======================================
+// أرقام وهمية للتطوير - تعمل مع رمز 0000
+// لتفعيل: أي رقم يبدأ بـ 555 مثل 0555555555
+const DEV_MODE = import.meta.env.DEV || import.meta.env.VITE_DEV_MODE === 'true';
+const TEST_PHONE_PREFIX = '555'; // أي رقم يبدأ بـ 555 يعتبر رقم اختبار
+const TEST_OTP_CODE = '0000';
+
+function isTestPhone(phone: string): boolean {
+  if (!DEV_MODE) return false;
+  const cleanPhone = phone.replace(/\D/g, '');
+  // يقبل 0555... أو 555...
+  return cleanPhone.startsWith('0555') || cleanPhone.startsWith('555');
+}
+
 // Types
 export interface UserProfile {
   id: string;
@@ -380,6 +396,9 @@ function formatPhoneToInternational(phone: string): string {
  * إرسال رمز التحقق عبر Supabase Auth (يستخدم Twilio كـ provider)
  * تأكد من تكوين Twilio في Supabase Dashboard:
  * Authentication → Providers → Phone → Twilio
+ * 
+ * 🔧 للتطوير: الأرقام التي تبدأ بـ 555 (مثل 0555555555) تعتبر أرقام اختبار
+ *    ويمكن استخدام الرمز 0000 للدخول
  */
 export async function sendOTP(phone: string): Promise<{ success: boolean; error?: string }> {
   try {
@@ -387,6 +406,13 @@ export async function sendOTP(phone: string): Promise<{ success: boolean; error?
     const formattedPhone = formatPhoneToInternational(phone);
     
     console.log('📱 Sending OTP to:', formattedPhone);
+    
+    // 🔧 وضع التطوير - أرقام الاختبار
+    if (isTestPhone(phone)) {
+      console.log('🔧 DEV MODE: Test phone detected, skipping real SMS');
+      console.log('🔑 Use OTP code: 0000');
+      return { success: true };
+    }
     
     // إرسال OTP عبر Supabase Auth (يستخدم Twilio تلقائياً)
     const { error } = await supabase.auth.signInWithOtp({
@@ -412,6 +438,8 @@ export async function sendOTP(phone: string): Promise<{ success: boolean; error?
 /**
  * التحقق من رمز OTP عبر Supabase Auth
  * Supabase يتعامل مع Twilio تلقائياً
+ * 
+ * 🔧 للتطوير: الأرقام التي تبدأ بـ 555 تقبل الرمز 0000
  */
 export async function verifyOTP(phone: string, token: string): Promise<{ success: boolean; error?: string }> {
   try {
@@ -419,6 +447,59 @@ export async function verifyOTP(phone: string, token: string): Promise<{ success
     const formattedPhone = formatPhoneToInternational(phone);
     
     console.log('🔐 Verifying OTP for:', formattedPhone);
+    
+    // 🔧 وضع التطوير - أرقام الاختبار
+    if (isTestPhone(phone)) {
+      console.log('🔧 DEV MODE: Test phone verification');
+      
+      if (token === TEST_OTP_CODE) {
+        console.log('✅ DEV MODE: Test OTP accepted');
+        
+        // إنشاء مستخدم وهمي للتطوير عبر signInAnonymously
+        // يجب تفعيل Anonymous Auth في Supabase Dashboard:
+        // Authentication → Settings → Anonymous Sign Ins → Enable
+        try {
+          const { data, error } = await supabase.auth.signInAnonymously();
+          
+          if (error) {
+            console.error('❌ Anonymous sign-in error:', error);
+            console.log('💡 تأكد من تفعيل Anonymous Auth في Supabase Dashboard');
+            console.log('   Authentication → Settings → Enable Anonymous Sign Ins');
+            
+            // Fallback: استخدام guest mode مع تخزين الرقم
+            localStorage.setItem('dev_test_phone', formattedPhone);
+            localStorage.setItem('abeely_guest_mode', 'true');
+            return { success: true };
+          }
+          
+          if (data.user) {
+            console.log('✅ DEV MODE: Anonymous user created:', data.user.id);
+            
+            // محاولة إنشاء profile للمستخدم
+            await supabase.from('profiles').upsert({
+              id: data.user.id,
+              phone: formattedPhone,
+              display_name: 'مستخدم اختبار',
+              role: 'user',
+              is_guest: false,
+              is_verified: true,
+            }).then(() => console.log('✅ Profile created'))
+              .catch(() => console.log('Profile creation skipped'));
+            
+            return { success: true };
+          }
+        } catch (e) {
+          console.error('❌ Dev auth error:', e);
+          // Fallback لـ guest mode
+          localStorage.setItem('abeely_guest_mode', 'true');
+        }
+        
+        return { success: true };
+      } else {
+        console.log('❌ DEV MODE: Wrong test OTP (expected 0000)');
+        return { success: false, error: 'رمز التحقق غير صحيح (استخدم 0000 للأرقام الوهمية)' };
+      }
+    }
     
     // التحقق من الرمز عبر Supabase Auth
     const { data, error } = await supabase.auth.verifyOtp({

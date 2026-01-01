@@ -11,16 +11,28 @@ import {
   Sparkles,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   User,
   Wrench,
   Calendar,
   Image,
   Paperclip,
   Plus,
+  Loader2,
+  MessageSquare,
+  CheckCircle2,
 } from "lucide-react";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
 import { Request } from "../types";
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  processCustomerRequest,
+  FinalReview,
+  ClarificationPage,
+  CustomerServiceResponse,
+} from "../services/customerServiceAI";
+import { VoiceProcessingStatus } from "./GlobalFloatingOrb";
 
 // ============================================
 // Types
@@ -249,6 +261,9 @@ interface CreateRequestV2Props {
   setIsAiLoading: (loading: boolean) => void;
   // Ref to register handleSend for GlobalFloatingOrb
   aiSendHandlerRef?: React.MutableRefObject<((audioBlob?: Blob) => Promise<void>) | null>;
+  // Voice processing refs (for GlobalFloatingOrb)
+  voiceSendHandlerRef?: React.MutableRefObject<((audioBlob: Blob) => Promise<void>) | null>;
+  setVoiceProcessingStatus?: (status: VoiceProcessingStatus) => void;
 }
 
 // ============================================
@@ -800,6 +815,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   isAiLoading,
   setIsAiLoading,
   aiSendHandlerRef,
+  voiceSendHandlerRef,
+  setVoiceProcessingStatus: externalSetVoiceProcessingStatus,
 }) => {
   // ==========================================
   // نوع لتخزين القيم المحفوظة (snapshot)
@@ -1011,28 +1028,22 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // Check AI connection on mount
   useEffect(() => {
     const checkAI = async () => {
-      const client = getAIClient();
-      if (!client) {
+      // Check if Anthropic API key is available
+      const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+      if (!apiKey) {
         setIsAIConnected(false);
         setShowManualTitle(true);
         return;
       }
-      // Try a quick test
-      try {
-        const model = client.getGenerativeModel({ model: "gemini-2.0-flash-001" });
-        await model.generateContent("test");
-        setIsAIConnected(true);
-      } catch {
-        setIsAIConnected(false);
-        setShowManualTitle(true);
-      }
+      // Assume connected if API key exists (actual connection test happens on first use)
+      setIsAIConnected(true);
     };
     checkAI();
   }, []);
 
-  // Check if can submit - يحتاج عنوان إذا AI غير متصل
-  const needsManualTitle = isAIConnected === false && !title.trim();
-  const canSubmit = !!(description.trim() && location.trim() && (isAIConnected !== false || title.trim()));
+  // Check if can submit - يظهر الزر بعد تعبئة الوصف والمدينة فقط
+  const needsManualTitle = !title.trim();
+  const canSubmit = !!(description.trim() && location.trim());
   
   // Submit states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1073,6 +1084,24 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // Success notification state
   const [showSuccessNotification, setShowSuccessNotification] = useState(false);
 
+  // ==========================================
+  // Customer Service AI Integration States
+  // ==========================================
+  const [clarificationPages, setClarificationPages] = useState<ClarificationPage[]>([]);
+  const [currentClarificationPage, setCurrentClarificationPage] = useState(0);
+  const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
+  const [finalReview, setFinalReview] = useState<FinalReview | null>(null);
+  const [showFinalReview, setShowFinalReview] = useState(false);
+  const [languageDetected, setLanguageDetected] = useState<string>('');
+  
+  // Voice processing status for GlobalFloatingOrb
+  const [voiceProcessingStatus, setVoiceProcessingStatus] = useState<VoiceProcessingStatus>({ stage: 'idle' });
+  
+  // Auto-trigger AI analysis state
+  const [firstTypingTime, setFirstTypingTime] = useState<number | null>(null);
+  const autoTriggerTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasAutoTriggeredRef = useRef(false);
+
   // Refs for field positions
   const descriptionFieldRef = useRef<HTMLDivElement>(null);
   const locationFieldRef = useRef<HTMLDivElement>(null);
@@ -1090,7 +1119,196 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     }, 2000);
   };
 
-  // Handle AI input send
+  // Auto-trigger AI analysis for description
+  const triggerAutoAnalysis = useCallback(async () => {
+    if (hasAutoTriggeredRef.current) return;
+    if (!description.trim() || description.trim().length < 5) return;
+    if (isAiLoading) return;
+    
+    hasAutoTriggeredRef.current = true;
+    setIsAiLoading(true);
+    
+    try {
+      const response = await processCustomerRequest(
+        description.trim(),
+        undefined,
+        Object.keys(clarificationAnswers).length > 0 ? clarificationAnswers : undefined
+      );
+
+      if (response.success && response.data) {
+        const data = response.data;
+        setLanguageDetected(data.language_detected);
+
+        if (data.clarification_needed && data.clarification_pages.length > 0) {
+          // Parse and show clarification pages
+          const pages: ClarificationPage[] = data.clarification_pages.map((page, index) => {
+            const match = page.match(/(?:Page|صفحة)\s*(\d+)\/(\d+):\s*(.+)/i);
+            return {
+              pageNumber: match ? parseInt(match[1]) : index + 1,
+              totalPages: match ? parseInt(match[2]) : data.total_pages,
+              question: match ? match[3].trim() : page,
+            };
+          });
+          
+          setClarificationPages(pages);
+          setCurrentClarificationPage(0);
+          setShowFinalReview(false);
+        } else {
+          // No clarification needed - show final review
+          setFinalReview(data.final_review);
+          setShowFinalReview(true);
+          setClarificationPages([]);
+        }
+      }
+    } catch (error) {
+      console.error("Auto-analysis error:", error);
+    } finally {
+      setIsAiLoading(false);
+    }
+  }, [description, clarificationAnswers, isAiLoading]);
+
+  // Auto-trigger logic: 15 chars OR 40 seconds from first character
+  useEffect(() => {
+    // Clear previous timer
+    if (autoTriggerTimerRef.current) {
+      clearTimeout(autoTriggerTimerRef.current);
+      autoTriggerTimerRef.current = null;
+    }
+
+    // Don't trigger if already done or if in clarification mode
+    if (hasAutoTriggeredRef.current || clarificationPages.length > 0 || showFinalReview) {
+      return;
+    }
+
+    const trimmedDescription = description.trim();
+    
+    // Track first typing time
+    if (trimmedDescription.length > 0 && !firstTypingTime) {
+      setFirstTypingTime(Date.now());
+    } else if (trimmedDescription.length === 0) {
+      setFirstTypingTime(null);
+      hasAutoTriggeredRef.current = false;
+    }
+
+    // Trigger conditions:
+    // 1. 15+ characters - trigger after 1.5 seconds of no typing
+    // 2. 40 seconds from first character
+    if (trimmedDescription.length >= 15) {
+      autoTriggerTimerRef.current = setTimeout(() => {
+        triggerAutoAnalysis();
+      }, 1500); // Wait 1.5s after user stops typing
+    } else if (firstTypingTime) {
+      const elapsed = Date.now() - firstTypingTime;
+      const remaining = 40000 - elapsed;
+      
+      if (remaining > 0 && trimmedDescription.length >= 5) {
+        autoTriggerTimerRef.current = setTimeout(() => {
+          triggerAutoAnalysis();
+        }, remaining);
+      }
+    }
+
+    return () => {
+      if (autoTriggerTimerRef.current) {
+        clearTimeout(autoTriggerTimerRef.current);
+      }
+    };
+  }, [description, firstTypingTime, triggerAutoAnalysis, clarificationPages.length, showFinalReview]);
+
+  // Update voice processing status (both internal and external)
+  const updateVoiceStatus = useCallback((status: VoiceProcessingStatus) => {
+    setVoiceProcessingStatus(status);
+    externalSetVoiceProcessingStatus?.(status);
+  }, [externalSetVoiceProcessingStatus]);
+
+  // Handle voice recording from GlobalFloatingOrb
+  const handleVoiceSend = useCallback(async (audioBlob: Blob) => {
+    if (isAiLoading) return;
+    
+    // Update processing status
+    updateVoiceStatus({ stage: 'received' });
+    setIsAiLoading(true);
+    
+    try {
+      // Processing stage
+      setTimeout(() => {
+        updateVoiceStatus({ stage: 'processing', message: 'جاري تحليل طلبك...' });
+      }, 1000);
+      
+      const response = await processCustomerRequest(
+        undefined,
+        audioBlob,
+        Object.keys(clarificationAnswers).length > 0 ? clarificationAnswers : undefined
+      );
+
+      if (response.success && response.data) {
+        const data = response.data;
+        setLanguageDetected(data.language_detected);
+        
+        // Update description with reformulated request if available
+        if (data.final_review?.reformulated_request) {
+          setDescription(data.final_review.reformulated_request);
+          addGlow("description");
+        }
+        
+        // Update location if available
+        if (data.final_review?.location) {
+          setLocation(data.final_review.location);
+          addGlow("location");
+        }
+
+        if (data.clarification_needed && data.clarification_pages.length > 0) {
+          updateVoiceStatus({ stage: 'done', message: 'يرجى الإجابة على بعض الأسئلة' });
+          
+          const pages: ClarificationPage[] = data.clarification_pages.map((page, index) => {
+            const match = page.match(/(?:Page|صفحة)\s*(\d+)\/(\d+):\s*(.+)/i);
+            return {
+              pageNumber: match ? parseInt(match[1]) : index + 1,
+              totalPages: match ? parseInt(match[2]) : data.total_pages,
+              question: match ? match[3].trim() : page,
+            };
+          });
+          
+          setClarificationPages(pages);
+          setCurrentClarificationPage(0);
+          setShowFinalReview(false);
+        } else {
+          updateVoiceStatus({ stage: 'done', message: 'تم تجهيز طلبك!' });
+          setFinalReview(data.final_review);
+          setShowFinalReview(true);
+          setClarificationPages([]);
+        }
+        
+        hasAutoTriggeredRef.current = true;
+      } else {
+        updateVoiceStatus({ stage: 'error', message: response.error || 'فشل معالجة الطلب' });
+      }
+    } catch (error) {
+      console.error("Voice processing error:", error);
+      updateVoiceStatus({ stage: 'error', message: 'حدث خطأ، حاول مرة أخرى' });
+    } finally {
+      setIsAiLoading(false);
+      
+      // Reset status after delay
+      setTimeout(() => {
+        updateVoiceStatus({ stage: 'idle' });
+      }, 3000);
+    }
+  }, [clarificationAnswers, isAiLoading, updateVoiceStatus]);
+
+  // Register handleVoiceSend in ref for GlobalFloatingOrb to use
+  useEffect(() => {
+    if (voiceSendHandlerRef) {
+      voiceSendHandlerRef.current = handleVoiceSend;
+    }
+    return () => {
+      if (voiceSendHandlerRef) {
+        voiceSendHandlerRef.current = null;
+      }
+    };
+  }, [handleVoiceSend, voiceSendHandlerRef]);
+
+  // Handle AI input send - using Customer Service AI
   const handleSend = async (audioBlob?: Blob) => {
     // Allow sending with just audio or just text
     if (!aiInput.trim() && !audioBlob) return;
@@ -1100,131 +1318,42 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     setAiInput("");
     setIsAiLoading(true);
 
-    // Don't show user messages - only show AI analyzing indicator
-    // The loading state will show the analyzing animation
-
     try {
-      // Extract info using AI (with optional audio)
-      const extracted = await extractInfoFromMessage(
-        userMessage || "رسالة صوتية",
-        {
-          description,
-          location,
-          additionalFields,
-        },
-        audioBlob
+      // Use Customer Service AI (supports Whisper API)
+      const response = await processCustomerRequest(
+        userMessage || undefined,
+        audioBlob || undefined,
+        Object.keys(clarificationAnswers).length > 0 ? clarificationAnswers : undefined
       );
 
-      // Apply extracted data with animations
-      
-      // Description - replace with rephrased version
-      if (extracted.description && extracted.description.length > 5) {
-        setDescription(extracted.description);
-        addGlow("description");
+      if (!response.success || !response.data) {
+        throw new Error(response.error || 'فشل معالجة الطلب');
       }
 
-      // Location
-      if (extracted.location && extracted.location.length > 0) {
-        setLocation(extracted.location);
-        addGlow("location");
-      }
-      
-      // Mark that AI has suggested fields (only if they have actual values)
-      const hasNewFields = 
-        (extracted.budget && extracted.budget.length > 0) || 
-        (extracted.deliveryTime && extracted.deliveryTime.length > 0) || 
-        (extracted.category && extracted.category.length > 0) || 
-        (extracted.customFields && extracted.customFields.length > 0 && extracted.customFields[0]?.value);
-      
-      if (hasNewFields) {
-        setShowAdditionalFields(true);
-      }
+      const data = response.data;
+      setLanguageDetected(data.language_detected);
 
-      // Title - always update if extracted
-      if (extracted.title && extracted.title.length > 0) {
-        setTimeout(() => {
-          setTitle(extracted.title!);
-          setShowTitle(true);
-        }, 300);
-      }
-      
-      // Note: Floating orb collapse is handled by GlobalFloatingOrb
-
-      // Budget
-      if (extracted.budget) {
-        setAdditionalFields((prev) =>
-          prev.map((f) =>
-            f.id === "budget"
-              ? { ...f, enabled: true, value: extracted.budget! }
-              : f
-          )
-        );
-        setTimeout(() => addGlow("budget"), 200);
-      }
-
-      // Delivery Time
-      if (extracted.deliveryTime) {
-        setAdditionalFields((prev) =>
-          prev.map((f) =>
-            f.id === "deliveryTime"
-              ? { ...f, enabled: true, value: extracted.deliveryTime! }
-              : f
-          )
-        );
-        setTimeout(() => addGlow("deliveryTime"), 400);
-      }
-
-      // Category
-      if (extracted.category) {
-        setAdditionalFields((prev) =>
-          prev.map((f) =>
-            f.id === "category"
-              ? { ...f, enabled: true, value: extracted.category! }
-              : f
-          )
-        );
-        setTimeout(() => addGlow("category"), 600);
-      }
-
-      // Custom Fields - only add if they're meaningful and specific
-      if (extracted.customFields && extracted.customFields.length > 0) {
-        extracted.customFields.forEach((cf, index) => {
-          // Validate: must have both name and value, and value must be specific (not generic)
-          const isValidName = cf.name && cf.name.length >= 2 && cf.name.length <= 30;
-          const isValidValue = cf.value && cf.value.length >= 1 && cf.value.length <= 100;
-          // Skip generic/vague field names
-          const genericNames = ['نوع', 'تفاصيل', 'معلومات', 'بيانات', 'حقل', 'اسم'];
-          const isGenericName = genericNames.some(g => cf.name?.includes(g));
-          
-          if (isValidName && isValidValue && !isGenericName) {
-            const newField: AdditionalField = {
-              id: `custom_${Date.now()}_${index}`,
-              name: cf.name,
-              value: cf.value,
-              icon: <Tag size={16} />,
-              enabled: true,
-              isCustom: true,
-            };
-            setAdditionalFields((prev) => [...prev, newField]);
-            setTimeout(() => addGlow(newField.id), 800 + index * 200);
-          }
+      // Check if clarification is needed
+      if (data.clarification_needed && data.clarification_pages.length > 0) {
+        // Parse clarification pages
+        const pages: ClarificationPage[] = data.clarification_pages.map((page, index) => {
+          const match = page.match(/(?:Page|صفحة)\s*(\d+)\/(\d+):\s*(.+)/i);
+          return {
+            pageNumber: match ? parseInt(match[1]) : index + 1,
+            totalPages: match ? parseInt(match[2]) : data.total_pages,
+            question: match ? match[3].trim() : page,
+          };
         });
-      }
-
-      // Add AI follow-up question - never auto-submit!
-      const followUp = extracted.followUpQuestion || getDefaultFollowUp(
-        extracted.description || description, 
-        extracted.location || location
-      );
-      if (followUp) {
-        setAiMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            text: followUp,
-            timestamp: new Date(),
-          },
-        ]);
+        
+        setClarificationPages(pages);
+        setCurrentClarificationPage(0);
+        setShowFinalReview(false);
+        // Don't set showFinalReview here - wait for all clarifications
+      } else {
+        // No clarification needed - show final review screen
+        setFinalReview(data.final_review);
+        setShowFinalReview(true);
+        setClarificationPages([]);
       }
     } catch (error) {
       console.error("Error processing message:", error);
@@ -1239,6 +1368,51 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     } finally {
       setIsAiLoading(false);
     }
+  };
+
+  // Apply final review data to form fields
+  const applyFinalReviewData = (review: FinalReview) => {
+    // Title
+    if (review.title) {
+      setTitle(review.title);
+      setShowTitle(true);
+      setTimeout(() => addGlow("title"), 100);
+    }
+
+    // Description (reformulated_request)
+    if (review.reformulated_request) {
+      setDescription(review.reformulated_request);
+      setTimeout(() => addGlow("description"), 200);
+    }
+
+    // Location
+    if (review.location) {
+      setLocation(review.location);
+      setTimeout(() => addGlow("location"), 300);
+    }
+
+    // Category
+    if (review.system_category && review.system_category !== 'غير محدد') {
+      setAdditionalFields((prev) =>
+        prev.map((f) =>
+          f.id === "category"
+            ? { ...f, enabled: true, value: review.system_category }
+            : f
+        )
+      );
+      setTimeout(() => addGlow("category"), 400);
+      setShowAdditionalFields(true);
+    }
+
+    // Show success message
+    setAiMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        text: "تم تجهيز طلبك! راجع التفاصيل واضغط زر الإرسال الأخضر ✨",
+        timestamp: new Date(),
+      },
+    ]);
   };
 
   // Register handleSend in ref for GlobalFloatingOrb to use
@@ -1260,6 +1434,56 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     if (!desc) return "تمام! وش تحتاج بالضبط؟ صف لي الخدمة المطلوبة 📋";
     // When both description and location are filled
     return "رائع! طلبك جاهز للنشر ✨ اضغط الزر الأخضر في الأعلى لإرسال طلبك، أو أخبرني إذا تريد إضافة تفاصيل أخرى 💡";
+  };
+
+  // Handle clarification page navigation
+  const handleClarificationNext = async () => {
+    const currentQuestion = clarificationPages[currentClarificationPage]?.question || '';
+    const answer = clarificationAnswers[currentQuestion] || '';
+    
+    if (!answer.trim()) return;
+
+    if (currentClarificationPage < clarificationPages.length - 1) {
+      // Move to next page
+      setCurrentClarificationPage(prev => prev + 1);
+    } else {
+      // All questions answered - reprocess with answers
+      setIsAiLoading(true);
+      try {
+        const userMessage = aiInput.trim() || description || "رسالة صوتية";
+        const response = await processCustomerRequest(
+          userMessage,
+          undefined,
+          clarificationAnswers
+        );
+
+        if (response.success && response.data) {
+          setFinalReview(response.data.final_review);
+          setShowFinalReview(true);
+          setClarificationPages([]);
+          setCurrentClarificationPage(0);
+          setClarificationAnswers({});
+        }
+      } catch (error) {
+        console.error("Error reprocessing with answers:", error);
+        setAiMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            text: "عذراً، حدث خطأ. حاول مرة أخرى 🔄",
+            timestamp: new Date(),
+          },
+        ]);
+      } finally {
+        setIsAiLoading(false);
+      }
+    }
+  };
+
+  const handleClarificationBack = () => {
+    if (currentClarificationPage > 0) {
+      setCurrentClarificationPage(prev => prev - 1);
+    }
   };
 
   // Handle publish
@@ -1343,12 +1567,13 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         onClearAll={onClearAll}
         onSignOut={onSignOut}
         onGoToMarketplace={onGoToMarketplace}
-        title={editingRequestId ? "تعديل الطلب" : "إنشاء طلب جديد"}
+        title={title && title.trim() ? title : (editingRequestId ? "تعديل الطلب" : "إنشاء طلب جديد")}
         hideModeToggle
         isGuest={isGuest}
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToSettings={onNavigateToSettings}
         showSubmitButton
+        hideProfileButton
         canSubmit={editingRequestId ? editButtonState.canSave : canSubmit}
         isEditMode={!!editingRequestId}
         editButtonIsSaved={editButtonState.isSaved}
@@ -1382,17 +1607,27 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               return;
             }
             
-            // إذا AI غير متصل ولا يوجد عنوان - اهتزاز وإظهار حقل العنوان
-            if (isAIConnected === false && !title.trim()) {
-              console.log("AI not connected and no title - showing manual title field");
+            // إذا لم يكن هناك عنوان - فتح حقل العنوان تلقائياً
+            if (!title.trim()) {
+              console.log("No title - showing title field");
               if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100]);
               setShowManualTitle(true);
+              setShowTitle(true);
               setTitleShake(true);
               setTimeout(() => setTitleShake(false), 600);
+              
+              // Scroll to title field if it exists
+              setTimeout(() => {
+                const titleInput = document.querySelector('input[type="text"][placeholder*="عنوان"]') as HTMLInputElement;
+                if (titleInput) {
+                  titleInput.focus();
+                  titleInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }, 100);
               return;
             }
             
-            // استخراج العنوان من الوصف إذا لم يكن موجوداً
+            // استخراج العنوان من الوصف إذا لم يكن موجوداً (fallback)
             let finalTitle = title.trim();
             if (!finalTitle && description.trim()) {
               // استخراج عنوان ذكي من الوصف
@@ -1457,8 +1692,268 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto px-4 py-6 pb-24">
-        {/* Dynamic Title - يظهر كـ text إذا AI متصل، أو كحقل إدخال إذا غير متصل */}
         <AnimatePresence mode="wait">
+          {/* Clarification Pages */}
+          {clarificationPages.length > 0 && !showFinalReview && (
+            <motion.div
+              key="clarification"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="space-y-6"
+            >
+              {/* Progress Indicator */}
+              <div className="flex items-center justify-center gap-2 mb-6">
+                {Array.from({ length: clarificationPages.length }).map((_, index) => (
+                  <motion.div
+                    key={index}
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      index === currentClarificationPage
+                        ? 'w-8 bg-primary'
+                        : index < currentClarificationPage
+                        ? 'w-2 bg-primary/50'
+                        : 'w-2 bg-border'
+                    }`}
+                    animate={{
+                      scale: index === currentClarificationPage ? 1.1 : 1,
+                    }}
+                  />
+                ))}
+                <span className="text-xs text-muted-foreground mr-2">
+                  {currentClarificationPage + 1}/{clarificationPages.length}
+                </span>
+              </div>
+
+              {/* Current Question Card */}
+              <motion.div
+                key={currentClarificationPage}
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -50 }}
+                className="space-y-4"
+              >
+                {/* Question */}
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <Sparkles size={20} className="text-primary" />
+                  </div>
+                  <div className="flex-1 bg-card rounded-2xl rounded-tr-sm p-4 border border-border">
+                    <p className="text-foreground leading-relaxed">
+                      {clarificationPages[currentClarificationPage]?.question}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Answer Input */}
+                <div>
+                  <textarea
+                    value={clarificationAnswers[clarificationPages[currentClarificationPage]?.question || ''] || ''}
+                    onChange={(e) => {
+                      const question = clarificationPages[currentClarificationPage]?.question || '';
+                      setClarificationAnswers(prev => ({ ...prev, [question]: e.target.value }));
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey && clarificationAnswers[clarificationPages[currentClarificationPage]?.question || '']?.trim()) {
+                        e.preventDefault();
+                        handleClarificationNext();
+                      }
+                    }}
+                    placeholder="اكتب إجابتك هنا..."
+                    className="w-full bg-secondary/50 rounded-2xl p-4 text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 min-h-[120px]"
+                    dir="auto"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Navigation */}
+                <div className="flex items-center justify-between gap-3">
+                  {currentClarificationPage > 0 && (
+                    <motion.button
+                      onClick={handleClarificationBack}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                    >
+                      <ChevronRight size={18} />
+                      <span>السابق</span>
+                    </motion.button>
+                  )}
+                  
+                  <motion.button
+                    onClick={handleClarificationNext}
+                    disabled={!clarificationAnswers[clarificationPages[currentClarificationPage]?.question || '']?.trim() || isAiLoading}
+                    whileHover={{ scale: (clarificationAnswers[clarificationPages[currentClarificationPage]?.question || '']?.trim() && !isAiLoading) ? 1.02 : 1 }}
+                    whileTap={{ scale: (clarificationAnswers[clarificationPages[currentClarificationPage]?.question || '']?.trim() && !isAiLoading) ? 0.98 : 1 }}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all mr-auto ${
+                      clarificationAnswers[clarificationPages[currentClarificationPage]?.question || '']?.trim() && !isAiLoading
+                        ? 'bg-primary text-white hover:bg-primary/90'
+                        : 'bg-secondary text-muted-foreground cursor-not-allowed'
+                    }`}
+                  >
+                    {isAiLoading ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        <span>جاري المعالجة...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{currentClarificationPage === clarificationPages.length - 1 ? 'إنهاء' : 'التالي'}</span>
+                        <ChevronLeft size={18} />
+                      </>
+                    )}
+                  </motion.button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+
+          {/* Final Review Screen */}
+          {showFinalReview && finalReview && (
+            <motion.div
+              key="final-review"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-6"
+            >
+              {/* Success Header */}
+              <div className="text-center">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                  className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4"
+                >
+                  <CheckCircle2 size={32} className="text-primary" />
+                </motion.div>
+                <h2 className="text-xl font-bold text-foreground mb-1">تم تجهيز طلبك!</h2>
+                <p className="text-muted-foreground text-sm">راجع التفاصيل وأكد الإرسال</p>
+              </div>
+
+              {/* Review Card */}
+              <div className="bg-card rounded-2xl border border-border overflow-hidden">
+                {/* Title */}
+                <div className="p-4 border-b border-border">
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+                    <FileText size={14} />
+                    <span>عنوان الطلب</span>
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground">{finalReview.title}</h3>
+                </div>
+
+                {/* Description */}
+                <div className="p-4 border-b border-border">
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm mb-2">
+                    <MessageSquare size={14} />
+                    <span>تفاصيل الطلب</span>
+                  </div>
+                  <p className="text-foreground leading-relaxed whitespace-pre-wrap">
+                    {finalReview.reformulated_request}
+                  </p>
+                </div>
+
+                {/* Location */}
+                {finalReview.location && (
+                  <div className="p-4 border-b border-border">
+                    <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+                      <MapPin size={14} />
+                      <span>الموقع</span>
+                    </div>
+                    <p className="text-foreground">{finalReview.location}</p>
+                  </div>
+                )}
+
+                {/* Category */}
+                <div className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Tag size={14} className="text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">التصنيف</span>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-sm ${
+                    finalReview.system_category === 'غير محدد'
+                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                      : 'bg-primary/10 text-primary'
+                  }`}>
+                    {finalReview.system_category}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3">
+                <motion.button
+                  onClick={() => {
+                    setShowFinalReview(false);
+                    setFinalReview(null);
+                  }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-border text-foreground hover:bg-secondary transition-colors"
+                >
+                  <span>تعديل</span>
+                </motion.button>
+                
+                <motion.button
+                  onClick={async () => {
+                    // Apply final review data to form fields
+                    const reviewTitle = finalReview.title || '';
+                    const reviewDescription = finalReview.reformulated_request || '';
+                    const reviewLocation = finalReview.location || '';
+                    
+                    if (reviewTitle) setTitle(reviewTitle);
+                    if (reviewDescription) setDescription(reviewDescription);
+                    if (reviewLocation) setLocation(reviewLocation);
+                    
+                    if (finalReview.system_category && finalReview.system_category !== 'غير محدد') {
+                      setAdditionalFields((prev) =>
+                        prev.map((f) =>
+                          f.id === "category"
+                            ? { ...f, enabled: true, value: finalReview.system_category }
+                            : f
+                        )
+                      );
+                    }
+                    
+                    // Close final review screen
+                    setShowFinalReview(false);
+                    setFinalReview(null);
+                    
+                    // Wait for state to update, then submit
+                    setTimeout(async () => {
+                      try {
+                        setIsSubmitting(true);
+                        const requestId = await handlePublish();
+                        if (requestId) {
+                          setCreatedRequestId(requestId);
+                          setSubmitSuccess(true);
+                          setIsSubmitting(false);
+                          if (onGoToRequest && requestId) {
+                            setTimeout(() => onGoToRequest(requestId), 2000);
+                          }
+                        } else {
+                          setIsSubmitting(false);
+                        }
+                      } catch (error) {
+                        console.error("Error submitting from final review:", error);
+                        setIsSubmitting(false);
+                      }
+                    }, 200);
+                  }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-[2] flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary text-white font-medium hover:bg-primary/90 transition-colors"
+                >
+                  <Check size={18} />
+                  <span>تأكيد وإرسال</span>
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Dynamic Title - يظهر كـ text إذا AI متصل، أو كحقل إدخال إذا غير متصل */}
+        {clarificationPages.length === 0 && !showFinalReview && (
+          <AnimatePresence mode="wait">
           {/* حقل العنوان اليدوي - يظهر إذا AI غير متصل */}
           {showManualTitle && (
             <motion.div
@@ -1516,25 +2011,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             </motion.div>
           )}
           
-          {/* العنوان المُستخرج من AI - يظهر كـ text عادي */}
-          {!showManualTitle && showTitle && title && (
-            <motion.div
-              key="ai-title"
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mb-6"
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <Sparkles size={16} className="text-primary" />
-                <span className="text-xs text-muted-foreground">عنوان الطلب</span>
-              </div>
-              <h2 className="text-xl font-bold text-foreground">
-                <TypewriterText text={title} speed={40} />
-              </h2>
-            </motion.div>
-          )}
-        </AnimatePresence>
+          {/* العنوان المُستخرج من AI - يُعرض الآن في الـ header فقط */}
+          </AnimatePresence>
+        )}
 
         {/* Core Fields */}
         <div className="space-y-4 mb-6">

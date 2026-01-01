@@ -40,7 +40,7 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
   const scrollDirection = useRef<'up' | 'down'>('up');
   const [isCompact, setIsCompact] = useState(false);
   
-  // Spring animations for smooth transitions
+  // Spring animations for smooth transitions - matching Marketplace exactly
   const springConfig = { stiffness: 400, damping: 40, mass: 0.8 };
   const scale = useSpring(1, springConfig);
   const paddingY = useSpring(12, springConfig);
@@ -50,6 +50,7 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
   const opacity = useSpring(1, springConfig);
   const blur = useSpring(20, springConfig);
   const translateY = useSpring(0, springConfig);
+  const islandScale = useSpring(1, { stiffness: 400, damping: 40 });
   
   // Transform blur to backdrop-filter string
   const backdropFilter = useTransform(blur, (v) => `blur(${v}px)`);
@@ -78,7 +79,8 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
       setIsCompact(shouldBeCompact);
       
       if (shouldBeCompact) {
-        // Compact mode
+        // Compact mode - matching Marketplace exactly
+        islandScale.set(0.92);
         scale.set(0.92);
         paddingY.set(6);
         paddingX.set(10);
@@ -88,7 +90,8 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
         blur.set(24);
         translateY.set(-4);
       } else {
-        // Expanded mode
+        // Expanded mode - matching Marketplace exactly
+        islandScale.set(1);
         scale.set(1);
         paddingY.set(12);
         paddingX.set(16);
@@ -99,7 +102,7 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
         translateY.set(0);
       }
     }
-  }, [scrollContainerRef, isCompact, scale, paddingY, paddingX, gap, borderRadius, opacity, blur, translateY, scrollY]);
+  }, [scrollContainerRef, isCompact, scale, paddingY, paddingX, gap, borderRadius, opacity, blur, translateY, scrollY, islandScale]);
   
   // Attach scroll listener
   useEffect(() => {
@@ -214,18 +217,23 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
   return (
     <motion.div
       ref={islandRef}
-      className={`sticky top-0 z-30 flex justify-center px-3 pt-3 pb-2 ${className}`}
+      className={`sticky top-0 z-30 flex justify-center px-4 pt-3 pb-2 ${className}`}
       style={{
         y: translateY,
       }}
     >
       <motion.div
-        className="relative flex items-center bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border shadow-lg origin-center"
+        layoutId="shared-filter-island"
+        layout
+        className="flex items-center bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border relative mx-auto shadow-lg origin-center w-auto"
         style={{
-          scale,
+          minWidth: 280,
+          maxWidth: 400,
+          scale: islandScale,
           gap,
           opacity,
         }}
+        transition={{ type: "spring", stiffness: 400, damping: 40 }}
       >
         {filters.map((filter, idx) => (
           <div
@@ -248,7 +256,7 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
             <motion.button
               onClick={() => toggleDropdown(filter.id)}
               whileTap={{ scale: 0.96 }}
-              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl transition-all min-w-[100px] ${
+              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-full transition-all min-w-[100px] ${
                 openDropdownId === filter.id
                   ? "bg-primary/15 text-primary"
                   : "hover:bg-secondary/60 text-foreground"

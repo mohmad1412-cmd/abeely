@@ -87,11 +87,14 @@ html {
 body {
     background-color: var(--background);
     color: var(--foreground);
-    font-family: 'Tajawal', system-ui, sans-serif;
+    font-family: 'IBM Plex Sans Arabic', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     /* زيادة حجم الخط الافتراضي */
     font-size: 1rem;
-    line-height: 1.6;
+    line-height: 1.7;
+    font-weight: 400;
+    letter-spacing: -0.01em;
 }
 
 /* ========================================
