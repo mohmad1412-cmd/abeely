@@ -239,10 +239,29 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
     };
   }, [mode]);
 
+  // Premium haptic patterns
+  const haptics = {
+    // Soft tap - for button press
+    tap: () => navigator.vibrate?.([8]),
+    // Strong impact - for important actions
+    impact: () => navigator.vibrate?.([15, 30, 25]),
+    // Recording start - quick pulse
+    recordStart: () => navigator.vibrate?.([5, 20, 15, 20, 10]),
+    // Recording stop - satisfying double tap
+    recordStop: () => navigator.vibrate?.([12, 40, 20, 40, 12]),
+    // Success - ascending pattern
+    success: () => navigator.vibrate?.([10, 30, 15, 30, 20, 30, 25]),
+    // Error - sharp buzz
+    error: () => navigator.vibrate?.([50, 30, 50]),
+    // Hold feedback - gentle pulse while holding
+    holdPulse: () => navigator.vibrate?.([3]),
+  };
+
   // Start recording
   const startRecording = async () => {
     if (isRecording || !navigator.mediaDevices?.getUserMedia) {
       if (!navigator.mediaDevices?.getUserMedia) {
+        haptics.error();
         alert("التسجيل الصوتي غير مدعوم في هذا المتصفح");
       }
       return;
@@ -264,6 +283,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
         if (audioBlob.size > 0) {
           setShowPanel(true);
+          haptics.success();
           onVoiceSend?.(audioBlob);
         }
         setIsRecording(false);
@@ -272,10 +292,11 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
 
       mediaRecorderRef.current = recorder;
       recorder.start();
-      if (navigator.vibrate) navigator.vibrate(12);
+      haptics.recordStart();
       setIsRecording(true);
     } catch (error) {
       console.error("Error starting recording:", error);
+      haptics.error();
       alert("فشل في بدء التسجيل");
     }
   };
@@ -283,7 +304,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
   // Stop recording
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
-      if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
+      haptics.recordStop();
       try {
         mediaRecorderRef.current.stop();
       } catch (error) {
@@ -295,11 +316,17 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
 
   // Handle click based on mode
   const handleClick = () => {
-    if (navigator.vibrate) navigator.vibrate(15);
+    haptics.impact();
     if (mode === "navigate") {
       onNavigate?.();
     }
     // Voice mode handles via press-and-hold
+  };
+  
+  // Handle tap start for haptic feedback
+  const handleTapStart = () => {
+    setIsPressed(true);
+    haptics.tap();
   };
 
   // Hide when scroll button is visible
@@ -310,7 +337,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
   return (
     <motion.div
       ref={containerRef}
-      onTapStart={() => setIsPressed(true)}
+      onTapStart={handleTapStart}
       onTap={() => setIsPressed(false)}
       onTapCancel={() => setIsPressed(false)}
       initial={{ opacity: 0, scale: 0.9, y: -60 }}
@@ -328,7 +355,8 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
       }}
       style={{ 
         position: 'fixed', 
-        left: 24, 
+        left: mode === 'navigate' ? 24 : 'calc(50% - 40px)', 
+        transform: mode === 'navigate' ? 'none' : 'translateX(-50%)',
         top: mode === 'navigate' ? 15 : 'auto', 
         bottom: mode === 'navigate' ? 'auto' : 145,
         pointerEvents: (mode === 'navigate' && isHeaderCompressed) ? 'none' : 'auto',
@@ -469,17 +497,21 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
             width: BUBBLE_SIZE,
             height: BUBBLE_SIZE,
             boxShadow: mode === "voice" && isRecording 
-              ? "0 10px 35px rgba(239,68,68,0.45), 0 5px 18px rgba(239,68,68,0.35)"
-              : "0 10px 35px rgba(30,150,140,0.45), 0 5px 18px rgba(30,150,140,0.35), inset 0 -2px 6px rgba(0,0,0,0.1), inset 0 2px 6px rgba(255,255,255,0.2)"
+              ? "0 12px 40px rgba(239,68,68,0.5), 0 6px 20px rgba(239,68,68,0.4), inset 0 -3px 8px rgba(0,0,0,0.15)"
+              : isPressed
+              ? "0 4px 15px rgba(30,150,140,0.3), inset 0 2px 8px rgba(0,0,0,0.15)"
+              : "0 12px 40px rgba(30,150,140,0.5), 0 6px 20px rgba(30,150,140,0.4), inset 0 -3px 8px rgba(0,0,0,0.1), inset 0 3px 8px rgba(255,255,255,0.25)"
           }}
           animate={{
-            scale: isPressed ? 0.85 : (mode === "voice" && isRecording) ? 1.1 : 1,
+            scale: isPressed ? 0.88 : (mode === "voice" && isRecording) ? 1.12 : 1,
+            y: isPressed ? 2 : 0,
           }}
-          whileHover={{ scale: 1.05 }}
+          whileHover={{ scale: 1.06 }}
           transition={{ 
             type: "spring", 
-            stiffness: 400, 
-            damping: 25,
+            stiffness: 500, 
+            damping: 28,
+            mass: 0.8,
           }}
           onClick={mode === "navigate" ? handleClick : undefined}
           onMouseDown={mode === "voice" ? startRecording : undefined}
@@ -488,25 +520,34 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
           onTouchStart={mode === "voice" ? startRecording : undefined}
           onTouchEnd={mode === "voice" ? stopRecording : undefined}
         >
-          {/* Inner Glow */}
+          {/* Inner Glow - Enhanced */}
           <motion.div
             className="absolute inset-0 rounded-full overflow-hidden"
             initial={false}
           >
+            {/* Top highlight */}
             <motion.div
-              className="absolute top-1 left-1/4 right-1/4 h-4 bg-gradient-to-b from-white/30 to-transparent rounded-full blur-sm"
+              className="absolute top-1 left-1/4 right-1/4 h-5 bg-gradient-to-b from-white/35 to-transparent rounded-full blur-sm"
+              animate={{ opacity: isPressed ? 0.2 : 0.9 }}
+              transition={{ duration: 0.1 }}
+            />
+            {/* Center glow when pressed */}
+            <motion.div
+              className="absolute inset-0 bg-white/10 rounded-full"
+              animate={{ opacity: isPressed ? 0.3 : 0 }}
+              transition={{ duration: 0.1 }}
             />
           </motion.div>
 
           {/* Icon based on mode */}
           <motion.div
             animate={mode === "voice" && isRecording ? { 
-              scale: [1, 1.2, 1],
+              scale: [1, 1.15, 1],
             } : mode === "navigate" ? {
               rotate: [0, 90, 90, 0],
             } : {}}
             transition={mode === "voice" && isRecording ? { 
-              duration: 0.5, 
+              duration: 0.6, 
               repeat: Infinity, 
               ease: "easeInOut" 
             } : {
@@ -517,24 +558,14 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
             }}
           >
             {mode === "navigate" ? (
-              <Plus size={26} strokeWidth={2} className="text-white relative z-10" />
+              <Plus size={26} strokeWidth={2.5} className="text-white relative z-10 drop-shadow-sm" />
             ) : (
-              <Mic size={26} strokeWidth={2} className="text-white relative z-10" />
+              <Mic size={26} strokeWidth={2.5} className="text-white relative z-10 drop-shadow-sm" />
             )}
           </motion.div>
         </motion.button>
       </motion.div>
 
-      {/* Helper Text - Hold to Record (only for voice mode) */}
-      {mode === "voice" && !isRecording && !showPanel && (
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground whitespace-nowrap"
-        >
-          اضغط مع الاستمرار
-        </motion.p>
-      )}
     </motion.div>
   );
 };

@@ -471,38 +471,21 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
               )}
             </>
           )}
-          {/* Title for pages with back button */}
-          {backButton && (
-            <h1 className="font-bold text-base text-foreground flex flex-col gap-0.5 relative flex-1 min-w-0">
-              <AnimatePresence mode="wait">
-                {backButton && isScrolled ? (
-                  <div className="relative flex-1 min-w-0 overflow-visible">
-                    <motion.span
-                      key="scrolled-title"
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -5 }}
-                      className="font-bold text-sm text-foreground transition-all duration-300 whitespace-nowrap block"
-                    >
-                      {title}
-                    </motion.span>
-                  </div>
-                ) : (
-                  <motion.span
-                    key={titleKey}
-                    initial={{ opacity: 0.8 }}
-                    animate={{ opacity: 1 }}
-                    transition={{
-                      duration: 0.2,
-                      ease: "easeOut",
-                    }}
-                    className="bg-primary/10 text-primary px-3 py-1.5 rounded-lg text-sm inline-block"
-                  >
-                    {mode === "requests" ? "إنشاء الطلبات" : "تقديم العروض"}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </h1>
+          {/* Title for pages with back button - only shows when scrolled */}
+          {backButton && isScrolled && (
+            <div className="flex items-center gap-0.5 relative flex-1 min-w-0">
+              <motion.div
+                key="scrolled-title"
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                className="px-4 py-2 rounded-full bg-card/80 backdrop-blur-sm border border-border shadow-lg"
+              >
+                <span className="font-bold text-sm text-foreground whitespace-nowrap block">
+                  {title}
+                </span>
+              </motion.div>
+            </div>
           )}
         </div>
       </div>
@@ -576,12 +559,12 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   ease: [0.4, 0, 1, 1],
                 }
               }}
-              className="relative flex items-center gap-2 h-11 px-4 rounded-xl group active:scale-95 bg-primary/10 border border-primary/30 hover:border-primary/50 hover:bg-primary/15 overflow-hidden"
+              className="relative flex items-center gap-2 h-10 px-4 rounded-full group active:scale-95 bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card overflow-hidden"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
               {/* Content */}
-              <span className="relative z-10 text-sm font-medium text-primary whitespace-nowrap">
+              <span className="relative z-10 text-sm font-medium text-foreground whitespace-nowrap">
                 قدّم عرض
               </span>
               <motion.div
@@ -598,7 +581,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                 <ChevronsDown 
                   size={18} 
                   strokeWidth={2.5}
-                  className="text-primary"
+                  className="text-foreground"
                 />
               </motion.div>
             </motion.button>
@@ -1026,8 +1009,17 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
 
   return (
     <>
-      <div className={transparent ? "" : "sticky top-0 z-50 px-4 bg-card/95 backdrop-blur-lg shrink-0"}>
-        <div className={transparent ? "" : "flex flex-col"}>
+      <div className={transparent ? "" : "sticky top-0 z-50 shrink-0 relative"}>
+        {/* تدريج من الأعلى - يغطي الهيدر ويمتد للأسفل */}
+        {!transparent && (
+          <div 
+            className="absolute inset-x-0 top-0 h-32 pointer-events-none z-0"
+            style={{
+              background: 'linear-gradient(to bottom, hsl(var(--background)) 0%, hsl(var(--background) / 0.95) 25%, hsl(var(--background) / 0.7) 50%, hsl(var(--background) / 0.3) 75%, transparent 100%)'
+            }}
+          />
+        )}
+        <div className={transparent ? "" : "flex flex-col px-4 relative z-10"}>
           {headerContent}
         </div>
       </div>

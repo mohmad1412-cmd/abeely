@@ -823,7 +823,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   e.stopPropagation();
                   setIsFiltersPopupOpen(true);
                 }}
-                className={`relative w-8 h-8 flex items-center justify-center rounded-full transition-all shrink-0 ${
+                className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-all shrink-0 ${
                   (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax)
                     ? 'bg-primary text-white' 
                     : 'text-muted-foreground hover:text-primary hover:bg-secondary/50'
@@ -935,7 +935,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           }
                           setViewMode("all");
                         }}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-3 px-4 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1.5 ${
                           viewMode === "all" && !hasActiveFilters
                             ? "text-white"
                             : "text-muted-foreground hover:text-foreground"
@@ -952,7 +952,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           }
                           setViewMode("interests");
                         }}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-3 px-4 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1.5 ${
                           viewMode === "interests" && !hasActiveFilters
                             ? "text-white"
                             : "text-muted-foreground hover:text-foreground"
@@ -982,7 +982,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     setTimeout(() => searchInputRef.current?.focus(), 100);
                   }
                 }}
-                className={`relative w-8 h-8 flex items-center justify-center rounded-full transition-colors shrink-0 bg-transparent ${
+                className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-colors shrink-0 bg-transparent ${
                   isSearchInputOpen || searchTerm
                     ? 'text-primary'
                     : 'text-muted-foreground hover:text-primary'
@@ -1259,7 +1259,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         className="fixed z-[99] sm:hidden"
-        style={{ left: 24, bottom: 180 }}
+        style={{ left: 12, bottom: 180 }}
       >
         <motion.button
           onClick={() => setDisplayMode(displayMode === 'grid' ? 'text' : 'grid')}
@@ -1295,17 +1295,17 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 }
               }
             }}
-            className="fixed z-[101] w-[60px] h-[60px] flex items-center justify-center rounded-xl bg-card/95 backdrop-blur-xl border border-border shadow-lg text-foreground hover:bg-primary hover:text-white transition-colors"
+            className="fixed z-[101] w-10 h-10 flex items-center justify-center rounded-xl bg-card/95 backdrop-blur-xl border border-border shadow-lg text-foreground hover:bg-primary hover:text-white transition-colors"
             style={{ 
-              left: 24,
-              bottom: 100,
+              left: 12,
+              bottom: 128,
             }}
           >
             <motion.div
               animate={{ rotate: isAtTop ? 180 : 0 }}
               transition={{ duration: 0.3, ease: "easeInOut" }}
             >
-              <ChevronUp size={24} strokeWidth={2.5} />
+              <ChevronUp size={18} strokeWidth={2.5} />
             </motion.div>
           </motion.button>
         )}

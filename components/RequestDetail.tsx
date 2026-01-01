@@ -45,10 +45,9 @@ import {
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
-import { findApproximateImages } from "../services/geminiService";
 import { AnimatePresence, motion } from "framer-motion";
 import { AVAILABLE_CATEGORIES } from "../data";
-import { verifyGuestPhone, confirmGuestPhone } from "../services/authService";
+import { verifyGuestPhone, confirmGuestPhone, getCurrentUser } from "../services/authService";
 import { markRequestAsViewed, markRequestAsRead, incrementRequestViews } from "../services/requestViewsService";
 import { getRequestShareUrl, copyShareUrl } from "../services/routingService";
 import { createReport, REPORT_REASONS, ReportReason } from "../services/reportsService";
@@ -177,6 +176,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [guestOfferPhone, setGuestOfferPhone] = useState(savedOfferForm?.guestPhone || "");
   const [guestOfferOTP, setGuestOfferOTP] = useState(savedOfferForm?.guestOTP || "");
   const [guestOfferError, setGuestOfferError] = useState<string | null>(null);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   
   // ترجمة رسائل الخطأ من Supabase للعربية
   const translateAuthError = (error: string): string => {
@@ -249,9 +250,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [isGenerating, setIsGenerating] = useState(false);
   const [isListening, setIsListening] = useState(false);
 
-  // Approximate Image Gen State (Mocked)
-  const [isImageGenerating, setIsImageGenerating] = useState(false);
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
 
   // Form State - Initialize from saved form if available
   const [offerPrice, setOfferPrice] = useState(savedOfferForm?.price || "");
@@ -341,6 +339,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   // Custom resize handler for description textarea
   const handleDescResizeStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     
     // Immediate haptic feedback on touch
     if (navigator.vibrate) {
@@ -352,6 +351,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     const startHeight = descTextareaRef.current?.offsetHeight || DESC_MIN_HEIGHT;
 
     const handleMove = (moveEvent: MouseEvent | TouchEvent) => {
+      moveEvent.preventDefault();
+      moveEvent.stopPropagation();
       const currentY = 'touches' in moveEvent ? moveEvent.touches[0].clientY : moveEvent.clientY;
       const delta = currentY - startY;
       const newHeight = Math.max(DESC_MIN_HEIGHT, startHeight + delta);
@@ -364,11 +365,18 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       document.removeEventListener('mouseup', handleEnd);
       document.removeEventListener('touchmove', handleMove);
       document.removeEventListener('touchend', handleEnd);
+      // Re-enable body scroll
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
     };
 
-    document.addEventListener('mousemove', handleMove);
+    // Disable body scroll during resize
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+
+    document.addEventListener('mousemove', handleMove, { passive: false });
     document.addEventListener('mouseup', handleEnd);
-    document.addEventListener('touchmove', handleMove);
+    document.addEventListener('touchmove', handleMove, { passive: false });
     document.addEventListener('touchend', handleEnd);
   }, []);
 
@@ -758,27 +766,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       setShowAIAssist(false);
       setAiInput("");
     }, 1500);
-  };
-
-  // Find Approximate Image
-  const handleFindApproxImage = async () => {
-    if (!offerDescription) {
-      alert("الرجاء كتابة تفاصيل العرض أولاً.");
-      return;
-    }
-    setIsImageGenerating(true);
-    try {
-      const images = await findApproximateImages(
-        request.title + " " + offerDescription,
-      );
-      if (images && images.length > 0) {
-        setGeneratedImage(images[0]);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsImageGenerating(false);
-    }
   };
 
   // Voice Input Logic
@@ -1241,7 +1228,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   <DropdownMenu
                     trigger={
                       <button className="p-1.5 rounded-lg hover:bg-black/5 transition-colors">
-                        <MoreVertical size={18} className="text-muted-foreground" />
+                        <MoreVertical size={20} strokeWidth={2.5} className="text-muted-foreground" />
                       </button>
                     }
                     items={dropdownItems}
@@ -1371,7 +1358,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   <DropdownMenu
                     trigger={
                       <button className="p-1.5 rounded-lg hover:bg-black/5 transition-colors">
-                        <MoreVertical size={18} className="text-muted-foreground" />
+                        <MoreVertical size={20} strokeWidth={2.5} className="text-muted-foreground" />
                       </button>
                     }
                     items={dropdownItems}
@@ -2049,18 +2036,150 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         تقديم عرض
                       </motion.h3>
                       <motion.button
-                        whileHover={false ? { scale: 1.05 } : undefined}
-                        whileTap={false ? { scale: 0.95 } : undefined}
-                        className={`px-4 py-2 rounded-xl text-sm font-bold gap-2 flex items-center transition-colors ${
-                          false
-                            ? "text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 cursor-pointer"
-                            : "text-gray-400 border border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
+                        whileHover={offerPrice && offerTitle && !isSubmittingOffer ? { scale: 1.03 } : {}}
+                        whileTap={{ scale: 0.97 }}
+                        disabled={isSubmittingOffer}
+                        onClick={async () => {
+                          // Validate required fields
+                          const isPriceValid = offerPrice && offerPrice.trim() !== '';
+                          const isTitleValid = offerTitle && offerTitle.trim() !== '';
+                          
+                          if (!isPriceValid || !isTitleValid) {
+                            // Shake required fields
+                            setShakingFields({
+                              price: !isPriceValid,
+                              title: !isTitleValid,
+                            });
+                            
+                            // Haptic feedback
+                            if (navigator.vibrate) {
+                              navigator.vibrate([100, 50, 100, 50, 100]);
+                            }
+                            
+                            // Reset shake after animation
+                            setTimeout(() => {
+                              setShakingFields({ price: false, title: false });
+                            }, 600);
+                            
+                            return;
+                          }
+                          
+                          if (isGuest) {
+                            setGuestOfferVerificationStep('phone');
+                          } else {
+                            // Get current user
+                            const { data: userData } = await supabase.auth.getUser();
+                            if (!userData?.user?.id) {
+                              alert("يرجى تسجيل الدخول أولاً");
+                              return;
+                            }
+                            
+                            setIsSubmittingOffer(true);
+                            
+                            try {
+                              // Upload attachments if any
+                              let uploadedImageUrls: string[] = [];
+                              if (offerAttachments.length > 0) {
+                                setIsUploadingAttachments(true);
+                                // Generate a temporary ID for organizing uploads
+                                const tempId = `${userData.user.id}-${Date.now()}`;
+                                uploadedImageUrls = await uploadOfferAttachments(offerAttachments, tempId);
+                                setIsUploadingAttachments(false);
+                              }
+                              
+                              // Create the offer
+                              const result = await createOffer({
+                                requestId: request.id,
+                                providerId: userData.user.id,
+                                title: offerTitle.trim(),
+                                description: offerDescription.trim() || undefined,
+                                price: offerPrice.trim(),
+                                deliveryTime: offerDuration.trim() || undefined,
+                                location: offerCity.trim() || undefined,
+                                isNegotiable,
+                                images: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
+                              });
+                              
+                              if (result) {
+                                // Haptic feedback - positive send pattern
+                                if (navigator.vibrate) {
+                                  navigator.vibrate([30, 50, 30]);
+                                }
+                                
+                                setOfferSubmitted(true);
+                                
+                                // Notify parent that offer was created (to update myOffers state)
+                                if (onOfferCreated) {
+                                  onOfferCreated();
+                                }
+                                
+                                // Reset form
+                                setOfferPrice("");
+                                setOfferTitle("");
+                                setOfferDescription("");
+                                setOfferDuration("");
+                                setOfferCity("");
+                                setOfferAttachments([]);
+                                setSelectedImageUrls([]);
+                                setSearchedImages([]);
+                                setSelectedSearchImages(new Set());
+                                
+                                // Show success message
+                                setTimeout(() => {
+                                  setOfferSubmitted(false);
+                                  // Optionally navigate back or refresh
+                                }, 2000);
+                              } else {
+                                alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
+                              }
+                            } catch (err) {
+                              console.error("Submit offer error:", err);
+                              alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
+                            } finally {
+                              setIsSubmittingOffer(false);
+                              setIsUploadingAttachments(false);
+                            }
+                          }
+                        }}
+                        className={`relative px-5 py-2.5 rounded-xl text-sm font-bold gap-2 flex items-center transition-all overflow-visible ${
+                          offerPrice && offerTitle && !isSubmittingOffer
+                            ? "bg-primary text-white hover:shadow-lg"
+                            : "bg-primary/30 text-primary border border-primary/30 cursor-not-allowed"
                         }`}
-                        onClick={() => false && setShowAIAssist(true)}
-                        disabled={!false}
-                        title={!false ? "الذكاء الاصطناعي غير متصل حالياً" : ""}
                       >
-                        <Sparkles size={18} /> مساعد العروض الذكي
+                        {/* Ping Ring - Only when ready to submit */}
+                        {offerPrice && offerTitle && !isSubmittingOffer && !offerSubmitted && (
+                          <>
+                            <motion.span
+                              className="absolute -inset-0.5 rounded-xl border-2 border-primary pointer-events-none"
+                              animate={{
+                                scale: [1, 1.1, 1.15],
+                                opacity: [0.6, 0.3, 0],
+                              }}
+                              transition={{ 
+                                duration: 1.5, 
+                                repeat: Infinity, 
+                                ease: "easeOut"
+                              }}
+                            />
+                          </>
+                        )}
+                        {isSubmittingOffer ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" />
+                            {isUploadingAttachments ? "جاري الرفع..." : "جاري الإرسال..."}
+                          </>
+                        ) : offerSubmitted ? (
+                          <>
+                            <Check size={16} />
+                            تم الإرسال!
+                          </>
+                        ) : (
+                          <>
+                            إرسال العرض
+                            <Send size={16} className="mr-1 -rotate-90" />
+                          </>
+                        )}
                       </motion.button>
                     </div>
 
@@ -2095,10 +2214,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         />
                         <label
                           htmlFor="price"
-                          className={`pointer-events-none absolute right-3 transition-all duration-200 flex items-center gap-1 whitespace-nowrap ${
+                          className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
                             offerPrice || isPriceFocused
-                              ? "-top-2 right-2 bg-card px-1 text-[11px] font-bold"
-                              : "top-3 text-sm"
+                              ? "-top-2.5 right-2 bg-card px-1 text-[10px] font-bold max-w-[calc(100%-8px)] overflow-hidden"
+                              : "top-3 right-3 text-sm whitespace-nowrap"
                           } ${
                             shakingFields.price 
                               ? "text-red-500" 
@@ -2107,8 +2226,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                 : "text-muted-foreground"
                           }`}
                         >
-                          <span className="truncate">السعر (ر.س) *</span>
-                          {offerPrice && !isPriceFocused && !shakingFields.price && <Check size={12} className="text-primary shrink-0" />}
+                          <span className="truncate">السعر *</span>
+                          {offerPrice && !isPriceFocused && !shakingFields.price && <Check size={10} className="text-primary shrink-0" />}
                         </label>
                       </motion.div>
 
@@ -2128,14 +2247,14 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         />
                         <label
                           htmlFor="duration"
-                          className={`pointer-events-none absolute right-3 transition-all duration-200 flex items-center gap-1 ${
+                          className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
                             offerDuration || isDurationFocused
-                              ? "-top-2 right-2 bg-card px-1 text-[11px] text-primary font-bold"
-                              : "top-3 text-sm text-muted-foreground"
+                              ? "-top-2.5 right-2 bg-card px-1 text-[10px] text-primary font-bold max-w-[calc(100%-8px)] overflow-hidden"
+                              : "top-3 right-3 text-sm text-muted-foreground whitespace-nowrap"
                           }`}
                         >
-                          مدة التنفيذ
-                          {offerDuration && !isDurationFocused && <Check size={12} className="text-primary" />}
+                          <span className="truncate">المدة</span>
+                          {offerDuration && !isDurationFocused && <Check size={10} className="text-primary shrink-0" />}
                         </label>
                       </div>
 
@@ -2155,13 +2274,13 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         />
                         <label
                           htmlFor="city"
-                          className={`pointer-events-none absolute right-3 transition-all duration-200 flex items-center gap-1 ${
+                          className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
                             offerCity || isCityFocused
-                              ? "-top-2 right-2 bg-card px-1 text-[11px] text-primary font-bold"
-                              : "top-3 text-sm text-muted-foreground"
+                              ? "-top-2.5 right-2 bg-card px-1 text-[10px] text-primary font-bold max-w-[calc(100%-8px)] overflow-hidden"
+                              : "top-3 right-3 text-sm text-muted-foreground whitespace-nowrap"
                           }`}
                         >
-                          المدينة
+                          <span className="truncate">المدينة</span>
                           {offerCity && !isCityFocused && <Check size={12} className="text-primary" />}
                         </label>
                       </div>
@@ -2196,10 +2315,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       />
                       <label
                         htmlFor="offerTitle"
-                        className={`pointer-events-none absolute right-3 transition-all duration-200 flex items-center gap-1 ${
+                        className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
                           offerTitle || isTitleFocused
-                            ? "-top-2 right-2 bg-card px-1 text-[11px] font-bold"
-                            : "top-3 text-sm"
+                            ? "-top-2.5 right-2 bg-card px-1 text-[10px] font-bold max-w-[calc(100%-16px)] overflow-hidden"
+                            : "top-3 right-3 text-sm whitespace-nowrap"
                         } ${
                           shakingFields.title 
                             ? "text-red-500" 
@@ -2208,8 +2327,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                               : "text-muted-foreground"
                         }`}
                       >
-                        عنوان العرض *
-                        {offerTitle && !isTitleFocused && !shakingFields.title && <Check size={12} className="text-primary" />}
+                        <span className="truncate">عنوان العرض *</span>
+                        {offerTitle && !isTitleFocused && !shakingFields.title && <Check size={10} className="text-primary shrink-0" />}
                       </label>
                     </motion.div>
 
@@ -2232,14 +2351,14 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       />
                       <label
                         htmlFor="offerDesc"
-                        className={`pointer-events-none absolute right-3 transition-all duration-200 flex items-center gap-1 z-20 ${
+                        className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 z-20 ${
                           offerDescription || isDescriptionFocused
-                            ? "-top-2 right-2 bg-card px-1 text-[11px] text-primary font-bold"
-                            : "top-2.5 text-sm text-muted-foreground"
+                            ? "-top-2.5 right-2 bg-card px-1 text-[10px] text-primary font-bold max-w-[calc(100%-16px)] overflow-hidden"
+                            : "top-2.5 right-3 text-sm text-muted-foreground whitespace-nowrap"
                         }`}
                       >
-                        تفاصيل العرض
-                        {offerDescription && !isDescriptionFocused && <Check size={12} className="text-primary" />}
+                        <span className="truncate">تفاصيل العرض</span>
+                        {offerDescription && !isDescriptionFocused && <Check size={10} className="text-primary shrink-0" />}
                       </label>
                       
                       {/* منطقة السحب في الحد السفلي كامل العرض */}
@@ -2344,47 +2463,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                               رفع ملف/صورة
                             </span>
                           </div>
-                          {/* Search Image Box */}
-                          <div
-                            onClick={handleFindApproxImage}
-                            className="flex-1 flex flex-col items-center justify-center h-24 bg-background border border-border rounded-lg cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
-                          >
-                            {isImageGenerating ? (
-                              <Loader2
-                                size={28}
-                                className="animate-spin text-indigo-500"
-                              />
-                            ) : (
-                              <ImageIcon
-                                size={28}
-                                className="text-indigo-500 mb-2"
-                              />
-                            )}
-                            <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">
-                              بحث صورة تقريبية
-                            </span>
-                          </div>
                         </div>
-
-                        {/* Generated Image Preview */}
-                        {generatedImage && (
-                          <div className="relative w-full h-48 rounded-lg overflow-hidden border border-border bg-background mt-3">
-                            <img
-                              src={generatedImage}
-                              alt="Reference"
-                              className="w-full h-full object-cover"
-                            />
-                            <button
-                              onClick={() => setGeneratedImage(null)}
-                              className="absolute top-2 right-2 bg-black/60 text-white p-1.5 rounded-full hover:bg-black/80"
-                            >
-                              <X size={18} />
-                            </button>
-                            <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[11px] px-3 py-1 rounded-full backdrop-blur-sm">
-                              صورة تقريبية من البحث
-                            </div>
-                          </div>
-                        )}
 
                         {/* Hidden File Input */}
                         <input
@@ -2417,7 +2496,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     </div>
 
                     {/* Negotiable Checkbox */}
-                    <div className="mb-8">
+                    <div>
                       <label className="flex items-center gap-3 cursor-pointer group select-none p-2 rounded-lg hover:bg-secondary/50 transition-colors">
                         <div className="relative flex items-center">
                           <input
@@ -2441,176 +2520,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         </div>
                       </label>
                     </div>
-
-                    <motion.div 
-                      className="flex justify-end"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.3 }}
-                    >
-                      <motion.button
-                        whileHover={offerPrice && offerTitle && !isSubmittingOffer ? { scale: 1.03, y: -2 } : {}}
-                        whileTap={{ scale: 0.97 }}
-                        disabled={isSubmittingOffer}
-                        onClick={async () => {
-                          // Validate required fields
-                          const isPriceValid = offerPrice && offerPrice.trim() !== '';
-                          const isTitleValid = offerTitle && offerTitle.trim() !== '';
-                          
-                          if (!isPriceValid || !isTitleValid) {
-                            // Shake required fields
-                            setShakingFields({
-                              price: !isPriceValid,
-                              title: !isTitleValid,
-                            });
-                            
-                            // Haptic feedback
-                            if (navigator.vibrate) {
-                              navigator.vibrate([100, 50, 100, 50, 100]);
-                            }
-                            
-                            // Reset shake after animation
-                            setTimeout(() => {
-                              setShakingFields({ price: false, title: false });
-                            }, 600);
-                            
-                            return;
-                          }
-                          
-                          if (isGuest) {
-                            setGuestOfferVerificationStep('phone');
-                          } else {
-                            // Get current user
-                            const { data: userData } = await supabase.auth.getUser();
-                            if (!userData?.user?.id) {
-                              alert("يرجى تسجيل الدخول أولاً");
-                              return;
-                            }
-                            
-                            setIsSubmittingOffer(true);
-                            
-                            try {
-                              // Upload attachments if any
-                              let uploadedImageUrls: string[] = [];
-                              if (offerAttachments.length > 0) {
-                                setIsUploadingAttachments(true);
-                                // Generate a temporary ID for organizing uploads
-                                const tempId = `${userData.user.id}-${Date.now()}`;
-                                uploadedImageUrls = await uploadOfferAttachments(offerAttachments, tempId);
-                                setIsUploadingAttachments(false);
-                              }
-                              
-                              // Add generated image if exists
-                              if (generatedImage) {
-                                uploadedImageUrls.push(generatedImage);
-                              }
-                              
-                              // Create the offer
-                              const result = await createOffer({
-                                requestId: request.id,
-                                providerId: userData.user.id,
-                                title: offerTitle.trim(),
-                                description: offerDescription.trim() || undefined,
-                                price: offerPrice.trim(),
-                                deliveryTime: offerDuration.trim() || undefined,
-                                location: offerCity.trim() || undefined,
-                                isNegotiable,
-                                images: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
-                              });
-                              
-                              if (result) {
-                                // Haptic feedback - positive send pattern
-                                if (navigator.vibrate) {
-                                  navigator.vibrate([30, 50, 30]);
-                                }
-                                
-                                setOfferSubmitted(true);
-                                
-                                // Notify parent that offer was created (to update myOffers state)
-                                if (onOfferCreated) {
-                                  onOfferCreated();
-                                }
-                                
-                                // Reset form
-                                setOfferPrice("");
-                                setOfferTitle("");
-                                setOfferDescription("");
-                                setOfferDuration("");
-                                setOfferCity("");
-                                setOfferAttachments([]);
-                                setGeneratedImage(null);
-                                
-                                // Show success message
-                                setTimeout(() => {
-                                  setOfferSubmitted(false);
-                                  // Optionally navigate back or refresh
-                                }, 2000);
-                              } else {
-                                alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
-                              }
-                            } catch (err) {
-                              console.error("Submit offer error:", err);
-                              alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
-                            } finally {
-                              setIsSubmittingOffer(false);
-                              setIsUploadingAttachments(false);
-                            }
-                          }
-                        }}
-                        className={`relative w-full md:w-auto px-12 h-12 text-base font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 overflow-visible ${
-                          offerPrice && offerTitle && !isSubmittingOffer
-                            ? "bg-primary text-white hover:shadow-xl"
-                            : "bg-primary/30 text-primary border-2 border-primary/30 cursor-not-allowed"
-                        }`}
-                      >
-                        {/* Ping Ring - Only when ready to submit */}
-                        {offerPrice && offerTitle && !isSubmittingOffer && !offerSubmitted && (
-                          <>
-                            <motion.span
-                              className="absolute -inset-1 rounded-xl border-[3px] border-primary pointer-events-none"
-                              animate={{
-                                scale: [1, 1.15, 1.25],
-                                opacity: [0.7, 0.3, 0],
-                              }}
-                              transition={{ 
-                                duration: 1.8, 
-                                repeat: Infinity, 
-                                ease: "easeOut"
-                              }}
-                            />
-                            <motion.span
-                              className="absolute -inset-0.5 rounded-xl border-2 border-primary/80 pointer-events-none"
-                              animate={{
-                                scale: [1, 1.08, 1.12],
-                                opacity: [0.8, 0.4, 0],
-                              }}
-                              transition={{ 
-                                duration: 1.8, 
-                                repeat: Infinity, 
-                                ease: "easeOut",
-                                delay: 0.3
-                              }}
-                            />
-                          </>
-                        )}
-                        {isSubmittingOffer ? (
-                          <>
-                            <Loader2 size={20} className="animate-spin" />
-                            {isUploadingAttachments ? "جاري رفع المرفقات..." : "جاري الإرسال..."}
-                          </>
-                        ) : offerSubmitted ? (
-                          <>
-                            <Check size={20} />
-                            تم إرسال العرض!
-                          </>
-                        ) : (
-                          <>
-                            إرسال العرض
-                            <Send size={20} className="ml-2 -rotate-90" />
-                          </>
-                        )}
-                      </motion.button>
-                    </motion.div>
                   </div>
                 )}
 
@@ -2644,7 +2553,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   <p className="text-sm text-muted-foreground text-right">
                     لتقديم عرض، نحتاج للتحقق من رقم جوالك. سيتم إرسال رمز تحقق على رقمك.
                   </p>
-                  <div className="relative">
+                  <div className={`relative flex items-center gap-2 border-2 rounded-lg bg-background px-4 h-12 focus-within:border-primary transition-all ${guestOfferError ? 'border-red-500' : 'border-border'}`}>
+                    <span className="text-muted-foreground font-medium shrink-0">+966</span>
                     <input
                       type="tel"
                       value={guestOfferPhone}
@@ -2652,13 +2562,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         setGuestOfferPhone(e.target.value);
                         setGuestOfferError(null);
                       }}
-                      placeholder="5XX XXX XXX"
-                      className={`w-full h-12 px-4 pr-16 text-right rounded-lg border-2 bg-background text-base outline-none transition-all focus:border-primary ${
-                        guestOfferError ? 'border-red-500' : 'border-border'
-                      }`}
+                      placeholder="5XXXXXXXX"
+                      className="flex-1 h-full bg-transparent text-base outline-none text-left"
                       dir="ltr"
+                      autoFocus
                     />
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">+966</span>
                   </div>
                   
                   {/* عرض رسالة الخطأ */}
@@ -2715,6 +2623,24 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       إلغاء
                     </button>
                   </div>
+                  
+                  {/* نص الموافقة على الشروط */}
+                  <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
+                    بتسجيلك للدخول فأنت توافق على{' '}
+                    <button 
+                      onClick={() => setShowTermsModal(true)}
+                      className="text-primary hover:underline font-medium"
+                    >
+                      شروط الاستخدام
+                    </button>
+                    {' '}و{' '}
+                    <button 
+                      onClick={() => setShowPrivacyModal(true)}
+                      className="text-primary hover:underline font-medium"
+                    >
+                      سياسة الخصوصية
+                    </button>
+                  </p>
                 </div>
               )}
               
@@ -2737,6 +2663,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     }`}
                     dir="ltr"
                     maxLength={4}
+                    autoFocus
                   />
                   
                   {/* عرض رسالة الخطأ */}
@@ -2776,7 +2703,81 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           }
                           setGuestOfferVerificationStep('none');
                           setGuestOfferError(null);
-                          // TODO: Submit offer
+                          
+                          // Submit offer after successful verification
+                          try {
+                            // Get the now-logged-in user and ensure profile exists
+                            const userProfile = await getCurrentUser();
+                            if (!userProfile?.id) {
+                              setGuestOfferError("فشل تسجيل الدخول. حاول مرة أخرى.");
+                              return;
+                            }
+                            
+                            const userId = userProfile.id;
+                            
+                            setIsSubmittingOffer(true);
+                            
+                            // Upload attachments if any
+                            let uploadedImageUrls: string[] = [];
+                            if (offerAttachments.length > 0) {
+                              setIsUploadingAttachments(true);
+                              const tempId = `${userId}-${Date.now()}`;
+                              uploadedImageUrls = await uploadOfferAttachments(offerAttachments, tempId);
+                              setIsUploadingAttachments(false);
+                            }
+                            
+                            // Create the offer
+                            const offerResult = await createOffer({
+                              requestId: request.id,
+                              providerId: userId,
+                              title: offerTitle.trim(),
+                              description: offerDescription.trim() || undefined,
+                              price: offerPrice.trim(),
+                              deliveryTime: offerDuration.trim() || undefined,
+                              location: offerCity.trim() || undefined,
+                              isNegotiable,
+                              images: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
+                            });
+                            
+                            if (offerResult) {
+                              // Haptic feedback - success
+                              if (navigator.vibrate) {
+                                navigator.vibrate([30, 50, 30]);
+                              }
+                              
+                              setOfferSubmitted(true);
+                              
+                              // Notify parent
+                              if (onOfferCreated) {
+                                onOfferCreated();
+                              }
+                              
+                              // Reset form
+                              setOfferPrice("");
+                              setOfferTitle("");
+                              setOfferDescription("");
+                              setOfferDuration("");
+                              setOfferCity("");
+                              setOfferAttachments([]);
+                              setSelectedImageUrls([]);
+                              setSearchedImages([]);
+                              setSelectedSearchImages(new Set());
+                              setGuestOfferPhone("");
+                              setGuestOfferOTP("");
+                              
+                              setTimeout(() => {
+                                setOfferSubmitted(false);
+                              }, 2000);
+                            } else {
+                              setGuestOfferError("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
+                            }
+                          } catch (err) {
+                            console.error("Submit offer error:", err);
+                            setGuestOfferError("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
+                          } finally {
+                            setIsSubmittingOffer(false);
+                            setIsUploadingAttachments(false);
+                          }
                         } else {
                           // ترجمة رسالة الخطأ للعربية
                           const translatedError = translateAuthError(result.error || "رمز التحقق غير صحيح");
@@ -2824,6 +2825,160 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   </button>
                 </div>
               )}
+            </motion.div>
+          </div>,
+          document.body
+        )}
+
+        {/* Terms of Service Modal */}
+        {showTermsModal && ReactDOM.createPortal(
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card rounded-2xl max-w-lg w-full max-h-[80vh] shadow-2xl border border-border flex flex-col"
+            >
+              <div className="flex items-center justify-between p-4 border-b border-border">
+                <h3 className="text-lg font-bold">شروط الاستخدام</h3>
+                <button
+                  onClick={() => setShowTermsModal(false)}
+                  className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-5 overflow-y-auto text-sm text-muted-foreground space-y-4 leading-relaxed text-right">
+                <div className="text-center mb-6">
+                  <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                    <FileText size={32} className="text-primary" />
+                  </div>
+                  <h4 className="font-bold text-foreground text-base">شروط استخدام أبيلي</h4>
+                  <p className="text-xs text-muted-foreground mt-1">آخر تحديث: يناير 2026</p>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <h5 className="font-bold text-foreground mb-2">1. القبول بالشروط</h5>
+                    <p>باستخدامك لمنصة أبيلي، فإنك توافق على الالتزام بهذه الشروط والأحكام. إذا كنت لا توافق على أي جزء منها، يرجى عدم استخدام المنصة.</p>
+                  </div>
+                  
+                  <div>
+                    <h5 className="font-bold text-foreground mb-2">2. طبيعة الخدمة</h5>
+                    <p>أبيلي منصة وسيطة تربط بين طالبي الخدمات ومزوديها. نحن لسنا طرفاً في أي اتفاق يتم بين المستخدمين، ولا نتحمل مسؤولية جودة الخدمات المقدمة.</p>
+                  </div>
+                  
+                  <div>
+                    <h5 className="font-bold text-foreground mb-2">3. التزامات المستخدم</h5>
+                    <ul className="list-disc list-inside space-y-1 mr-2">
+                      <li>تقديم معلومات صحيحة ودقيقة</li>
+                      <li>عدم نشر محتوى مخالف أو مسيء</li>
+                      <li>احترام الآخرين والتواصل بلباقة</li>
+                      <li>عدم استخدام المنصة لأغراض غير مشروعة</li>
+                    </ul>
+                  </div>
+                  
+                  <div>
+                    <h5 className="font-bold text-foreground mb-2">4. المسؤولية</h5>
+                    <p>المنصة غير مسؤولة عن أي خلافات تنشأ بين المستخدمين. ننصح بالتحقق من هوية الطرف الآخر والاتفاق على التفاصيل قبل البدء.</p>
+                  </div>
+                  
+                  <div>
+                    <h5 className="font-bold text-foreground mb-2">5. حقوق الملكية</h5>
+                    <p>جميع حقوق الملكية الفكرية للمنصة محفوظة. يُحظر نسخ أو توزيع أي محتوى دون إذن كتابي.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 border-t border-border">
+                <button
+                  onClick={() => setShowTermsModal(false)}
+                  className="w-full py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary/90 transition-colors"
+                >
+                  فهمت، موافق
+                </button>
+              </div>
+            </motion.div>
+          </div>,
+          document.body
+        )}
+
+        {/* Privacy Policy Modal */}
+        {showPrivacyModal && ReactDOM.createPortal(
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card rounded-2xl max-w-lg w-full max-h-[80vh] shadow-2xl border border-border flex flex-col"
+            >
+              <div className="flex items-center justify-between p-4 border-b border-border">
+                <h3 className="text-lg font-bold">سياسة الخصوصية</h3>
+                <button
+                  onClick={() => setShowPrivacyModal(false)}
+                  className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-5 overflow-y-auto text-sm text-muted-foreground space-y-4 leading-relaxed text-right">
+                <div className="text-center mb-6">
+                  <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                    <Lock size={32} className="text-primary" />
+                  </div>
+                  <h4 className="font-bold text-foreground text-base">سياسة خصوصية أبيلي</h4>
+                  <p className="text-xs text-muted-foreground mt-1">آخر تحديث: يناير 2026</p>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <h5 className="font-bold text-foreground mb-2">1. البيانات التي نجمعها</h5>
+                    <ul className="list-disc list-inside space-y-1 mr-2">
+                      <li>رقم الجوال للتحقق من الهوية</li>
+                      <li>معلومات الطلبات والعروض</li>
+                      <li>المحادثات بين المستخدمين</li>
+                      <li>بيانات الاستخدام لتحسين الخدمة</li>
+                    </ul>
+                  </div>
+                  
+                  <div>
+                    <h5 className="font-bold text-foreground mb-2">2. كيف نستخدم بياناتك</h5>
+                    <ul className="list-disc list-inside space-y-1 mr-2">
+                      <li>تقديم الخدمة وتحسينها</li>
+                      <li>إرسال إشعارات مهمة</li>
+                      <li>حماية المستخدمين من الاحتيال</li>
+                      <li>تحليل الاستخدام لتطوير المنصة</li>
+                    </ul>
+                  </div>
+                  
+                  <div>
+                    <h5 className="font-bold text-foreground mb-2">3. مشاركة البيانات</h5>
+                    <p>لا نشارك بياناتك الشخصية مع أطراف ثالثة إلا في الحالات التالية:</p>
+                    <ul className="list-disc list-inside space-y-1 mr-2 mt-2">
+                      <li>بموافقتك الصريحة</li>
+                      <li>للامتثال للقوانين السارية</li>
+                      <li>لحماية حقوقنا أو سلامة المستخدمين</li>
+                    </ul>
+                  </div>
+                  
+                  <div>
+                    <h5 className="font-bold text-foreground mb-2">4. أمان البيانات</h5>
+                    <p>نستخدم تقنيات تشفير متقدمة لحماية بياناتك. نحتفظ بالبيانات فقط للمدة اللازمة لتقديم الخدمة.</p>
+                  </div>
+                  
+                  <div>
+                    <h5 className="font-bold text-foreground mb-2">5. حقوقك</h5>
+                    <p>يمكنك طلب الاطلاع على بياناتك أو تعديلها أو حذفها في أي وقت من خلال التواصل معنا.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 border-t border-border">
+                <button
+                  onClick={() => setShowPrivacyModal(false)}
+                  className="w-full py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary/90 transition-colors"
+                >
+                  فهمت، موافق
+                </button>
+              </div>
             </motion.div>
           </div>,
           document.body

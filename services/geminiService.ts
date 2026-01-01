@@ -54,10 +54,55 @@ export const sendMessageToGemini = async (
 };
 
 /**
- * Simulate finding approximate images based on keywords.
- * In a real app, this would use a Search API or a database of categories.
+ * Find approximate images using the image-search Edge Function.
+ * Falls back to placeholder if the function is not available.
  */
 export const findApproximateImages = async (prompt: string): Promise<string[]> => {
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  // If Supabase is not configured, use fallback
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.warn("Supabase not configured, using fallback images");
+    return getFallbackImages(prompt);
+  }
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/image-search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        query: prompt,
+        count: 10,
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn("Image search failed, using fallback");
+      return getFallbackImages(prompt);
+    }
+
+    const result = await response.json();
+    
+    if (result.success && result.images && result.images.length > 0) {
+      // Return the first image URL (or thumbnail for faster loading)
+      return result.images.map((img: { url: string; thumbnail: string }) => img.url || img.thumbnail);
+    }
+
+    return getFallbackImages(prompt);
+  } catch (error) {
+    console.error("Image search error:", error);
+    return getFallbackImages(prompt);
+  }
+};
+
+/**
+ * Fallback images based on keywords (used when Edge Function is unavailable)
+ */
+function getFallbackImages(prompt: string): string[] {
   const keywords = prompt.toLowerCase();
   const images: string[] = [];
 
@@ -69,9 +114,19 @@ export const findApproximateImages = async (prompt: string): Promise<string[]> =
      images.push('https://images.unsplash.com/photo-1626785774573-4b799314346d?auto=format&fit=crop&w=400&q=80');
   } else if (keywords.includes('house') || keywords.includes('منزل') || keywords.includes('building') || keywords.includes('عقار')) {
      images.push('https://images.unsplash.com/photo-1580587771525-78b9dba3b91d?auto=format&fit=crop&w=400&q=80');
+  } else if (keywords.includes('تنظيف') || keywords.includes('clean')) {
+     images.push('https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=400&q=80');
+  } else if (keywords.includes('سباك') || keywords.includes('plumb')) {
+     images.push('https://images.unsplash.com/photo-1585704032915-c3400ca199e7?auto=format&fit=crop&w=400&q=80');
+  } else if (keywords.includes('كهرب') || keywords.includes('electric')) {
+     images.push('https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=400&q=80');
+  } else if (keywords.includes('سيارة') || keywords.includes('car')) {
+     images.push('https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=400&q=80');
+  } else if (keywords.includes('مكيف') || keywords.includes('تكييف') || keywords.includes('ac')) {
+     images.push('https://images.unsplash.com/photo-1631545806609-5bf7e46da9f0?auto=format&fit=crop&w=400&q=80');
   } else {
      images.push(`https://picsum.photos/400/300?random=${Math.floor(Math.random() * 1000)}`);
   }
 
   return images;
-};
+}

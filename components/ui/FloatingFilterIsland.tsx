@@ -225,10 +225,10 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
       <motion.div
         layoutId="shared-filter-island"
         layout
-        className="flex items-center bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border relative mx-auto shadow-lg origin-center w-auto"
+        className="flex items-center justify-between bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border relative shadow-lg origin-center w-full"
         style={{
           minWidth: 280,
-          maxWidth: 400,
+          maxWidth: '100%',
           scale: islandScale,
           gap,
           opacity,
@@ -243,20 +243,10 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
             }}
             className="relative"
           >
-            {/* Separator between filters */}
-            {idx > 0 && (
-              <motion.div 
-                className="absolute right-full top-1/2 -translate-y-1/2 h-5 w-px bg-border/50"
-                style={{
-                  marginRight: separatorMargin,
-                }}
-              />
-            )}
-            
             <motion.button
               onClick={() => toggleDropdown(filter.id)}
               whileTap={{ scale: 0.96 }}
-              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-full transition-all min-w-[100px] ${
+              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-full transition-all ${
                 openDropdownId === filter.id
                   ? "bg-primary/15 text-primary"
                   : "hover:bg-secondary/60 text-foreground"

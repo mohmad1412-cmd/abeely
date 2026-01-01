@@ -76,39 +76,50 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
               {/* Minimalist Dot Indicator with Wave Effect */}
               {isActive && (
                 <>
-                  {/* Wave/Ripple Effect */}
+                  {/* Outer Ripple Wave - Most visible */}
                   <motion.div
-                    className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-primary/50"
-                    initial={{ scale: 1, opacity: 0.8 }}
+                    className="absolute -bottom-0.5 h-2 w-2 rounded-full border-2 border-primary"
+                    initial={{ scale: 0.5, opacity: 1 }}
                     animate={{ 
-                      scale: [1, 3, 4],
-                      opacity: [0.6, 0.2, 0],
+                      scale: [0.5, 4, 6],
+                      opacity: [1, 0.4, 0],
                     }}
                     transition={{ 
-                      duration: 0.8, 
+                      duration: 0.7, 
                       ease: "easeOut",
                     }}
-                    key={activeTab} // Re-trigger on tab change
+                    key={`${activeTab}-ripple`}
                   />
+                  {/* Inner Ripple Wave */}
                   <motion.div
-                    className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-primary/30"
-                    initial={{ scale: 1, opacity: 0.6 }}
+                    className="absolute -bottom-0.5 h-1.5 w-1.5 rounded-full bg-primary/60"
+                    initial={{ scale: 0.5, opacity: 0.9 }}
                     animate={{ 
-                      scale: [1, 2.5, 3.5],
-                      opacity: [0.5, 0.15, 0],
+                      scale: [0.5, 3, 5],
+                      opacity: [0.9, 0.3, 0],
                     }}
                     transition={{ 
-                      duration: 0.6, 
+                      duration: 0.5, 
                       ease: "easeOut",
-                      delay: 0.1,
+                      delay: 0.05,
                     }}
-                    key={`${activeTab}-wave2`}
+                    key={`${activeTab}-wave`}
                   />
-                  {/* Main Dot */}
+                  {/* Main Dot with gentle pulse */}
                   <motion.div
                     layoutId="bottomNavIndicator"
                     className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-primary shadow-[0_0_8px_rgba(30,150,140,0.6)]"
-                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ 
+                      scale: [0.5, 1.4, 1],
+                      opacity: [0, 1, 1],
+                    }}
+                    transition={{ 
+                      scale: { duration: 0.4, ease: "easeOut" },
+                      opacity: { duration: 0.2 },
+                      layout: { type: "spring", stiffness: 500, damping: 30 }
+                    }}
+                    key={`${activeTab}-dot`}
                   />
                 </>
               )}

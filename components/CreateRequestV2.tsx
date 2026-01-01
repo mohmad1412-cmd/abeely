@@ -16,13 +16,17 @@ import {
   User,
   Wrench,
   Calendar,
-  Image,
+  Image as ImageIcon,
   Paperclip,
   Plus,
   Loader2,
   MessageSquare,
   CheckCircle2,
+  RefreshCw,
+  Search,
+  Upload,
 } from "lucide-react";
+import { findApproximateImages } from "../services/geminiService";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
 import { Request } from "../types";
 import Anthropic from "@anthropic-ai/sdk";
@@ -853,6 +857,14 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // ==========================================
+  // Image Search State
+  // ==========================================
+  const [isImageSearching, setIsImageSearching] = useState(false);
+  const [searchedImages, setSearchedImages] = useState<string[]>([]);
+  const [selectedSearchImages, setSelectedSearchImages] = useState<Set<string>>(new Set());
+  const [selectedImageUrls, setSelectedImageUrls] = useState<string[]>([]);
+  
+  // ==========================================
   // Additional fields
   // ==========================================
   const [additionalFields, setAdditionalFields] = useState<AdditionalField[]>([
@@ -1076,6 +1088,57 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     setAdditionalFields((prev) =>
       prev.map((f) => (f.id === id ? { ...f, value } : f))
     );
+  };
+
+  // ==========================================
+  // Image Search Functions
+  // ==========================================
+  const handleImageSearch = async (loadMore = false) => {
+    const searchQuery = title || description;
+    if (!searchQuery) {
+      return;
+    }
+    setIsImageSearching(true);
+    try {
+      const images = await findApproximateImages(searchQuery);
+      if (images && images.length > 0) {
+        if (loadMore) {
+          setSearchedImages(prev => {
+            const newImages = images.filter(img => !prev.includes(img));
+            return [...prev, ...newImages];
+          });
+        } else {
+          setSearchedImages(images);
+          setSelectedSearchImages(new Set());
+        }
+      }
+    } catch (e) {
+      console.error("Image search error:", e);
+    } finally {
+      setIsImageSearching(false);
+    }
+  };
+
+  const toggleImageSelection = (imageUrl: string) => {
+    setSelectedSearchImages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(imageUrl)) {
+        newSet.delete(imageUrl);
+      } else {
+        newSet.add(imageUrl);
+      }
+      return newSet;
+    });
+  };
+
+  const addSelectedImagesToAttachments = () => {
+    if (selectedSearchImages.size === 0) return;
+    const selectedUrls = Array.from(selectedSearchImages);
+    setSelectedImageUrls(prev => [...prev, ...selectedUrls]);
+    // Remove selected images from search results (so they don't show as duplicates)
+    setSearchedImages(prev => prev.filter(img => !selectedSearchImages.has(img)));
+    setSelectedSearchImages(new Set());
+    // Keep search results visible - don't clear them
   };
   
   // Celebration state
@@ -1691,7 +1754,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       />
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 pb-24">
+      <div className="flex-1 overflow-y-auto px-4 py-6 pb-56">
         <AnimatePresence mode="wait">
           {/* Clarification Pages */}
           {clarificationPages.length > 0 && !showFinalReview && (
@@ -1730,51 +1793,89 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                 initial={{ opacity: 0, x: 50 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -50 }}
-                className="space-y-4"
+                className="space-y-5"
               >
-                {/* Question */}
+                {/* Question Bubble */}
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center shrink-0 shadow-sm">
                     <Sparkles size={20} className="text-primary" />
                   </div>
-                  <div className="flex-1 bg-card rounded-2xl rounded-tr-sm p-4 border border-border">
-                    <p className="text-foreground leading-relaxed">
+                  <div className="flex-1 bg-gradient-to-br from-card to-secondary/30 rounded-2xl rounded-tr-md p-4 border border-border/50 shadow-sm">
+                    <p className="text-foreground leading-relaxed font-medium">
                       {clarificationPages[currentClarificationPage]?.question}
                     </p>
                   </div>
                 </div>
 
-                {/* Answer Input */}
-                <div>
-                  <textarea
-                    value={clarificationAnswers[clarificationPages[currentClarificationPage]?.question || ''] || ''}
-                    onChange={(e) => {
-                      const question = clarificationPages[currentClarificationPage]?.question || '';
-                      setClarificationAnswers(prev => ({ ...prev, [question]: e.target.value }));
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey && clarificationAnswers[clarificationPages[currentClarificationPage]?.question || '']?.trim()) {
-                        e.preventDefault();
-                        handleClarificationNext();
-                      }
-                    }}
-                    placeholder="اكتب إجابتك هنا..."
-                    className="w-full bg-secondary/50 rounded-2xl p-4 text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 min-h-[120px]"
-                    dir="auto"
-                    autoFocus
-                  />
-                </div>
+                {/* Answer Input - Styled exactly like وصف الطلب field */}
+                {(() => {
+                  const currentAnswer = clarificationAnswers[clarificationPages[currentClarificationPage]?.question || ''] || '';
+                  const hasAnswer = currentAnswer.trim().length > 0;
+                  return (
+                    <motion.div
+                      className={`relative rounded-2xl border-2 transition-all duration-300 ${
+                        hasAnswer
+                          ? "border-emerald-500 bg-card"
+                          : "border-border bg-card hover:border-primary/50"
+                      }`}
+                    >
+                      {/* Label - clickable to focus */}
+                      <div 
+                        className="flex items-center gap-2 px-4 pt-3 pb-1 cursor-text"
+                        onClick={() => {
+                          const textarea = document.getElementById('clarification-answer');
+                          textarea?.focus();
+                        }}
+                      >
+                        <span className={hasAnswer ? "text-emerald-500" : "text-muted-foreground"}>
+                          <MessageSquare size={18} />
+                        </span>
+                        <span className={`text-sm font-medium ${hasAnswer ? "text-emerald-500" : "text-muted-foreground"}`}>
+                          إجابتك
+                          {hasAnswer && (
+                            <motion.span
+                              initial={{ scale: 0, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              className="inline-flex items-center justify-center mr-1"
+                            >
+                              <Check size={14} className="text-emerald-500" />
+                            </motion.span>
+                          )}
+                        </span>
+                      </div>
+                      {/* Textarea */}
+                      <textarea
+                        id="clarification-answer"
+                        value={currentAnswer}
+                        onChange={(e) => {
+                          const question = clarificationPages[currentClarificationPage]?.question || '';
+                          setClarificationAnswers(prev => ({ ...prev, [question]: e.target.value }));
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey && currentAnswer.trim()) {
+                            e.preventDefault();
+                            handleClarificationNext();
+                          }
+                        }}
+                        placeholder="اكتب إجابتك هنا..."
+                        className="w-full bg-transparent px-4 pb-4 pt-1 text-foreground placeholder:text-muted-foreground/60 resize-none focus:outline-none min-h-[120px] text-base"
+                        dir="auto"
+                        autoFocus
+                      />
+                    </motion.div>
+                  );
+                })()}
 
-                {/* Navigation */}
-                <div className="flex items-center justify-between gap-3">
+                {/* Navigation Buttons - Full width, professional look */}
+                <div className="flex items-center gap-3 pt-3">
                   {currentClarificationPage > 0 && (
                     <motion.button
                       onClick={handleClarificationBack}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl text-muted-foreground hover:text-foreground bg-secondary hover:bg-secondary/80 transition-all border border-border font-medium"
                     >
-                      <ChevronRight size={18} />
+                      <ChevronRight size={20} />
                       <span>السابق</span>
                     </motion.button>
                   )}
@@ -1784,21 +1885,21 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                     disabled={!clarificationAnswers[clarificationPages[currentClarificationPage]?.question || '']?.trim() || isAiLoading}
                     whileHover={{ scale: (clarificationAnswers[clarificationPages[currentClarificationPage]?.question || '']?.trim() && !isAiLoading) ? 1.02 : 1 }}
                     whileTap={{ scale: (clarificationAnswers[clarificationPages[currentClarificationPage]?.question || '']?.trim() && !isAiLoading) ? 0.98 : 1 }}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all mr-auto ${
+                    className={`flex-1 flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-base transition-all ${
                       clarificationAnswers[clarificationPages[currentClarificationPage]?.question || '']?.trim() && !isAiLoading
-                        ? 'bg-primary text-white hover:bg-primary/90'
+                        ? 'bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20'
                         : 'bg-secondary text-muted-foreground cursor-not-allowed'
                     }`}
                   >
                     {isAiLoading ? (
                       <>
-                        <Loader2 size={18} className="animate-spin" />
+                        <Loader2 size={20} className="animate-spin" />
                         <span>جاري المعالجة...</span>
                       </>
                     ) : (
                       <>
                         <span>{currentClarificationPage === clarificationPages.length - 1 ? 'إنهاء' : 'التالي'}</span>
-                        <ChevronLeft size={18} />
+                        <ChevronLeft size={20} />
                       </>
                     )}
                   </motion.button>
@@ -2056,22 +2157,19 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           {/* Attachments Field */}
           <motion.div
             className={`relative rounded-2xl border-2 transition-all duration-300 ${
-              attachedFiles.length > 0
+              attachedFiles.length > 0 || selectedImageUrls.length > 0
                 ? "border-emerald-500 bg-card"
                 : "border-border bg-card hover:border-primary/50"
             }`}
           >
             {/* Label */}
-            <div 
-              className="flex items-center gap-2 px-4 pt-3 pb-1 cursor-pointer"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <span className={attachedFiles.length > 0 ? "text-emerald-500" : "text-muted-foreground"}>
+            <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+              <span className={attachedFiles.length > 0 || selectedImageUrls.length > 0 ? "text-emerald-500" : "text-muted-foreground"}>
                 <Paperclip size={18} />
               </span>
-              <span className={`text-sm font-medium ${attachedFiles.length > 0 ? "text-emerald-500" : "text-muted-foreground"}`}>
-                المرفقات
-                {attachedFiles.length > 0 && (
+              <span className={`text-sm font-medium ${attachedFiles.length > 0 || selectedImageUrls.length > 0 ? "text-emerald-500" : "text-muted-foreground"}`}>
+                المرفقات وصور توضيحية
+                {(attachedFiles.length > 0 || selectedImageUrls.length > 0) && (
                   <motion.span
                     initial={{ scale: 0, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
@@ -2081,27 +2179,18 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   </motion.span>
                 )}
               </span>
-              {attachedFiles.length > 0 && (
+              {(attachedFiles.length > 0 || selectedImageUrls.length > 0) && (
                 <span className="text-xs text-muted-foreground mr-auto">
-                  {attachedFiles.length} ملف
+                  {attachedFiles.length + selectedImageUrls.length} ملف
                 </span>
               )}
             </div>
 
             {/* Attachment Area */}
-            <div className="px-4 pb-3">
-              {attachedFiles.length === 0 ? (
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full py-4 border-2 border-dashed border-border rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-all flex flex-col items-center gap-2 text-muted-foreground"
-                >
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Image size={20} className="text-primary" />
-                  </div>
-                  <span className="text-sm">اضغط لإضافة صور أو ملفات</span>
-                </button>
-              ) : (
-                <div className="flex gap-2 flex-wrap">
+            <div className="px-4 pt-2 pb-3">
+              {/* Uploaded Files Preview */}
+              {(attachedFiles.length > 0 || selectedImageUrls.length > 0) && (
+                <div className="flex gap-2 flex-wrap mb-3">
                   {attachedFiles.map((file, index) => {
                     const isImage = file.type.startsWith("image/");
                     const fileUrl = URL.createObjectURL(file);
@@ -2115,11 +2204,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       >
                         <div className="w-20 h-20 rounded-xl overflow-hidden border border-border bg-secondary">
                           {isImage ? (
-                            <img
-                              src={fileUrl}
-                              alt={file.name}
-                              className="w-full h-full object-cover"
-                            />
+                            <img src={fileUrl} alt={file.name} className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
                               <FileText size={24} className="text-muted-foreground" />
@@ -2135,13 +2220,158 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       </motion.div>
                     );
                   })}
-                  {/* Add More Button */}
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-20 h-20 rounded-xl border-2 border-dashed border-border hover:border-primary flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
-                  >
-                    <Plus size={24} />
-                  </button>
+                  {/* Selected Image URLs */}
+                  {selectedImageUrls.map((url, index) => (
+                    <motion.div
+                      key={url + index}
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="relative group"
+                    >
+                      <div className="w-20 h-20 rounded-xl overflow-hidden border border-indigo-300 bg-secondary">
+                        <img src={url} alt="" className="w-full h-full object-cover" />
+                      </div>
+                      <button
+                        onClick={() => setSelectedImageUrls(prev => prev.filter((_, i) => i !== index))}
+                        className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={12} />
+                      </button>
+                      <div className="absolute bottom-0 inset-x-0 bg-indigo-500/80 text-white text-[8px] text-center py-0.5 rounded-b-xl">
+                        بحث
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+
+              {/* Upload Buttons */}
+              <div className="flex gap-3">
+                {/* Upload Box */}
+                <button 
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 flex flex-col items-center justify-center h-24 bg-background border border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                >
+                  <Upload size={28} className="text-primary mb-2" />
+                  <span className="text-xs text-muted-foreground">رفع ملف/صورة</span>
+                </button>
+                
+                {/* Search Image Box */}
+                <button
+                  type="button"
+                  onClick={() => handleImageSearch(false)}
+                  className="flex-1 flex flex-col items-center justify-center h-24 bg-background border border-border rounded-lg cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
+                >
+                  {isImageSearching && searchedImages.length === 0 ? (
+                    <Loader2 size={28} className="animate-spin text-indigo-500" />
+                  ) : (
+                    <Search size={28} className="text-indigo-500 mb-2" />
+                  )}
+                  <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">
+                    بحث صورة من الإنترنت
+                  </span>
+                </button>
+              </div>
+
+              {/* Image Search Results - Horizontal Scrollable */}
+              {searchedImages.length > 0 && (
+                <div className="mt-3 space-y-3">
+                  {/* Header */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">
+                      اختر الصور المناسبة ({selectedSearchImages.size} محددة)
+                    </span>
+                    <button
+                      onClick={() => {
+                        setSearchedImages([]);
+                        setSelectedSearchImages(new Set());
+                      }}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      إغلاق
+                    </button>
+                  </div>
+                  
+                  {/* Horizontal Scroll Container */}
+                  <div className="relative">
+                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+                      {searchedImages.map((imageUrl, index) => {
+                        const isSelected = selectedSearchImages.has(imageUrl);
+                        return (
+                          <motion.div
+                            key={imageUrl + index}
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: index * 0.05 }}
+                            onClick={() => toggleImageSelection(imageUrl)}
+                            className={`relative shrink-0 w-28 h-28 rounded-xl overflow-hidden cursor-pointer border-2 transition-all ${
+                              isSelected 
+                                ? 'border-primary ring-2 ring-primary/30 scale-[1.02]' 
+                                : 'border-border hover:border-primary/50'
+                            }`}
+                          >
+                            <img
+                              src={imageUrl}
+                              alt={`نتيجة ${index + 1}`}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                              onError={(e) => {
+                                // Remove broken image from results
+                                setSearchedImages(prev => prev.filter(img => img !== imageUrl));
+                              }}
+                            />
+                            <div className={`absolute inset-0 transition-colors ${
+                              isSelected ? 'bg-primary/20' : 'hover:bg-black/10'
+                            }`} />
+                            <div className={`absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                              isSelected 
+                                ? 'bg-primary text-white' 
+                                : 'bg-white/80 border border-border'
+                            }`}>
+                              {isSelected && <Check size={14} strokeWidth={3} />}
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                      
+                      {/* Load More Button */}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        onClick={() => !isImageSearching && handleImageSearch(true)}
+                        className={`shrink-0 w-28 h-28 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${
+                          isImageSearching 
+                            ? 'border-indigo-300 bg-indigo-50/50 dark:bg-indigo-950/20' 
+                            : 'border-border hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30'
+                        }`}
+                      >
+                        {isImageSearching ? (
+                          <Loader2 size={24} className="animate-spin text-indigo-500" />
+                        ) : (
+                          <>
+                            <RefreshCw size={20} className="text-indigo-500" />
+                            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                              المزيد
+                            </span>
+                          </>
+                        )}
+                      </motion.div>
+                    </div>
+                  </div>
+                  
+                  {/* Add Selected Button */}
+                  {selectedSearchImages.size > 0 && (
+                    <motion.button
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      onClick={addSelectedImagesToAttachments}
+                      className="w-full py-2.5 rounded-xl bg-primary text-white font-medium text-sm flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors"
+                    >
+                      <Check size={16} />
+                      إضافة {selectedSearchImages.size} صورة للمرفقات
+                    </motion.button>
+                  )}
                 </div>
               )}
             </div>
