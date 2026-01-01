@@ -1308,6 +1308,13 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         const data = response.data;
         setLanguageDetected(data.language_detected);
         
+        // Update title from AI response
+        if (data.final_review?.title) {
+          setTitle(data.final_review.title);
+          setShowTitle(true);
+          addGlow("title");
+        }
+        
         // Update description with reformulated request if available
         if (data.final_review?.reformulated_request) {
           setDescription(data.final_review.reformulated_request);

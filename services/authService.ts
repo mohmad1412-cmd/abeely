@@ -1,16 +1,15 @@
 import { supabase } from './supabaseClient';
 
 // ======================================
-// 🔧 Development Mode - أرقام الاختبار
+// 🔧 Test Phones - أرقام الاختبار
 // ======================================
-// أرقام وهمية للتطوير - تعمل مع رمز 0000
+// أرقام وهمية للتطوير والاختبار - تعمل مع رمز 0000
 // لتفعيل: أي رقم يبدأ بـ 555 مثل 0555555555
-const DEV_MODE = import.meta.env.DEV || import.meta.env.VITE_DEV_MODE === 'true';
+// ملاحظة: تعمل في جميع البيئات للاختبار
 const TEST_PHONE_PREFIX = '555'; // أي رقم يبدأ بـ 555 يعتبر رقم اختبار
 const TEST_OTP_CODE = '0000';
 
 function isTestPhone(phone: string): boolean {
-  if (!DEV_MODE) return false;
   const cleanPhone = phone.replace(/\D/g, '');
   // يقبل 0555... أو 555...
   return cleanPhone.startsWith('0555') || cleanPhone.startsWith('555');

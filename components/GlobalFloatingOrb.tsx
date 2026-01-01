@@ -301,7 +301,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
     }
   };
 
-  // Stop recording
+  // Stop recording (and send)
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       haptics.recordStop();
@@ -311,6 +311,28 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
         console.error("Error stopping recording:", error);
         setIsRecording(false);
       }
+    }
+  };
+  
+  // Cancel recording (stop without sending)
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      haptics.error();
+      try {
+        // Remove the onstop handler to prevent sending
+        mediaRecorderRef.current.onstop = () => {
+          setIsRecording(false);
+          setRecordingTime(0);
+        };
+        mediaRecorderRef.current.stop();
+        // Stop all tracks
+        mediaRecorderRef.current.stream?.getTracks().forEach((t) => t.stop());
+      } catch (error) {
+        console.error("Error canceling recording:", error);
+      }
+      setIsRecording(false);
+      setRecordingTime(0);
+      audioChunksRef.current = [];
     }
   };
 
@@ -474,15 +496,28 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
           </>
         )}
 
-        {/* Recording Timer Badge - only for voice mode */}
+        {/* Recording Timer Badge + Cancel Button - only for voice mode */}
         {mode === "voice" && isRecording && (
           <motion.div
             initial={{ opacity: 0, y: 10, scale: 0.8 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.8 }}
-            className="absolute -top-8 left-1/2 -translate-x-1/2 bg-red-500 text-white text-xs px-3 py-1 rounded-full whitespace-nowrap font-medium"
+            className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-2"
           >
-            {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+            {/* Cancel Button */}
+            <motion.button
+              onClick={cancelRecording}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="w-7 h-7 rounded-full bg-gray-600 text-white flex items-center justify-center shadow-lg"
+            >
+              <X size={14} />
+            </motion.button>
+            
+            {/* Timer */}
+            <div className="bg-red-500 text-white text-xs px-3 py-1 rounded-full whitespace-nowrap font-medium">
+              {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+            </div>
           </motion.div>
         )}
 
