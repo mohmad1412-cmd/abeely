@@ -109,8 +109,6 @@ interface RequestDetailProps {
   savedScrollPosition?: number;
   onScrollPositionChange?: (pos: number) => void;
   // Unified Header Props
-  isSidebarOpen: boolean;
-  setIsSidebarOpen: (open: boolean) => void;
   toggleMode: () => void;
   isModeSwitching: boolean;
   unreadCount: number;
@@ -128,13 +126,13 @@ interface RequestDetailProps {
   onOfferCreated?: () => void; // Callback when a new offer is successfully created
   onArchiveRequest?: (id: string) => void;
   onEditRequest?: (request: Request) => void; // Callback to edit the request
+  onNavigateToProfile?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
   { request, mode, myOffer, onBack, isGuest = false, scrollToOfferSection = false, navigatedFromSidebar = false, highlightOfferId = null, onNavigateToMessages, autoTranslateRequests = false, currentLanguage = 'ar', onCompleteRequest, savedOfferForm, onOfferFormChange, savedScrollPosition = 0, onScrollPositionChange,
     // Unified Header Props
-    isSidebarOpen,
-    setIsSidebarOpen,
     toggleMode,
     isModeSwitching,
     unreadCount,
@@ -151,7 +149,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     onMarkRequestAsRead,
     onOfferCreated,
     onArchiveRequest,
-    onEditRequest
+    onEditRequest,
+    onNavigateToProfile,
+    onNavigateToSettings
   },
 ) => {
   const [negotiationOpen, setNegotiationOpen] = useState(false);
@@ -1132,8 +1132,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     >
       {/* Unified Header */}
       <UnifiedHeader
-        isSidebarOpen={isSidebarOpen}
-        setIsSidebarOpen={setIsSidebarOpen}
         mode={mode}
         toggleMode={toggleMode}
         isModeSwitching={isModeSwitching}
@@ -1164,6 +1162,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
             scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
           }
         }}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToSettings={onNavigateToSettings}
       />
       
       {/* Spacer below header */}

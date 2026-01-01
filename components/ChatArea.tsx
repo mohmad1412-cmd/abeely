@@ -556,8 +556,6 @@ interface ChatAreaProps {
   onScrollPositionChange?: (pos: number) => void;
   aiStatus?: { connected: boolean; error?: string };
   // Unified Header Props
-  isSidebarOpen: boolean;
-  setIsSidebarOpen: (open: boolean) => void;
   mode: 'requests' | 'offers';
   toggleMode: () => void;
   isModeSwitching: boolean;
@@ -585,8 +583,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   onScrollPositionChange,
   aiStatus,
   // Unified Header Props
-  isSidebarOpen,
-  setIsSidebarOpen,
   mode,
   toggleMode,
   isModeSwitching,

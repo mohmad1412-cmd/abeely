@@ -1,13 +1,13 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Anthropic from "@anthropic-ai/sdk";
 import { supabase } from "./supabaseClient";
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-const MODEL_NAME = "gemini-2.0-flash-001";
+const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+const MODEL_NAME = "claude-sonnet-4-20250514"; // أو claude-3-5-sonnet-20241022
 
-let client: GoogleGenerativeAI | null = null;
+let client: Anthropic | null = null;
 
 const getClient = () => {
-  if (!client && apiKey) client = new GoogleGenerativeAI(apiKey);
+  if (!client && apiKey) client = new Anthropic({ apiKey });
   return client;
 };
 
@@ -94,31 +94,26 @@ export async function generateDraftWithCta(
     console.warn("⚠️ Failed to invoke Supabase function, falling back to direct API:", err);
   }
 
-  // 2. Fallback to direct client-side call (if VITE_GEMINI_API_KEY exists)
-  const gemini = getClient();
-  if (!gemini) {
+  // 2. Fallback to direct client-side call (if VITE_ANTHROPIC_API_KEY exists)
+  const anthropic = getClient();
+  if (!anthropic) {
     return {
       summary: text,
       aiResponse: "عذراً، يبدو أن هناك مشكلة في الربط مع المساعد الذكي. تأكد من إعداد مفاتيح API.",
     };
   }
 
-  // بناء تاريخ المحادثة كنص
-  const conversationHistory = chatHistory && chatHistory.length > 0
-    ? chatHistory.map(msg => `${msg.role === 'user' ? '👤 العميل' : '🤖 المساعد'}: ${msg.text}`).join('\n\n')
-    : '';
+  // بناء تاريخ المحادثة لتنسيق Anthropic
+  const conversationHistory: Anthropic.MessageParam[] = chatHistory && chatHistory.length > 0
+    ? chatHistory.map(msg => ({
+        role: (msg.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+        content: msg.text
+      }))
+    : [];
 
-  const prompt = `
+  const systemPrompt = `
 أنت مساعد ذكي متخصص في منصة "أبيلي" - منصة سعودية لربط طالبي الخدمات بمقدميها.
 هدفك: فهم احتياج العميل بدقة ومساعدته في صياغة طلب واضح ومفصل.
-
-${conversationHistory ? `
-═══════════════════════════════════════════════════════════════
-📜 تاريخ المحادثة السابقة (استخدمه لفهم السياق الكامل):
-═══════════════════════════════════════════════════════════════
-${conversationHistory}
-═══════════════════════════════════════════════════════════════
-` : ''}
 
 تعليمات مهمة:
 1. كن ذكياً، طبيعياً، وعفوياً - تحدث كإنسان حقيقي وليس كروبوت مبرمج على كلمات محددة
@@ -169,8 +164,6 @@ ${audioBlob ? `
 - ادمج المعلومات من التسجيل الصوتي مع النص المكتوب (إن وجد)
 ` : ''}
 
-نص العميل: """${text || (attachments && attachments.length > 0 ? "تم إرسال صور بدون نص" : audioBlob ? "تم إرسال تسجيل صوتي بدون نص" : "")}"""
-
 المخرجات المطلوبة (JSON فقط، بدون أي نص إضافي):
 {
   "isClarification": boolean,
@@ -192,27 +185,50 @@ ${audioBlob ? `
 - لا تختلق معلومات - استخدم فقط ما ورد في النص
 - إذا لم يذكر العميل ميزانية أو موقع أو مدة، اتركها فارغة
 - الفئات يجب أن تكون مناسبة للطلب وواضحة
+- أرجِع JSON فقط بدون أي نص إضافي قبل أو بعد JSON
 `;
 
   try {
-    // Enforce a single model (per requirement).
-    const modelsToTry = [MODEL_NAME];
+    console.log(`🔄 جاري استخدام النموذج: ${MODEL_NAME}`);
     
-    // Prepare content parts
-    const parts: any[] = [{ text: prompt }];
+    // بناء الرسائل
+    const messages: Anthropic.MessageParam[] = [
+      ...conversationHistory,
+    ];
+
+    // بناء محتوى الرسالة (نص + صور)
+    const userContent: (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[] = [];
     
-    // Add images/attachments
+    // إضافة النص
+    const userText = text || (attachments && attachments.length > 0 ? "تم إرسال صور بدون نص" : audioBlob ? "تم إرسال تسجيل صوتي بدون نص" : "");
+    if (userText) {
+      userContent.push({ type: 'text', text: userText });
+    }
+
+    // إضافة الصور
     if (attachments && attachments.length > 0) {
       for (const file of attachments) {
-        // Only process image files
         if (file.type.startsWith('image/')) {
           try {
             const base64Data = await fileToBase64(file);
             const mimeType = getMimeType(file);
-            parts.push({
-              inlineData: {
+            // تحويل MIME type إلى نوع مدعوم من Anthropic
+            let mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' = 'image/png';
+            if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
+              mediaType = 'image/jpeg';
+            } else if (mimeType === 'image/png') {
+              mediaType = 'image/png';
+            } else if (mimeType === 'image/gif') {
+              mediaType = 'image/gif';
+            } else if (mimeType === 'image/webp') {
+              mediaType = 'image/webp';
+            }
+            userContent.push({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: mediaType,
                 data: base64Data,
-                mimeType: mimeType,
               },
             });
           } catch (err) {
@@ -221,75 +237,49 @@ ${audioBlob ? `
         }
       }
     }
-    
-    // Add audio
+
+    // إضافة رسالة المستخدم
+    messages.push({
+      role: 'user',
+      content: userContent.length > 0 ? userContent : [{ type: 'text', text: userText || '' }]
+    });
+
+    // ملاحظة: Anthropic API لا يدعم الصوت حالياً بشكل مباشر
     if (audioBlob) {
-      try {
-        // Convert audio blob to base64
-        const audioBase64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result as string;
-            const base64 = result.split(',')[1];
-            resolve(base64);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(audioBlob);
-        });
-        
-        // Determine audio MIME type (default to webm)
-        const audioMimeType = audioBlob.type || 'audio/webm';
-        
-        parts.push({
-          inlineData: {
-            data: audioBase64,
-            mimeType: audioMimeType,
-          },
-        });
-      } catch (err) {
-        console.error('Error processing audio:', err);
-      }
+      console.warn("⚠️ Anthropic API لا يدعم الصوت حالياً، سيتم تجاهل التسجيل الصوتي");
     }
     
-    // Try multiple models in order of preference
-    let lastError: any = null;
-    for (const modelName of modelsToTry) {
-      try {
-        console.log(`🔄 جاري تجربة النموذج: ${modelName}`);
-        const model = gemini.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(parts);
-        const content = result.response.text();
-        
-        if (content) {
-          console.log(`✅ نجح استخدام النموذج: ${modelName}`);
-          return extractJson(content);
-        }
-      } catch (err: any) {
-        console.warn(`⚠️ فشل النموذج ${modelName}:`, err.message);
-        lastError = err;
-        // Continue to next model
-        continue;
-      }
+    const response = await anthropic.messages.create({
+      model: MODEL_NAME,
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: messages,
+    });
+
+    const content = response.content[0];
+    if (content.type === 'text') {
+      const textContent = content.text;
+      console.log(`✅ نجح استخدام النموذج: ${MODEL_NAME}`);
+      return extractJson(textContent);
     }
     
-    // If all models failed, throw the last error
-    throw lastError || new Error("فشل جميع النماذج");
+    throw new Error("لم يتم الحصول على نص من الرد");
   } catch (err: any) {
-    console.error("Gemini interaction error", err);
+    console.error("Anthropic interaction error", err);
     
     // Handle specific error types
-    if (err?.message?.includes("quota") || err?.message?.includes("Quota")) {
+    if (err?.message?.includes("quota") || err?.message?.includes("Quota") || err?.status === 429) {
       return {
         summary: text,
-        aiResponse: "⚠️ تم تجاوز الحد المجاني لـ Gemini API. يرجى التحقق من مفتاح API أو ترقية الحساب.",
+        aiResponse: "⚠️ تم تجاوز الحد المسموح لـ Anthropic API. يرجى التحقق من مفتاح API أو ترقية الحساب.",
         isClarification: true,
       } as any;
     }
     
-    if (err?.message?.includes("API key") || err?.message?.includes("invalid")) {
+    if (err?.message?.includes("API key") || err?.message?.includes("invalid") || err?.status === 401) {
       return {
         summary: text,
-        aiResponse: "⚠️ مفتاح Gemini API غير صحيح أو غير موجود. يرجى إضافة VITE_GEMINI_API_KEY في ملف .env",
+        aiResponse: "⚠️ مفتاح Anthropic API غير صحيح أو غير موجود. يرجى إضافة VITE_ANTHROPIC_API_KEY في ملف .env",
         isClarification: true,
       } as any;
     }
@@ -349,44 +339,44 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
   }
 
   // 2. Fallback to checking direct API key
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
   
   if (!apiKey) {
-    console.warn("⚠️ VITE_GEMINI_API_KEY غير موجود في ملف .env");
-    const result = { connected: false, error: "VITE_GEMINI_API_KEY غير موجود في ملف .env" };
+    console.warn("⚠️ VITE_ANTHROPIC_API_KEY غير موجود في ملف .env");
+    const result = { connected: false, error: "VITE_ANTHROPIC_API_KEY غير موجود في ملف .env" };
     aiConnectionCache = { ...result, timestamp: Date.now() };
     localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
     return result;
   }
 
-  const gemini = getClient();
-  if (!gemini) {
-    console.error("❌ فشل في إنشاء عميل Gemini");
-    const result = { connected: false, error: "فشل في إنشاء عميل Gemini" };
+  const anthropic = getClient();
+  if (!anthropic) {
+    console.error("❌ فشل في إنشاء عميل Anthropic");
+    const result = { connected: false, error: "فشل في إنشاء عميل Anthropic" };
     aiConnectionCache = { ...result, timestamp: Date.now() };
     localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
     return result;
   }
 
-  // Try only one model with a short timeout to avoid blocking UI
+  // Try connection with a short timeout to avoid blocking UI
   const modelName = MODEL_NAME;
   
   try {
-    const model = gemini.getGenerativeModel({ model: modelName });
-    
     // Add timeout to prevent blocking
     const timeout = new Promise<never>((_, reject) => 
       setTimeout(() => reject(new Error("AI connection timeout (5s)")), 5000)
     );
     
     const result = await Promise.race([
-      model.generateContent({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+      anthropic.messages.create({
+        model: modelName,
+        max_tokens: 10,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
       timeout
     ]) as any;
     
-    const content = result.response?.text();
-    
-    if (content) {
+    if (result?.content?.[0]?.type === 'text') {
       console.log(`✅ الاتصال بالذكاء الاصطناعي ناجح باستخدام: ${modelName}`);
       const successResult = { connected: true };
       aiConnectionCache = { ...successResult, timestamp: Date.now() };

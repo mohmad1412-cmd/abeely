@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, X } from "lucide-react";
 import { UnifiedHeader } from "./components/ui/UnifiedHeader";
-import { SwipeGestureHandler } from "./components/ui/SwipeGestureHandler";
 
 // Components
-import { Sidebar } from "./components/Sidebar";
 import { ChatArea } from "./components/ChatArea";
 import { Marketplace } from "./components/Marketplace";
 import { RequestDetail } from "./components/RequestDetail";
+import { BottomNavigation, BottomNavTab } from "./components/BottomNavigation";
+import { MyRequests } from "./components/MyRequests";
+import { MyOffers } from "./components/MyOffers";
 import { Settings } from "./components/Settings";
 import { Profile } from "./components/Profile";
 import { NotificationsPopover } from "./components/NotificationsPopover";
@@ -17,9 +18,6 @@ import { AuthPage } from "./components/AuthPage";
 import { Messages } from "./components/Messages";
 import { CreateRequestV2 } from "./components/CreateRequestV2";
 import { GlobalFloatingOrb } from "./components/GlobalFloatingOrb";
-import { BottomNavigation, BottomNavTab } from "./components/BottomNavigation";
-import { MyRequests } from "./components/MyRequests";
-import { MyOffers } from "./components/MyOffers";
 
 
 // Types & Data
@@ -81,110 +79,6 @@ import { App as CapacitorApp } from "@capacitor/app";
 // Auth Views
 type AppView = "splash" | "auth" | "main" | "connection-error";
 
-// Mobile Overlay Component with Swipe Support
-// ✅ الخلفية ثابتة أثناء السحب - فقط السايد بار يتحرك (مثل السحب من الداخل تماماً)
-const MobileOverlay: React.FC<{ 
-  onClose: () => void; 
-  sidebarWidth: number;
-  onSwipeProgress?: (offset: number) => void;
-}> = ({ onClose, sidebarWidth, onSwipeProgress }) => {
-  const startXRef = useRef<number | null>(null);
-  const startYRef = useRef<number | null>(null);
-  const isHorizontalRef = useRef<boolean | null>(null);
-  const swipeOffsetRef = useRef(0);
-  const velocityRef = useRef(0);
-  const lastXRef = useRef(0);
-  const lastTimeRef = useRef(0);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    startXRef.current = touch.clientX;
-    startYRef.current = touch.clientY;
-    lastXRef.current = touch.clientX;
-    lastTimeRef.current = Date.now();
-    isHorizontalRef.current = null;
-    velocityRef.current = 0;
-    swipeOffsetRef.current = 0;
-    onSwipeProgress?.(0);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (startXRef.current === null || startYRef.current === null) return;
-    
-    const touch = e.touches[0];
-    const deltaX = touch.clientX - startXRef.current;
-    const deltaY = touch.clientY - startYRef.current;
-    
-    // حساب السرعة
-    const now = Date.now();
-    const timeDelta = now - lastTimeRef.current;
-    if (timeDelta > 0) {
-      velocityRef.current = (touch.clientX - lastXRef.current) / timeDelta;
-    }
-    lastXRef.current = touch.clientX;
-    lastTimeRef.current = now;
-    
-    // تحديد اتجاه السحب
-    if (isHorizontalRef.current === null && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
-      isHorizontalRef.current = Math.abs(deltaX) > Math.abs(deltaY);
-    }
-    
-    if (!isHorizontalRef.current) return;
-    
-    // ✅ السحب لليمين للإغلاق (deltaX > 0 = السحب نحو اليمين)
-    if (deltaX > 0) {
-      const offset = Math.min(deltaX, sidebarWidth);
-      swipeOffsetRef.current = offset;
-      // ✅ فقط تحريك السايد بار - بدون تغيير الخلفية
-      onSwipeProgress?.(offset);
-    }
-  };
-
-  const handleTouchEnd = () => {
-    // ✅ نفس العتبة المستخدمة في المقبض (50px)
-    const threshold = 50;
-    const velocityThreshold = 0.3;
-    
-    // ✅ velocity > 0 يعني السحب لليمين بسرعة
-    if (swipeOffsetRef.current > threshold || velocityRef.current > velocityThreshold) {
-      if (navigator.vibrate) navigator.vibrate(10);
-      onClose();
-    }
-    
-    startXRef.current = null;
-    startYRef.current = null;
-    isHorizontalRef.current = null;
-    swipeOffsetRef.current = 0;
-    onSwipeProgress?.(0);
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
-      animate={{ 
-        opacity: 1, 
-        backdropFilter: "blur(8px)",
-      }}
-      exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
-      transition={{ 
-        duration: 0.4, 
-        ease: [0.22, 1, 0.36, 1] // Custom easing for ultra-smooth feel
-      }}
-      className="fixed inset-0 z-[80] md:hidden"
-      style={{
-        // ✅ الخلفية ثابتة تماماً - لا تتغير أثناء السحب
-        background: "rgba(0, 0, 0, 0.55)",
-        backdropFilter: "blur(8px)",
-        WebkitBackdropFilter: "blur(8px)",
-      }}
-      onClick={onClose}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    />
-  );
-};
-
 const App: React.FC = () => {
   // ==========================================
   // Auth State
@@ -203,21 +97,9 @@ const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>("requests");
   const [view, setView] = useState<ViewState>("marketplace");
   const [previousView, setPreviousView] = useState<ViewState | null>(null);
+  const [activeBottomTab, setActiveBottomTab] = useState<BottomNavTab>("marketplace");
   const [titleKey, setTitleKey] = useState(0);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [overlaySwipeOffset, setOverlaySwipeOffset] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  
-  // Sidebar handle position (percentage from top, 0-100)
-  const [handleYPercent, setHandleYPercent] = useState(50);
-  const handleDragRef = useRef<{
-    startY: number;
-    startX: number;
-    startPercent: number;
-    isDragging: boolean;
-    isHorizontal: boolean | null;
-    sidebarOpening: boolean;
-  } | null>(null);
   const [isLanguagePopupOpen, setIsLanguagePopupOpen] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState<"ar" | "en" | "ur">(
     "ar",
@@ -229,11 +111,9 @@ const App: React.FC = () => {
     radarWords: [],
     notifyOnInterest: true,
     roleMode: "requester",
-    showNameToApprovedProvider: true,
   });
   const [isModeSwitching, setIsModeSwitching] = useState(false);
   const [profileRole, setProfileRole] = useState<'requester' | 'provider'>('provider'); // Temporary state for button animation
-  const [activeBottomTab, setActiveBottomTab] = useState<BottomNavTab>("marketplace");
 
   // ==========================================
   // Data State
@@ -317,6 +197,8 @@ const App: React.FC = () => {
   ]);
   // Ref to CreateRequestV2's handleSend function
   const aiSendHandlerRef = useRef<((audioBlob?: Blob) => Promise<void>) | null>(null);
+  // Track if scroll-to-top button is visible (to hide floating orb)
+  const [isScrollButtonVisible, setIsScrollButtonVisible] = useState(false);
 
   // ==========================================
   // Scroll Persistence
@@ -1491,9 +1373,6 @@ const App: React.FC = () => {
     }
 
     setView(newView as ViewState);
-    if (window.innerWidth < 768) {
-      setIsSidebarOpen(false);
-    }
   };
 
   // Restore scroll position when switching views or modes
@@ -1526,7 +1405,6 @@ const App: React.FC = () => {
     setScrollToOfferSection(scrollToOffer);
     setNavigatedFromSidebar(fromSidebar); // تتبع مصدر التنقل
     setView("request-detail");
-    if (window.innerWidth < 768) setIsSidebarOpen(false);
 
     // Update viewed requests immediately for optimistic UI
     // Backend will be updated by RequestDetail component via markRequestAsViewed
@@ -1545,7 +1423,6 @@ const App: React.FC = () => {
       setSelectedRequest(relatedRequest);
       setNavigatedFromSidebar(fromSidebar); // تتبع مصدر التنقل
       setView("request-detail");
-      if (window.innerWidth < 768) setIsSidebarOpen(false);
     }
   };
 
@@ -1574,13 +1451,11 @@ const App: React.FC = () => {
           setTimeout(() => setHighlightOfferId(null), 3000);
         }
         setView("request-detail");
-        if (window.innerWidth < 768) setIsSidebarOpen(false);
       }
     }
     // إذا كان الإشعار من نوع رسالة
     else if (notification.type === 'message') {
       setView("messages");
-      if (window.innerWidth < 768) setIsSidebarOpen(false);
     }
     // إذا كان هناك رابط linkTo
     else if (notification.linkTo) {
@@ -1819,12 +1694,11 @@ const App: React.FC = () => {
                   description: "",
                   location: "",
                   status: "active",
-                  author: user?.id || "guest",
-                  authorName: user?.email?.split("@")[0] || "مستخدم",
+                  authorId: user?.id || null,
+                  authorName: user?.user_metadata?.full_name || user?.email || "مستخدم",
                   isPublic: true,
-                  createdAt: new Date(),
+                  createdAt: new Date().toISOString(),
                   offers: [],
-                  messages: [],
                   offersCount: 0,
                   viewCount: 0,
                 };
@@ -1834,8 +1708,6 @@ const App: React.FC = () => {
               handleNavigate("request-detail");
             }}
             // Header Props
-            isSidebarOpen={isSidebarOpen}
-            setIsSidebarOpen={setIsSidebarOpen}
             mode={mode}
             toggleMode={toggleMode}
             isModeSwitching={isModeSwitching}
@@ -1848,6 +1720,14 @@ const App: React.FC = () => {
             onClearAll={handleClearNotifications}
             onSignOut={isGuest ? handleGoToLogin : handleSignOut}
             isGuest={isGuest}
+            onNavigateToProfile={() => {
+              setPreviousView(view);
+              setView("profile");
+            }}
+            onNavigateToSettings={() => {
+              setPreviousView(view);
+              setView("settings");
+            }}
             // AI Orb props
             aiInput={aiInput}
             setAiInput={setAiInput}
@@ -1859,11 +1739,6 @@ const App: React.FC = () => {
           />
         );
       case "marketplace":
-        // دمج طلبات المستخدم مع الطلبات العامة (مع إزالة التكرارات)
-        const mergedRequests = user?.id 
-          ? [...myRequests.filter(r => !allRequests.some(ar => ar.id === r.id)), ...allRequests]
-          : allRequests;
-        
         // Render based on active bottom tab
         if (activeBottomTab === "my-requests") {
           return (
@@ -1873,13 +1748,50 @@ const App: React.FC = () => {
                 archivedRequests={archivedRequests}
                 receivedOffersMap={receivedOffersMap}
                 onSelectRequest={handleSelectRequest}
+                onArchiveRequest={async (requestId) => {
+                  try {
+                    await archiveRequest(requestId);
+                    setMyRequests(prev => prev.filter(r => r.id !== requestId));
+                    setArchivedRequests(prev => {
+                      const req = myRequests.find(r => r.id === requestId);
+                      return req ? [...prev, req] : prev;
+                    });
+                  } catch (error) {
+                    console.error("Error archiving request:", error);
+                  }
+                }}
+                onUnarchiveRequest={async (requestId) => {
+                  try {
+                    await unarchiveRequest(requestId);
+                    setArchivedRequests(prev => prev.filter(r => r.id !== requestId));
+                    setMyRequests(prev => {
+                      const req = archivedRequests.find(r => r.id === requestId);
+                      return req ? [...prev, req] : prev;
+                    });
+                  } catch (error) {
+                    console.error("Error unarchiving request:", error);
+                  }
+                }}
+                onOpenChat={(requestId, offer) => {
+                  const req = [...myRequests, ...archivedRequests].find(r => r.id === requestId);
+                  if (req) {
+                    handleSelectRequest(req);
+                    setView("messages");
+                  }
+                }}
                 userId={user?.id}
                 viewedRequestIds={viewedRequestIds}
+              />
+              <BottomNavigation
+                activeTab={activeBottomTab}
+                onTabChange={(tab) => {
+                  setActiveBottomTab(tab);
+                }}
               />
             </div>
           );
         }
-        
+
         if (activeBottomTab === "my-offers") {
           return (
             <div className="h-full flex flex-col overflow-hidden relative">
@@ -1888,21 +1800,64 @@ const App: React.FC = () => {
                 archivedOffers={archivedOffers}
                 allRequests={allRequests}
                 onSelectRequest={handleSelectRequest}
+                onSelectOffer={(offer) => handleSelectOffer(offer, false)}
+                onArchiveOffer={async (offerId) => {
+                  try {
+                    await archiveOffer(offerId);
+                    setMyOffers(prev => prev.filter(o => o.id !== offerId));
+                    setArchivedOffers(prev => {
+                      const offer = myOffers.find(o => o.id === offerId);
+                      return offer ? [...prev, offer] : prev;
+                    });
+                  } catch (error) {
+                    console.error("Error archiving offer:", error);
+                  }
+                }}
+                onUnarchiveOffer={async (offerId) => {
+                  try {
+                    await unarchiveOffer(offerId);
+                    setArchivedOffers(prev => prev.filter(o => o.id !== offerId));
+                    setMyOffers(prev => {
+                      const offer = archivedOffers.find(o => o.id === offerId);
+                      return offer ? [...prev, offer] : prev;
+                    });
+                  } catch (error) {
+                    console.error("Error unarchiving offer:", error);
+                  }
+                }}
+                onOpenWhatsApp={(phoneNumber, offer) => {
+                  window.open(`https://wa.me/${phoneNumber}`, '_blank');
+                }}
+                onOpenChat={(requestId, offer) => {
+                  const req = allRequests.find(r => r.id === requestId);
+                  if (req) {
+                    handleSelectRequest(req);
+                    setView("messages");
+                  }
+                }}
                 userId={user?.id}
                 viewedRequestIds={viewedRequestIds}
+              />
+              <BottomNavigation
+                activeTab={activeBottomTab}
+                onTabChange={(tab) => {
+                  setActiveBottomTab(tab);
+                }}
               />
             </div>
           );
         }
-        
-        // Default: marketplace
+
+        // Default: Marketplace
+        const mergedRequests = user?.id 
+          ? [...myRequests.filter(r => !allRequests.some(ar => ar.id === r.id)), ...allRequests]
+          : allRequests;
         return (
           <div className="h-full flex flex-col overflow-hidden relative">
             {allRequests && Array.isArray(allRequests)
               ? (
-                <div className="flex flex-col h-full">
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    <Marketplace
+                <>
+                  <Marketplace
                     requests={mergedRequests}
                     interestsRequests={interestsRequests}
                     unreadInterestsCount={unreadInterestsCount}
@@ -1935,8 +1890,6 @@ const App: React.FC = () => {
                     // Viewed requests from Backend
                     viewedRequestIds={viewedRequestIds}
                     // Header integration props
-                    isSidebarOpen={isSidebarOpen}
-                    setIsSidebarOpen={setIsSidebarOpen}
                     mode={mode}
                     toggleMode={toggleMode}
                     isModeSwitching={isModeSwitching}
@@ -1951,10 +1904,27 @@ const App: React.FC = () => {
                     onMarkAsRead={handleMarkAsRead}
                     onNotificationClick={handleNotificationClick}
                     onClearAll={handleClearNotifications}
-                    onSignOut={handleSignOut}
-                    />
-                  </div>
-                </div>
+                    onSignOut={isGuest ? handleGoToLogin : handleSignOut}
+                    onScrollButtonVisibilityChange={setIsScrollButtonVisible}
+                    onNavigateToProfile={() => {
+                      setPreviousView(view);
+                      setView("profile");
+                    }}
+                    onNavigateToSettings={() => {
+                      setPreviousView(view);
+                      setView("settings");
+                    }}
+                    isDarkMode={isDarkMode}
+                    toggleTheme={() => setIsDarkMode(!isDarkMode)}
+                    onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
+                  />
+                  <BottomNavigation
+                    activeTab={activeBottomTab}
+                    onTabChange={(tab) => {
+                      setActiveBottomTab(tab);
+                    }}
+                  />
+                </>
               )
               : (
                 <div className="flex items-center justify-center h-full">
@@ -1986,7 +1956,6 @@ const App: React.FC = () => {
                   setNavigatedFromSidebar(false);
                   // الرجوع دائماً للماركت بليس
                   setView("marketplace");
-                  setActiveBottomTab("marketplace");
                   // Marketplace will restore scroll position via savedScrollPosition prop
                 }}
                 isGuest={isGuest}
@@ -2034,8 +2003,6 @@ const App: React.FC = () => {
                 savedScrollPosition={requestDetailScrollPos}
                 onScrollPositionChange={setRequestDetailScrollPos}
                 // Header integration props
-                isSidebarOpen={isSidebarOpen}
-                setIsSidebarOpen={setIsSidebarOpen}
                 toggleMode={toggleMode}
                 isModeSwitching={isModeSwitching}
                 unreadCount={unreadCount}
@@ -2048,7 +2015,7 @@ const App: React.FC = () => {
                 onMarkAsRead={handleMarkAsRead}
                 onNotificationClick={handleNotificationClick}
                 onClearAll={handleClearNotifications}
-                onSignOut={handleSignOut}
+                onSignOut={isGuest ? handleGoToLogin : handleSignOut}
                 onMarkRequestAsRead={handleRequestRead}
                 onArchiveRequest={handleArchiveRequest}
                 onEditRequest={(request) => {
@@ -2064,6 +2031,14 @@ const App: React.FC = () => {
                     const offers = await fetchMyOffers(user.id);
                     setMyOffers(offers.filter((o) => o.status !== "archived"));
                   }
+                }}
+                onNavigateToProfile={() => {
+                  setPreviousView(view);
+                  setView("profile");
+                }}
+                onNavigateToSettings={() => {
+                  setPreviousView(view);
+                  setView("settings");
                 }}
               />
             </div>
@@ -2101,8 +2076,6 @@ const App: React.FC = () => {
               }}
               onSignOut={isGuest ? handleGoToLogin : handleSignOut}
               // Header integration props
-              isSidebarOpen={isSidebarOpen}
-              setIsSidebarOpen={setIsSidebarOpen}
               mode={mode}
               toggleMode={toggleMode}
               isModeSwitching={isModeSwitching}
@@ -2116,6 +2089,14 @@ const App: React.FC = () => {
               onNotificationClick={handleNotificationClick}
               onClearAll={handleClearNotifications}
               isGuest={isGuest}
+              onNavigateToProfile={() => {
+                setPreviousView(view);
+                setView("profile");
+              }}
+              onNavigateToSettings={() => {
+                setPreviousView(view);
+                setView("settings");
+              }}
             />
           </div>
         );
@@ -2127,8 +2108,6 @@ const App: React.FC = () => {
               userRating={userRating}
               profileRole={profileRole}
               // Header integration props
-              isSidebarOpen={isSidebarOpen}
-              setIsSidebarOpen={setIsSidebarOpen}
               mode={mode}
               toggleMode={toggleMode}
               isModeSwitching={isModeSwitching}
@@ -2163,6 +2142,14 @@ const App: React.FC = () => {
                 }
               }}
               isGuest={isGuest}
+              onNavigateToProfile={() => {
+                setPreviousView(view);
+                setView("profile");
+              }}
+              onNavigateToSettings={() => {
+                setPreviousView(view);
+                setView("settings");
+              }}
             />
           </div>
         );
@@ -2184,8 +2171,6 @@ const App: React.FC = () => {
                 setView("conversation");
               }}
               // Header integration props
-              isSidebarOpen={isSidebarOpen}
-              setIsSidebarOpen={setIsSidebarOpen}
               mode={mode}
               toggleMode={toggleMode}
               isModeSwitching={isModeSwitching}
@@ -2200,6 +2185,14 @@ const App: React.FC = () => {
               onClearAll={handleClearNotifications}
               onSignOut={isGuest ? handleGoToLogin : handleSignOut}
               isGuest={isGuest}
+              onNavigateToProfile={() => {
+                setPreviousView(view);
+                setView("profile");
+              }}
+              onNavigateToSettings={() => {
+                setPreviousView(view);
+                setView("settings");
+              }}
             />
           </div>
         );
@@ -2212,8 +2205,6 @@ const App: React.FC = () => {
                 // Already in conversation view
               }}
               // Header integration props
-              isSidebarOpen={isSidebarOpen}
-              setIsSidebarOpen={setIsSidebarOpen}
               mode={mode}
               toggleMode={toggleMode}
               isModeSwitching={isModeSwitching}
@@ -2228,6 +2219,14 @@ const App: React.FC = () => {
               onClearAll={handleClearNotifications}
               onSignOut={isGuest ? handleGoToLogin : handleSignOut}
               isGuest={isGuest}
+              onNavigateToProfile={() => {
+                setPreviousView(view);
+                setView("profile");
+              }}
+              onNavigateToSettings={() => {
+                setPreviousView(view);
+                setView("settings");
+              }}
             />
           </div>
         );
@@ -2306,19 +2305,7 @@ const App: React.FC = () => {
 
   // Main App
   return (
-    <>
     <div className="h-screen bg-background text-foreground flex overflow-hidden font-sans pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
-      {/* Mobile Overlay with Swipe Support - Ultra Smooth Animation */}
-      <AnimatePresence mode="wait">
-        {isSidebarOpen && (
-          <MobileOverlay 
-            onClose={() => setIsSidebarOpen(false)} 
-            sidebarWidth={340}
-            onSwipeProgress={setOverlaySwipeOffset}
-          />
-        )}
-      </AnimatePresence>
-
       {/* Notification Click-Outside Overlay */}
       {isNotifOpen && (
         <div
@@ -2327,140 +2314,18 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Sidebar */}
-      <Sidebar
-        mode={mode}
-        isOpen={isSidebarOpen || window.innerWidth >= 768}
-        onClose={() => setIsSidebarOpen(false)}
-        onOpen={() => setIsSidebarOpen(true)}
-        userRequests={myRequests}
-        allRequests={allRequests}
-        userOffers={myOffers}
-        receivedOffersMap={receivedOffersMap}
-        archivedRequests={archivedRequests}
-        archivedOffers={archivedOffers}
-        onSelectRequest={handleSelectRequest}
-        onSelectOffer={handleSelectOffer}
-        onCreateRequest={() => {
-          handleNavigate("create-request");
-        }}
-        onNavigate={handleNavigate}
-        onArchiveRequest={handleArchiveRequest}
-        onUnarchiveRequest={handleUnarchiveRequest}
-        onArchiveOffer={handleArchiveOffer}
-        onUnarchiveOffer={handleUnarchiveOffer}
-        isGuest={isGuest}
-        user={user}
-        onSignOut={isGuest ? handleGoToLogin : handleSignOut}
-        profileRole={profileRole}
-        onProfileRoleChange={setProfileRole}
-        onUnreadMessagesChange={setHasUnreadMessages}
-        isDarkMode={isDarkMode}
-        toggleTheme={() => setIsDarkMode(!isDarkMode)}
-        onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
-        externalSwipeOffset={overlaySwipeOffset}
-      />
-
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-        {/* Header moved inside individual components (CreateRequestV2, Marketplace, etc.) */}
-        {/* Scrollable Content Area - السحب لليسار يغلق السايد بار فقط */}
-        <SwipeGestureHandler
-          isSidebarOpen={isSidebarOpen}
-          onCloseSidebar={() => setIsSidebarOpen(false)}
-          onOpenSidebar={() => setIsSidebarOpen(true)}
-          enabled={true}
-          sidebarWidth={340}
+        <div
+          id="main-scroll-container"
+          ref={scrollContainerRef}
+          className="flex-1 min-h-0 bg-background relative overflow-hidden h-full"
         >
-          <div
-            id="main-scroll-container"
-            ref={scrollContainerRef}
-            className="flex-1 min-h-0 bg-background relative overflow-hidden h-full"
-          >
-            <div className="absolute inset-0 flex flex-col overflow-auto">
-              {renderContent()}
-            </div>
+          <div className="absolute inset-0 flex flex-col overflow-auto">
+            {renderContent()}
           </div>
-        </SwipeGestureHandler>
-        
-        {/* Floating Sidebar Handle - Draggable vertically, swipe horizontally to open sidebar */}
-        <AnimatePresence>
-          {!isSidebarOpen && (
-            <motion.div
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10, transition: { duration: 0.15 } }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="md:hidden fixed right-0 z-[95] touch-manipulation"
-              style={{ 
-                top: `${handleYPercent}%`,
-                transform: 'translateY(-50%)',
-              }}
-              onTouchStart={(e) => {
-                const touch = e.touches[0];
-                handleDragRef.current = {
-                  startY: touch.clientY,
-                  startX: touch.clientX,
-                  startPercent: handleYPercent,
-                  isDragging: false,
-                  isHorizontal: null,
-                  sidebarOpening: false,
-                };
-              }}
-              onTouchMove={(e) => {
-                if (!handleDragRef.current) return;
-                const touch = e.touches[0];
-                const deltaX = handleDragRef.current.startX - touch.clientX;
-                const deltaY = touch.clientY - handleDragRef.current.startY;
-                const absDeltaX = Math.abs(deltaX);
-                const absDeltaY = Math.abs(deltaY);
-                
-                // Determine direction if not yet determined
-                if (handleDragRef.current.isHorizontal === null && (absDeltaX > 8 || absDeltaY > 8)) {
-                  handleDragRef.current.isHorizontal = absDeltaX > absDeltaY;
-                  handleDragRef.current.isDragging = true;
-                  if (navigator.vibrate) navigator.vibrate(5);
-                }
-                
-                if (handleDragRef.current.isHorizontal === true) {
-                  // Horizontal drag - open sidebar
-                  if (deltaX > 50 && !handleDragRef.current.sidebarOpening) {
-                    handleDragRef.current.sidebarOpening = true;
-                    if (navigator.vibrate) navigator.vibrate(15);
-                    setIsSidebarOpen(true);
-                  }
-                } else if (handleDragRef.current.isHorizontal === false) {
-                  // Vertical drag - move handle position
-                  const windowHeight = window.innerHeight;
-                  const newPercent = handleDragRef.current.startPercent + (deltaY / windowHeight) * 100;
-                  // Clamp between 15% and 85%
-                  setHandleYPercent(Math.max(15, Math.min(85, newPercent)));
-                }
-              }}
-              onTouchEnd={() => {
-                if (handleDragRef.current && !handleDragRef.current.isDragging) {
-                  // It was a tap, not a drag - toggle sidebar
-                  if (navigator.vibrate) navigator.vibrate(10);
-                  setIsSidebarOpen(true);
-                }
-                handleDragRef.current = null;
-              }}
-            >
-              <motion.div
-                className="bg-primary rounded-l-xl px-1.5 py-5 shadow-lg shadow-primary/25 cursor-grab active:cursor-grabbing"
-                whileTap={{ scale: 0.95 }}
-              >
-                {/* Two vertical lines */}
-                <div className="flex gap-1">
-                  <div className="w-0.5 h-7 bg-white/80 rounded-full" />
-                  <div className="w-0.5 h-7 bg-white/50 rounded-full" />
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        </div>
       </main>
-
 
       {/* Language Popup */}
       <AnimatePresence>
@@ -2594,6 +2459,7 @@ const App: React.FC = () => {
 
       {/* Global Floating Orb - appears on all pages */}
       {/* Hide AI orb when sidebar is open during create-request, but keep navigate orb visible */}
+      {/* Also hide when viewing other people's requests (not your own) */}
       <GlobalFloatingOrb
         mode={view === "create-request" ? "ai" : "navigate"}
         onNavigate={() => handleNavigate("create-request")}
@@ -2609,20 +2475,12 @@ const App: React.FC = () => {
         isLoading={isAiLoading}
         position={aiOrbPosition}
         onPositionChange={setAiOrbPosition}
-        isVisible={!(isSidebarOpen && view === "create-request")}
+        isVisible={
+          !(view === "request-detail" && selectedRequest && selectedRequest.authorId !== user?.id)
+        }
+        hideForScrollButton={isScrollButtonVisible && view === "marketplace"}
       />
     </div>
-    
-    {/* Bottom Navigation - Outside the overflow-hidden container */}
-    {view === "marketplace" && (
-      <BottomNavigation
-        activeTab={activeBottomTab}
-        onTabChange={(tab) => {
-          setActiveBottomTab(tab);
-        }}
-      />
-    )}
-    </>
   );
 };
 

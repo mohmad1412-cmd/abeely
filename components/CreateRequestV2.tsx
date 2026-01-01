@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
 import { Request } from "../types";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Anthropic from "@anthropic-ai/sdk";
 
 // ============================================
 // Types
@@ -52,14 +52,14 @@ interface ExtractedData {
 }
 
 // AI Client Setup
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-let genAI: GoogleGenerativeAI | null = null;
+const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
+let anthropic: Anthropic | null = null;
 
 const getAIClient = () => {
-  if (!genAI && API_KEY) {
-    genAI = new GoogleGenerativeAI(API_KEY);
+  if (!anthropic && API_KEY) {
+    anthropic = new Anthropic({ apiKey: API_KEY });
   }
-  return genAI;
+  return anthropic;
 };
 
 // AI Extraction Function
@@ -80,8 +80,6 @@ const extractInfoFromMessage = async (
   }
 
   try {
-    const model = client.getGenerativeModel({ model: "gemini-2.0-flash-001" });
-    
     // Check completion percentage
     const hasDescription = currentData.description.length > 10;
     const hasLocation = currentData.location.length > 0;
@@ -96,7 +94,12 @@ const extractInfoFromMessage = async (
     // Check if this is the first user message (after welcome)
     const isFirstInteraction = currentData.description === "" && currentData.location === "";
     
-    const prompt = `أنت مساعد ذكي في منصة "أبيلي" لطلب الخدمات. تفهم اللهجة السعودية والعربية الفصحى.${audioBlob ? '\n\n(تم إرسال رسالة صوتية - استمع إليها بعناية)' : ''}
+    // Note: Anthropic API doesn't support audio directly, so audio will be ignored
+    if (audioBlob) {
+      console.warn("⚠️ Anthropic API doesn't support audio, audio blob will be ignored");
+    }
+    
+    const prompt = `أنت مساعد ذكي في منصة "أبيلي" لطلب الخدمات. تفهم اللهجة السعودية والعربية الفصحى.
 
 ## تنبيه مهم: ${isFirstInteraction ? 'هذه أول رسالة من العميل' : 'هذه رسالة متابعة (لا تكرر الترحيب!)'}
 
@@ -105,7 +108,7 @@ const extractInfoFromMessage = async (
 2. افهم السياق الكامل قبل استخراج أي معلومات
 3. "أبي/أبغى/أريد" = يريد خدمة، ليس معلومات تقنية
 4. لا تنشئ حقول مخصصة إلا إذا ذكر العميل تفاصيل تقنية واضحة
-5. ركز على فهم: ماذا يريد؟ أين؟ متى؟ بكم؟
+5. ركز على فهم: ماذا يريد؟ أين؟ متى؟ بكم？
 
 ## الطلب الحالي:
 - الوصف: "${currentData.description || "(فارغ)"}"
@@ -150,36 +153,14 @@ ${!currentData.description
 JSON فقط:
 {"title":null,"description":null,"location":null,"budget":null,"deliveryTime":null,"category":null,"customFields":[],"followUpQuestion":"سؤالك هنا"}`;
 
-    // Build content parts
-    const parts: any[] = [{ text: prompt }];
+    const result = await client.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: prompt }],
+    });
     
-    // Add audio if provided
-    if (audioBlob) {
-      try {
-        const audioBase64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result as string;
-            const base64 = result.split(',')[1];
-            resolve(base64);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(audioBlob);
-        });
-        
-        parts.push({
-          inlineData: {
-            data: audioBase64,
-            mimeType: audioBlob.type || 'audio/webm',
-          },
-        });
-      } catch (err) {
-        console.error('Error processing audio:', err);
-      }
-    }
-
-    const result = await model.generateContent(parts);
-    const response = result.response.text();
+    const content = result.content[0];
+    const response = content.type === 'text' ? content.text : '';
     
     // Parse JSON response
     const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -245,8 +226,6 @@ interface CreateRequestV2Props {
   requestToEdit?: Request | null;
   onClearRequestToEdit?: () => void; // Clear after editing is done
   // Header props
-  isSidebarOpen: boolean;
-  setIsSidebarOpen: (open: boolean) => void;
   mode: 'requests' | 'offers';
   toggleMode: () => void;
   isModeSwitching: boolean;
@@ -259,6 +238,8 @@ interface CreateRequestV2Props {
   onClearAll: () => void;
   onSignOut: () => void;
   isGuest?: boolean;
+  onNavigateToProfile?: () => void;
+  onNavigateToSettings?: () => void;
   // AI Orb props - shared with GlobalFloatingOrb
   aiInput: string;
   setAiInput: (value: string) => void;
@@ -797,8 +778,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   onGoToMarketplace,
   requestToEdit,
   onClearRequestToEdit,
-  isSidebarOpen,
-  setIsSidebarOpen,
   mode,
   toggleMode,
   isModeSwitching,
@@ -811,6 +790,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   onClearAll,
   onSignOut,
   isGuest,
+  onNavigateToProfile,
+  onNavigateToSettings,
   // AI Orb props
   aiInput,
   setAiInput,
@@ -1350,8 +1331,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       
       {/* Header */}
       <UnifiedHeader
-        isSidebarOpen={isSidebarOpen}
-        setIsSidebarOpen={setIsSidebarOpen}
         mode={mode}
         toggleMode={toggleMode}
         isModeSwitching={isModeSwitching}
@@ -1367,6 +1346,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         title={editingRequestId ? "تعديل الطلب" : "إنشاء طلب جديد"}
         hideModeToggle
         isGuest={isGuest}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToSettings={onNavigateToSettings}
         showSubmitButton
         canSubmit={editingRequestId ? editButtonState.canSave : canSubmit}
         isEditMode={!!editingRequestId}

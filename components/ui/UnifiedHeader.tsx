@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   ArrowLeftRight, 
   Bell, 
-  Menu, 
   X, 
   LogOut, 
   LogIn,
@@ -16,13 +15,19 @@ import {
   Send,
   ChevronsDown,
   Loader2,
-  FileText
+  FileText,
+  Search,
+  Filter,
+  User,
+  Settings,
+  ChevronDown,
+  Moon,
+  Sun,
+  Globe
 } from "lucide-react";
 import { NotificationsPopover } from "../NotificationsPopover";
 
 interface UnifiedHeaderProps {
-  isSidebarOpen: boolean;
-  setIsSidebarOpen: (open: boolean) => void;
   mode: 'requests' | 'offers';
   toggleMode: () => void;
   isModeSwitching: boolean;
@@ -46,7 +51,6 @@ interface UnifiedHeaderProps {
   currentView?: string; // kept for compatibility, not used
   transparent?: boolean;
   hideModeToggle?: boolean; // Hide the mode toggle button
-  showSidebarButton?: boolean; // Show sidebar button instead of back button (for pages accessed from sidebar)
   isGuest?: boolean; // Guest mode - show login button instead of sign out
   // Share functionality
   showShareButton?: boolean;
@@ -73,11 +77,22 @@ interface UnifiedHeaderProps {
   onMyRequestClick?: () => void;
   // Back to marketplace
   onGoToMarketplace?: () => void; // If provided, mobile back button navigates to marketplace
+  // Search functionality
+  showSearchButton?: boolean;
+  onSearchClick?: () => void;
+  hasActiveFilters?: boolean;
+  activeFiltersCount?: number;
+  hideActionButtons?: boolean; // Hide action buttons (search, notifications, etc.) to merge with other elements
+  // Profile dropdown navigation
+  onNavigateToProfile?: () => void;
+  onNavigateToSettings?: () => void;
+  // Theme and language
+  isDarkMode?: boolean;
+  toggleTheme?: () => void;
+  onOpenLanguagePopup?: () => void;
 }
 
 export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
-  isSidebarOpen,
-  setIsSidebarOpen,
   mode,
   toggleMode,
   isModeSwitching,
@@ -96,7 +111,6 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   isScrolled = true,
   transparent = false,
   hideModeToggle = false,
-  showSidebarButton = false,
   isGuest = false,
   showShareButton = false,
   onShare,
@@ -117,11 +131,39 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   myRequestOffersCount = 0,
   onMyRequestClick,
   onGoToMarketplace,
+  showSearchButton = false,
+  onSearchClick,
+  hasActiveFilters = false,
+  activeFiltersCount = 0,
+  hideActionButtons = false,
+  onNavigateToProfile,
+  onNavigateToSettings,
+  isDarkMode = false,
+  toggleTheme,
+  onOpenLanguagePopup,
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isLinkCopied, setIsLinkCopied] = useState(false);
   const [showCreateHint, setShowCreateHint] = useState(false);
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+  const [iconToggle, setIconToggle] = useState(false);
+  
+  // Prevent body scroll when dropdown is open
+  useEffect(() => {
+    if (isProfileDropdownOpen) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
+    };
+  }, [isProfileDropdownOpen]);
   
   // Show "Create Request" hint every 35 seconds
   useEffect(() => {
@@ -133,6 +175,17 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
 
     return () => clearInterval(interval);
   }, []);
+
+  // Toggle between Search and Filter icons (only when no active filters)
+  useEffect(() => {
+    if (hasActiveFilters) return; // لا تبديل عند وجود فلاتر نشطة
+    
+    const interval = setInterval(() => {
+      setIconToggle(prev => !prev);
+    }, 3000); // تبديل كل 3 ثوان
+
+    return () => clearInterval(interval);
+  }, [hasActiveFilters]);
   
   // Handle share/copy link
   const handleShare = async () => {
@@ -172,21 +225,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   const headerContent = (
     <div className="h-16 flex items-center justify-between pt-[env(safe-area-inset-top,0px)]">
       <div className="flex items-center gap-3">
-        {showSidebarButton ? (
-          <button
-            className="p-2.5 hover:bg-primary/10 rounded-xl transition-all duration-300 active:scale-95 group"
-            onClick={() => {
-              if (navigator.vibrate) navigator.vibrate(10);
-              setIsSidebarOpen(!isSidebarOpen);
-            }}
-          >
-            {isSidebarOpen ? (
-              <X size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
-            ) : (
-              <Menu size={22} className="text-muted-foreground group-hover:text-primary transition-colors duration-300" />
-            )}
-          </button>
-        ) : backButton ? (
+        {backButton ? (
           <motion.button
             onClick={() => {
               if (navigator.vibrate) navigator.vibrate(12);
@@ -218,43 +257,212 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           </motion.button>
         ) : null}
         
-        <div className="flex items-start gap-3">
+        <div className="flex items-center gap-3">
+          {!backButton && (
+            <div className="relative" ref={profileDropdownRef}>
+              <motion.button
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8);
+                  setIsProfileDropdownOpen(!isProfileDropdownOpen);
+                }}
+                whileTap={{ scale: 0.95 }}
+                className="relative w-11 h-11 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center overflow-visible border border-white/20 shrink-0 shadow-lg hover:shadow-xl transition-shadow"
+              >
+                <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
+                  {user?.avatar_url ? (
+                    <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
+                  ) : isGuest ? (
+                    <User size={20} className="text-muted-foreground" />
+                  ) : (
+                    <span className="text-base font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
+                  )}
+                </div>
+                {/* Decorative icon - gear for users, sparkle for guests */}
+                <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 rounded-full bg-card border border-border flex items-center justify-center shadow-sm">
+                  {isGuest ? (
+                    <ChevronDown size={10} className="text-muted-foreground" />
+                  ) : (
+                    <Settings size={10} className="text-muted-foreground" />
+                  )}
+                </div>
+              </motion.button>
+              
+              {/* Profile Dropdown - For all users */}
+              <AnimatePresence>
+                {isProfileDropdownOpen && (
+                  <>
+                    {/* Backdrop - blocks scroll */}
+                    <div 
+                      className="fixed inset-0 z-40 touch-none" 
+                      onClick={() => setIsProfileDropdownOpen(false)}
+                      onWheel={(e) => e.preventDefault()}
+                      onTouchMove={(e) => e.preventDefault()}
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                      transition={{ duration: 0.2, ease: 'easeOut' }}
+                      className="absolute top-full right-0 mt-2 w-56 bg-card/95 backdrop-blur-xl rounded-2xl border border-border shadow-2xl z-50 overflow-hidden"
+                    >
+                      {/* User Info */}
+                      <div className="p-4 border-b border-border/50">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border border-primary/20 shrink-0">
+                            {user?.avatar_url ? (
+                              <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
+                            ) : isGuest ? (
+                              <User size={18} className="text-muted-foreground" />
+                            ) : (
+                              <span className="text-sm font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-sm text-foreground truncate">
+                              {isGuest ? "زائر" : user?.display_name || "المستخدم"}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {isGuest ? "سجل دخولك للمزيد" : user?.email || ""}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Menu Items */}
+                      <div className="p-2">
+                        {!isGuest && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setIsProfileDropdownOpen(false);
+                                onNavigateToProfile?.();
+                              }}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-foreground hover:bg-secondary/50 transition-colors"
+                            >
+                              <User size={18} className="text-muted-foreground" />
+                              <span>الملف الشخصي</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsProfileDropdownOpen(false);
+                                onNavigateToSettings?.();
+                              }}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-foreground hover:bg-secondary/50 transition-colors"
+                            >
+                              <Settings size={18} className="text-muted-foreground" />
+                              <span>الإعدادات</span>
+                            </button>
+                            
+                            <div className="my-1 border-t border-border/50" />
+                          </>
+                        )}
+                        
+                        {/* Theme & Language Section */}
+                        <div className="flex items-center gap-2 px-2 py-1.5">
+                          {/* Dark Mode Toggle */}
+                          <button
+                            onClick={() => {
+                              if (navigator.vibrate) navigator.vibrate(10);
+                              toggleTheme?.();
+                            }}
+                            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                              isDarkMode 
+                                ? 'bg-primary/10 text-primary' 
+                                : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                            }`}
+                          >
+                            {isDarkMode ? (
+                              <Moon size={16} className="text-primary" />
+                            ) : (
+                              <Sun size={16} />
+                            )}
+                            <span className="text-xs">{isDarkMode ? 'ليلي' : 'نهاري'}</span>
+                          </button>
+                          
+                          {/* Language Toggle */}
+                          <button
+                            onClick={() => {
+                              if (navigator.vibrate) navigator.vibrate(10);
+                              setIsProfileDropdownOpen(false);
+                              onOpenLanguagePopup?.();
+                            }}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-secondary/50 text-muted-foreground hover:bg-secondary transition-all"
+                          >
+                            <Globe size={16} />
+                            <span className="text-xs">العربية</span>
+                          </button>
+                        </div>
+                        
+                        <div className="my-1 border-t border-border/50" />
+                        
+                        <button
+                          onClick={() => {
+                            setIsProfileDropdownOpen(false);
+                            onSignOut();
+                          }}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                            isGuest 
+                              ? 'text-primary hover:bg-primary/10' 
+                              : 'text-red-500 hover:bg-red-500/10'
+                          }`}
+                        >
+                          {isGuest ? (
+                            <>
+                              <LogIn size={18} />
+                              <span>تسجيل الدخول</span>
+                            </>
+                          ) : (
+                            <>
+                              <LogOut size={18} />
+                              <span>تسجيل الخروج</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
           <h1 className="font-bold text-base text-foreground flex flex-col gap-0.5">
-            {!backButton && !showSidebarButton && <span className="text-xs text-muted-foreground mt-1.5">أبيلي</span>}
-            <AnimatePresence mode="wait">
-              {(backButton || showSidebarButton) && isScrolled ? (
-                <motion.span
-                  key="scrolled-title"
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -5 }}
-                  className={`font-bold text-sm truncate text-foreground transition-all duration-300 ${
-                    showScrollToOffer && isOfferSectionVisible 
-                      ? 'max-w-[200px] sm:max-w-md' 
-                      : 'max-w-[120px] sm:max-w-xs'
-                  }`}
-                >
-                  {title}
-                </motion.span>
-              ) : (
-                <motion.span
-                  key={titleKey}
-                  initial={{ opacity: 0.8 }}
-                  animate={{ opacity: 1 }}
-                  transition={{
-                    duration: 0.2,
-                    ease: "easeOut",
-                  }}
-                  className="bg-primary/10 text-primary px-3 py-1.5 rounded-lg text-sm inline-block"
-                >
-                  {mode === "requests" ? "إنشاء الطلبات" : "تقديم العروض"}
-                </motion.span>
-              )}
-            </AnimatePresence>
+            {!backButton ? null : (
+              <AnimatePresence mode="wait">
+                {backButton && isScrolled ? (
+                  <motion.span
+                    key="scrolled-title"
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    className={`font-bold text-sm truncate text-foreground transition-all duration-300 ${
+                      showScrollToOffer && isOfferSectionVisible 
+                        ? 'max-w-[200px] sm:max-w-md' 
+                        : 'max-w-[120px] sm:max-w-xs'
+                    }`}
+                  >
+                    {title}
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key={titleKey}
+                    initial={{ opacity: 0.8 }}
+                    animate={{ opacity: 1 }}
+                    transition={{
+                      duration: 0.2,
+                      ease: "easeOut",
+                    }}
+                    className="bg-primary/10 text-primary px-3 py-1.5 rounded-lg text-sm inline-block"
+                  >
+                    {mode === "requests" ? "إنشاء الطلبات" : "تقديم العروض"}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            )}
           </h1>
         </div>
       </div>
 
+      {!hideActionButtons && (
       <div className="flex items-center gap-2">
         {/* Share Button */}
         {showShareButton && (shareUrl || onShare) && (
@@ -699,51 +907,65 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   </motion.span>
                 )}
               </motion.button>
-            ) : (
-              <div className="relative" ref={notifRef}>
-                <button
-                  onClick={() => setIsNotifOpen(!isNotifOpen)}
-                  className="flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/30 relative"
-                >
-                  <Bell size={20} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                      <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 bg-red-500 text-[11px] text-white font-bold">
-                        {unreadCount}
-                      </span>
-                    </span>
+            ) : showSearchButton && onSearchClick ? (
+              <button
+                onClick={onSearchClick}
+                className={`relative w-11 h-11 flex items-center justify-center rounded-xl border transition-all active:scale-95 ${
+                  hasActiveFilters 
+                    ? 'bg-primary/10 border-primary/30 text-primary' 
+                    : 'bg-card border-border text-muted-foreground hover:text-primary'
+                }`}
+              >
+                <div className="relative w-full h-full flex items-center justify-center">
+                  {hasActiveFilters ? (
+                    // أيقونة ثابتة عند وجود فلاتر نشطة
+                    <Filter size={18} strokeWidth={2.5} />
+                  ) : (
+                    // أيقونة متحركة عند عدم وجود فلاتر - fade فقط بدون حركة جانبية لتجنب الارتجاج
+                    <AnimatePresence mode="wait" initial={false}>
+                      {iconToggle ? (
+                        <motion.div
+                          key="filter-icon"
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          transition={{ duration: 0.2, ease: "easeOut" }}
+                          className="flex items-center justify-center"
+                        >
+                          <Filter size={18} strokeWidth={2} />
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="search-icon"
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          transition={{ duration: 0.2, ease: "easeOut" }}
+                          className="flex items-center justify-center"
+                        >
+                          <Search size={18} strokeWidth={2} />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   )}
-                </button>
-
-                <NotificationsPopover
-                  isOpen={isNotifOpen}
-                  notifications={notifications}
-                  onClose={() => setIsNotifOpen(false)}
-                  onMarkAsRead={onMarkAsRead}
-                  onClearAll={onClearAll}
-                  onNotificationClick={(notification) => {
-                    setIsNotifOpen(false);
-                    if (onNotificationClick) {
-                      onNotificationClick(notification);
-                    }
-                  }}
-                />
-              </div>
-            )}
+                </div>
+                {/* Badge رقمي يظهر عدد الفلاتر النشطة */}
+                {hasActiveFilters && activeFiltersCount > 0 && (
+                  <motion.span 
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center shadow-md"
+                  >
+                    {activeFiltersCount}
+                  </motion.span>
+                )}
+              </button>
+            ) : null}
           </>
         )}
 
-        {/* Sign Out (if logged in) or Login (if guest) */}
-        {isGuest ? (
-          <button
-            onClick={onSignOut}
-            className="hidden sm:flex p-2.5 rounded-xl hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all active:scale-95 group"
-            title="تسجيل الدخول"
-          >
-            <LogIn size={20} strokeWidth={2} className="group-hover:text-primary transition-colors duration-300" />
-          </button>
-        ) : user && (
+        {/* Sign Out (if logged in) */}
+        {!isGuest && user && (
           <button
             onClick={onSignOut}
             className="hidden sm:flex p-2.5 rounded-xl hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-all active:scale-95 group"
@@ -753,12 +975,13 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           </button>
         )}
       </div>
+      )}
     </div>
   );
 
   return (
     <>
-      <div className={transparent ? "" : "sticky top-0 z-50 px-4 bg-white/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-gray-200/30 dark:border-white/10 shadow-sm shrink-0"}>
+      <div className={transparent ? "" : "sticky top-0 z-50 px-4 bg-card/95 backdrop-blur-lg shrink-0"}>
         <div className={transparent ? "" : "flex flex-col"}>
           {headerContent}
         </div>

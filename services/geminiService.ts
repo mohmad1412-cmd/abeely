@@ -1,16 +1,16 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Anthropic from "@anthropic-ai/sdk";
 
 // Use Vite environment variable (prefixed with VITE_)
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-const MODEL = "gemini-2.0-flash-001";
+const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
+const MODEL = "claude-sonnet-4-20250514"; // أو claude-3-5-sonnet-20241022
 
-let genAI: GoogleGenerativeAI | null = null;
+let anthropic: Anthropic | null = null;
 
 const getAIClient = () => {
-    if (!genAI && API_KEY) {
-        genAI = new GoogleGenerativeAI(API_KEY);
+    if (!anthropic && API_KEY) {
+        anthropic = new Anthropic({ apiKey: API_KEY });
     }
-    return genAI;
+    return anthropic;
 };
 
 export const sendMessageToGemini = async (
@@ -23,31 +23,32 @@ export const sendMessageToGemini = async (
   }
 
   try {
-    const model = client.getGenerativeModel({ 
-        model: MODEL, // مثال: gemini-2.0-flash-001
+    // تحويل التاريخ إلى تنسيق Anthropic
+    const messages: Anthropic.MessageParam[] = history.map(h => ({
+      role: h.role === 'model' ? 'assistant' : 'user',
+      content: h.parts[0]?.text || ''
+    }));
+
+    messages.push({
+      role: 'user',
+      content: message
     });
 
-    const systemMessage = {
-        role: 'user' as const,
-        parts: [{ text: `أنت مساعد ذكي لمنصة "أبيلي". دورك هو مساعدة المستخدمين في صياغة الطلبات والعروض. تحدث بالعربية بمهنية وبلهجة سعودية بيضاء محببة.` }]
-    };
-
-    const chat = model.startChat({
-        history: [
-            systemMessage,
-            { role: 'model' as const, parts: [{ text: 'فهمت، سأساعدك في صياغة طلبك أو عرضك باحترافية.' }] },
-            ...history.map(h => ({
-                role: h.role === 'model' ? 'model' as const : 'user' as const,
-                parts: [{ text: h.parts[0].text }]
-            }))
-        ],
+    const response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 2048,
+      system: `أنت مساعد ذكي لمنصة "أبيلي". دورك هو مساعدة المستخدمين في صياغة الطلبات والعروض. تحدث بالعربية بمهنية وبلهجة سعودية بيضاء محببة.`,
+      messages: messages,
     });
 
-    const result = await chat.sendMessage(message);
-    const response = await result.response;
-    return response.text() || "لم أتمكن من فهم ذلك، هل يمكنك التوضيح؟";
+    const content = response.content[0];
+    if (content.type === 'text') {
+      return content.text || "لم أتمكن من فهم ذلك، هل يمكنك التوضيح؟";
+    }
+    
+    return "لم أتمكن من فهم ذلك، هل يمكنك التوضيح؟";
   } catch (error) {
-    console.error("Gemini Error:", error);
+    console.error("Anthropic Error:", error);
     return "حدث خطأ أثناء الاتصال بالمساعد الذكي.";
   }
 };

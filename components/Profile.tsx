@@ -10,8 +10,6 @@ interface ProfileProps {
   userRating: number;
   profileRole: 'requester' | 'provider';
   // Unified Header Props
-  isSidebarOpen: boolean;
-  setIsSidebarOpen: (open: boolean) => void;
   mode: 'requests' | 'offers';
   toggleMode: () => void;
   isModeSwitching: boolean;
@@ -29,14 +27,14 @@ interface ProfileProps {
   onSignOut: () => void;
   onBack: () => void;
   isGuest?: boolean;
+  onNavigateToProfile?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export const Profile: React.FC<ProfileProps> = ({ 
   userReviews, 
   userRating,
   profileRole,
-  isSidebarOpen,
-  setIsSidebarOpen,
   mode,
   toggleMode,
   isModeSwitching,
@@ -54,6 +52,8 @@ export const Profile: React.FC<ProfileProps> = ({
   onSignOut,
   onBack,
   isGuest = false,
+  onNavigateToProfile,
+  onNavigateToSettings,
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -121,8 +121,6 @@ export const Profile: React.FC<ProfileProps> = ({
     <div className="h-full flex flex-col">
       {/* Unified Header */}
       <UnifiedHeader
-        isSidebarOpen={isSidebarOpen}
-        setIsSidebarOpen={setIsSidebarOpen}
         mode={mode}
         toggleMode={toggleMode}
         isModeSwitching={isModeSwitching}
@@ -142,6 +140,8 @@ export const Profile: React.FC<ProfileProps> = ({
         currentView="profile"
         hideModeToggle={true}
         isGuest={isGuest}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToSettings={onNavigateToSettings}
       />
 
       <div className="flex-1 overflow-y-auto no-scrollbar">

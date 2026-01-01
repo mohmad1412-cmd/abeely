@@ -29,8 +29,6 @@ interface MessagesProps {
   onSelectConversation?: (conversationId: string) => void;
   initialConversationId?: string;
   // Unified Header Props
-  isSidebarOpen: boolean;
-  setIsSidebarOpen: (open: boolean) => void;
   mode: 'requests' | 'offers';
   toggleMode: () => void;
   isModeSwitching: boolean;
@@ -45,14 +43,14 @@ interface MessagesProps {
   onClearAll: () => void;
   onSignOut: () => void;
   isGuest?: boolean;
+  onNavigateToProfile?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export const Messages: React.FC<MessagesProps> = ({ 
   onBack, 
   onSelectConversation,
   initialConversationId,
-  isSidebarOpen,
-  setIsSidebarOpen,
   mode,
   toggleMode,
   isModeSwitching,
@@ -67,6 +65,8 @@ export const Messages: React.FC<MessagesProps> = ({
   onClearAll,
   onSignOut,
   isGuest = false,
+  onNavigateToProfile,
+  onNavigateToSettings,
 }) => {
   const [user, setUser] = React.useState<any>(null);
 
@@ -232,8 +232,6 @@ export const Messages: React.FC<MessagesProps> = ({
       <div className="h-full flex flex-col bg-background">
         {/* Unified Header */}
         <UnifiedHeader
-          isSidebarOpen={isSidebarOpen}
-          setIsSidebarOpen={setIsSidebarOpen}
           mode={mode}
           toggleMode={toggleMode}
           isModeSwitching={isModeSwitching}
@@ -252,6 +250,8 @@ export const Messages: React.FC<MessagesProps> = ({
           title="الرسائل"
           currentView="messages"
           isGuest={isGuest}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToSettings={onNavigateToSettings}
         />
 
         {/* Conversations List */}

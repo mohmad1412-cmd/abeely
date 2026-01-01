@@ -16,8 +16,6 @@ interface SettingsProps {
   onUpdateProfile?: (updates: Partial<UserProfile>) => Promise<void>;
   onSignOut?: () => void;
   // Unified Header Props
-  isSidebarOpen: boolean;
-  setIsSidebarOpen: (open: boolean) => void;
   mode: 'requests' | 'offers';
   toggleMode: () => void;
   isModeSwitching: boolean;
@@ -31,6 +29,8 @@ interface SettingsProps {
   onNotificationClick?: (notification: any) => void;
   onClearAll: () => void;
   isGuest?: boolean;
+  onNavigateToProfile?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 const CITIES = [
@@ -56,8 +56,6 @@ export const Settings: React.FC<SettingsProps> = ({
   user = null,
   onUpdateProfile,
   onSignOut,
-  isSidebarOpen,
-  setIsSidebarOpen,
   mode,
   toggleMode,
   isModeSwitching,
@@ -71,6 +69,8 @@ export const Settings: React.FC<SettingsProps> = ({
   onNotificationClick,
   onClearAll,
   isGuest = false,
+  onNavigateToProfile,
+  onNavigateToSettings,
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingEmail, setIsEditingEmail] = useState(false);
@@ -161,8 +161,6 @@ export const Settings: React.FC<SettingsProps> = ({
     <div className="h-full flex flex-col">
       {/* Unified Header */}
       <UnifiedHeader
-        isSidebarOpen={isSidebarOpen}
-        setIsSidebarOpen={setIsSidebarOpen}
         mode={mode}
         toggleMode={toggleMode}
         isModeSwitching={isModeSwitching}
@@ -182,6 +180,8 @@ export const Settings: React.FC<SettingsProps> = ({
         currentView="settings"
         hideModeToggle={true}
         isGuest={isGuest}
+        onNavigateToProfile={onNavigateToProfile}
+        onNavigateToSettings={onNavigateToSettings}
       />
 
       <div className="flex-1 overflow-y-auto relative no-scrollbar pb-24">
@@ -865,22 +865,6 @@ export const Settings: React.FC<SettingsProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Sign Out Button - Floating at bottom */}
-      {onSignOut && (
-        <div className="sticky bottom-0 z-20 bg-gradient-to-t from-background via-background to-transparent pt-6 pb-6">
-          <div className="max-w-2xl mx-auto px-6">
-            <motion.button
-              onClick={onSignOut}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-all group backdrop-blur-sm"
-            >
-              <LogOut size={20} className="group-hover:scale-110 transition-transform" />
-              <span className="font-bold">تسجيل الخروج</span>
-            </motion.button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

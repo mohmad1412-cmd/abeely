@@ -1,18 +1,18 @@
 import React, { useState, useRef, useMemo } from "react";
 import { Offer, Request } from "../types";
-import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Briefcase, 
-  ChevronDown,
+import { motion } from "framer-motion";
+import {
+  Briefcase,
+  MapPin,
+  Calendar,
+  Archive,
+  MessageCircle,
   ArrowUpDown,
   Clock,
-  Calendar,
-  CheckCircle
 } from "lucide-react";
-import { ServiceCard } from "./ServiceCard";
-import { ViewModeToolbar, ViewMode } from "./ui/ViewModeToolbar";
-import { TallCardView } from "./ui/TallCardView";
-import { TextCardView } from "./ui/TextCardView";
+import { format } from "date-fns";
+import { ar } from "date-fns/locale";
+import { FloatingFilterIsland } from "./ui/FloatingFilterIsland";
 
 type OfferFilter = "all" | "accepted" | "pending" | "completed";
 type SortOrder = "updatedAt" | "createdAt";
@@ -22,6 +22,11 @@ interface MyOffersProps {
   archivedOffers?: Offer[];
   allRequests: Request[];
   onSelectRequest: (req: Request) => void;
+  onSelectOffer?: (offer: Offer) => void;
+  onArchiveOffer?: (offerId: string) => void;
+  onUnarchiveOffer?: (offerId: string) => void;
+  onOpenWhatsApp?: (phoneNumber: string, offer: Offer) => void;
+  onOpenChat?: (requestId: string, offer: Offer) => void;
   userId?: string;
   viewedRequestIds?: Set<string>;
 }
@@ -31,37 +36,19 @@ export const MyOffers: React.FC<MyOffersProps> = ({
   archivedOffers = [],
   allRequests,
   onSelectRequest,
+  onSelectOffer,
+  onArchiveOffer,
+  onUnarchiveOffer,
+  onOpenWhatsApp,
+  onOpenChat,
   userId,
   viewedRequestIds = new Set(),
 }) => {
-  const [displayMode, setDisplayMode] = useState<ViewMode>("grid");
-  const [touchHoveredCardId, setTouchHoveredCardId] = useState<string | null>(null);
-  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  
   // Filter & Sort States
   const [offerFilter, setOfferFilter] = useState<OfferFilter>("all");
   const [sortOrder, setSortOrder] = useState<SortOrder>("createdAt");
   const [hideRejected, setHideRejected] = useState(true);
-  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
-  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
-  const filterDropdownRef = useRef<HTMLDivElement>(null);
-  const sortDropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdowns when clicking outside
-  React.useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node) && isFilterDropdownOpen) {
-        setIsFilterDropdownOpen(false);
-      }
-      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target as Node) && isSortDropdownOpen) {
-        setIsSortDropdownOpen(false);
-      }
-    };
-    if (isFilterDropdownOpen || isSortDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [isFilterDropdownOpen, isSortDropdownOpen]);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Counts
   const counts = useMemo(() => {
@@ -106,276 +93,250 @@ export const MyOffers: React.FC<MyOffersProps> = ({
     });
   }, [offers, archivedOffers, offerFilter, sortOrder, hideRejected]);
 
-  const getFilterLabel = () => {
-    switch (offerFilter) {
-      case "all": return "كل عروضي";
-      case "pending": return "عروضي قيد الانتظار";
-      case "accepted": return "عروضي المقبولة";
-      case "completed": return "المكتملة والمؤرشفة";
+  // Filter configurations for FloatingFilterIsland
+  const filterConfigs = useMemo(() => [
+    {
+      id: "offerFilter",
+      icon: <Briefcase size={14} />,
+      options: [
+        { value: "all", label: "كل عروضي", count: counts.all },
+        { value: "pending", label: "عروضي قيد الانتظار", count: counts.pending },
+        { value: "accepted", label: "عروضي المقبولة", count: counts.accepted },
+        { value: "completed", label: "المكتملة والمؤرشفة", count: counts.completed },
+      ],
+      value: offerFilter,
+      onChange: (value: string) => setOfferFilter(value as OfferFilter),
+      getLabel: () => {
+        switch (offerFilter) {
+          case "all": return "كل عروضي";
+          case "pending": return "قيد الانتظار";
+          case "accepted": return "المقبولة";
+          case "completed": return "المكتملة";
+        }
+      },
+      showCount: true,
+    },
+    {
+      id: "sortOrder",
+      icon: <ArrowUpDown size={14} />,
+      options: [
+        { value: "createdAt", label: "وقت الإنشاء", icon: <Calendar size={12} /> },
+        { value: "updatedAt", label: "آخر تحديث", icon: <Clock size={12} /> },
+      ],
+      value: sortOrder,
+      onChange: (value: string) => setSortOrder(value as SortOrder),
+      getLabel: () => sortOrder === "updatedAt" ? "آخر تحديث" : "الإنشاء",
+      showCount: false,
+    },
+  ], [offerFilter, sortOrder, counts]);
+
+  const getContactStatus = (offer: Offer) => {
+    if (offer.status === "accepted") {
+      return { text: "عرضك مقبول، ابدأ التواصل", color: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400", icon: "✅" };
+    } else if (offer.status === "negotiating") {
+      return { text: "صاحب الطلب بدأ التفاوض معك", color: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400", icon: "💬" };
     }
+    if (offer.isNegotiable) {
+      return { text: "انتظر قبول الطلب أو بدء التفاوض", color: "bg-gray-100 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400", icon: "⏳" };
+    }
+    return { text: "انتظر قبول الطلب", color: "bg-gray-100 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400", icon: "⏳" };
   };
-
-  const getSortLabel = () => {
-    return sortOrder === "updatedAt" ? "آخر تحديث" : "وقت الإنشاء";
-  };
-
-  // تحويل العروض إلى طلبات للعرض
-  const requestsFromOffers = useMemo(() => {
-    return filteredOffers
-      .map((offer) => {
-        const relatedRequest = allRequests.find((r) => r.id === offer.requestId);
-        return relatedRequest;
-      })
-      .filter((req): req is Request => req !== undefined);
-  }, [filteredOffers, allRequests]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
-      {/* Filters Header */}
-      <div className="px-4 pt-4 pb-3 border-b border-border space-y-3">
-        {/* Filter & Sort Row */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Filter Dropdown */}
-          <div className="relative flex-1 min-w-[140px]" ref={filterDropdownRef}>
-            <button 
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(10);
-                setIsFilterDropdownOpen(!isFilterDropdownOpen);
-                setIsSortDropdownOpen(false);
-              }} 
-              className={`w-full text-right flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all ${
-                isFilterDropdownOpen 
-                  ? "bg-primary/10 border-primary text-primary" 
-                  : "bg-secondary/50 border-border text-foreground hover:bg-secondary"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Briefcase size={16} className="text-primary" />
-                <span className="text-sm font-bold">{getFilterLabel()}</span>
-                <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold bg-primary text-white">
-                  {offerFilter === "pending" ? counts.pending : offerFilter === "accepted" ? counts.accepted : offerFilter === "all" ? counts.all : counts.completed}
-                </span>
-              </div>
-              <motion.div 
-                animate={{ rotate: isFilterDropdownOpen ? 180 : 0 }} 
-                transition={{ type: "spring", stiffness: 300, damping: 20 }}
-              >
-                <ChevronDown size={18} className="text-muted-foreground" />
-              </motion.div>
-            </button>
-            
-            <AnimatePresence>
-              {isFilterDropdownOpen && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10, scale: 0.95 }} 
-                  animate={{ opacity: 1, y: 0, scale: 1 }} 
-                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                  className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden"
-                >
-                  {[
-                    { value: "all" as OfferFilter, label: "كل عروضي", count: counts.all },
-                    { value: "pending" as OfferFilter, label: "عروضي قيد الانتظار", count: counts.pending },
-                    { value: "accepted" as OfferFilter, label: "عروضي المقبولة", count: counts.accepted },
-                    { value: "completed" as OfferFilter, label: "المكتملة والمؤرشفة", count: counts.completed },
-                  ].map((item, idx) => (
-                    <motion.button 
-                      key={item.value}
-                      whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }}
-                      onClick={() => { 
-                        if (navigator.vibrate) navigator.vibrate(10); 
-                        setOfferFilter(item.value); 
-                        setIsFilterDropdownOpen(false); 
-                      }} 
-                      className={`w-full text-right px-3 py-2.5 text-sm font-bold transition-colors flex items-center justify-between focus:outline-none ${
-                        idx > 0 ? "border-t border-border" : ""
-                      } ${offerFilter === item.value ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}
-                    >
-                      <span>{item.label}</span>
-                      <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${
-                        offerFilter === item.value ? "bg-primary text-white" : "bg-primary/10 text-primary"
-                      }`}>
-                        {item.count}
-                      </span>
-                    </motion.button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Sort Dropdown */}
-          <div className="relative min-w-[130px]" ref={sortDropdownRef}>
-            <button 
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(10);
-                setIsSortDropdownOpen(!isSortDropdownOpen);
-                setIsFilterDropdownOpen(false);
-              }} 
-              className={`w-full text-right flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all ${
-                isSortDropdownOpen 
-                  ? "bg-primary/10 border-primary text-primary" 
-                  : "bg-secondary/50 border-border text-foreground hover:bg-secondary"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <ArrowUpDown size={16} className="text-primary" />
-                <span className="text-sm font-bold">{getSortLabel()}</span>
-              </div>
-              <motion.div 
-                animate={{ rotate: isSortDropdownOpen ? 180 : 0 }} 
-                transition={{ type: "spring", stiffness: 300, damping: 20 }}
-              >
-                <ChevronDown size={18} className="text-muted-foreground" />
-              </motion.div>
-            </button>
-            
-            <AnimatePresence>
-              {isSortDropdownOpen && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10, scale: 0.95 }} 
-                  animate={{ opacity: 1, y: 0, scale: 1 }} 
-                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                  className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden"
-                >
-                  {[
-                    { value: "createdAt" as SortOrder, label: "وقت الإنشاء", icon: <Calendar size={14} /> },
-                    { value: "updatedAt" as SortOrder, label: "آخر تحديث", icon: <Clock size={14} /> },
-                  ].map((item, idx) => (
-                    <motion.button 
-                      key={item.value}
-                      whileTap={{ scale: 0.98, backgroundColor: "rgba(30, 150, 140, 0.15)" }}
-                      onClick={() => { 
-                        if (navigator.vibrate) navigator.vibrate(10); 
-                        setSortOrder(item.value); 
-                        setIsSortDropdownOpen(false); 
-                      }} 
-                      className={`w-full text-right px-3 py-2.5 text-sm font-bold transition-colors flex items-center justify-between focus:outline-none ${
-                        idx > 0 ? "border-t border-border" : ""
-                      } ${sortOrder === item.value ? "bg-primary/10 text-primary" : "hover:bg-secondary/50"}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        {item.icon}
-                        <span>{item.label}</span>
-                      </div>
-                      {sortOrder === item.value && (
-                        <CheckCircle size={14} className="text-primary" />
-                      )}
-                    </motion.button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-
-        {/* View Mode Toolbar */}
-        <ViewModeToolbar
-          currentMode={displayMode}
-          onChange={setDisplayMode}
+      {/* Content with Floating Filter Island */}
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 pb-24">
+        {/* Floating Filter Island */}
+        <FloatingFilterIsland 
+          filters={filterConfigs}
+          scrollContainerRef={scrollContainerRef}
         />
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 pb-20">
-        <AnimatePresence mode="wait">
-          {displayMode === "tall" ? (
-            <motion.div
-              key="tall-view"
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -30 }}
-              transition={{ duration: 0.25 }}
-              className="py-4"
-            >
-              <TallCardView
-                requests={requestsFromOffers}
-                myOffers={filteredOffers}
-                receivedOffersMap={new Map()}
-                userId={userId}
-                viewedRequestIds={viewedRequestIds}
-                onSelectRequest={onSelectRequest}
-                onLoadMore={() => {}}
-                hasMore={false}
-                isLoadingMore={false}
-              />
-            </motion.div>
-          ) : displayMode === "text" ? (
-            <motion.div
-              key="text-view"
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -30 }}
-              transition={{ duration: 0.25 }}
-            >
-              <TextCardView
-                requests={requestsFromOffers}
-                myOffers={filteredOffers}
-                receivedOffersMap={new Map()}
-                userId={userId}
-                viewedRequestIds={viewedRequestIds}
-                onSelectRequest={onSelectRequest}
-                onLoadMore={() => {}}
-                hasMore={false}
-                isLoadingMore={false}
-              />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="grid-view"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-            >
-              {requestsFromOffers.map((req, index) => {
-                const relatedOffer = filteredOffers.find((o) => o.requestId === req.id);
-                const requestAuthorId =
-                  (req as any).authorId ||
-                  (req as any).author_id ||
-                  req.author;
-                const isMyRequest = !!userId && requestAuthorId === userId;
-                const isTouchHovered = touchHoveredCardId === req.id;
-
-                return (
-                  <ServiceCard
-                    key={req.id}
-                    req={req}
-                    user={{ id: userId }}
-                    isMyRequest={isMyRequest}
-                    viewedRequestIds={viewedRequestIds}
-                    receivedOffersMap={new Map()}
-                    myOffer={relatedOffer}
-                    onSelectRequest={onSelectRequest}
-                    index={index}
-                    isTouchHovered={isTouchHovered}
-                    setTouchHoveredCardId={setTouchHoveredCardId}
-                    isGuest={!userId}
-                    setGuestViewedIds={() => {}}
-                  />
-                );
-              })}
+        <div key={offerFilter} className="grid grid-cols-1 gap-6 min-h-[100px] pt-2">
+          {filteredOffers.length === 0 && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-8">
+              <motion.div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-brand flex items-center justify-center" animate={{ scale: [1, 1.05, 1], rotate: [0, 3, -3, 0] }} transition={{ duration: 2, repeat: Infinity }}>
+                <span className="text-xl font-black text-white">أ</span>
+              </motion.div>
+              <p className="text-sm text-muted-foreground">لا توجد عروض</p>
             </motion.div>
           )}
-        </AnimatePresence>
+          {filteredOffers.map((offer, index) => {
+            const relatedReq = allRequests.find((r) => r.id === offer.requestId);
+            const contactStatus = getContactStatus(offer);
+            const requestNumber = relatedReq?.requestNumber || relatedReq?.id?.slice(-4).toUpperCase() || '';
+            const shouldShowName = offer.status === 'accepted' && relatedReq?.showAuthorName !== false && relatedReq?.authorName;
 
-        {requestsFromOffers.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center py-16"
-          >
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <Briefcase size={24} className="text-primary" />
-            </div>
-            <p className="text-muted-foreground font-medium">
-              لا توجد عروض
-            </p>
-          </motion.div>
-        )}
+            return (
+              <motion.div
+                key={offer.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ 
+                  type: "spring", 
+                  stiffness: 400, 
+                  damping: 30,
+                  delay: index < 9 ? index * 0.03 : 0
+                }}
+                whileHover={{ y: -8, scale: 1.02 }}
+                onClick={() => {
+                  if (onSelectOffer) {
+                    onSelectOffer(offer);
+                  } else if (relatedReq) {
+                    onSelectRequest(relatedReq);
+                  }
+                }}
+                className="bg-card border border-border rounded-2xl p-4 pt-5 transition-colors cursor-pointer relative shadow-sm group text-right"
+              >
+                <span className="absolute -top-3 right-4 bg-card px-2 py-0.5 text-[11px] font-bold text-primary rounded-full border border-border">
+                  عرضي
+                </span>
+                
+                <div className="flex items-start justify-between mb-2">
+                  <span className="font-bold text-base truncate text-primary max-w-[70%]">
+                    {offer.title}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        offer.status === "pending"
+                          ? "bg-orange-100 text-orange-700"
+                          : offer.status === "accepted"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      {offer.status === "pending"
+                        ? "انتظار"
+                        : offer.status === "accepted"
+                        ? "مقبول"
+                        : "تفاوض"}
+                    </span>
+                    {onArchiveOffer && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onArchiveOffer(offer.id);
+                        }}
+                        className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground"
+                        title="أرشفة العرض"
+                      >
+                        <Archive size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 flex-wrap">
+                  {offer.location && (
+                    <span className="flex items-center gap-1">
+                      <MapPin size={14} />
+                      {offer.location}
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <Calendar size={14} />
+                    {format(offer.createdAt, "dd MMM", { locale: ar })}
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-2 text-sm mb-2 flex-wrap">
+                  <span className="text-muted-foreground">سعر عرضي:</span>
+                  <span className="font-bold text-foreground">{offer.price} ر.س</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${
+                    offer.isNegotiable 
+                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" 
+                      : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
+                  }`}>
+                    {offer.isNegotiable ? "قابل للتفاوض" : "غير قابل للتفاوض"}
+                  </span>
+                </div>
+
+                {relatedReq && (
+                  <div className="mt-5 p-2.5 pt-3 rounded-lg bg-secondary/50 border border-border/50 space-y-1.5 relative">
+                    <span className="absolute -top-2.5 right-3 bg-card px-2 text-[11px] font-bold text-muted-foreground">
+                      {shouldShowName 
+                        ? `طلب رقم (${requestNumber}) من ${relatedReq.authorName}`
+                        : `طلب (${requestNumber})`
+                      }
+                    </span>
+
+                    <div className="flex items-center gap-1 text-sm text-foreground">
+                      <span className="font-bold truncate max-w-[180px]">
+                        {relatedReq.title}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      {relatedReq.location && (
+                        <span className="flex items-center gap-0.5">
+                          <MapPin size={12} />
+                          {relatedReq.location}
+                        </span>
+                      )}
+                      {relatedReq.budgetMin && relatedReq.budgetMax && (
+                        <span className="flex items-center gap-0.5">
+                          💰 {relatedReq.budgetMin}-{relatedReq.budgetMax} ر.س
+                        </span>
+                      )}
+                      {relatedReq.deliveryTimeFrom && (
+                        <span className="flex items-center gap-0.5">
+                          ⏰ {relatedReq.deliveryTimeFrom}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-1.5 pt-1">
+                      {offer.status === 'pending' && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-muted-foreground">التواصل:</span>
+                          <span className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${contactStatus.color}`}>
+                            {contactStatus.icon} {contactStatus.text}
+                          </span>
+                        </div>
+                      )}
+                      {(offer.status === 'accepted' || offer.status === 'negotiating') && (
+                        <div className="flex items-center gap-1.5 w-full justify-end">
+                          {(relatedReq.isCreatedViaWhatsApp || relatedReq.contactMethod === 'whatsapp' || relatedReq.contactMethod === 'both') && relatedReq.whatsappNumber && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onOpenWhatsApp && relatedReq.whatsappNumber) {
+                                  onOpenWhatsApp(relatedReq.whatsappNumber, offer);
+                                } else {
+                                  window.open(`https://wa.me/${relatedReq.whatsappNumber}`, '_blank');
+                                }
+                              }}
+                              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-green-500 hover:bg-green-600 active:scale-95 active:bg-green-700 text-white transition-all shadow-sm"
+                              title="تواصل عبر واتساب"
+                            >
+                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                              </svg>
+                              واتساب
+                            </button>
+                          )}
+                          {!relatedReq.isCreatedViaWhatsApp && (relatedReq.contactMethod === 'chat' || relatedReq.contactMethod === 'both' || !relatedReq.contactMethod) && onOpenChat && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenChat(relatedReq.id, offer);
+                              }}
+                              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-primary hover:bg-primary/90 active:scale-95 active:bg-primary/80 text-primary-foreground transition-all shadow-sm"
+                              title="فتح المحادثة"
+                            >
+                              <MessageCircle size={12} />
+                              محادثة
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 };
+

@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { motion, AnimatePresence, useDragControls } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles,
   Plus,
-  GripVertical,
   X,
   Mic,
   Send,
@@ -32,11 +31,15 @@ interface GlobalFloatingOrbProps {
   onInputChange?: (value: string) => void;
   onSend?: (audioBlob?: Blob) => void;
   isLoading?: boolean;
-  // Position persistence
+  // Position persistence (deprecated - now fixed position)
   position?: { x: number; y: number };
   onPositionChange?: (pos: { x: number; y: number }) => void;
   // Visibility control
   isVisible?: boolean;
+  // Hide when scroll-to-top button is visible
+  hideForScrollButton?: boolean;
+  // Custom element to render above the orb
+  topElement?: React.ReactNode;
 }
 
 // ============================================
@@ -168,12 +171,12 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
   position: externalPosition,
   onPositionChange,
   isVisible = true,
+  hideForScrollButton = false,
+  topElement,
 }) => {
-  const dragControls = useDragControls();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -190,7 +193,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
   const GLASS_PANEL_HEIGHT = 140;
   const MARGIN = 20;
   const BOTTOM_MARGIN = 40;
-  const TOOLTIP_WIDTH = 100; // Approximate width of tooltip
+  const TOOLTIP_WIDTH = 130; // Approximate width of tooltip (increased for larger fonts)
   const TOOLTIP_OFFSET = 12; // mr-3 = 12px
   
   // Internal position state
@@ -395,7 +398,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
       tooltipTimerRef.current = null;
     }
 
-    if (mode !== "navigate" || isDragging || isExpanded) {
+    if (mode !== "navigate" || isExpanded) {
       setIsTooltipVisible(false);
       return;
     }
@@ -420,7 +423,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
         tooltipTimerRef.current = null;
       }
     };
-  }, [mode, isDragging, isExpanded]);
+  }, [mode, isExpanded]);
 
   // Calculate tooltip position and ball offset
   const getTooltipConfig = useCallback(() => {
@@ -478,23 +481,6 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
     };
   }, [renderPos.x, renderPos.y]);
   
-  const handleDragStart = () => {
-    if (navigator.vibrate) navigator.vibrate(8);
-    setIsDragging(true);
-  };
-
-  const handleDragEnd = (_: any, info: { offset: { x: number; y: number } }) => {
-    setIsDragging(false);
-    setIsPressed(false);
-    
-    const newX = renderPos.x + info.offset.x;
-    const newY = renderPos.y + info.offset.y;
-    const clamped = clampPosition(newX, newY);
-    
-    setRenderPos(clamped);
-    setPosition(clamped);
-  };
-
   // Handle orb click based on mode
   const handleOrbClick = () => {
     if (navigator.vibrate) navigator.vibrate(15);
@@ -516,52 +502,46 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
 
   // Calculate tooltip configuration
   const tooltipConfig = getTooltipConfig();
-  const ballOffsetX = isTooltipVisible && mode === "navigate" && !isDragging && !isExpanded 
+  const ballOffsetX = isTooltipVisible && mode === "navigate" && !isExpanded 
     ? tooltipConfig.ballOffsetX 
     : 0;
+
+  // Hide when scroll button is visible
+  if (hideForScrollButton) {
+    return null;
+  }
 
   return (
     <motion.div
       ref={containerRef}
-      drag
-      dragControls={dragControls}
-      dragConstraints={{
-        left: bounds.minX,
-        right: bounds.maxX,
-        top: bounds.minY,
-        bottom: bounds.maxY
-      }}
-      dragElastic={0.1}
-      dragMomentum={false}
-      dragTransition={{ 
-        bounceStiffness: 300, 
-        bounceDamping: 30
-      }}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
       onTapStart={() => setIsPressed(true)}
       onTap={() => setIsPressed(false)}
       onTapCancel={() => setIsPressed(false)}
-      initial={false}
-      animate={{
-        x: renderPos.x + ballOffsetX,
-        y: renderPos.y,
-      }}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.8 }}
       transition={{
         type: "spring",
         stiffness: 400,
         damping: 30,
         mass: 0.8
       }}
-      style={{ position: 'fixed', left: 0, top: 0 }}
+      style={{ position: 'fixed', left: 24, bottom: 100 }}
       className="z-[100] pointer-events-auto"
     >
+      {/* Top Element - Custom element above the orb */}
+      {topElement && (
+        <div className="mb-3">
+          {topElement}
+        </div>
+      )}
+
       {/* Floating Animation Wrapper */}
       <motion.div
-        animate={!isExpanded && !isDragging ? {
+        animate={!isExpanded ? {
           y: [0, -6, 0],
         } : { y: 0 }}
-        transition={!isExpanded && !isDragging ? {
+        transition={!isExpanded ? {
           duration: 2.5,
           repeat: Infinity,
           ease: "easeInOut"
@@ -574,9 +554,9 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
           )}
         </AnimatePresence>
 
-        {/* "Create Request" Tooltip - only in navigate mode when not dragging */}
+        {/* "Create Request" Tooltip - only in navigate mode */}
         <AnimatePresence>
-          {mode === "navigate" && !isDragging && !isExpanded && isTooltipVisible && (
+          {mode === "navigate" && !isExpanded && isTooltipVisible && (
             <motion.div
               initial={{ opacity: 0, x: tooltipConfig.shouldShowLeft ? 20 : -20, scale: 0.8 }}
               animate={{ 
@@ -593,7 +573,7 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
                 duration: 0.4, 
                 ease: [0.16, 1, 0.3, 1] // Custom easing for smoothness
               }}
-              className={`absolute top-1/2 -translate-y-1/2 whitespace-nowrap bg-white/95 dark:bg-[#1a1a24]/95 backdrop-blur-md text-primary px-3 py-1.5 rounded-full text-[11px] font-medium shadow-xl border border-primary/20 pointer-events-none z-50 flex items-center gap-1.5 ${
+              className={`absolute top-1/2 -translate-y-1/2 whitespace-nowrap bg-white/95 dark:bg-[#1a1a24]/95 backdrop-blur-md text-primary px-3 py-1.5 rounded-full text-xs font-medium shadow-xl border border-primary/20 pointer-events-none z-50 flex items-center gap-2 ${
                 tooltipConfig.shouldShowLeft 
                   ? 'right-full mr-3' 
                   : 'left-full ml-3'
@@ -607,13 +587,13 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
             >
               {tooltipConfig.shouldShowLeft ? (
                 <>
-                  <ArrowRight size={12} className="animate-bounce-x-right" />
+                  <ArrowRight size={18} className="animate-bounce-x-right" />
                   <span>أنشئ طلب</span>
                 </>
               ) : (
                 <>
                   <span>أنشئ طلب</span>
-                  <ArrowLeft size={12} className="animate-bounce-x" />
+                  <ArrowLeft size={18} className="animate-bounce-x" />
                 </>
               )}
             </motion.div>
@@ -628,8 +608,8 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
               className="absolute left-1/2 -translate-x-1/2 w-10 h-2 bg-black/15 rounded-full blur-sm"
               style={{ bottom: -8 }}
               animate={{
-                scale: isDragging ? 0.6 : [1, 0.9, 1],
-                opacity: isDragging ? 0.1 : [0.2, 0.15, 0.2],
+                scale: [1, 0.9, 1],
+                opacity: [0.2, 0.15, 0.2],
               }}
               transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             />
@@ -721,8 +701,8 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
           animate={{
             width: isExpanded ? EXPANDED_WIDTH : BUBBLE_SIZE,
             height: isExpanded ? EXPANDED_HEIGHT : BUBBLE_SIZE,
-            scale: isPressed && !isExpanded ? 0.85 : isDragging && !isExpanded ? 1.1 : 1,
-            rotate: isDragging && !isExpanded ? [0, 5, -5, 0] : 0,
+            scale: isPressed && !isExpanded ? 0.85 : 1,
+            rotate: 0,
           }}
           whileHover={!isExpanded ? { 
             scale: 1.05,
@@ -800,14 +780,6 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
                 transition={{ duration: 0.1 }}
                 className="flex items-center h-full px-2 gap-1 rounded-full overflow-hidden"
               >
-                {/* Drag Handle */}
-                <button
-                  onPointerDown={(e) => dragControls.start(e)}
-                  className="p-2 text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing touch-none"
-                >
-                  <GripVertical size={18} />
-                </button>
-
                 {/* Text Input */}
                 <input
                   ref={inputRef}
