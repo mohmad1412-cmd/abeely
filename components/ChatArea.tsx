@@ -2773,17 +2773,17 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                      <input
                        type="text"
                        value={guestOTP}
-                       onChange={(e) => setGuestOTP(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                       placeholder="000000"
-                       className="w-full h-12 px-4 text-center rounded-lg border-2 border-border bg-background text-2xl font-bold tracking-widest outline-none transition-all focus:border-primary"
+                       onChange={(e) => setGuestOTP(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                       placeholder="0000"
+                       className="w-full h-14 px-4 text-center rounded-xl border-2 border-border bg-background text-3xl font-black tracking-[0.5em] outline-none transition-all focus:border-primary"
                        dir="ltr"
-                       maxLength={6}
+                       maxLength={4}
                      />
                      <div className="flex gap-2">
                        <button
                          onClick={async () => {
-                           if (guestOTP.length !== 6) {
-                             alert("يرجى إدخال رمز التحقق المكون من 6 أرقام");
+                           if (guestOTP.length !== 4) {
+                             alert("يرجى إدخال رمز التحقق المكون من 4 أرقام");
                              return;
                            }
                            setIsVerifyingOTP(true);

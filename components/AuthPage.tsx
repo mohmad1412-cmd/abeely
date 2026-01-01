@@ -142,8 +142,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
 
   // Handle OTP verification
   const handleOTPVerify = async () => {
-    if (otp.length !== 6) {
-      setError('يرجى إدخال رمز التحقق المكون من 6 أرقام');
+    if (otp.length !== 4) {
+      setError('يرجى إدخال رمز التحقق المكون من 4 أرقام');
       return;
     }
 
@@ -170,12 +170,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
     }
   };
 
-  // تفعيل Enter عند اكتمال الرقم (6 أرقام)
+  // تفعيل Enter عند اكتمال الرقم (4 أرقام)
   useEffect(() => {
     if (step !== 'otp') return;
 
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && otp.length === 6 && !isLoading && !showSuccess) {
+      if (e.key === 'Enter' && otp.length === 4 && !isLoading && !showSuccess) {
         e.preventDefault();
         handleOTPVerify();
       }
@@ -504,7 +504,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
               </motion.div>
             )}
 
-            {/* OTP Input */}
+            {/* OTP Input - تصميم حديث وأنيق */}
             {step === 'otp' && (
               <motion.div
                 key="otp"
@@ -512,51 +512,95 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -30 }}
                 transition={{ type: "spring", stiffness: 400, damping: 35 }}
-                className="space-y-4 relative"
+                className="space-y-6 relative"
               >
-                <div className="flex justify-center gap-2" dir="ltr">
-                  {[0, 1, 2, 3, 4, 5].map((i) => (
-                    <input
+                {/* OTP Boxes Container */}
+                <div className="relative">
+                  {/* Glow effect behind inputs */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-teal-400/20 via-cyan-400/30 to-teal-400/20 blur-2xl rounded-3xl" />
+                  
+                  <div className="relative flex justify-center gap-4" dir="ltr">
+                    {[0, 1, 2, 3].map((i) => (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, y: 20, scale: 0.8 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ delay: i * 0.08, type: "spring", stiffness: 300 }}
+                        className="relative"
+                      >
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={1}
+                          value={otp[i] || ''}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '');
+                            const newOtp = otp.split('');
+                            newOtp[i] = val;
+                            const updatedOtp = newOtp.join('');
+                            setOtp(updatedOtp);
+                            
+                            // Auto-focus next input
+                            if (val && i < 3) {
+                              const next = document.querySelector(`input[data-index="${i + 1}"]`) as HTMLInputElement;
+                              next?.focus();
+                            }
+                            
+                            // Auto-verify when complete
+                            if (updatedOtp.length === 4 && !isLoading && !showSuccess) {
+                              setTimeout(() => handleOTPVerify(), 200);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Backspace' && !otp[i] && i > 0) {
+                              const prev = document.querySelector(`input[data-index="${i - 1}"]`) as HTMLInputElement;
+                              prev?.focus();
+                            } else if (e.key === 'Enter') {
+                              // تفعيل Enter عند اكتمال الرقم (4 أرقام)
+                              const currentOtp = otp.split('');
+                              currentOtp[i] = e.currentTarget.value.replace(/\D/g, '');
+                              const fullOtp = currentOtp.join('');
+                              
+                              if (fullOtp.length === 4 && !isLoading && !showSuccess) {
+                                e.preventDefault();
+                                setOtp(fullOtp);
+                                setTimeout(() => handleOTPVerify(), 50);
+                              }
+                            }
+                          }}
+                          onFocus={(e) => e.target.select()}
+                          data-index={i}
+                          className={`w-16 h-20 rounded-2xl text-center text-3xl font-black outline-none transition-all duration-300 ${
+                            otp[i] 
+                              ? 'bg-white text-[#153659] shadow-xl shadow-white/30 border-2 border-white' 
+                              : 'bg-white/15 text-white border-2 border-white/30 hover:border-white/50 focus:border-white focus:bg-white/25'
+                          } ${showSuccess ? 'bg-green-400 border-green-300 text-white' : ''}`}
+                          style={{
+                            caretColor: 'transparent'
+                          }}
+                        />
+                        {/* Dot indicator under each box */}
+                        <motion.div
+                          className={`absolute -bottom-3 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full transition-all duration-300 ${
+                            otp[i] ? 'bg-teal-400 shadow-lg shadow-teal-400/50' : 'bg-white/30'
+                          }`}
+                          animate={otp[i] ? { scale: [1, 1.3, 1] } : {}}
+                          transition={{ duration: 0.3 }}
+                        />
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div className="flex justify-center gap-1 mt-8">
+                  {[0, 1, 2, 3].map((i) => (
+                    <motion.div
                       key={i}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={otp[i] || ''}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, '');
-                        const newOtp = otp.split('');
-                        newOtp[i] = val;
-                        const updatedOtp = newOtp.join('');
-                        setOtp(updatedOtp);
-                        
-                        // Auto-focus next input
-                        if (val && i < 5) {
-                          const next = document.querySelector(`input[data-index="${i + 1}"]`) as HTMLInputElement;
-                          next?.focus();
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Backspace' && !otp[i] && i > 0) {
-                          const prev = document.querySelector(`input[data-index="${i - 1}"]`) as HTMLInputElement;
-                          prev?.focus();
-                        } else if (e.key === 'Enter') {
-                          // تفعيل Enter عند اكتمال الرقم (6 أرقام)
-                          const currentOtp = otp.split('');
-                          currentOtp[i] = e.currentTarget.value.replace(/\D/g, '');
-                          const fullOtp = currentOtp.join('');
-                          
-                          if (fullOtp.length === 6 && !isLoading && !showSuccess) {
-                            e.preventDefault();
-                            setOtp(fullOtp);
-                            // تأخير بسيط للتأكد من تحديث state
-                            setTimeout(() => {
-                              handleOTPVerify();
-                            }, 50);
-                          }
-                        }
-                      }}
-                      data-index={i}
-                      className="w-12 h-14 rounded-xl bg-white/10 border-2 border-white/20 text-white text-center text-2xl font-bold focus:border-white/50 outline-none transition-all"
+                      className={`h-1 rounded-full transition-all duration-300 ${
+                        i < otp.length ? 'w-8 bg-teal-400' : 'w-4 bg-white/20'
+                      }`}
+                      animate={i < otp.length ? { opacity: [0.5, 1] } : {}}
                     />
                   ))}
                 </div>
@@ -569,69 +613,88 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.5 }}
                       transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
-                      className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
+                      className="absolute inset-0 flex flex-col items-center justify-center z-50 pointer-events-none"
                     >
                       <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: [0, 1.2, 1] }}
-                        transition={{ duration: 0.5, times: [0, 0.5, 1] }}
-                        className="w-24 h-24 rounded-full bg-green-500/90 backdrop-blur-xl flex items-center justify-center shadow-2xl border-4 border-white/30"
+                        initial={{ scale: 0, rotate: -180 }}
+                        animate={{ scale: [0, 1.2, 1], rotate: 0 }}
+                        transition={{ duration: 0.6, times: [0, 0.6, 1] }}
+                        className="w-28 h-28 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-2xl shadow-green-500/50"
                       >
                         <motion.div
-                          initial={{ pathLength: 0 }}
-                          animate={{ pathLength: 1 }}
-                          transition={{ duration: 0.4, delay: 0.2 }}
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ delay: 0.3, type: "spring" }}
                         >
-                          <Check size={48} className="text-white" strokeWidth={4} />
+                          <Check size={56} className="text-white" strokeWidth={3} />
                         </motion.div>
                       </motion.div>
                       <motion.p
-                        initial={{ opacity: 0, y: 20 }}
+                        initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3 }}
-                        className="absolute top-1/2 mt-20 text-white font-bold text-lg"
+                        transition={{ delay: 0.4 }}
+                        className="mt-4 text-white font-bold text-xl"
                       >
-                        تم التحقق بنجاح! ✅
+                        ✅ تم التحقق بنجاح
                       </motion.p>
                     </motion.div>
                   )}
                 </AnimatePresence>
 
                 {error && !showSuccess && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-red-300 text-sm text-center"
+                  <motion.div
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    className="bg-red-500/20 backdrop-blur-sm border border-red-400/30 rounded-xl px-4 py-3 flex items-center gap-3"
                   >
-                    {error}
-                  </motion.p>
+                    <AlertCircle size={20} className="text-red-300 shrink-0" />
+                    <p className="text-red-200 text-sm">{error}</p>
+                  </motion.div>
                 )}
 
-                <button
+                <motion.button
                   onClick={handleOTPVerify}
-                  disabled={isLoading || otp.length !== 6 || showSuccess}
-                  className="w-full py-4 px-6 rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+                  disabled={isLoading || otp.length !== 4 || showSuccess}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className={`w-full py-4 px-6 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-xl transition-all duration-300 disabled:cursor-not-allowed ${
+                    showSuccess 
+                      ? 'bg-gradient-to-r from-green-400 to-emerald-500 text-white shadow-green-500/30' 
+                      : otp.length === 4
+                        ? 'bg-white text-[#153659] hover:shadow-2xl hover:shadow-white/30'
+                        : 'bg-white/50 text-[#153659]/70'
+                  }`}
                 >
                   {showSuccess ? (
                     <>
-                      <Check size={22} className="text-green-500" />
-                      <span className="text-green-500">تم التحقق</span>
+                      <Check size={24} />
+                      <span>جاري الدخول...</span>
                     </>
                   ) : (
                     <>
-                      <Check size={22} />
+                      <Shield size={20} />
                       <span>تأكيد الدخول</span>
                     </>
                   )}
-                </button>
+                </motion.button>
 
-                <button
-                  onClick={() => handlePhoneSubmit()}
-                  disabled={isLoading}
-                  className="w-full py-3 text-white/60 hover:text-white text-sm transition-colors disabled:opacity-50"
-                >
-                  لم يصلك الرمز؟ إعادة الإرسال
-                </button>
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => handlePhoneSubmit()}
+                    disabled={isLoading}
+                    className="py-2 px-4 text-white/60 hover:text-white text-sm transition-colors disabled:opacity-50 hover:underline"
+                  >
+                    إعادة الإرسال
+                  </button>
+                  <span className="text-white/30">•</span>
+                  <button
+                    onClick={goBack}
+                    disabled={isLoading}
+                    className="py-2 px-4 text-white/60 hover:text-white text-sm transition-colors disabled:opacity-50 hover:underline"
+                  >
+                    تغيير الرقم
+                  </button>
+                </div>
               </motion.div>
             )}
 

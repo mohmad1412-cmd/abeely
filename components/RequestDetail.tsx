@@ -2728,15 +2728,15 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     type="text"
                     value={guestOfferOTP}
                     onChange={(e) => {
-                      setGuestOfferOTP(e.target.value.replace(/\D/g, '').slice(0, 6));
+                      setGuestOfferOTP(e.target.value.replace(/\D/g, '').slice(0, 4));
                       setGuestOfferError(null); // مسح الخطأ عند الكتابة
                     }}
-                    placeholder="000000"
-                    className={`w-full h-12 px-4 text-center rounded-lg border-2 bg-background text-2xl font-bold tracking-widest outline-none transition-all focus:border-primary ${
+                    placeholder="0000"
+                    className={`w-full h-14 px-4 text-center rounded-xl border-2 bg-background text-3xl font-black tracking-[0.5em] outline-none transition-all focus:border-primary ${
                       guestOfferError ? 'border-red-500' : 'border-border'
                     }`}
                     dir="ltr"
-                    maxLength={6}
+                    maxLength={4}
                   />
                   
                   {/* عرض رسالة الخطأ */}
@@ -2761,8 +2761,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   <div className="flex gap-2">
                     <button
                       onClick={async () => {
-                        if (guestOfferOTP.length !== 6) {
-                          setGuestOfferError("يرجى إدخال رمز التحقق المكون من 6 أرقام");
+                        if (guestOfferOTP.length !== 4) {
+                          setGuestOfferError("يرجى إدخال رمز التحقق المكون من 4 أرقام");
                           return;
                         }
                         setIsVerifyingOfferOTP(true);
