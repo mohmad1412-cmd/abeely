@@ -70,6 +70,8 @@ import {
 import { acceptOffer, createOffer, startNegotiation } from "../services/requestsService";
 import { uploadOfferAttachments, isImageFile, validateFile, formatFileSize } from "../services/storageService";
 import { supabase } from "../services/supabaseClient";
+import { DEFAULT_SAUDI_CITIES } from "../services/placesService";
+import { CityAutocomplete } from "./ui/CityAutocomplete";
 
 interface RequestDetailProps {
   request: Request;
@@ -282,10 +284,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   // Focus States for Floating Labels
   const [isPriceFocused, setIsPriceFocused] = useState(false);
   const [isDurationFocused, setIsDurationFocused] = useState(false);
-  const [isCityFocused, setIsCityFocused] = useState(false);
   const [isTitleFocused, setIsTitleFocused] = useState(false);
   const [isDescriptionFocused, setIsDescriptionFocused] = useState(false);
-
+  
   // Smart resize hint for description textarea
   const [showDescResizeHint, setShowDescResizeHint] = useState(false);
   const [isDescResizing, setIsDescResizing] = useState(false);
@@ -313,11 +314,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     title: false,
   });
   
-  // Smart resize hint animation for description field:
-  // - First hint once user starts typing
-  // - Periodic subtle hint every 40s to indicate the bottom edge is draggable
   useEffect(() => {
-    // Show hint when user types at least 3 characters for the first time
     if (offerDescription.length >= 3 && isDescriptionFocused && !hasShownDescFirstHint.current) {
       hasShownDescFirstHint.current = true;
       triggerDescResizeHint();
@@ -2299,31 +2296,24 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         </label>
                       </div>
 
-                      {/* City Field */}
-                      <div className="relative">
-                        <input
-                          id="city"
-                          type="text"
-                          className={`peer w-full h-11 rounded-lg border-2 bg-background px-3 pt-3 text-sm outline-none transition-all appearance-none border-border text-right ${
-                            isCityFocused ? "border-primary" : "border-border"
-                          }`}
-                          placeholder=""
+                      {/* City Field - Dropdown */}
+                      <div className="mb-4">
+                        <CityAutocomplete
                           value={offerCity}
-                          onChange={(e) => setOfferCity(e.target.value)}
-                          onFocus={() => setIsCityFocused(true)}
-                          onBlur={() => setIsCityFocused(false)}
+                          onChange={(val) => setOfferCity(val)}
+                          placeholder="اختر المدينة..."
+                          label="المدينة"
+                          showRemoteOption={true}
+                          showGPSOption={true}
+                          showMapOption={true}
+                          onOpenMap={() => {
+                            if (navigator.vibrate) navigator.vibrate(10);
+                            // فتح Google Maps في نافذة جديدة
+                            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=المملكة+العربية+السعودية`;
+                            window.open(mapsUrl, '_blank');
+                          }}
+                          showAllCitiesOption={true}
                         />
-                        <label
-                          htmlFor="city"
-                          className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
-                            offerCity || isCityFocused
-                              ? "-top-2.5 right-2 bg-card px-1 text-[10px] text-primary font-bold max-w-[calc(100%-8px)] overflow-hidden"
-                              : "top-3 right-3 text-sm text-muted-foreground whitespace-nowrap"
-                          }`}
-                        >
-                          <span className="truncate">المدينة</span>
-                          {offerCity && !isCityFocused && <Check size={12} className="text-primary" />}
-                        </label>
                       </div>
                     </div>
 

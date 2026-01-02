@@ -1192,11 +1192,15 @@ const App: React.FC = () => {
               });
 
             // Check city match
+            // إذا تم اختيار "كل المدن" أو لم يتم اختيار أي مدينة، نتخطى الفلترة
             const cityMatch = activeCities.length === 0 ||
+              activeCities.includes('كل المدن') ||
               (req.location &&
                 activeCities.some((city) =>
-                  req.location.toLowerCase().includes(city.toLowerCase()) ||
-                  city.toLowerCase().includes(req.location.toLowerCase())
+                  city !== 'كل المدن' && (
+                    req.location.toLowerCase().includes(city.toLowerCase()) ||
+                    city.toLowerCase().includes(req.location.toLowerCase())
+                  )
                 ));
 
             return catMatch && cityMatch;

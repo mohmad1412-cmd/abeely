@@ -2168,8 +2168,17 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       console.log('City coordinates:', cityResult.lat, cityResult.lng);
                     }
                   }}
-                  placeholder="ابحث عن مدينة أو اختر 'عن بعد'"
+                  placeholder="ابحث عن مدينة..."
                   showRemoteOption={true}
+                  showGPSOption={true}
+                  showMapOption={true}
+                  onOpenMap={() => {
+                    if (navigator.vibrate) navigator.vibrate(10);
+                    // فتح Google Maps في نافذة جديدة
+                    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=المملكة+العربية+السعودية`;
+                    window.open(mapsUrl, '_blank');
+                  }}
+                  showAllCitiesOption={true}
                 />
               </div>
             </motion.div>

@@ -282,12 +282,188 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
         ) : null}
         
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          {!backButton && !hideProfileButton && (
+          {!backButton && !hideProfileButton && title && (
             <>
-              <div 
-                className="relative" 
-                ref={profileDropdownRef}
-              >
+              {/* Combined container for title and profile - styled like Create Request button */}
+              <div className="flex items-center gap-2 h-10 px-3 pr-1.5 rounded-full bg-card/80 backdrop-blur-sm border border-border shadow-lg min-w-0">
+                {/* Profile Button - on the right (first in RTL) */}
+                <div 
+                  className="relative shrink-0" 
+                  ref={profileDropdownRef}
+                >
+                <motion.button
+                  onClick={() => {
+                    if (navigator.vibrate) navigator.vibrate(8);
+                    setIsProfileDropdownOpen(!isProfileDropdownOpen);
+                  }}
+                  whileTap={{ scale: 0.95 }}
+                  className="relative w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center overflow-visible border border-primary/20 shrink-0"
+                >
+                  <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
+                    {user?.avatar_url ? (
+                      <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
+                    ) : isGuest ? (
+                      <User size={14} className="text-muted-foreground" />
+                    ) : (
+                      <span className="text-xs font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
+                    )}
+                  </div>
+                </motion.button>
+                
+                {/* Profile Dropdown - For all users */}
+                <AnimatePresence>
+                  {isProfileDropdownOpen && (
+                    <>
+                      {/* Backdrop - blocks scroll */}
+                      <div 
+                        className="fixed inset-0 z-40 touch-none" 
+                        onClick={() => setIsProfileDropdownOpen(false)}
+                        onWheel={(e) => e.preventDefault()}
+                        onTouchMove={(e) => e.preventDefault()}
+                      />
+                      <motion.div
+                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                        transition={{ duration: 0.2, ease: 'easeOut' }}
+                        className="absolute top-full right-0 mt-2 w-56 bg-card/95 backdrop-blur-xl rounded-2xl border border-border shadow-2xl z-50 overflow-hidden"
+                      >
+                        {/* User Info */}
+                        <div className="p-4 border-b border-border/50">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border border-primary/20 shrink-0">
+                              {user?.avatar_url ? (
+                                <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
+                              ) : isGuest ? (
+                                <User size={18} className="text-muted-foreground" />
+                              ) : (
+                                <span className="text-sm font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-sm text-foreground truncate">
+                                {isGuest ? "زائر" : user?.display_name || "المستخدم"}
+                              </p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {isGuest ? "سجل دخولك للمزيد" : user?.email || ""}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Menu Items */}
+                        <div className="p-2">
+                          {!isGuest && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setIsProfileDropdownOpen(false);
+                                  onNavigateToProfile?.();
+                                }}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-foreground hover:bg-secondary/50 transition-colors"
+                              >
+                                <User size={18} className="text-muted-foreground" />
+                                <span>الملف الشخصي</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setIsProfileDropdownOpen(false);
+                                  onNavigateToSettings?.();
+                                }}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-foreground hover:bg-secondary/50 transition-colors"
+                              >
+                                <Settings size={18} className="text-muted-foreground" />
+                                <span>الإعدادات</span>
+                              </button>
+                              
+                              <div className="my-1 border-t border-border/50" />
+                            </>
+                          )}
+                          
+                          {/* Theme & Language Section */}
+                          <div className="flex items-center gap-2 px-2 py-1.5">
+                            {/* Dark Mode Toggle */}
+                            <button
+                              onClick={() => {
+                                if (navigator.vibrate) navigator.vibrate(10);
+                                toggleTheme?.();
+                              }}
+                              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                                isDarkMode 
+                                  ? 'bg-primary/10 text-primary' 
+                                  : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                              }`}
+                            >
+                              {isDarkMode ? (
+                                <Moon size={16} className="text-primary" />
+                              ) : (
+                                <Sun size={16} />
+                              )}
+                              <span className="text-xs">{isDarkMode ? 'ليلي' : 'نهاري'}</span>
+                            </button>
+                            
+                            {/* Language Toggle */}
+                            <button
+                              onClick={() => {
+                                if (navigator.vibrate) navigator.vibrate(10);
+                                setIsProfileDropdownOpen(false);
+                                onOpenLanguagePopup?.();
+                              }}
+                              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-secondary/50 text-muted-foreground hover:bg-secondary transition-all"
+                            >
+                              <Globe size={16} />
+                              <span className="text-xs">العربية</span>
+                            </button>
+                          </div>
+                          
+                          <div className="my-1 border-t border-border/50" />
+                          
+                          <button
+                            onClick={() => {
+                              setIsProfileDropdownOpen(false);
+                              onSignOut();
+                            }}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                              isGuest 
+                                ? 'text-primary hover:bg-primary/10' 
+                                : 'text-red-500 hover:bg-red-500/10'
+                            }`}
+                          >
+                            {isGuest ? (
+                              <>
+                                <LogIn size={18} />
+                                <span>تسجيل الدخول</span>
+                              </>
+                            ) : (
+                              <>
+                                <LogOut size={18} />
+                                <span>تسجيل الخروج</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+                </div>
+                
+                {/* Page Title - on the left (after profile in RTL) */}
+                {title && (
+                  <h1 className="text-sm font-bold text-foreground truncate flex-1">
+                    {title}
+                  </h1>
+                )}
+              </div>
+            </>
+          )}
+          
+          {/* Standalone Profile Button - for pages without title */}
+          {!backButton && !hideProfileButton && !title && (
+            <div 
+              className="relative" 
+              ref={profileDropdownRef}
+            >
               <motion.button
                 onClick={() => {
                   if (navigator.vibrate) navigator.vibrate(8);
@@ -311,11 +487,10 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                 </div>
               </motion.button>
               
-              {/* Profile Dropdown - For all users */}
+              {/* Profile Dropdown */}
               <AnimatePresence>
                 {isProfileDropdownOpen && (
                   <>
-                    {/* Backdrop - blocks scroll */}
                     <div 
                       className="fixed inset-0 z-40 touch-none" 
                       onClick={() => setIsProfileDropdownOpen(false)}
@@ -329,7 +504,6 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                       transition={{ duration: 0.2, ease: 'easeOut' }}
                       className="absolute top-full right-0 mt-2 w-56 bg-card/95 backdrop-blur-xl rounded-2xl border border-border shadow-2xl z-50 overflow-hidden"
                     >
-                      {/* User Info */}
                       <div className="p-4 border-b border-border/50">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border border-primary/20 shrink-0">
@@ -352,7 +526,6 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                         </div>
                       </div>
                       
-                      {/* Menu Items */}
                       <div className="p-2">
                         {!isGuest && (
                           <>
@@ -381,9 +554,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                           </>
                         )}
                         
-                        {/* Theme & Language Section */}
                         <div className="flex items-center gap-2 px-2 py-1.5">
-                          {/* Dark Mode Toggle */}
                           <button
                             onClick={() => {
                               if (navigator.vibrate) navigator.vibrate(10);
@@ -403,7 +574,6 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                             <span className="text-xs">{isDarkMode ? 'ليلي' : 'نهاري'}</span>
                           </button>
                           
-                          {/* Language Toggle */}
                           <button
                             onClick={() => {
                               if (navigator.vibrate) navigator.vibrate(10);
@@ -447,16 +617,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   </>
                 )}
               </AnimatePresence>
-              </div>
-              {/* Page Title - only when no back button */}
-              {title && (
-                <div className="flex items-center gap-3 ml-auto min-w-0 flex-1">
-                  <h1 className="text-base font-bold text-foreground text-right truncate">
-                    {title}
-                  </h1>
-                </div>
-              )}
-            </>
+            </div>
           )}
           
           {/* Title for pages with back button - only shows when scrolled, shrinks to fit */}

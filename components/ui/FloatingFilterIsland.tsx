@@ -217,14 +217,13 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
                 className={`flex items-center justify-between gap-2 px-3 h-10 rounded-full transition-all w-full ${
                   openDropdownId === filter.id
                     ? "bg-primary/15 text-primary"
-                    : "hover:bg-secondary/60 text-foreground"
+                    : "hover:bg-secondary/60 text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <div className="flex items-center gap-1.5">
                   <span className="text-primary">{filter.icon}</span>
                   <span 
-                    className="font-bold whitespace-nowrap transition-all duration-200"
-                    style={{ fontSize: isCompact ? "10px" : "12px" }}
+                    className="text-xs font-bold whitespace-nowrap"
                   >
                     {filter.getLabel()}
                   </span>

@@ -991,10 +991,11 @@ async function matchesUserInterests(
     }
 
     // Check city match
-    if (interestedCities.length > 0 && request.location) {
+    // إذا تم اختيار "كل المدن" أو لم يتم اختيار أي مدينة، نتخطى الفلترة
+    if (interestedCities.length > 0 && !interestedCities.includes('كل المدن') && request.location) {
       const requestCity = request.location.split('،').pop()?.trim() || request.location;
       const hasMatchingCity = interestedCities.some(city =>
-        requestCity.includes(city) || city.includes(requestCity)
+        city !== 'كل المدن' && (requestCity.includes(city) || city.includes(requestCity))
       );
       if (!hasMatchingCity) return false;
     }

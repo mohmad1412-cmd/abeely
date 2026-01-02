@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Offer, Request } from "../types";
 import { AVAILABLE_CATEGORIES } from "../data";
 import {
@@ -36,6 +37,8 @@ import {
   LayoutGrid,
   CreditCard,
   AlignJustify,
+  Globe,
+  Heart,
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
@@ -44,7 +47,7 @@ import { CardsGridSkeleton } from "./ui/LoadingSkeleton";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
 import CompactListView from "./ui/CompactListView";
 import { CityAutocomplete } from "./ui/CityAutocomplete";
-import { searchCities, CityResult, DEFAULT_SAUDI_CITIES } from "../services/placesService";
+import { searchCities as searchCitiesAPI, CityResult, DEFAULT_SAUDI_CITIES } from "../services/placesService";
 type ViewMode = "grid" | "text";
 
 interface MarketplaceProps {
@@ -199,6 +202,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   
   // Interests panel visibility based on scroll direction
   const [showInterestsPanel, setShowInterestsPanel] = useState(true);
+  const [isInterestsPanelExpanded, setIsInterestsPanelExpanded] = useState(false); // منطوي افتراضياً
   const lastScrollY = useRef(0);
   const lastHeaderChangeTime = useRef(0); // لمنع التبديل السريع
 
@@ -304,7 +308,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     }
     setIsSearchingCities(true);
     try {
-      const results = await searchCities(query);
+      const results = await searchCitiesAPI(query);
       if (results.length > 0) {
         setCitySearchResults(results.map(r => r.name));
       } else {
@@ -444,21 +448,31 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         });
       }
       
-      // Header compression - يعتمد على اتجاه السكرول
-      if (scrollTop < 30) {
-        // عند القمة - أظهر الـ header كاملاً
-        setShowInterestsPanel(true);
-        setIsHeaderCompressed(false);
-      } else if (scrollDelta < -3) {
-        // سكرول للأعلى - أظهر الـ header
-        setShowInterestsPanel(true);
-        setIsHeaderCompressed(false);
-      } else if (scrollDelta > 3) {
-        // سكرول للأسفل - اخفِ الـ header
-        setShowInterestsPanel(false);
-        setIsHeaderCompressed(true);
+      // Header compression - يعتمد على اتجاه السكرول مع debounce زمني
+      const now = Date.now();
+      const timeSinceLastChange = now - lastHeaderChangeTime.current;
+      const MIN_TIME_BETWEEN_CHANGES = 150; // 150ms minimum بين التغييرات
+      
+      if (scrollTop < 20) {
+        // عند القمة - أظهر الـ header كاملاً (فوري بدون debounce)
+        if (isHeaderCompressed) {
+          setShowInterestsPanel(true);
+          setIsHeaderCompressed(false);
+          lastHeaderChangeTime.current = now;
+        }
+      } else {
+        // أي سكرول للأعلى = رجّع الـ header فوراً
+        if (scrollDelta < 0 && isHeaderCompressed) {
+          setShowInterestsPanel(true);
+          setIsHeaderCompressed(false);
+          lastHeaderChangeTime.current = now;
+        } else if (scrollDelta > 8 && !isHeaderCompressed && timeSinceLastChange > MIN_TIME_BETWEEN_CHANGES) {
+          // سكرول للأسفل بمقدار كافي - صغّر الـ header
+          setShowInterestsPanel(false);
+          setIsHeaderCompressed(true);
+          lastHeaderChangeTime.current = now;
+        }
       }
-      // إذا كان الفرق صغير جداً (بين -3 و 3)، لا تغيّر الحالة لتجنب التذبذب
       
       lastScrollY.current = scrollTop;
       
@@ -642,11 +656,29 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   };
 
   const toggleCity = (city: string) => {
-    setTempCities(prev => 
-      prev.includes(city)
-        ? prev.filter(c => c !== city)
-        : [...prev, city]
-    );
+    console.log('toggleCity called with:', city);
+    setTempCities(prev => {
+      console.log('Current cities:', prev);
+      // إذا كانت المدينة موجودة، نزيلها
+      if (prev.includes(city)) {
+        const newCities = prev.filter(c => c !== city);
+        console.log('Removing city, new cities:', newCities);
+        return newCities;
+      } else {
+        // إذا اختار "كل المدن"، نزيل المدن الأخرى (ما عدا "عن بعد")
+        if (city === 'كل المدن') {
+          const remoteOnly = prev.filter(c => c === 'عن بعد');
+          const newCities = [...remoteOnly, city];
+          console.log('Adding all cities, new cities:', newCities);
+          return newCities;
+        }
+        // إذا اختار مدينة معينة، نزيل "كل المدن"
+        const filtered = prev.filter(c => c !== 'كل المدن');
+        const newCities = [...filtered, city];
+        console.log('Adding city, new cities:', newCities);
+        return newCities;
+      }
+    });
   };
 
   const filteredCities = CITIES.filter(city => 
@@ -715,7 +747,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       if (prev.includes(city)) {
         return prev.filter(c => c !== city);
       } else {
-        return [...prev, city];
+        // إذا اختار "كل المدن"، نزيل المدن الأخرى (ما عدا "عن بعد")
+        if (city === 'كل المدن') {
+          const remoteOnly = prev.filter(c => c === 'عن بعد');
+          return [...remoteOnly, city];
+        }
+        // إذا اختار مدينة معينة، نزيل "كل المدن"
+        const filtered = prev.filter(c => c !== 'كل المدن');
+        return [...filtered, city];
       }
     });
   };
@@ -751,12 +790,25 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     }
 
     // City filter (Multi-select)
-    if (searchCities.length > 0) {
-      const hasCityMatch = searchCities.some(city => 
+    // إذا تم اختيار "كل المدن" أو لم يتم اختيار أي مدينة، نتخطى الفلترة
+    if (searchCities.length > 0 && !searchCities.includes('كل المدن')) {
+      // نستثني "عن بعد" من الفلترة العادية - نتحقق منها بشكل منفصل
+      const citiesWithoutRemote = searchCities.filter(c => c !== 'عن بعد');
+      const includesRemote = searchCities.includes('عن بعد');
+      
+      const hasCityMatch = citiesWithoutRemote.some(city => 
         req.location?.toLowerCase().includes(city.toLowerCase()) || 
         city.toLowerCase().includes(req.location?.toLowerCase() || "")
       );
-      if (!hasCityMatch) return false;
+      
+      // إذا اختار "عن بعد"، نتحقق أيضاً إذا كان الموقع يحتوي على "عن بعد"
+      const hasRemoteMatch = includesRemote && (
+        req.location?.toLowerCase().includes('عن بعد') || 
+        !req.location // طلبات بدون موقع تعتبر "عن بعد"
+      );
+      
+      if (!hasCityMatch && !hasRemoteMatch && citiesWithoutRemote.length > 0) return false;
+      if (!hasRemoteMatch && citiesWithoutRemote.length === 0 && includesRemote) return false;
     }
 
     // Budget filter
@@ -806,17 +858,16 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         ref={headerRef}
         className="sticky top-0 z-[60] overflow-visible"
       >
-        <div className="flex flex-col overflow-visible">
-          {/* Main Header Content - Hides when scrolling down */}
-          <motion.div
-            animate={{
-              height: isHeaderCompressed ? 0 : 'auto',
-              opacity: isHeaderCompressed ? 0 : 1,
-            }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-            style={{ overflow: isHeaderCompressed ? 'hidden' : 'visible' }}
-            className="px-4"
-          >
+        {/* Container for both header and tabs - shrinks together */}
+        <div 
+          className="flex flex-col overflow-visible origin-top will-change-transform"
+          style={{
+            transform: isHeaderCompressed ? 'scale(0.92) translateY(-6px)' : 'scale(1) translateY(0)',
+            transition: 'transform 0.15s ease-out',
+          }}
+        >
+          {/* Main Header Content */}
+          <div className="px-4">
             <UnifiedHeader
               mode={mode}
               toggleMode={toggleMode}
@@ -850,7 +901,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               showCreateRequestButton={true}
               onCreateRequest={onCreateRequest}
             />
-          </motion.div>
+          </div>
 
           {/* Switch Container - Filter button (left) + Tabs/Search (center) + Search button (right) */}
           <motion.div 
@@ -858,21 +909,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             animate={{ 
               opacity: 1, 
               y: 0,
-              paddingTop: isHeaderCompressed ? 12 : 12,
-              paddingLeft: isHeaderCompressed ? 24 : 16,
-              paddingRight: isHeaderCompressed ? 24 : 16,
             }}
             transition={{ type: "spring", stiffness: 400, damping: 40 }}
-            className={`flex items-center justify-center overflow-visible ${hasActiveFilters ? '' : 'pb-2'}`}
+            className={`flex items-center justify-center overflow-visible px-4 ${hasActiveFilters ? '' : 'pb-2'}`}
+            style={{ paddingTop: 12 }}
           >
             {/* Switch Container - Filter button (left) + Tabs/Search (center) + Search button (right) */}
-            <motion.div 
-              layoutId="shared-filter-island"
-              layout
-              animate={{
-                scale: isHeaderCompressed ? 0.92 : 1,
-              }}
-              transition={{ type: "spring", stiffness: 400, damping: 40 }}
+            <div 
               className="flex flex-row-reverse items-center bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border relative mx-auto shadow-lg origin-center w-auto"
               style={{ minWidth: 280, maxWidth: 400 }}
               dir="rtl"
@@ -973,23 +1016,21 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       initial={{ x: -100, opacity: 0 }}
                       animate={{ x: 0, opacity: 1 }}
                       exit={{ x: -100, opacity: 0 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 40 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
                       className="flex items-center w-full relative"
                     >
                       {/* Animated capsule indicator */}
                       {!hasActiveFilters && (
                         <motion.div
-                          layoutId="tab-indicator"
                           className="absolute inset-y-0 rounded-full bg-primary shadow-md z-0"
-                          style={{
-                            width: '50%',
+                          animate={{
                             left: viewMode === "all" ? '50%' : '0%',
                           }}
-                          transition={{ type: "spring", stiffness: 400, damping: 40 }}
+                          style={{ width: '50%' }}
+                          transition={{ duration: 0.2, ease: "easeOut" }}
                         />
                       )}
-                      <motion.button
-                        whileTap={{ scale: 0.96 }}
+                      <button
                         onClick={() => {
                           if (navigator.vibrate) navigator.vibrate(15);
                           if (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax) {
@@ -1004,9 +1045,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         }`}
                       >
                         <span className="relative z-10">الكل</span>
-                      </motion.button>
-                      <motion.button
-                        whileTap={{ scale: 0.96 }}
+                      </button>
+                      <button
                         onClick={() => {
                           if (navigator.vibrate) navigator.vibrate(15);
                           if (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax) {
@@ -1030,15 +1070,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             </span>
                           )}
                         </span>
-                      </motion.button>
+                      </button>
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
 
               {/* Search Button - Moves from right to left when clicked */}
-              <motion.button
-                layout
+              <button
                 onClick={() => {
                   if (navigator.vibrate) navigator.vibrate(10);
                   if (!isSearchInputOpen && !searchTerm) {
@@ -1046,17 +1085,15 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     setTimeout(() => searchInputRef.current?.focus(), 100);
                   }
                 }}
-                className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-colors shrink-0 bg-transparent ${
+                className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-colors shrink-0 bg-transparent active:scale-95 ${
                   isSearchInputOpen || searchTerm
                     ? 'text-primary'
                     : 'text-muted-foreground hover:text-primary'
                 }`}
-                whileTap={{ scale: 0.96 }}
-                transition={{ type: "spring", stiffness: 400, damping: 40 }}
               >
                 <Search size={15} strokeWidth={2.5} />
-              </motion.button>
-            </motion.div>
+              </button>
+            </div>
 
             {/* View Mode Selector - Hidden (keeping text mode only) */}
             {/* <div className="flex items-center gap-2">
@@ -1352,27 +1389,27 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Filters Popup - Bottom Sheet Style */}
-      <AnimatePresence>
-        {isFiltersPopupOpen && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsFiltersPopupOpen(false)}
-              className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm"
-            />
-            
-            {/* Popup Content */}
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 400 }}
-              className="fixed bottom-0 left-0 right-0 z-[101] bg-card rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl border-t border-x border-border/50"
-            >
+      {/* Filters Popup - Bottom Sheet Style - Using Portal to escape stacking context */}
+      {isFiltersPopupOpen && createPortal(
+        <div className="fixed inset-0 z-[9999]">
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setIsFiltersPopupOpen(false)}
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+          />
+          
+          {/* Popup Content */}
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 30, stiffness: 400 }}
+            className="absolute bottom-0 left-0 right-0 bg-card rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl border-t border-x border-border/50"
+          >
               {/* Handle Bar */}
               <div className="flex justify-center pt-3 pb-2">
                 <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
@@ -1550,6 +1587,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           onChange={() => {}}
                           placeholder="ابحث عن مدينة..."
                           multiSelect={true}
+                          showAllCitiesOption={true}
                           selectedCities={searchCities}
                           onSelectCity={(city) => {
                             if (navigator.vibrate) navigator.vibrate(10);
@@ -1560,6 +1598,15 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             toggleSearchCity(city);
                           }}
                           showRemoteOption={true}
+                          showGPSOption={true}
+                          showMapOption={true}
+                          onOpenMap={() => {
+                            if (navigator.vibrate) navigator.vibrate(10);
+                            // فتح Google Maps في نافذة جديدة
+                            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=المملكة+العربية+السعودية`;
+                            window.open(mapsUrl, '_blank');
+                          }}
+                          dropdownDirection="up"
                         />
                       </motion.div>
                     )}
@@ -1652,21 +1699,21 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               </div>
 
               {/* Footer with Action Button */}
-              <div className="border-t border-border/50 bg-card/95 backdrop-blur-xl p-4 safe-area-bottom">
+              <div className="border-t border-border/50 bg-card/95 backdrop-blur-xl px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
                 <Button
-                  className="w-full h-11 text-sm font-bold shadow-lg gap-2"
+                  className="w-full h-12 text-sm font-bold shadow-lg gap-2 rounded-xl"
                   onClick={handleApplySearch}
                 >
                   عرض النتائج
-                  <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-white/20 text-white px-1.5 text-[10px] font-bold">
+                  <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 rounded-full bg-white/20 text-white px-2 text-xs font-bold">
                     {filteredRequests.length}
                   </span>
                 </Button>
               </div>
             </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+        </div>,
+        document.body
+      )}
 
       <div className="px-4 pt-6 pb-4">
         {/* 1. Sub-Filters (Interests Panel) - ALWAYS TOP when in interests mode */}
@@ -1679,26 +1726,64 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             transition={{ duration: 0.3, ease: "easeInOut" }}
             className="overflow-hidden"
           >
-            {/* Interests Panel - Clean Redesign */}
-            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm"
-            >
-              {/* Header */}
-              <div className="p-4 border-b border-border/50 flex items-center justify-between bg-secondary/10">
+            {/* Interests Panel - Collapsible */}
+            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+              {/* Header - Clickable */}
+              <button 
+                onClick={() => setIsInterestsPanelExpanded(!isInterestsPanelExpanded)}
+                className="w-full p-3 flex items-center justify-between bg-secondary/10 hover:bg-secondary/20 transition-colors"
+              >
                 <div className="flex items-center gap-2">
+                  <Heart size={16} className="text-primary" />
                   <span className="font-bold text-sm">إدارة اهتماماتي</span>
+                  {/* عداد سريع */}
+                  {(userInterests.length > 0 || interestedCities.length > 0 || radarWords.length > 0) && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+                      {userInterests.length > 0 && <span>{userInterests.length} تصنيف</span>}
+                      {userInterests.length > 0 && (interestedCities.length > 0 || radarWords.length > 0) && <span>•</span>}
+                      {interestedCities.length > 0 && <span>{interestedCities.length} مدينة</span>}
+                      {interestedCities.length > 0 && radarWords.length > 0 && <span>•</span>}
+                      {radarWords.length > 0 && <span>{radarWords.length} كلمة</span>}
+                    </span>
+                  )}
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleManageInterests}
-                  className="gap-2 h-9 rounded-2xl border-primary/10 hover:bg-primary/5 text-primary text-xs font-bold"
-                >
-                  <Edit size={14} />
-                  تعديل
-                </Button>
-              </div>
+                <div className="flex items-center gap-2">
+                  <motion.div
+                    animate={{ rotate: isInterestsPanelExpanded ? 180 : 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <ChevronDown size={18} className="text-muted-foreground" />
+                  </motion.div>
+                </div>
+              </button>
 
-              <div className="p-4 space-y-5">
+              {/* Content - Expandable */}
+              <AnimatePresence>
+                {isInterestsPanelExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    {/* Action Button */}
+                    <div className="px-4 pt-3 pb-2 border-t border-border/50">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleManageInterests();
+                        }}
+                        className="w-full gap-2 h-9 rounded-xl border-primary/20 hover:bg-primary/5 text-primary text-xs font-bold"
+                      >
+                        <Edit size={14} />
+                        تعديل الاهتمامات
+                      </Button>
+                    </div>
+
+                    <div className="px-4 pb-4 space-y-4">
                 {/* Categories - Collapsible */}
                 <div className="space-y-3">
                   <div 
@@ -1879,7 +1964,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     />
                   </button>
                 </div>
-              </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </motion.div>
         )}
@@ -2027,30 +2115,47 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           </div>
         )}
 
-        {/* Modal logic for Interests - Simplified like Settings */}
-        {isManageInterestsOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+        {/* Modal logic for Interests - Bottom Sheet Style like Filters */}
+        {isManageInterestsOpen && createPortal(
+          <div className="fixed inset-0 z-[9999]">
+            {/* Backdrop */}
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-card rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setIsManageInterestsOpen(false)}
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            />
+            
+            {/* Popup Content */}
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 400 }}
+              className="absolute bottom-0 left-0 right-0 bg-card rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl border-t border-x border-border/50"
             >
-              {/* Modal Header */}
-              <div className="flex items-center justify-between p-4 border-b border-border">
-                <h3 className="text-lg font-bold">إدارة الاهتمامات</h3>
+              {/* Handle Bar */}
+              <div className="flex justify-center pt-3 pb-2">
+                <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+              </div>
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 pb-4 border-b border-border">
+                <h2 className="text-lg font-bold text-foreground">إدارة الاهتمامات</h2>
                 <button
                   onClick={() => setIsManageInterestsOpen(false)}
-                  className="p-2 hover:bg-secondary rounded-lg transition-colors"
+                  className="p-2 hover:bg-secondary rounded-full transition-colors"
                 >
-                  <X size={20} />
+                  <X size={18} />
                 </button>
               </div>
 
-              {/* Modal Content */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
                 {/* Notification Toggle - Moved to top */}
-                <div className="p-4 bg-secondary/50 rounded-lg border border-border">
+                <div className="p-4 bg-secondary/30 rounded-xl border border-border">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <Bell size={18} className="text-primary" />
@@ -2075,195 +2180,287 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 </div>
 
                 {/* Categories - Collapsible */}
-                <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
-                  <div 
-                    onClick={() => setIsCategoriesExpanded(!isCategoriesExpanded)}
-                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
+                <div className="space-y-3">
+                  <button 
+                    onClick={() => {
+                      const newState = !isCategoriesExpanded;
+                      setIsCategoriesExpanded(newState);
+                      if (newState) {
+                        setIsCitiesExpanded(false);
+                        setIsRadarWordsExpanded(false);
+                      }
+                    }}
+                    className="flex items-center justify-between w-full"
                   >
-                    <h4 className="font-bold text-sm">التصنيفات والمهام</h4>
-                    <ChevronDown 
-                      size={18} 
-                      className={`text-muted-foreground transition-transform duration-200 ${isCategoriesExpanded ? "rotate-180" : ""}`} 
-                    />
-                  </div>
+                    <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
+                      <Filter size={16} strokeWidth={2.5} className="text-primary" />
+                      التصنيفات والمهام
+                      {tempInterests.length > 0 && (
+                        <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-primary text-white px-1.5 text-[10px] font-bold">
+                          {tempInterests.length}
+                        </span>
+                      )}
+                    </h3>
+                    <motion.div
+                      animate={{ rotate: isCategoriesExpanded ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <ChevronDown size={18} className="text-muted-foreground" />
+                    </motion.div>
+                  </button>
                   <AnimatePresence>
                     {isCategoriesExpanded && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
+                        animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.2 }}
-                        className="overflow-hidden border-t border-border"
+                        className="overflow-hidden space-y-3"
                       >
-                        <div className="p-3 space-y-3">
+                        <div className="relative mt-3">
+                          <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                           <input
                             type="text"
-                            placeholder="بحث..."
+                            placeholder="ابحث عن تصنيف..."
                             value={tempCatSearch}
                             onChange={(e) => setTempCatSearch(e.target.value)}
-                            className="w-full text-xs px-3 py-1.5 rounded-lg border-2 border-[#1E968C]/30 bg-background focus:border-[#178075] focus:outline-none transition-all"
+                            className="w-full pr-10 pl-4 py-2.5 rounded-xl border-2 border-border bg-card text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
                           />
-                          <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar">
-                            {filteredCategories.map((cat) => (
-                              <button
-                                key={cat.id}
-                                onClick={() => toggleInterest(cat.id)}
-                                className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
-                                  tempInterests.includes(cat.id)
-                                    ? 'bg-primary text-white'
-                                    : 'bg-background text-foreground hover:bg-secondary/80 border border-border'
-                                }`}
-                              >
-                                {cat.emoji} {cat.label}
-                              </button>
-                            ))}
-                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar">
+                          {filteredCategories.map((cat) => (
+                            <button
+                              key={cat.id}
+                              onClick={() => toggleInterest(cat.id)}
+                              className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                                tempInterests.includes(cat.id)
+                                  ? 'bg-primary text-white shadow-sm'
+                                  : 'bg-secondary/60 text-foreground hover:bg-secondary border border-border/50'
+                              }`}
+                            >
+                              {cat.emoji} {cat.label}
+                            </button>
+                          ))}
                         </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
 
+                {/* Divider */}
+                <div className="border-t border-border" />
+
                 {/* Cities - Collapsible */}
-                <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
-                  <div 
-                    onClick={() => setIsCitiesExpanded(!isCitiesExpanded)}
-                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
+                <div className="space-y-3">
+                  <button 
+                    onClick={() => {
+                      const newState = !isCitiesExpanded;
+                      setIsCitiesExpanded(newState);
+                      if (newState) {
+                        setIsCategoriesExpanded(false);
+                        setIsRadarWordsExpanded(false);
+                      }
+                    }}
+                    className="flex items-center justify-between w-full"
                   >
-                    <h4 className="font-bold text-sm">المدن والمناطق</h4>
-                    <ChevronDown 
-                      size={18} 
-                      className={`text-muted-foreground transition-transform duration-200 ${isCitiesExpanded ? "rotate-180" : ""}`} 
-                    />
-                  </div>
+                    <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
+                      <MapPin size={16} strokeWidth={2.5} className="text-red-500" />
+                      المدن والمناطق
+                      {tempCities.length > 0 && !tempCities.includes('كل المدن') && (
+                        <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-red-500 text-white px-1.5 text-[10px] font-bold">
+                          {tempCities.filter(c => c !== 'عن بعد').length}
+                        </span>
+                      )}
+                    </h3>
+                    <motion.div
+                      animate={{ rotate: isCitiesExpanded ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <ChevronDown size={18} className="text-muted-foreground" />
+                    </motion.div>
+                  </button>
                   <AnimatePresence>
                     {isCitiesExpanded && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
+                        animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.2 }}
-                        className="overflow-hidden border-t border-border"
+                        className="overflow-hidden space-y-3"
                       >
-                        <div className="p-3 space-y-3">
-                          {/* City Autocomplete with Google Places */}
-                          <CityAutocomplete
-                            value=""
-                            onChange={() => {}}
-                            placeholder="ابحث عن مدينة..."
-                            multiSelect={true}
-                            selectedCities={tempCities}
-                            onSelectCity={(city) => {
-                              if (navigator.vibrate) navigator.vibrate(10);
-                              toggleCity(city);
-                            }}
-                            onRemoveCity={(city) => {
-                              if (navigator.vibrate) navigator.vibrate(10);
-                              toggleCity(city);
-                            }}
-                            showRemoteOption={true}
-                          />
-                        </div>
+                        {/* Selected Cities Chips */}
+                        {tempCities.length > 0 && !tempCities.includes('كل المدن') && (
+                          <div className="flex flex-wrap gap-1.5 mt-3">
+                            {tempCities.map((city) => (
+                              <motion.span
+                                key={city}
+                                initial={{ scale: 0.8, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.8, opacity: 0 }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-600 text-sm border border-emerald-500/30"
+                              >
+                                {city === 'عن بعد' ? <Globe size={12} /> : <MapPin size={12} />}
+                                <span>{city}</span>
+                                <button
+                                  onClick={() => {
+                                    if (navigator.vibrate) navigator.vibrate(10);
+                                    toggleCity(city);
+                                  }}
+                                  className="p-0.5 hover:bg-emerald-500/20 rounded-full transition-colors"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </motion.span>
+                            ))}
+                          </div>
+                        )}
+                          
+                        {/* City Autocomplete - Same as filters */}
+                        <CityAutocomplete
+                          value=""
+                          onChange={() => {}}
+                          placeholder="ابحث عن مدينة..."
+                          multiSelect={true}
+                          showAllCitiesOption={true}
+                          selectedCities={tempCities}
+                          onSelectCity={(city) => {
+                            if (navigator.vibrate) navigator.vibrate(10);
+                            toggleCity(city);
+                          }}
+                          onRemoveCity={(city) => {
+                            if (navigator.vibrate) navigator.vibrate(10);
+                            toggleCity(city);
+                          }}
+                          showRemoteOption={true}
+                          showGPSOption={true}
+                          showMapOption={true}
+                          onOpenMap={() => {
+                            if (navigator.vibrate) navigator.vibrate(10);
+                            // فتح Google Maps في نافذة جديدة
+                            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=المملكة+العربية+السعودية`;
+                            window.open(mapsUrl, '_blank');
+                          }}
+                          hideChips={true}
+                          dropdownDirection="up"
+                        />
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
 
+                {/* Divider */}
+                <div className="border-t border-border" />
+
                 {/* Radar Words - Collapsible */}
-                <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
-                  <div 
-                    onClick={() => setIsRadarWordsExpanded(!isRadarWordsExpanded)}
-                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
+                <div className="space-y-3">
+                  <button 
+                    onClick={() => {
+                      const newState = !isRadarWordsExpanded;
+                      setIsRadarWordsExpanded(newState);
+                      if (newState) {
+                        setIsCategoriesExpanded(false);
+                        setIsCitiesExpanded(false);
+                      }
+                    }}
+                    className="flex items-center justify-between w-full"
                   >
-                    <h4 className="font-bold text-sm">رادار الكلمات</h4>
-                    <ChevronDown 
-                      size={18} 
-                      className={`text-muted-foreground transition-transform duration-200 ${isRadarWordsExpanded ? "rotate-180" : ""}`} 
-                    />
-                  </div>
+                    <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
+                      <Search size={16} strokeWidth={2.5} className="text-amber-500" />
+                      رادار الكلمات
+                      {tempRadarWords.length > 0 && (
+                        <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-amber-500 text-white px-1.5 text-[10px] font-bold">
+                          {tempRadarWords.length}
+                        </span>
+                      )}
+                    </h3>
+                    <motion.div
+                      animate={{ rotate: isRadarWordsExpanded ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <ChevronDown size={18} className="text-muted-foreground" />
+                    </motion.div>
+                  </button>
                   <AnimatePresence>
                     {isRadarWordsExpanded && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
+                        animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.2 }}
-                        className="overflow-hidden border-t border-border"
+                        className="overflow-hidden space-y-3"
                       >
-                        <div className="p-3 space-y-3">
-                          <p className="text-xs text-muted-foreground">
-                            إذا كان الطلب يتضمن إحدى هذه الكلمات، سيتم إشعارك
-                          </p>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              placeholder="اكتب الكلمة..."
-                              value={newRadarWord}
-                              onChange={(e) => setNewRadarWord(e.target.value)}
-                              onKeyPress={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  addRadarWord();
-                                }
-                              }}
-                              className="flex-1 text-xs px-3 py-1.5 rounded-lg border-2 border-[#1E968C]/30 bg-background focus:border-[#178075] focus:outline-none transition-all"
-                            />
-                            <button
-                              onClick={addRadarWord}
-                              disabled={!newRadarWord.trim()}
-                              className="px-3 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                            >
-                              <Plus size={14} />
-                            </button>
-                          </div>
-                          {tempRadarWords.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                              {tempRadarWords.map((word) => (
-                                <div
-                                  key={word}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 text-sm"
-                                >
-                                  <span>{word}</span>
-                                  <button
-                                    onClick={() => removeRadarWord(word)}
-                                    className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
-                                  >
-                                    <X size={14} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                        <p className="text-xs text-muted-foreground mt-2">
+                          إذا كان الطلب يتضمن إحدى هذه الكلمات، سيتم إشعارك
+                        </p>
+                        <div className="flex gap-2 min-w-0">
+                          <input
+                            type="text"
+                            placeholder="اكتب الكلمة..."
+                            value={newRadarWord}
+                            onChange={(e) => setNewRadarWord(e.target.value)}
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                addRadarWord();
+                              }
+                            }}
+                            className="flex-1 min-w-0 px-4 py-2.5 rounded-xl border-2 border-border bg-card text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all text-sm"
+                          />
+                          <button
+                            onClick={addRadarWord}
+                            disabled={!newRadarWord.trim()}
+                            className="shrink-0 px-4 py-2.5 rounded-xl bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                          >
+                            <Plus size={16} />
+                          </button>
                         </div>
+                        {tempRadarWords.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {tempRadarWords.map((word) => (
+                              <div
+                                key={word}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30 text-sm"
+                              >
+                                <span>{word}</span>
+                                <button
+                                  onClick={() => removeRadarWord(word)}
+                                  className="hover:bg-amber-500/20 rounded-full p-0.5 transition-colors"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
               </div>
 
-              {/* Modal Footer */}
-              <div className="flex gap-3 p-4 border-t border-border">
-                <button
-                  onClick={() => setIsManageInterestsOpen(false)}
-                  className="flex-1 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors font-medium"
-                >
-                  إلغاء
-                </button>
-                <button
-                  onClick={() => {
-                    // Haptic feedback
-                    if (navigator.vibrate) {
-                      navigator.vibrate(15);
-                    }
-                    handleSaveInterests();
-                  }}
-                  className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium"
-                >
-                  حفظ وتطبيق
-                </button>
+              {/* Footer with Action Button */}
+              <div className="border-t border-border/50 bg-card/95 backdrop-blur-xl px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setIsManageInterestsOpen(false)}
+                    className="flex-1 h-12 px-4 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors font-bold text-sm"
+                  >
+                    إلغاء
+                  </button>
+                  <Button
+                    className="flex-1 h-12 text-sm font-bold shadow-lg gap-2 rounded-xl"
+                    onClick={() => {
+                      if (navigator.vibrate) navigator.vibrate(15);
+                      handleSaveInterests();
+                    }}
+                  >
+                    حفظ وتطبيق
+                  </Button>
+                </div>
               </div>
             </motion.div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Content Views - Grid / Text */}
@@ -2276,7 +2473,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -30 }}
                 transition={{ duration: 0.25 }}
-                className="relative"
+                className="relative -mx-4"
               >
                 <CompactListView
                 requests={filteredRequests}

@@ -187,48 +187,32 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
       className="relative"
       onScroll={handleScroll}
     >
-      {/* Header with counter */}
-      <div className="relative">
-        {/* Header */}
-        <div className="bg-card/80 backdrop-blur-md border-b border-border px-4 py-3 relative z-10">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">
-              {requests.length} طلب
-            </span>
-          </div>
-        </div>
-      </div>
 
       {/* List Content */}
-      <div className="px-0 py-4 pb-20 relative z-[1]">
+      <div className="px-4 py-4 pb-20 relative z-[1] w-full">
         {requests.map((request, index) => {
           const isUnread = !viewedRequestIds.has(request.id);
           return (
-            <div key={request.id} className="flex items-center">
-              {/* Right Margin - الهامش الأيمن مع النقطة */}
-              <div className="w-4 flex-shrink-0 flex items-center justify-center">
-                {isUnread && (
-                  <motion.div
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ type: "spring", stiffness: 500, damping: 25, delay: Math.min(index * 0.03, 0.3) }}
-                  >
-                    <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(30,150,140,0.6)]" />
-                  </motion.div>
-                )}
-              </div>
+            <div key={request.id} className="relative w-full">
+              {/* نقطة غير مقروء */}
+              {isUnread && (
+                <motion.div
+                  className="absolute right-0 top-1/2 -translate-y-1/2 -translate-x-2 z-10"
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 25, delay: Math.min(index * 0.03, 0.3) }}
+                >
+                  <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(30,150,140,0.6)]" />
+                </motion.div>
+              )}
               {/* الكرت */}
-              <div className="flex-1 min-w-0">
-                <ListItem
-                  request={request}
-                  onTap={() => onSelectRequest(request)}
-                  myOffer={getMyOffer(request.id)}
-                  isViewed={viewedRequestIds.has(request.id)}
-                  index={index}
-                />
-              </div>
-              {/* Left Margin - الهامش الأيسر (للتناظر) */}
-              <div className="w-4 flex-shrink-0" />
+              <ListItem
+                request={request}
+                onTap={() => onSelectRequest(request)}
+                myOffer={getMyOffer(request.id)}
+                isViewed={viewedRequestIds.has(request.id)}
+                index={index}
+              />
             </div>
           );
         })}

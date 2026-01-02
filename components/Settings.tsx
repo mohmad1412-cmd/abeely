@@ -130,11 +130,20 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const toggleCity = (city: string) => {
     if (navigator.vibrate) navigator.vibrate(10);
-    setTempCities(prev => 
-      prev.includes(city)
-        ? prev.filter(c => c !== city)
-        : [...prev, city]
-    );
+    setTempCities(prev => {
+      if (prev.includes(city)) {
+        return prev.filter(c => c !== city);
+      } else {
+        // إذا اختار "كل المدن"، نزيل المدن الأخرى (ما عدا "عن بعد")
+        if (city === 'كل المدن') {
+          const remoteOnly = prev.filter(c => c === 'عن بعد');
+          return [...remoteOnly, city];
+        }
+        // إذا اختار مدينة معينة، نزيل "كل المدن"
+        const filtered = prev.filter(c => c !== 'كل المدن');
+        return [...filtered, city];
+      }
+    });
   };
 
   const filteredCities = CITIES.filter(city => 

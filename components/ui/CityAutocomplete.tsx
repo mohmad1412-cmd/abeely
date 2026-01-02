@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, Search, Loader2, X, Check, ChevronDown, Globe, Navigation, Map } from 'lucide-react';
 import { 
@@ -15,6 +16,9 @@ import {
   reverseGeocode,
 } from '../../services/placesService';
 import { useGoogleMapsLoader } from '../../hooks/useGoogleMapsLoader';
+
+// المدن الأساسية للاختيار السريع
+const QUICK_CITIES = ['الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'الدمام', 'الخبر'];
 
 interface CityAutocompleteProps {
   value: string;
@@ -30,10 +34,13 @@ interface CityAutocompleteProps {
   autoFocus?: boolean;
   // للاستخدام في الفلترة (اختيار متعدد)
   multiSelect?: boolean;
+  showAllCitiesOption?: boolean; // خيار "كل المدن"
   selectedCities?: string[];
   onSelectCity?: (city: string) => void;
   onRemoveCity?: (city: string) => void;
   onOpenMap?: () => void; // callback عند الضغط على زر الخريطة
+  hideChips?: boolean; // إخفاء الشرائح المختارة (عند عرضها في مكان آخر)
+  dropdownDirection?: 'down' | 'up'; // اتجاه القائمة المنسدلة
 }
 
 export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
@@ -45,6 +52,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   showRemoteOption = true,
   showGPSOption = true,
   showMapOption = false,
+  showAllCitiesOption = false,
   searchMode = 'places', // البحث عن أي مكان بشكل افتراضي
   disabled = false,
   autoFocus = false,
@@ -53,6 +61,8 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   onSelectCity,
   onRemoveCity,
   onOpenMap,
+  hideChips = false,
+  dropdownDirection = 'down',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState(value);
@@ -60,10 +70,37 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, bottom: 0, left: 0, width: 0 });
   
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // حساب موقع القائمة المنسدلة
+  const updateDropdownPosition = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 8, // للأسفل
+        bottom: window.innerHeight - rect.top + 8, // للأعلى
+        left: rect.left,
+        width: rect.width,
+      });
+    }
+  }, []);
+
+  // تحديث موقع القائمة عند الفتح والتمرير
+  useEffect(() => {
+    if (isOpen) {
+      updateDropdownPosition();
+      window.addEventListener('scroll', updateDropdownPosition, true);
+      window.addEventListener('resize', updateDropdownPosition);
+      return () => {
+        window.removeEventListener('scroll', updateDropdownPosition, true);
+        window.removeEventListener('resize', updateDropdownPosition);
+      };
+    }
+  }, [isOpen, updateDropdownPosition]);
 
   // تحميل Google Maps API
   const { isLoaded: isGoogleReady } = useGoogleMapsLoader();
@@ -163,7 +200,9 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
 
   // اختيار مدينة
   const handleSelectCity = (city: CityResult) => {
+    console.log('handleSelectCity:', city.name, 'multiSelect:', multiSelect, 'onSelectCity exists:', !!onSelectCity);
     if (multiSelect && onSelectCity) {
+      console.log('Calling onSelectCity with:', city.name);
       onSelectCity(city.name);
       setSearchQuery('');
     } else {
@@ -252,7 +291,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
       )}
 
       {/* Multi-select chips */}
-      {multiSelect && selectedCities.length > 0 && (
+      {multiSelect && selectedCities.length > 0 && !hideChips && (
         <div className="flex flex-wrap gap-1.5 mb-2">
           {selectedCities.map((city) => (
             <motion.span
@@ -260,13 +299,13 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-sm"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-600 text-sm border border-emerald-500/30"
             >
               <MapPin size={12} />
               <span>{city}</span>
               <button
                 onClick={() => onRemoveCity?.(city)}
-                className="p-0.5 hover:bg-primary/20 rounded-full transition-colors"
+                className="p-0.5 hover:bg-emerald-500/20 rounded-full transition-colors"
               >
                 <X size={12} />
               </button>
@@ -279,9 +318,9 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
       <div className="relative">
         <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
           {isLoading ? (
-            <Loader2 size={18} className="animate-spin text-primary" />
+            <Loader2 size={18} className="animate-spin text-emerald-500" />
           ) : (
-            <MapPin size={18} />
+            <MapPin size={18} className={isOpen ? 'text-emerald-500' : ''} />
           )}
         </div>
         
@@ -296,10 +335,13 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
           disabled={disabled}
           autoFocus={autoFocus}
           className={`
-            w-full pr-10 pl-10 py-3 rounded-xl border-2 border-border bg-card
+            w-full pr-10 pl-10 py-3 rounded-xl border-2 bg-card
             text-foreground placeholder:text-muted-foreground/60
-            focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20
-            transition-all duration-200
+            focus:outline-none transition-all duration-200
+            ${isOpen 
+              ? 'border-emerald-500 ring-2 ring-emerald-500/20' 
+              : 'border-border'
+            }
             ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
           `}
         />
@@ -316,33 +358,49 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
           )}
           <ChevronDown 
             size={16} 
-            className={`text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            className={`transition-transform ${isOpen ? 'rotate-180 text-emerald-500' : 'text-muted-foreground'}`}
           />
         </div>
 
       </div>
 
-      {/* Dropdown */}
-      <AnimatePresence>
-        {isOpen && (
+
+      {/* Dropdown - using Portal */}
+      {isOpen && createPortal(
+        <AnimatePresence>
           <motion.div
-            initial={{ opacity: 0, y: -10, scale: 0.98 }}
+            initial={{ opacity: 0, y: dropdownDirection === 'up' ? 10 : -10, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.98 }}
+            exit={{ opacity: 0, y: dropdownDirection === 'up' ? 10 : -10, scale: 0.98 }}
             transition={{ duration: 0.15 }}
-            className="absolute z-50 w-full mt-2 py-2 rounded-xl border border-border bg-card shadow-xl max-h-64 overflow-y-auto"
+            style={{
+              position: 'fixed',
+              ...(dropdownDirection === 'up' 
+                ? { bottom: dropdownPosition.bottom }
+                : { top: dropdownPosition.top }
+              ),
+              left: dropdownPosition.left,
+              width: dropdownPosition.width,
+              zIndex: 10000,
+            }}
+            className="py-2 rounded-xl border border-emerald-500/30 bg-card shadow-2xl max-h-64 overflow-y-auto pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
           >
-            {/* Quick Actions: GPS & Map */}
-            {(showGPSOption || showMapOption) && (
+            {/* Quick Actions: GPS & Remote */}
+            {(showGPSOption || showRemoteOption) && (
               <div className="flex gap-2 px-3 py-2 border-b border-border">
                 {showGPSOption && (
-                  <motion.button
-                    onClick={handleGetCurrentLocation}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleGetCurrentLocation();
+                    }}
                     disabled={isGettingLocation}
-                    whileTap={{ scale: 0.95 }}
                     className={`
                       flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg
-                      bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 transition-colors
+                      bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 transition-colors cursor-pointer
                       ${isGettingLocation ? 'opacity-50 cursor-wait' : ''}
                     `}
                   >
@@ -352,50 +410,85 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                       <Navigation size={16} />
                     )}
                     <span className="text-sm font-medium">
-                      {isGettingLocation ? 'جاري التحديد...' : 'موقعي الحالي'}
+                      {isGettingLocation ? 'جاري...' : 'موقعي'}
                     </span>
-                  </motion.button>
+                  </button>
                 )}
-                {showMapOption && onOpenMap && (
-                  <motion.button
-                    onClick={() => {
-                      setIsOpen(false);
-                      onOpenMap();
+                {showRemoteOption && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleSelectRemote();
                     }}
-                    whileTap={{ scale: 0.95 }}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors"
+                    className={`
+                      flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer
+                      ${selectedCities.includes('عن بعد') 
+                        ? 'bg-blue-500 text-white' 
+                        : 'bg-blue-500/10 text-blue-600 hover:bg-blue-500/20'
+                      }
+                    `}
                   >
-                    <Map size={16} />
-                    <span className="text-sm font-medium">اختر من الخريطة</span>
-                  </motion.button>
+                    <Globe size={16} />
+                    <span className="text-sm font-medium">عن بعد</span>
+                  </button>
                 )}
               </div>
             )}
-
-            {/* Remote Option */}
-            {showRemoteOption && (
-              <motion.button
-                onClick={handleSelectRemote}
-                className={`
-                  w-full flex items-center gap-3 px-4 py-2.5 text-right transition-colors
-                  ${highlightedIndex === 0 ? 'bg-primary/10' : 'hover:bg-secondary/50'}
-                  ${selectedCities.includes('عن بعد') ? 'text-primary' : 'text-foreground'}
-                `}
+            
+            {/* Map Option */}
+            {showMapOption && onOpenMap && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsOpen(false);
+                  onOpenMap();
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-right transition-colors cursor-pointer hover:bg-secondary/50 text-foreground border-b border-border"
               >
-                <Globe size={18} className="text-primary shrink-0" />
+                <Map size={18} className="text-emerald-600" />
                 <div className="flex-1">
-                  <span className="font-medium">عن بعد</span>
-                  <span className="text-xs text-muted-foreground mr-2">خدمة أونلاين</span>
+                  <span className="font-medium">اختر من الخريطة</span>
+                  <span className="text-xs text-muted-foreground block">تحديد يدوي للموقع</span>
                 </div>
-                {selectedCities.includes('عن بعد') && (
-                  <Check size={16} className="text-primary shrink-0" />
-                )}
-              </motion.button>
+              </button>
             )}
 
-            {/* Divider */}
-            {(showRemoteOption || showGPSOption || showMapOption) && results.length > 0 && (
-              <div className="border-t border-border my-1" />
+            {/* All Cities Option - First in list */}
+            {(multiSelect || showAllCitiesOption) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  
+                  if (multiSelect) {
+                    // استخدام onSelectCity مباشرة - سيتعامل معها المكون الأب
+                    // عند اختيار "كل المدن"، المكون الأب سيتعامل مع إزالة المدن الأخرى
+                    onSelectCity?.('كل المدن');
+                  } else {
+                    onChange('كل المدن');
+                  }
+                  setIsOpen(false);
+                }}
+                className={`
+                  w-full flex items-center gap-3 px-4 py-2.5 text-right transition-colors cursor-pointer
+                  hover:bg-secondary/50
+                  ${(selectedCities.includes('كل المدن') || value === 'كل المدن') ? 'text-emerald-600 bg-emerald-500/5' : 'text-foreground'}
+                `}
+              >
+                <MapPin size={18} className={(selectedCities.includes('كل المدن') || value === 'كل المدن') ? 'text-emerald-600' : 'text-muted-foreground'} />
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium">كل المدن</span>
+                  <span className="text-xs text-muted-foreground block">المملكة العربية السعودية</span>
+                </div>
+                {(selectedCities.includes('كل المدن') || value === 'كل المدن') && (
+                  <Check size={16} className="text-emerald-600 shrink-0" />
+                )}
+              </button>
             )}
 
             {/* City Results */}
@@ -405,28 +498,47 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                 const isSelected = selectedCities.includes(city.name) || value === city.name;
                 
                 return (
-                  <motion.button
+                  <button
                     key={city.placeId}
-                    onClick={() => handleSelectCity(city)}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('Button clicked for city:', city.name);
+                      handleSelectCity(city);
+                    }}
                     className={`
-                      w-full flex items-center gap-3 px-4 py-2.5 text-right transition-colors
-                      ${highlightedIndex === actualIndex ? 'bg-primary/10' : 'hover:bg-secondary/50'}
-                      ${isSelected ? 'text-primary' : 'text-foreground'}
+                      w-full flex items-center gap-3 px-4 py-2.5 text-right transition-colors cursor-pointer
+                      ${highlightedIndex === actualIndex ? 'bg-emerald-500/10' : 'hover:bg-secondary/50'}
+                      ${isSelected ? 'text-emerald-600' : 'text-foreground'}
                     `}
                   >
-                    <MapPin size={18} className={isSelected ? 'text-primary' : 'text-muted-foreground'} />
+                    <MapPin size={18} className={isSelected ? 'text-emerald-600' : 'text-muted-foreground'} />
                     <div className="flex-1 min-w-0">
-                      <span className="font-medium block truncate">{city.name}</span>
-                      {city.region && (
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium truncate">{city.name}</span>
+                        {/* عرض نوع المكان */}
+                        {city.placeTypeArabic && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 shrink-0">
+                            {city.placeTypeArabic}
+                          </span>
+                        )}
+                      </div>
+                      {/* عرض العنوان الكامل أو المنطقة */}
+                      {(city.fullAddress && city.fullAddress !== city.name) ? (
+                        <span className="text-xs text-muted-foreground truncate block">
+                          {city.fullAddress.replace(city.name, '').replace(/^[،,\s]+/, '')}
+                        </span>
+                      ) : city.region && (
                         <span className="text-xs text-muted-foreground truncate block">
                           {city.region}
                         </span>
                       )}
                     </div>
                     {isSelected && (
-                      <Check size={16} className="text-primary shrink-0" />
+                      <Check size={16} className="text-emerald-600 shrink-0" />
                     )}
-                  </motion.button>
+                  </button>
                 );
               })
             ) : (
@@ -448,22 +560,26 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
 
             {/* Hint for manual entry */}
             {!isLoading && searchQuery && results.length === 0 && (
-              <motion.button
-                onClick={() => {
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   onChange(searchQuery);
                   setIsOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-right hover:bg-secondary/50 transition-colors border-t border-border"
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-right hover:bg-secondary/50 transition-colors border-t border-border cursor-pointer"
               >
                 <Search size={18} className="text-muted-foreground" />
                 <span className="text-muted-foreground">
                   استخدم "<span className="text-foreground font-medium">{searchQuery}</span>"
                 </span>
-              </motion.button>
+              </button>
             )}
           </motion.div>
-        )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 };
