@@ -524,6 +524,18 @@ input[type="number"]::-webkit-inner-spin-button {
     }
 }
 
+/* Ripple Effect Animation - Water touch effect */
+@keyframes ripple-animation {
+    0% {
+        transform: scale(0);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 0;
+    }
+}
+
 @keyframes slide-in-from-top-2 {
     from { 
         transform: translateY(-0.5rem); 

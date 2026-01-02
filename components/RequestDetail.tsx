@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  ChevronsDown,
   Clock,
   Copy,
   DollarSign,
@@ -127,6 +128,8 @@ interface RequestDetailProps {
   onEditRequest?: (request: Request) => void; // Callback to edit the request
   onNavigateToProfile?: () => void;
   onNavigateToSettings?: () => void;
+  onCancelOffer?: (offerId: string) => Promise<void>; // Callback to cancel an offer
+  onEditOffer?: (offer: Offer) => void; // Callback to edit an offer
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
@@ -150,7 +153,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     onArchiveRequest,
     onEditRequest,
     onNavigateToProfile,
-    onNavigateToSettings
+    onNavigateToSettings,
+    onCancelOffer,
+    onEditOffer
   },
 ) => {
   const [negotiationOpen, setNegotiationOpen] = useState(false);
@@ -178,6 +183,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [guestOfferError, setGuestOfferError] = useState<string | null>(null);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [isCancellingOffer, setIsCancellingOffer] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   
   // ترجمة رسائل الخطأ من Supabase للعربية
   const translateAuthError = (error: string): string => {
@@ -937,6 +944,91 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     };
   }, [request?.id]);
 
+  // Handler to submit offer from header button
+  const handleSubmitOfferFromHeader = useCallback(async () => {
+    // Validate required fields
+    const isPriceValid = offerPrice && offerPrice.trim() !== '';
+    const isTitleValid = offerTitle && offerTitle.trim() !== '';
+    
+    if (!isPriceValid || !isTitleValid) {
+      setShakingFields({
+        price: !isPriceValid,
+        title: !isTitleValid,
+      });
+      if (navigator.vibrate) {
+        navigator.vibrate([100, 50, 100, 50, 100]);
+      }
+      setTimeout(() => {
+        setShakingFields({ price: false, title: false });
+      }, 600);
+      return;
+    }
+    
+    if (isGuest) {
+      setGuestOfferVerificationStep('phone');
+    } else {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user?.id) {
+        alert("يرجى تسجيل الدخول أولاً");
+        return;
+      }
+      
+      setIsSubmittingOffer(true);
+      
+      try {
+        let uploadedImageUrls: string[] = [];
+        if (offerAttachments.length > 0) {
+          setIsUploadingAttachments(true);
+          const tempId = `${userData.user.id}-${Date.now()}`;
+          uploadedImageUrls = await uploadOfferAttachments(offerAttachments, tempId);
+          setIsUploadingAttachments(false);
+        }
+        
+        const result = await createOffer({
+          requestId: request.id,
+          providerId: userData.user.id,
+          title: offerTitle.trim(),
+          description: offerDescription.trim() || undefined,
+          price: offerPrice.trim(),
+          deliveryTime: offerDuration.trim() || undefined,
+          location: offerCity.trim() || undefined,
+          isNegotiable,
+          images: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
+        });
+        
+        if (result) {
+          if (navigator.vibrate) {
+            navigator.vibrate([30, 50, 30]);
+          }
+          setOfferSubmitted(true);
+          if (onOfferCreated) {
+            onOfferCreated();
+          }
+          setOfferPrice("");
+          setOfferTitle("");
+          setOfferDescription("");
+          setOfferDuration("");
+          setOfferCity("");
+          setOfferAttachments([]);
+          setSelectedImageUrls([]);
+          setSearchedImages([]);
+          setSelectedSearchImages(new Set());
+          setTimeout(() => {
+            setOfferSubmitted(false);
+          }, 2000);
+        } else {
+          alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
+        }
+      } catch (err) {
+        console.error("Submit offer error:", err);
+        alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
+      } finally {
+        setIsSubmittingOffer(false);
+        setIsUploadingAttachments(false);
+      }
+    }
+  }, [offerPrice, offerTitle, offerDescription, offerDuration, offerCity, isNegotiable, offerAttachments, isGuest, request.id, onOfferCreated]);
+
   // Handler to scroll to offer section
   const handleScrollToOfferSection = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -1141,6 +1233,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         showScrollToOffer={!isMyRequest && !isMyOffer && request.status === "active"}
         onScrollToOffer={handleScrollToOfferSection}
         isOfferSectionVisible={isOfferSectionVisible}
+        canSubmitOffer={!!(offerPrice && offerTitle)}
+        onSubmitOffer={handleSubmitOfferFromHeader}
+        isSubmittingOffer={isSubmittingOffer}
+        offerSubmitSuccess={offerSubmitted}
         showMyRequestButton={isMyRequest}
         myRequestOffersCount={request.offers?.length || 0}
         onMyRequestClick={() => {
@@ -1151,6 +1247,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         }}
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToSettings={onNavigateToSettings}
+        showThreeDotsMenu={true}
+        threeDotsMenuItems={dropdownItems}
       />
       
       {/* Spacer below header */}
@@ -2006,14 +2104,84 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           <Button
                             variant="outline"
                             className="flex-1 text-red-500 hover:text-red-600 border-red-200"
+                            isLoading={isCancellingOffer}
+                            onClick={() => setShowCancelConfirm(true)}
                           >
                             إلغاء العرض
                           </Button>
-                          <Button variant="secondary" className="flex-1">
+                          <Button 
+                            variant="secondary" 
+                            className="flex-1"
+                            onClick={() => onEditOffer?.(myOffer)}
+                          >
                             تعديل العرض
                           </Button>
                         </div>
                       )}
+
+                      {/* Cancel Confirmation Modal */}
+                      <AnimatePresence>
+                        {showCancelConfirm && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                            onClick={() => setShowCancelConfirm(false)}
+                          >
+                            <motion.div
+                              initial={{ scale: 0.9, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              exit={{ scale: 0.9, opacity: 0 }}
+                              className="bg-card rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="text-center mb-6">
+                                <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+                                  <AlertCircle className="w-8 h-8 text-red-500" />
+                                </div>
+                                <h3 className="text-lg font-bold mb-2">إلغاء العرض</h3>
+                                <p className="text-muted-foreground text-sm">
+                                  هل أنت متأكد من إلغاء هذا العرض؟ لا يمكن التراجع عن هذا الإجراء.
+                                </p>
+                              </div>
+                              <div className="flex gap-3">
+                                <Button
+                                  variant="secondary"
+                                  className="flex-1"
+                                  onClick={() => setShowCancelConfirm(false)}
+                                >
+                                  تراجع
+                                </Button>
+                                <Button
+                                  variant="danger"
+                                  className="flex-1"
+                                  isLoading={isCancellingOffer}
+                                  onClick={async () => {
+                                    if (onCancelOffer && myOffer) {
+                                      setIsCancellingOffer(true);
+                                      try {
+                                        await onCancelOffer(myOffer.id);
+                                        setShowCancelConfirm(false);
+                                        // Haptic feedback
+                                        if (navigator.vibrate) {
+                                          navigator.vibrate(100);
+                                        }
+                                      } catch (error) {
+                                        console.error('Error cancelling offer:', error);
+                                      } finally {
+                                        setIsCancellingOffer(false);
+                                      }
+                                    }
+                                  }}
+                                >
+                                  نعم، إلغاء العرض
+                                </Button>
+                              </div>
+                            </motion.div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </div>
                 )}
@@ -2035,152 +2203,25 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         <FileText className="text-primary" size={24} />{" "}
                         تقديم عرض
                       </motion.h3>
-                      <motion.button
-                        whileHover={offerPrice && offerTitle && !isSubmittingOffer ? { scale: 1.03 } : {}}
-                        whileTap={{ scale: 0.97 }}
-                        disabled={isSubmittingOffer}
-                        onClick={async () => {
-                          // Validate required fields
-                          const isPriceValid = offerPrice && offerPrice.trim() !== '';
-                          const isTitleValid = offerTitle && offerTitle.trim() !== '';
-                          
-                          if (!isPriceValid || !isTitleValid) {
-                            // Shake required fields
-                            setShakingFields({
-                              price: !isPriceValid,
-                              title: !isTitleValid,
-                            });
-                            
-                            // Haptic feedback
-                            if (navigator.vibrate) {
-                              navigator.vibrate([100, 50, 100, 50, 100]);
-                            }
-                            
-                            // Reset shake after animation
-                            setTimeout(() => {
-                              setShakingFields({ price: false, title: false });
-                            }, 600);
-                            
-                            return;
-                          }
-                          
-                          if (isGuest) {
-                            setGuestOfferVerificationStep('phone');
-                          } else {
-                            // Get current user
-                            const { data: userData } = await supabase.auth.getUser();
-                            if (!userData?.user?.id) {
-                              alert("يرجى تسجيل الدخول أولاً");
-                              return;
-                            }
-                            
-                            setIsSubmittingOffer(true);
-                            
-                            try {
-                              // Upload attachments if any
-                              let uploadedImageUrls: string[] = [];
-                              if (offerAttachments.length > 0) {
-                                setIsUploadingAttachments(true);
-                                // Generate a temporary ID for organizing uploads
-                                const tempId = `${userData.user.id}-${Date.now()}`;
-                                uploadedImageUrls = await uploadOfferAttachments(offerAttachments, tempId);
-                                setIsUploadingAttachments(false);
-                              }
-                              
-                              // Create the offer
-                              const result = await createOffer({
-                                requestId: request.id,
-                                providerId: userData.user.id,
-                                title: offerTitle.trim(),
-                                description: offerDescription.trim() || undefined,
-                                price: offerPrice.trim(),
-                                deliveryTime: offerDuration.trim() || undefined,
-                                location: offerCity.trim() || undefined,
-                                isNegotiable,
-                                images: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
-                              });
-                              
-                              if (result) {
-                                // Haptic feedback - positive send pattern
-                                if (navigator.vibrate) {
-                                  navigator.vibrate([30, 50, 30]);
-                                }
-                                
-                                setOfferSubmitted(true);
-                                
-                                // Notify parent that offer was created (to update myOffers state)
-                                if (onOfferCreated) {
-                                  onOfferCreated();
-                                }
-                                
-                                // Reset form
-                                setOfferPrice("");
-                                setOfferTitle("");
-                                setOfferDescription("");
-                                setOfferDuration("");
-                                setOfferCity("");
-                                setOfferAttachments([]);
-                                setSelectedImageUrls([]);
-                                setSearchedImages([]);
-                                setSelectedSearchImages(new Set());
-                                
-                                // Show success message
-                                setTimeout(() => {
-                                  setOfferSubmitted(false);
-                                  // Optionally navigate back or refresh
-                                }, 2000);
-                              } else {
-                                alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
-                              }
-                            } catch (err) {
-                              console.error("Submit offer error:", err);
-                              alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
-                            } finally {
-                              setIsSubmittingOffer(false);
-                              setIsUploadingAttachments(false);
-                            }
-                          }
-                        }}
-                        className={`relative px-5 py-2.5 rounded-xl text-sm font-bold gap-2 flex items-center transition-all overflow-visible ${
-                          offerPrice && offerTitle && !isSubmittingOffer
-                            ? "bg-primary text-white hover:shadow-lg"
-                            : "bg-primary/30 text-primary border border-primary/30 cursor-not-allowed"
-                        }`}
-                      >
-                        {/* Ping Ring - Only when ready to submit */}
-                        {offerPrice && offerTitle && !isSubmittingOffer && !offerSubmitted && (
-                          <>
-                            <motion.span
-                              className="absolute -inset-0.5 rounded-xl border-2 border-primary pointer-events-none"
-                              animate={{
-                                scale: [1, 1.1, 1.15],
-                                opacity: [0.6, 0.3, 0],
-                              }}
-                              transition={{ 
-                                duration: 1.5, 
-                                repeat: Infinity, 
-                                ease: "easeOut"
-                              }}
-                            />
-                          </>
-                        )}
-                        {isSubmittingOffer ? (
-                          <>
-                            <Loader2 size={16} className="animate-spin" />
-                            {isUploadingAttachments ? "جاري الرفع..." : "جاري الإرسال..."}
-                          </>
-                        ) : offerSubmitted ? (
-                          <>
-                            <Check size={16} />
-                            تم الإرسال!
-                          </>
-                        ) : (
-                          <>
-                            إرسال العرض
-                            <Send size={16} className="mr-1 -rotate-90" />
-                          </>
-                        )}
-                      </motion.button>
+                      
+                      {/* Negotiable Toggle - Moved here */}
+                      <label className="flex items-center gap-2 cursor-pointer group select-none px-3 py-1.5 rounded-lg hover:bg-secondary/50 transition-colors border border-border">
+                        <div className="relative flex items-center">
+                          <input
+                            type="checkbox"
+                            className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-gray-300 bg-white checked:border-primary checked:bg-primary transition-all"
+                            checked={isNegotiable}
+                            onChange={(e) => setIsNegotiable(e.target.checked)}
+                          />
+                          <Check
+                            size={12}
+                            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100 pointer-events-none"
+                          />
+                        </div>
+                        <span className="text-xs font-bold text-foreground">
+                          قابل للتفاوض
+                        </span>
+                      </label>
                     </div>
 
                     {/* Floating Label Inputs Row */}
@@ -2249,11 +2290,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           htmlFor="duration"
                           className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
                             offerDuration || isDurationFocused
-                              ? "-top-2.5 right-2 bg-card px-1 text-[10px] text-primary font-bold max-w-[calc(100%-8px)] overflow-hidden"
-                              : "top-3 right-3 text-sm text-muted-foreground whitespace-nowrap"
+                              ? "-top-2.5 right-2 bg-card px-1 text-[10px] text-primary font-bold max-w-[calc(100%-8px)] overflow-hidden leading-tight"
+                              : "top-3 right-3 text-sm text-muted-foreground"
                           }`}
                         >
-                          <span className="truncate">المدة</span>
+                          <span className={`${offerDuration || isDurationFocused ? "whitespace-normal text-center" : "whitespace-nowrap"}`}>مدة التنفيذ</span>
                           {offerDuration && !isDurationFocused && <Check size={10} className="text-primary shrink-0" />}
                         </label>
                       </div>
@@ -2495,31 +2536,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       </div>
                     </div>
 
-                    {/* Negotiable Checkbox */}
-                    <div>
-                      <label className="flex items-center gap-3 cursor-pointer group select-none p-2 rounded-lg hover:bg-secondary/50 transition-colors">
-                        <div className="relative flex items-center">
-                          <input
-                            type="checkbox"
-                            className="peer h-5 w-5 cursor-pointer appearance-none rounded border border-gray-300 bg-white checked:border-primary checked:bg-primary transition-all"
-                            checked={isNegotiable}
-                            onChange={(e) => setIsNegotiable(e.target.checked)}
-                          />
-                          <Check
-                            size={16}
-                            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100 pointer-events-none"
-                          />
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-bold text-foreground">
-                            قابل للتفاوض
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">
-                            يسمح لصاحب الطلب ببدء محادثة معك قبل قبول عرضك
-                          </span>
-                        </div>
-                      </label>
-                    </div>
                   </div>
                 )}
 
@@ -2538,6 +2554,75 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
             )}
           </motion.div>
         </div>
+
+        {/* Floating Submit Offer Button - Like "أرسل الطلب الآن" */}
+        {!isMyRequest && !isMyOffer && request.status === "active" && (
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4">
+            <motion.button
+              layout
+              onClick={async () => {
+                // If NOT in offer section, scroll to it first
+                if (!isOfferSectionVisible) {
+                  if (offerSectionRef.current && scrollContainerRef.current) {
+                    // Scroll so the offer section header is at the very top
+                    const containerRect = scrollContainerRef.current.getBoundingClientRect();
+                    const targetRect = offerSectionRef.current.getBoundingClientRect();
+                    const relativeTop = targetRect.top - containerRect.top + scrollContainerRef.current.scrollTop;
+                    
+                    // Add extra offset to push it higher (negative to scroll more)
+                    scrollContainerRef.current.scrollTo({
+                      top: relativeTop + 100,
+                      behavior: 'smooth'
+                    });
+                  }
+                  return;
+                }
+                
+                // We're in the offer section - validate and submit
+                const canSubmit = offerPrice && offerTitle;
+                if (!canSubmit) return;
+                
+                if (navigator.vibrate) navigator.vibrate(15);
+                await handleSubmitOfferFromHeader();
+              }}
+              disabled={isOfferSectionVisible && (!offerPrice || !offerTitle) && !isSubmittingOffer && !offerSubmitted}
+              className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg ${
+                !isOfferSectionVisible
+                  ? 'bg-primary text-white hover:bg-primary/90 shadow-primary/30'
+                  : (offerPrice && offerTitle) && !isSubmittingOffer
+                    ? 'bg-primary text-white hover:bg-primary/90 shadow-primary/30'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none'
+              }`}
+            >
+              {isSubmittingOffer ? (
+                <>
+                  <Loader2 size={20} className="animate-spin" />
+                  <span>{isUploadingAttachments ? "جاري الرفع..." : "جاري الإرسال..."}</span>
+                </>
+              ) : offerSubmitted ? (
+                <>
+                  <Check size={20} />
+                  <span>تم الإرسال!</span>
+                </>
+              ) : isOfferSectionVisible ? (
+                <>
+                  <span>أرسل عرضك الآن</span>
+                  <ChevronLeft size={20} />
+                </>
+              ) : (
+                <>
+                  <span>قدّم عرضك</span>
+                  <motion.div
+                    animate={{ y: [0, 4, 0] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                  >
+                    <ChevronsDown size={20} />
+                  </motion.div>
+                </>
+              )}
+            </motion.button>
+          </div>
+        )}
 
         {/* Guest Offer Verification Modal */}
         {isGuest && guestOfferVerificationStep !== 'none' && ReactDOM.createPortal(

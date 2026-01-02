@@ -68,13 +68,6 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
               >
                 {tab.label}
               </span>
-
-              {/* Minimalist Dot Indicator - CSS transition for instant switching */}
-              <div
-                className={`absolute -bottom-0.5 h-1 w-1 rounded-full bg-primary shadow-[0_0_8px_rgba(30,150,140,0.6)] transition-all duration-150 ${
-                  isActive ? "opacity-100 scale-100" : "opacity-0 scale-0"
-                }`}
-              />
             </motion.button>
           );
         })}

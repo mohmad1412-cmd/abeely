@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
-import { motion, AnimatePresence, useSpring, useTransform, useMotionValue } from "framer-motion";
+import React, { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, CheckCircle } from "lucide-react";
 
 interface FilterOption {
@@ -34,84 +34,46 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
   const islandRef = useRef<HTMLDivElement>(null);
   const dropdownRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   
-  // Scroll-based animation values
-  const scrollY = useMotionValue(0);
-  const lastScrollY = useRef(0);
-  const scrollDirection = useRef<'up' | 'down'>('up');
+  // Simple compact state without complex springs
   const [isCompact, setIsCompact] = useState(false);
+  const lastScrollY = useRef(0);
   
-  // Spring animations for smooth transitions - matching Marketplace exactly
-  const springConfig = { stiffness: 400, damping: 40, mass: 0.8 };
-  const scale = useSpring(1, springConfig);
-  const paddingY = useSpring(12, springConfig);
-  const paddingX = useSpring(16, springConfig);
-  const gap = useSpring(8, springConfig);
-  const borderRadius = useSpring(20, springConfig);
-  const opacity = useSpring(1, springConfig);
-  const blur = useSpring(20, springConfig);
-  const translateY = useSpring(0, springConfig);
-  const islandScale = useSpring(1, { stiffness: 400, damping: 40 });
-  
-  // Transform blur to backdrop-filter string
-  const backdropFilter = useTransform(blur, (v) => `blur(${v}px)`);
-  const separatorMargin = useTransform(gap, (v) => `${v / 2}px`);
-  
-  // Track scroll position and direction
-  const handleScroll = useCallback(() => {
-    const container = scrollContainerRef?.current || document.querySelector('#main-scroll-container .overflow-auto') as HTMLElement;
-    if (!container) return;
-    
-    const currentScrollY = container.scrollTop;
-    const diff = currentScrollY - lastScrollY.current;
-    
-    // Determine scroll direction with threshold
-    if (Math.abs(diff) > 3) {
-      scrollDirection.current = diff > 0 ? 'down' : 'up';
-    }
-    
-    scrollY.set(currentScrollY);
-    lastScrollY.current = currentScrollY;
-    
-    // Compact mode triggers
-    const shouldBeCompact = currentScrollY > 80 && scrollDirection.current === 'down';
-    
-    if (shouldBeCompact !== isCompact) {
-      setIsCompact(shouldBeCompact);
-      
-      if (shouldBeCompact) {
-        // Compact mode - matching Marketplace exactly
-        islandScale.set(0.92);
-        scale.set(0.92);
-        paddingY.set(6);
-        paddingX.set(10);
-        gap.set(4);
-        borderRadius.set(28);
-        opacity.set(0.95);
-        blur.set(24);
-        translateY.set(-4);
-      } else {
-        // Expanded mode - matching Marketplace exactly
-        islandScale.set(1);
-        scale.set(1);
-        paddingY.set(12);
-        paddingX.set(16);
-        gap.set(8);
-        borderRadius.set(20);
-        opacity.set(1);
-        blur.set(20);
-        translateY.set(0);
-      }
-    }
-  }, [scrollContainerRef, isCompact, scale, paddingY, paddingX, gap, borderRadius, opacity, blur, translateY, scrollY, islandScale]);
-  
-  // Attach scroll listener
+  // Track scroll position with debounce to prevent jitter
   useEffect(() => {
     const container = scrollContainerRef?.current || document.querySelector('#main-scroll-container .overflow-auto') as HTMLElement;
     if (!container) return;
     
+    let ticking = false;
+    
+    const handleScroll = () => {
+      if (ticking) return;
+      
+      ticking = true;
+      requestAnimationFrame(() => {
+        const currentScrollY = container.scrollTop;
+        const diff = currentScrollY - lastScrollY.current;
+        
+        // Only update if significant scroll happened
+        if (Math.abs(diff) > 10) {
+          const shouldBeCompact = currentScrollY > 80 && diff > 0;
+          const shouldExpand = diff < -10;
+          
+          if (shouldBeCompact && !isCompact) {
+            setIsCompact(true);
+          } else if (shouldExpand && isCompact) {
+            setIsCompact(false);
+          }
+          
+          lastScrollY.current = currentScrollY;
+        }
+        
+        ticking = false;
+      });
+    };
+    
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
-  }, [scrollContainerRef, handleScroll]);
+  }, [scrollContainerRef, isCompact]);
   
   // Calculate dropdown position to prevent overflow
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
@@ -215,29 +177,29 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
   };
 
   return (
-    <motion.div
+    <div
       ref={islandRef}
       className={`sticky top-0 z-30 flex justify-center px-4 pt-3 pb-2 ${className}`}
-      style={{
-        y: translateY,
-      }}
     >
       <motion.div
         className="flex items-center justify-between bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border relative mx-auto shadow-lg origin-center w-auto"
+        animate={{
+          scale: isCompact ? 0.95 : 1,
+          opacity: isCompact ? 0.95 : 1,
+        }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
         style={{
           minWidth: 280,
           maxWidth: 400,
-          scale: islandScale,
-          gap,
-          opacity,
+          gap: isCompact ? 4 : 8,
         }}
       >
         {filters.map((filter, idx) => (
           <React.Fragment key={filter.id}>
             {idx > 0 && (
-              <motion.div 
-                className="w-[1px] h-6 bg-border/60"
-                animate={{ 
+              <div 
+                className="w-[1px] bg-border/60 transition-all duration-200"
+                style={{ 
                   height: isCompact ? 16 : 24,
                   opacity: isCompact ? 0.4 : 0.6 
                 }}
@@ -260,30 +222,24 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
               >
                 <div className="flex items-center gap-1.5">
                   <span className="text-primary">{filter.icon}</span>
-                  <motion.span 
-                    className="text-xs font-bold whitespace-nowrap"
-                    animate={{
-                      fontSize: isCompact ? "10px" : "12px",
-                    }}
-                    transition={{ type: "spring", ...springConfig }}
+                  <span 
+                    className="font-bold whitespace-nowrap transition-all duration-200"
+                    style={{ fontSize: isCompact ? "10px" : "12px" }}
                   >
                     {filter.getLabel()}
-                  </motion.span>
+                  </span>
                   {filter.showCount !== false && filter.options.find(o => o.value === filter.value)?.count !== undefined && (
-                    <motion.span 
-                      className="inline-flex items-center justify-center min-w-[1rem] h-4 rounded-full px-1 text-[9px] font-bold bg-primary text-white"
-                      animate={{
-                        scale: isCompact ? 0.9 : 1,
-                      }}
-                      transition={{ type: "spring", ...springConfig }}
+                    <span 
+                      className="inline-flex items-center justify-center min-w-[1rem] h-4 rounded-full px-1 text-[9px] font-bold bg-primary text-white transition-transform duration-200"
+                      style={{ transform: isCompact ? 'scale(0.9)' : 'scale(1)' }}
                     >
                       {filter.options.find(o => o.value === filter.value)?.count}
-                    </motion.span>
+                    </span>
                   )}
                 </div>
                 <motion.div
                   animate={{ rotate: openDropdownId === filter.id ? 180 : 0 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  transition={{ duration: 0.2 }}
                 >
                   <ChevronDown size={14} className="text-muted-foreground" />
                 </motion.div>
@@ -359,7 +315,7 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
           </React.Fragment>
         ))}
       </motion.div>
-    </motion.div>
+    </div>
   );
 };
 

@@ -25,6 +25,9 @@ import {
   RefreshCw,
   Search,
   Upload,
+  ZoomIn,
+  Trash2,
+  Download,
 } from "lucide-react";
 import { findApproximateImages } from "../services/geminiService";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
@@ -37,6 +40,8 @@ import {
   CustomerServiceResponse,
 } from "../services/customerServiceAI";
 import { VoiceProcessingStatus } from "./GlobalFloatingOrb";
+import { CityAutocomplete } from "./ui/CityAutocomplete";
+import { CityResult } from "../services/placesService";
 
 // ============================================
 // Types
@@ -856,6 +861,26 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // Attachment preview state
+  const [previewAttachment, setPreviewAttachment] = useState<{
+    type: 'file' | 'url';
+    index: number;
+    url: string;
+    name?: string;
+  } | null>(null);
+  
+  // Create object URLs for attached files (memoized to avoid recreating on every render)
+  const fileUrls = useMemo(() => {
+    return attachedFiles.map(file => URL.createObjectURL(file));
+  }, [attachedFiles]);
+  
+  // Cleanup object URLs on unmount or when files change
+  useEffect(() => {
+    return () => {
+      fileUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [fileUrls]);
+  
   // ==========================================
   // Image Search State
   // ==========================================
@@ -1650,7 +1675,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       />
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 pb-56">
+      <div className="flex-1 overflow-y-auto px-4 py-6 pb-16">
         <AnimatePresence mode="wait">
           {/* Clarification Pages */}
           {clarificationPages.length > 0 && !showFinalReview && (
@@ -2102,28 +2127,53 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             fieldRef={descriptionFieldRef}
           />
 
-          {/* Location with Map Button */}
-          <GlowingField
-            label="الموقع"
-            icon={<MapPin size={18} />}
-            value={location}
-            onChange={setLocation}
-            placeholder="المدينة، الحي، أو 'عن بعد'"
-            isGlowing={glowingFields.has("location")}
-            isRequired
-            fieldRef={locationFieldRef}
-            rightElement={
-              <button
-                className="p-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                onClick={() => {
-                  // TODO: Open map picker
-                  alert("فتح الخريطة");
-                }}
-              >
-                <Map size={18} />
-              </button>
-            }
-          />
+          {/* Location with Google Places Autocomplete */}
+          <div ref={locationFieldRef}>
+            <motion.div
+              className={`relative rounded-2xl border-2 transition-all duration-300 ${
+                location
+                  ? "border-emerald-500 bg-card"
+                  : glowingFields.has("location")
+                  ? "border-primary bg-primary/5 shadow-[0_0_15px_rgba(37,99,235,0.3)]"
+                  : "border-border bg-card hover:border-primary/50"
+              }`}
+            >
+              {/* Label */}
+              <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+                <span className={location ? "text-emerald-500" : glowingFields.has("location") ? "text-primary" : "text-muted-foreground"}>
+                  <MapPin size={18} />
+                </span>
+                <span className={`text-sm font-medium ${location ? "text-emerald-500" : glowingFields.has("location") ? "text-primary" : "text-muted-foreground"}`}>
+                  الموقع
+                  <span className="text-red-500 mr-1">*</span>
+                  {location && (
+                    <motion.span
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="inline-flex items-center justify-center mr-1"
+                    >
+                      <Check size={14} className="text-emerald-500" />
+                    </motion.span>
+                  )}
+                </span>
+              </div>
+              {/* City Autocomplete Input */}
+              <div className="px-4 pb-3">
+                <CityAutocomplete
+                  value={location}
+                  onChange={(value: string, cityResult?: CityResult) => {
+                    setLocation(value);
+                    // يمكن استخدام cityResult للحصول على الإحداثيات
+                    if (cityResult?.lat && cityResult?.lng) {
+                      console.log('City coordinates:', cityResult.lat, cityResult.lng);
+                    }
+                  }}
+                  placeholder="ابحث عن مدينة أو اختر 'عن بعد'"
+                  showRemoteOption={true}
+                />
+              </div>
+            </motion.div>
+          </div>
 
           {/* Attachments Field */}
           <motion.div
@@ -2164,7 +2214,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                 <div className="flex gap-2 flex-wrap mb-3">
                   {attachedFiles.map((file, index) => {
                     const isImage = file.type.startsWith("image/");
-                    const fileUrl = URL.createObjectURL(file);
+                    const isVideo = file.type.startsWith("video/");
+                    const fileUrl = fileUrls[index];
                     return (
                       <motion.div
                         key={file.name + index}
@@ -2173,21 +2224,56 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                         exit={{ scale: 0, opacity: 0 }}
                         className="relative group"
                       >
-                        <div className="w-20 h-20 rounded-xl overflow-hidden border border-border bg-secondary">
+                        <div 
+                          className="w-20 h-20 rounded-xl overflow-hidden border border-border bg-secondary cursor-pointer hover:border-primary transition-colors"
+                          onClick={() => {
+                            setPreviewAttachment({
+                              type: 'file',
+                              index,
+                              url: fileUrl,
+                              name: file.name
+                            });
+                          }}
+                        >
                           {isImage ? (
                             <img src={fileUrl} alt={file.name} className="w-full h-full object-cover" />
+                          ) : isVideo ? (
+                            <div className="w-full h-full flex items-center justify-center bg-primary/10">
+                              <FileText size={24} className="text-primary" />
+                            </div>
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
                               <FileText size={24} className="text-muted-foreground" />
                             </div>
                           )}
                         </div>
-                        <button
-                          onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
-                          className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        {/* Preview icon overlay */}
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-colors rounded-xl cursor-pointer"
+                          onClick={() => {
+                            setPreviewAttachment({
+                              type: 'file',
+                              index,
+                              url: fileUrl,
+                              name: file.name
+                            });
+                          }}
                         >
-                          <X size={12} />
+                          <ZoomIn size={16} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+                          }}
+                          className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors z-10"
+                        >
+                          <Trash2 size={12} />
                         </button>
+                        {!isImage && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[9px] text-center py-0.5 px-1 truncate rounded-b-xl">
+                            {file.name}
+                          </div>
+                        )}
                       </motion.div>
                     );
                   })}
@@ -2199,14 +2285,38 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       animate={{ scale: 1, opacity: 1 }}
                       className="relative group"
                     >
-                      <div className="w-20 h-20 rounded-xl overflow-hidden border border-indigo-300 bg-secondary">
+                      <div 
+                        className="w-20 h-20 rounded-xl overflow-hidden border border-indigo-300 bg-secondary cursor-pointer hover:border-indigo-400 transition-colors"
+                        onClick={() => {
+                          setPreviewAttachment({
+                            type: 'url',
+                            index,
+                            url: url
+                          });
+                        }}
+                      >
                         <img src={url} alt="" className="w-full h-full object-cover" />
                       </div>
-                      <button
-                        onClick={() => setSelectedImageUrls(prev => prev.filter((_, i) => i !== index))}
-                        className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      {/* Preview icon overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-colors rounded-xl cursor-pointer"
+                        onClick={() => {
+                          setPreviewAttachment({
+                            type: 'url',
+                            index,
+                            url: url
+                          });
+                        }}
                       >
-                        <X size={12} />
+                        <ZoomIn size={16} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedImageUrls(prev => prev.filter((_, i) => i !== index));
+                        }}
+                        className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors z-10"
+                      >
+                        <Trash2 size={12} />
                       </button>
                       <div className="absolute bottom-0 inset-x-0 bg-indigo-500/80 text-white text-[8px] text-center py-0.5 rounded-b-xl">
                         بحث
@@ -2396,70 +2506,194 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             </motion.div>
           )}
         </AnimatePresence>
-        
-        {/* مسافة للأزرار العائمة */}
-        <div className="h-24" />
       </div>
 
       {/* زر الإرسال العائم في الأسفل */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-background via-background to-transparent pt-6 pb-6 px-4">
-        <div className="max-w-lg mx-auto">
-          {/* زر أرسل الطلب الآن */}
-          <motion.button
-            layout
-            onClick={async () => {
-              if (!canSubmit) return;
-              
-              if (navigator.vibrate) navigator.vibrate(15);
-              setIsSubmitting(true);
-              
-              try {
-                const requestId = await handlePublish();
-                if (requestId) {
-                  setCreatedRequestId(requestId);
-                  setSubmitSuccess(true);
-                  setShowSuccessNotification(true);
-                  
-                  if (!editingRequestId) {
-                    setTimeout(() => {
-                      if (onGoToRequest && requestId) {
-                        onGoToRequest(requestId);
-                      }
-                    }, 2000);
-                  }
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4">
+        {/* زر أرسل الطلب الآن */}
+        <motion.button
+          layout
+          onClick={async () => {
+            if (!canSubmit) return;
+            
+            if (navigator.vibrate) navigator.vibrate(15);
+            setIsSubmitting(true);
+            
+            try {
+              const requestId = await handlePublish();
+              if (requestId) {
+                setCreatedRequestId(requestId);
+                setSubmitSuccess(true);
+                setShowSuccessNotification(true);
+                
+                if (!editingRequestId) {
+                  setTimeout(() => {
+                    if (onGoToRequest && requestId) {
+                      onGoToRequest(requestId);
+                    }
+                  }, 2000);
                 }
-              } catch (error) {
-                console.error("Error submitting:", error);
-              } finally {
-                setIsSubmitting(false);
               }
-            }}
-            disabled={!canSubmit || isSubmitting}
-            className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg ${
-              canSubmit && !isSubmitting
-                ? 'bg-primary text-white hover:bg-primary/90 shadow-primary/30'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none'
-            }`}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 size={20} className="animate-spin" />
-                <span>جاري الإرسال...</span>
-              </>
-            ) : submitSuccess ? (
-              <>
-                <Check size={20} />
-                <span>تم الإرسال!</span>
-              </>
-            ) : (
-              <>
-                <span>أرسل الطلب الآن</span>
-                <ChevronLeft size={20} />
-              </>
-            )}
-          </motion.button>
-        </div>
+            } catch (error) {
+              console.error("Error submitting:", error);
+            } finally {
+              setIsSubmitting(false);
+            }
+          }}
+          disabled={!canSubmit || isSubmitting}
+          className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg ${
+            canSubmit && !isSubmitting
+              ? 'bg-primary text-white hover:bg-primary/90 shadow-primary/30'
+              : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none'
+          }`}
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 size={20} className="animate-spin" />
+              <span>جاري الإرسال...</span>
+            </>
+          ) : submitSuccess ? (
+            <>
+              <Check size={20} />
+              <span>تم الإرسال!</span>
+            </>
+          ) : (
+            <>
+              <span>أرسل الطلب الآن</span>
+              <ChevronLeft size={20} />
+            </>
+          )}
+        </motion.button>
       </div>
+
+      {/* Attachment Preview Modal */}
+      <AnimatePresence>
+        {previewAttachment && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/90 z-[100]"
+              onClick={() => setPreviewAttachment(null)}
+            />
+            
+            {/* Preview Content */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="fixed inset-0 z-[101] flex items-center justify-center p-4"
+              onClick={() => setPreviewAttachment(null)}
+            >
+              <div 
+                className="relative max-w-4xl max-h-[90vh] w-full h-full flex flex-col bg-background rounded-2xl overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between p-4 border-b border-border">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {previewAttachment.name && (
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <FileText size={20} className="text-primary shrink-0" />
+                        <span className="text-sm font-medium text-foreground truncate">
+                          {previewAttachment.name}
+                        </span>
+                      </div>
+                    )}
+                    {!previewAttachment.name && (
+                      <span className="text-sm font-medium text-foreground">معاينة المرفق</span>
+                    )}
+                  </div>
+                  
+                  {/* Actions */}
+                  <div className="flex items-center gap-2">
+                    {/* Download button for files */}
+                    {previewAttachment.type === 'file' && (
+                      <motion.a
+                        href={previewAttachment.url}
+                        download={previewAttachment.name}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="p-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Download size={18} />
+                      </motion.a>
+                    )}
+                    
+                    {/* Delete button */}
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => {
+                        if (previewAttachment.type === 'file') {
+                          setAttachedFiles(prev => prev.filter((_, i) => i !== previewAttachment.index));
+                        } else {
+                          setSelectedImageUrls(prev => prev.filter((_, i) => i !== previewAttachment.index));
+                        }
+                        setPreviewAttachment(null);
+                      }}
+                      className="p-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+                    >
+                      <Trash2 size={18} />
+                    </motion.button>
+                    
+                    {/* Close button */}
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => setPreviewAttachment(null)}
+                      className="p-2 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
+                    >
+                      <X size={18} className="text-foreground" />
+                    </motion.button>
+                  </div>
+                </div>
+                
+                {/* Preview Content */}
+                <div className="flex-1 overflow-auto flex items-center justify-center p-4 bg-black/50">
+                  {previewAttachment.url.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) || 
+                   (previewAttachment.type === 'file' && attachedFiles[previewAttachment.index]?.type.startsWith('image/')) ? (
+                    <img 
+                      src={previewAttachment.url} 
+                      alt={previewAttachment.name || "معاينة"} 
+                      className="max-w-full max-h-full object-contain rounded-lg"
+                    />
+                  ) : previewAttachment.url.match(/\.(mp4|webm|ogg)$/i) ||
+                    (previewAttachment.type === 'file' && attachedFiles[previewAttachment.index]?.type.startsWith('video/')) ? (
+                    <video 
+                      src={previewAttachment.url} 
+                      controls 
+                      className="max-w-full max-h-full rounded-lg"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-4 p-8">
+                      <FileText size={64} className="text-muted-foreground" />
+                      <p className="text-muted-foreground text-center">
+                        {previewAttachment.name || "لا يمكن معاينة هذا النوع من الملفات"}
+                      </p>
+                      {previewAttachment.type === 'file' && (
+                        <motion.a
+                          href={previewAttachment.url}
+                          download={previewAttachment.name}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="px-4 py-2 rounded-xl bg-primary text-white font-medium flex items-center gap-2"
+                        >
+                          <Download size={18} />
+                          <span>تحميل الملف</span>
+                        </motion.a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Floating AI Input is now handled by GlobalFloatingOrb in App.tsx */}
     </motion.div>

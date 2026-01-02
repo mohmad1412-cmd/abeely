@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { 
   MapPin, 
   Clock, 
@@ -25,6 +25,8 @@ interface CompactListViewProps {
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoadingMore?: boolean;
+  // External scroll position (from parent)
+  externalScrollY?: number;
 }
 
 // ============================================
@@ -47,7 +49,6 @@ const ListItem: React.FC<{
   // Status
   const hasOffer = !!myOffer;
   const offerAccepted = myOffer?.status === "accepted";
-  const isNew = !isViewed;
 
   // Get budget display
   const budgetDisplay = request.budgetMin || request.budgetMax
@@ -60,7 +61,7 @@ const ListItem: React.FC<{
         isPressed 
           ? "bg-primary/5 border-primary/20 scale-[0.98]" 
           : "bg-card hover:bg-secondary/10 border-border/40 hover:border-primary/20"
-      } ${isNew ? "border-primary/20 bg-primary/[0.01]" : ""}`}
+      } ${!isViewed ? "border-primary/20 bg-primary/[0.01]" : ""}`}
       onClick={onTap}
       onTouchStart={() => setIsPressed(true)}
       onTouchEnd={() => setIsPressed(false)}
@@ -76,18 +77,10 @@ const ListItem: React.FC<{
         damping: 30
       }}
     >
-      {/* New Indicator */}
-      {isNew && (
-        <div className="absolute top-0 right-0 w-8 h-8 flex items-center justify-center overflow-hidden">
-          <div className="absolute top-0 right-0 w-full h-full bg-primary/10 rotate-45 translate-x-1/2 -translate-y-1/2" />
-          <div className="relative z-10 w-1.5 h-1.5 rounded-full bg-primary mr-2 mt-2" />
-        </div>
-      )}
-      
       {/* Content */}
       <div className="flex-1 min-w-0">
         {/* Title */}
-        <h3 className={`font-bold text-base mb-1.5 line-clamp-1 ${isNew ? "text-foreground" : "text-foreground/80"}`}>
+        <h3 className={`font-bold text-base mb-1.5 line-clamp-1 ${!isViewed ? "text-foreground" : "text-foreground/80"}`}>
           {request.title || request.description?.slice(0, 40) || "طلب"}
         </h3>
         
@@ -161,6 +154,7 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
   onLoadMore,
   hasMore = false,
   isLoadingMore = false,
+  externalScrollY = 0,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -171,9 +165,12 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
 
   // Handle infinite scroll
   const handleScroll = useCallback(() => {
-    if (!containerRef.current || !onLoadMore || isLoadingMore || !hasMore) return;
+    if (!containerRef.current) return;
     
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    
+    // Load more trigger
+    if (!onLoadMore || isLoadingMore || !hasMore) return;
     if (scrollHeight - scrollTop - clientHeight < 200) {
       onLoadMore();
     }
@@ -187,30 +184,54 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
   return (
     <div 
       ref={containerRef}
-      className="h-full overflow-y-auto"
+      className="relative"
       onScroll={handleScroll}
     >
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-card/80 backdrop-blur-md border-b border-border px-4 py-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">
-            {requests.length} طلب
-          </span>
+      {/* Header with counter */}
+      <div className="relative">
+        {/* Header */}
+        <div className="bg-card/80 backdrop-blur-md border-b border-border px-4 py-3 relative z-10">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              {requests.length} طلب
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* List */}
-      <div className="p-4 pb-20">
-        {requests.map((request, index) => (
-          <ListItem
-            key={request.id}
-            request={request}
-            onTap={() => onSelectRequest(request)}
-            myOffer={getMyOffer(request.id)}
-            isViewed={viewedRequestIds.has(request.id)}
-            index={index}
-          />
-        ))}
+      {/* List Content */}
+      <div className="px-0 py-4 pb-20 relative z-[1]">
+        {requests.map((request, index) => {
+          const isUnread = !viewedRequestIds.has(request.id);
+          return (
+            <div key={request.id} className="flex items-center">
+              {/* Right Margin - الهامش الأيمن مع النقطة */}
+              <div className="w-4 flex-shrink-0 flex items-center justify-center">
+                {isUnread && (
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 25, delay: Math.min(index * 0.03, 0.3) }}
+                  >
+                    <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(30,150,140,0.6)]" />
+                  </motion.div>
+                )}
+              </div>
+              {/* الكرت */}
+              <div className="flex-1 min-w-0">
+                <ListItem
+                  request={request}
+                  onTap={() => onSelectRequest(request)}
+                  myOffer={getMyOffer(request.id)}
+                  isViewed={viewedRequestIds.has(request.id)}
+                  index={index}
+                />
+              </div>
+              {/* Left Margin - الهامش الأيسر (للتناظر) */}
+              <div className="w-4 flex-shrink-0" />
+            </div>
+          );
+        })}
       </div>
 
       {/* Load More */}

@@ -56,6 +56,7 @@ import {
   fetchMyOffers,
   fetchMyRequests,
   fetchOffersForUserRequests,
+  fetchRequestById,
   fetchRequestsPaginated,
   migrateUserDraftRequests,
   subscribeToNewRequests,
@@ -1701,33 +1702,83 @@ const App: React.FC = () => {
             }}
             requestToEdit={requestToEdit}
             onClearRequestToEdit={() => setRequestToEdit(null)}
-            onGoToRequest={(requestId) => {
-              // البحث عن الطلب في القائمة أو إنشاء كائن مؤقت
+            onGoToRequest={async (requestId) => {
+              // البحث أولاً في القوائم المحلية
               const foundRequest = [...myRequests, ...allRequests].find(r => r.id === requestId);
               
               if (foundRequest) {
                 setSelectedRequest(foundRequest);
+                handleNavigate("request-detail");
               } else {
-                // إنشاء كائن مؤقت للطلب
-                const tempRequest: Request = {
-                  id: requestId,
-                  title: "طلبي الجديد",
-                  description: "",
-                  location: "",
-                  status: "active",
-                  author: user?.id || null,
-                  authorName: user?.display_name || user?.email || "مستخدم",
-                  isPublic: true,
-                  createdAt: new Date(),
-                  offers: [],
-                  offersCount: 0,
-                  viewCount: 0,
-                  messages: [],
-                };
-                setSelectedRequest(tempRequest);
+                // جلب الطلب الفعلي من قاعدة البيانات
+                try {
+                  const fetchedRequest = await fetchRequestById(requestId);
+                  
+                  if (fetchedRequest) {
+                    // إضافة معلومات المؤلف من بيانات المستخدم
+                    if (user) {
+                      fetchedRequest.authorName = user.display_name || user.email || "مستخدم";
+                      fetchedRequest.authorFirstName = user.first_name;
+                      fetchedRequest.authorLastName = user.last_name;
+                    }
+                    
+                    setSelectedRequest(fetchedRequest);
+                    
+                    // تحديث myRequests إذا كان الطلب للمستخدم الحالي
+                    if (user?.id && fetchedRequest.author === user.id) {
+                      setMyRequests(prev => {
+                        // تجنب التكرار
+                        if (prev.some(r => r.id === requestId)) {
+                          return prev;
+                        }
+                        return [fetchedRequest, ...prev];
+                      });
+                    }
+                    
+                    handleNavigate("request-detail");
+                  } else {
+                    console.error("Failed to fetch request:", requestId);
+                    // في حالة الفشل، نستخدم كائن مؤقت على الأقل
+                    const tempRequest: Request = {
+                      id: requestId,
+                      title: "طلب جديد",
+                      description: "",
+                      location: "",
+                      status: "active",
+                      author: user?.id || null,
+                      authorName: user?.display_name || user?.email || "مستخدم",
+                      isPublic: true,
+                      createdAt: new Date(),
+                      offers: [],
+                      offersCount: 0,
+                      viewCount: 0,
+                      messages: [],
+                    };
+                    setSelectedRequest(tempRequest);
+                    handleNavigate("request-detail");
+                  }
+                } catch (error) {
+                  console.error("Error fetching request:", error);
+                  // في حالة الخطأ، نستخدم كائن مؤقت
+                  const tempRequest: Request = {
+                    id: requestId,
+                    title: "طلب جديد",
+                    description: "",
+                    location: "",
+                    status: "active",
+                    author: user?.id || null,
+                    authorName: user?.display_name || user?.email || "مستخدم",
+                    isPublic: true,
+                    createdAt: new Date(),
+                    offers: [],
+                      offersCount: 0,
+                      viewCount: 0,
+                      messages: [],
+                  };
+                  setSelectedRequest(tempRequest);
+                  handleNavigate("request-detail");
+                }
               }
-              
-              handleNavigate("request-detail");
             }}
             // Header Props
             mode={mode}
@@ -1905,6 +1956,7 @@ const App: React.FC = () => {
                 }}
                 userId={user?.id}
                 viewedRequestIds={viewedRequestIds}
+                onCreateRequest={() => handleNavigate("create-request")}
               />
             </div>
 
@@ -2104,6 +2156,35 @@ const App: React.FC = () => {
                 onNavigateToSettings={() => {
                   setPreviousView(view);
                   setView("settings");
+                }}
+                onCancelOffer={async (offerId: string) => {
+                  // Cancel the offer by updating its status
+                  const { error } = await supabase
+                    .from("offers")
+                    .update({ status: "cancelled" })
+                    .eq("id", offerId);
+                  
+                  if (error) {
+                    console.error("Error cancelling offer:", error);
+                    throw error;
+                  }
+                  
+                  // Refresh my offers list
+                  if (user?.id) {
+                    const offers = await fetchMyOffers(user.id);
+                    setMyOffers(offers.filter((o) => o.status !== "archived" && o.status !== "cancelled"));
+                  }
+                  
+                  // Go back to marketplace after cancellation
+                  setView("marketplace");
+                }}
+                onEditOffer={(offer) => {
+                  // Navigate to edit offer mode
+                  console.log("=== EDIT OFFER TRIGGERED ===");
+                  console.log("Offer to edit:", offer);
+                  // TODO: Implement offer editing UI
+                  // For now, show a toast or alert
+                  alert("ميزة تعديل العرض قيد التطوير");
                 }}
               />
             </SwipeBackWrapper>

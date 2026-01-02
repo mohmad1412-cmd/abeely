@@ -489,6 +489,34 @@ export async function checkSupabaseConnection(): Promise<{connected: boolean; er
 }
 
 /**
+ * Fetch a single request by ID
+ */
+export async function fetchRequestById(requestId: string): Promise<Request | null> {
+  const { data, error } = await supabase
+    .from("requests")
+    .select(`
+      *,
+      request_categories (
+        category_id,
+        categories (id, label)
+      )
+    `)
+    .eq("id", requestId)
+    .single();
+
+  if (error) {
+    console.error("Error fetching request by ID:", error);
+    return null;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return transformRequest(data);
+}
+
+/**
  * Fetch user's own requests
  */
 export async function fetchMyRequests(userId: string): Promise<Request[]> {
@@ -509,28 +537,7 @@ export async function fetchMyRequests(userId: string): Promise<Request[]> {
     throw error;
   }
 
-  return (data || []).map((req: any) => ({
-    id: req.id,
-    title: req.title,
-    description: req.description,
-    author: req.author_id || "مستخدم",
-    createdAt: new Date(req.created_at),
-    status: req.status,
-    isPublic: req.is_public,
-    budgetType: req.budget_type || "negotiable",
-    budgetMin: req.budget_min || "",
-    budgetMax: req.budget_max || "",
-    location: req.location || "",
-    categories: req.request_categories?.map((rc: any) => rc.categories?.label).filter(Boolean) || [],
-    deliveryTimeType: req.delivery_type || "not-specified",
-    deliveryTimeFrom: req.delivery_from || "",
-    deliveryTimeTo: req.delivery_to || "",
-    messages: [],
-    offers: [],
-    images: [],
-    contactMethod: "both",
-    seriousness: req.seriousness || 2,
-  }));
+  return (data || []).map(transformRequest);
 }
 
 /**

@@ -23,8 +23,10 @@ import {
   ChevronDown,
   Moon,
   Sun,
-  Globe
+  Globe,
+  MoreVertical
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuItem } from "./DropdownMenu";
 import { NotificationsPopover } from "../NotificationsPopover";
 
 interface UnifiedHeaderProps {
@@ -71,6 +73,11 @@ interface UnifiedHeaderProps {
   showScrollToOffer?: boolean;
   onScrollToOffer?: () => void;
   isOfferSectionVisible?: boolean; // Hide button when offer section is visible
+  // Offer submit button (for RequestDetail - like submit request button)
+  canSubmitOffer?: boolean;
+  onSubmitOffer?: () => void;
+  isSubmittingOffer?: boolean;
+  offerSubmitSuccess?: boolean;
   // My Request button (for viewing own request)
   showMyRequestButton?: boolean;
   myRequestOffersCount?: number;
@@ -95,6 +102,9 @@ interface UnifiedHeaderProps {
   // Create Request button (for Marketplace)
   showCreateRequestButton?: boolean;
   onCreateRequest?: () => void;
+  // Three-dot menu (for RequestDetail)
+  showThreeDotsMenu?: boolean;
+  threeDotsMenuItems?: DropdownMenuItem[];
 }
 
 export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
@@ -132,6 +142,10 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   showScrollToOffer = false,
   onScrollToOffer,
   isOfferSectionVisible = false,
+  canSubmitOffer = false,
+  onSubmitOffer,
+  isSubmittingOffer = false,
+  offerSubmitSuccess = false,
   showMyRequestButton = false,
   myRequestOffersCount = 0,
   onMyRequestClick,
@@ -149,6 +163,8 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   hideProfileButton = false,
   showCreateRequestButton = false,
   onCreateRequest,
+  showThreeDotsMenu = false,
+  threeDotsMenuItems = [],
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isLinkCopied, setIsLinkCopied] = useState(false);
@@ -232,7 +248,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
 
   const headerContent = (
     <div className="h-16 flex items-center justify-between pt-[env(safe-area-inset-top,0px)]">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
         {backButton ? (
           <motion.button
             onClick={() => {
@@ -242,7 +258,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.88 }}
             transition={{ type: "spring", stiffness: 500, damping: 25 }}
-            className="relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group"
+            className="relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group shrink-0"
           >
             {/* Pulse ring effect - only on active/touch */}
             <span className="absolute inset-0 rounded-full border-2 border-primary/50 opacity-0 group-active:opacity-100 group-active:animate-ping" />
@@ -250,7 +266,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           </motion.button>
         ) : onGoToMarketplace ? (
           <motion.button
-            className="md:hidden relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group"
+            className="md:hidden relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group shrink-0"
             onClick={() => {
               if (navigator.vibrate) navigator.vibrate(12);
               onGoToMarketplace?.();
@@ -265,27 +281,12 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           </motion.button>
         ) : null}
         
-        <div className="flex items-center gap-3 flex-1">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           {!backButton && !hideProfileButton && (
             <>
-              <motion.div 
+              <div 
                 className="relative" 
                 ref={profileDropdownRef}
-                initial={{ opacity: 0, scale: 0.9, y: -60 }}
-                animate={{ 
-                  opacity: isScrolled ? 1 : 0.15,
-                  scale: isScrolled ? 1 : 0.8,
-                  y: isScrolled ? 0 : -80,
-                }}
-                transition={{
-                  type: "spring",
-                  stiffness: 280,
-                  damping: 24,
-                  mass: 0.9,
-                }}
-                style={{
-                  pointerEvents: isScrolled ? 'auto' : 'none',
-                }}
               >
               <motion.button
                 onClick={() => {
@@ -446,49 +447,43 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   </>
                 )}
               </AnimatePresence>
-              </motion.div>
+              </div>
               {/* Page Title - only when no back button */}
               {title && (
-                <div className="flex items-center gap-3 ml-auto">
-                  <motion.h1 
-                    className="text-base font-bold text-foreground text-right"
-                    initial={{ opacity: 0, scale: 0.9, y: -60 }}
-                    animate={{ 
-                      opacity: isScrolled ? 1 : 0.15,
-                      scale: isScrolled ? 1 : 0.8,
-                      y: isScrolled ? 0 : -80,
-                    }}
-                    transition={{
-                      type: "spring",
-                      stiffness: 280,
-                      damping: 24,
-                      mass: 0.9,
-                    }}
-                    style={{
-                      pointerEvents: isScrolled ? 'auto' : 'none',
-                    }}
-                  >
+                <div className="flex items-center gap-3 ml-auto min-w-0 flex-1">
+                  <h1 className="text-base font-bold text-foreground text-right truncate">
                     {title}
-                  </motion.h1>
+                  </h1>
                 </div>
               )}
             </>
           )}
-          {/* Title for pages with back button - only shows when scrolled */}
+          
+          {/* Title for pages with back button - only shows when scrolled, shrinks to fit */}
           {backButton && isScrolled && (
-            <div className="flex items-center gap-0.5 relative flex-1 min-w-0">
-              <motion.div
-                key="scrolled-title"
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -5 }}
-                className="px-4 py-2 rounded-full bg-card/80 backdrop-blur-sm border border-border shadow-lg"
-              >
-                <span className="font-bold text-sm text-foreground whitespace-nowrap block">
-                  {title}
-                </span>
-              </motion.div>
-            </div>
+            <motion.div
+              key="scrolled-title"
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -5 }}
+              className="px-4 h-10 flex items-center gap-2 rounded-full bg-card/80 backdrop-blur-sm border border-border shadow-lg min-w-0 flex-1"
+            >
+              <span className="font-bold text-sm text-foreground truncate block flex-1">
+                {title}
+              </span>
+              {/* Three-dot menu in scrolled title */}
+              {showThreeDotsMenu && threeDotsMenuItems.length > 0 && (
+                <DropdownMenu
+                  trigger={
+                    <button className="p-1.5 rounded-lg hover:bg-black/5 transition-colors shrink-0">
+                      <MoreVertical size={18} strokeWidth={2.5} className="text-muted-foreground" />
+                    </button>
+                  }
+                  items={threeDotsMenuItems}
+                  align="left"
+                />
+              )}
+            </motion.div>
           )}
         </div>
       </div>
@@ -498,24 +493,10 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
         <motion.button
           key="create-request-btn"
           onClick={onCreateRequest}
-          initial={{ opacity: 0, scale: 0.9, y: -60 }}
-          animate={{ 
-            opacity: isScrolled ? 1 : 0.15,
-            scale: isScrolled ? 1 : 0.8,
-            y: isScrolled ? 0 : -80,
-          }}
-          transition={{
-            type: "spring",
-            stiffness: 280,
-            damping: 24,
-            mass: 0.9,
-          }}
-          style={{
-            pointerEvents: isScrolled ? 'auto' : 'none',
-          }}
-          className="relative flex items-center gap-2 h-10 px-4 rounded-full group active:scale-95 bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card overflow-hidden"
+          initial={{ opacity: 1, scale: 1 }}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
+          className="relative flex items-center gap-2 h-10 px-4 rounded-full group active:scale-95 bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card overflow-hidden"
         >
           <Plus size={18} strokeWidth={2.5} className="relative z-10 text-foreground" />
           <span className="relative z-10 text-sm font-medium text-foreground whitespace-nowrap">
@@ -563,64 +544,6 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
             </AnimatePresence>
           </motion.button>
         )}
-
-        {/* Scroll to Offer Button - Replaces both mode toggle and notifications */}
-        <AnimatePresence mode="popLayout">
-          {showScrollToOffer && !isOfferSectionVisible && (
-            <motion.button
-              key="scroll-to-offer-btn"
-              onClick={onScrollToOffer}
-              initial={{ opacity: 0, scale: 0.8, x: 20, filter: "blur(8px)" }}
-              animate={{ 
-                opacity: 1, 
-                scale: 1, 
-                x: 0,
-                filter: "blur(0px)",
-                transition: {
-                  type: "spring",
-                  stiffness: 400,
-                  damping: 25,
-                  mass: 0.8,
-                }
-              }}
-              exit={{ 
-                opacity: 0, 
-                scale: 0.8, 
-                x: 20,
-                filter: "blur(8px)",
-                transition: {
-                  duration: 0.25,
-                  ease: [0.4, 0, 1, 1],
-                }
-              }}
-              className="relative flex items-center gap-2 h-10 px-4 rounded-full group active:scale-95 bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card overflow-hidden"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              {/* Content */}
-              <span className="relative z-10 text-sm font-medium text-foreground whitespace-nowrap">
-                قدّم عرض
-              </span>
-              <motion.div
-                className="relative z-10"
-                animate={{ 
-                  y: [0, 3, 0],
-                }}
-                transition={{
-                  duration: 1.5,
-                  repeat: Infinity,
-                  ease: "easeInOut"
-                }}
-              >
-                <ChevronsDown 
-                  size={18} 
-                  strokeWidth={2.5}
-                  className="text-foreground"
-                />
-              </motion.div>
-            </motion.button>
-          )}
-        </AnimatePresence>
         
         {!showScrollToOffer && (
           <>

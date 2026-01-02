@@ -43,6 +43,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { CardsGridSkeleton } from "./ui/LoadingSkeleton";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
 import CompactListView from "./ui/CompactListView";
+import { CityAutocomplete } from "./ui/CityAutocomplete";
+import { searchCities, CityResult, DEFAULT_SAUDI_CITIES } from "../services/placesService";
 type ViewMode = "grid" | "text";
 
 interface MarketplaceProps {
@@ -144,12 +146,33 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 }) => {
   // View mode state - "all" or "interests"
   const [viewMode, setViewMode] = useState<"all" | "interests">("all");
-
-  // Display mode state - "grid" or "text"
+  
+  // Display Mode (Grid / Text)
   const [displayMode, setDisplayMode] = useState<ViewMode>("text");
+
+  // Force Grid view on wider screens (Fold unfolded, Tablet, Desktop)
+  useEffect(() => {
+    const handleResize = () => {
+      const isWide = window.innerWidth >= 768; // md breakpoint
+      if (isWide && displayMode !== 'grid') {
+        setDisplayMode('grid');
+      } else if (!isWide && displayMode === 'grid') {
+        setDisplayMode('text');
+      }
+    };
+
+    // Initial check
+    handleResize();
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [displayMode]);
 
   // Scroll state for glass header animation
   const [isScrolled, setIsScrolled] = useState(false);
+  
+  // Current scroll position for child components
+  const [currentScrollY, setCurrentScrollY] = useState(0);
 
   // Offer button pulse animation state
   const [showOfferButtonPulse, setShowOfferButtonPulse] = useState(false);
@@ -177,6 +200,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   // Interests panel visibility based on scroll direction
   const [showInterestsPanel, setShowInterestsPanel] = useState(true);
   const lastScrollY = useRef(0);
+  const lastHeaderChangeTime = useRef(0); // لمنع التبديل السريع
 
   // Touch interaction state
   const [touchHoveredCardId, setTouchHoveredCardId] = useState<string | null>(null);
@@ -268,12 +292,38 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   const [isRadarWordsExpanded, setIsRadarWordsExpanded] = useState(false);
   const [newRadarWord, setNewRadarWord] = useState("");
 
-  const CITIES = [
-    "الرياض", "جدة", "الدمام", "مكة", "المدينة", "الخبر", "أبها", "الطائف", "تبوك", "القصيم",
-    "بريدة", "خميس مشيط", "الهفوف", "المبرز", "حفر الباطن", "حائل", "نجران", "الجبيل", "القطيف", "ينبع",
-    "الخرج", "الثقبة", "ينبع البحر", "عرعر", "الحوية", "عنيزة", "سكاكا", "جيزان", "القريات", "الظهران",
-    "الباحة", "الزلفي", "الرس", "وادي الدواسر", "بيشة", "القنفذة", "رابغ", "عفيف", "الليث"
-  ];
+  // استخدام المدن من Google Places API مع fallback للمدن الافتراضية
+  const [citySearchResults, setCitySearchResults] = useState<string[]>(DEFAULT_SAUDI_CITIES);
+  const [isSearchingCities, setIsSearchingCities] = useState(false);
+  
+  // البحث عن المدن عند الكتابة
+  const handleCitySearch = async (query: string) => {
+    if (!query || query.length < 2) {
+      setCitySearchResults(DEFAULT_SAUDI_CITIES);
+      return;
+    }
+    setIsSearchingCities(true);
+    try {
+      const results = await searchCities(query);
+      if (results.length > 0) {
+        setCitySearchResults(results.map(r => r.name));
+      } else {
+        // fallback to filtering default cities
+        setCitySearchResults(DEFAULT_SAUDI_CITIES.filter(c => 
+          c.toLowerCase().includes(query.toLowerCase())
+        ));
+      }
+    } catch {
+      setCitySearchResults(DEFAULT_SAUDI_CITIES.filter(c => 
+        c.toLowerCase().includes(query.toLowerCase())
+      ));
+    } finally {
+      setIsSearchingCities(false);
+    }
+  };
+  
+  // للتوافق مع الكود القديم
+  const CITIES = DEFAULT_SAUDI_CITIES;
 
   const marketplaceScrollRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -379,7 +429,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
     const handleScroll = () => {
       const scrollTop = container.scrollTop;
+      const scrollDelta = scrollTop - lastScrollY.current; // الفرق بين الموقع الحالي والسابق
+      
       setIsScrolled(scrollTop > 20);
+      setCurrentScrollY(scrollTop);
       lastScrollPosRef.current = scrollTop;
       
       // Reset pull state if user scrolls away from top
@@ -391,21 +444,22 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         });
       }
       
-      // Interests panel visibility based on scroll direction
-      const scrollDelta = scrollTop - lastScrollY.current;
-      if (scrollTop < 50) {
-        // Always show when near top
+      // Header compression - يعتمد على اتجاه السكرول
+      if (scrollTop < 30) {
+        // عند القمة - أظهر الـ header كاملاً
         setShowInterestsPanel(true);
         setIsHeaderCompressed(false);
-      } else if (scrollDelta > 10) {
-        // Scrolling down - hide panel, compress header
+      } else if (scrollDelta < -3) {
+        // سكرول للأعلى - أظهر الـ header
+        setShowInterestsPanel(true);
+        setIsHeaderCompressed(false);
+      } else if (scrollDelta > 3) {
+        // سكرول للأسفل - اخفِ الـ header
         setShowInterestsPanel(false);
         setIsHeaderCompressed(true);
-      } else if (scrollDelta < -10) {
-        // Scrolling up - show panel, expand header
-        setShowInterestsPanel(true);
-        setIsHeaderCompressed(false);
       }
+      // إذا كان الفرق صغير جداً (بين -3 و 3)، لا تغيّر الحالة لتجنب التذبذب
+      
       lastScrollY.current = scrollTop;
       
       // Show scroll to top button if scrolled past the 9th item
@@ -759,7 +813,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               height: isHeaderCompressed ? 0 : 'auto',
               opacity: isHeaderCompressed ? 0 : 1,
             }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
             style={{ overflow: isHeaderCompressed ? 'hidden' : 'visible' }}
             className="px-4"
           >
@@ -859,7 +913,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       animate={{ x: 0, opacity: 1 }}
                       exit={{ x: 100, opacity: 0 }}
                       transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                      className="flex flex-row-reverse items-center gap-2 flex-1 px-2 min-w-0"
+                      className="flex items-center gap-2 flex-1 px-2 min-w-0"
                       dir="rtl"
                     >
                       <input
@@ -943,7 +997,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           }
                           setViewMode("all");
                         }}
-                        className={`flex-1 py-3 px-4 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-3 px-4 text-xs font-bold rounded-full transition-colors relative flex flex-col items-center justify-center gap-1 ${
                           viewMode === "all" && !hasActiveFilters
                             ? "text-white"
                             : "text-muted-foreground hover:text-foreground"
@@ -960,20 +1014,22 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           }
                           setViewMode("interests");
                         }}
-                        className={`flex-1 py-3 px-4 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-3 px-4 text-xs font-bold rounded-full transition-colors relative flex flex-col items-center justify-center gap-1 ${
                           viewMode === "interests" && !hasActiveFilters
                             ? "text-white"
                             : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
-                        <span className="relative z-10">اهتماماتي</span>
-                        {(unreadInterestsCount > 0 || interestsRequests.length > 0) && (
-                          <span className={`relative z-10 inline-flex items-center justify-center min-w-[1rem] h-4 rounded-full px-1 text-[10px] font-bold transition-colors ${
-                            viewMode === "interests" && !hasActiveFilters ? "bg-white/20 text-white" : "bg-primary/10 text-primary"
-                          }`}>
-                            {interestsRequests.length > 0 ? interestsRequests.length : unreadInterestsCount}
-                          </span>
-                        )}
+                        <span className="relative z-10 flex items-center gap-1.5">
+                          اهتماماتي
+                          {(unreadInterestsCount > 0 || interestsRequests.length > 0) && (
+                            <span className={`inline-flex items-center justify-center min-w-[1rem] h-4 rounded-full px-1 text-[10px] font-bold transition-colors ${
+                              viewMode === "interests" && !hasActiveFilters ? "bg-white/20 text-white" : "bg-primary/10 text-primary"
+                            }`}>
+                              {interestsRequests.length > 0 ? interestsRequests.length : unreadInterestsCount}
+                            </span>
+                          )}
+                        </span>
                       </motion.button>
                     </motion.div>
                   )}
@@ -1124,6 +1180,20 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             </div>
           )}
         </div>
+        
+        {/* ===== TOP FADE OVERLAY ===== */}
+        {/* تدريج إخفائي - جزء من الـ sticky header */}
+        <div
+          className="absolute left-0 right-0 bottom-0 translate-y-full h-20 pointer-events-none"
+          style={{
+            background: `linear-gradient(to bottom, 
+              hsl(var(--background)) 0%, 
+              hsl(var(--background) / 0.7) 35%,
+              hsl(var(--background) / 0.3) 60%, 
+              transparent 100%
+            )`,
+          }}
+        />
       </div>
 
       {/* Pull-to-Refresh Indicator - Emerges from under the header */}
@@ -1474,50 +1544,23 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         transition={{ duration: 0.2 }}
                         className="overflow-hidden space-y-3"
                       >
-                        {/* City Search Input */}
-                        <div className="relative">
-                          <Search
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none"
-                            size={14}
-                          />
-                          <input
-                            type="text"
-                            placeholder="ابحث عن مدينة..."
-                            className="w-full pr-9 pl-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary focus:outline-none text-sm"
-                            value={popupCitySearch}
-                            onChange={(e) => setPopupCitySearch(e.target.value)}
-                          />
-                          {popupCitySearch && (
-                            <button
-                              onClick={() => setPopupCitySearch("")}
-                              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                            >
-                              <X size={14} />
-                            </button>
-                          )}
-                        </div>
-                        
-                        {/* City Chips */}
-                        <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto no-scrollbar">
-                          {CITIES
-                            .filter(city => city.toLowerCase().includes(popupCitySearch.toLowerCase()))
-                            .map((city) => (
-                              <button
-                                key={city}
-                                onClick={() => { if (navigator.vibrate) navigator.vibrate(10); toggleSearchCity(city); }}
-                                className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                                  searchCities.includes(city)
-                                    ? "bg-red-500 text-white border-red-500 shadow-sm"
-                                    : "bg-secondary/50 text-foreground border-transparent hover:bg-secondary"
-                                }`}
-                              >
-                                {city}
-                              </button>
-                            ))}
-                          {CITIES.filter(city => city.toLowerCase().includes(popupCitySearch.toLowerCase())).length === 0 && (
-                            <p className="text-xs text-muted-foreground py-2">لا توجد نتائج</p>
-                          )}
-                        </div>
+                        {/* City Autocomplete with Google Places */}
+                        <CityAutocomplete
+                          value=""
+                          onChange={() => {}}
+                          placeholder="ابحث عن مدينة..."
+                          multiSelect={true}
+                          selectedCities={searchCities}
+                          onSelectCity={(city) => {
+                            if (navigator.vibrate) navigator.vibrate(10);
+                            toggleSearchCity(city);
+                          }}
+                          onRemoveCity={(city) => {
+                            if (navigator.vibrate) navigator.vibrate(10);
+                            toggleSearchCity(city);
+                          }}
+                          showRemoteOption={true}
+                        />
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -2103,28 +2146,23 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         className="overflow-hidden border-t border-border"
                       >
                         <div className="p-3 space-y-3">
-                          <input
-                            type="text"
-                            placeholder="بحث..."
-                            value={tempCitySearch}
-                            onChange={(e) => setTempCitySearch(e.target.value)}
-                            className="w-full text-xs px-3 py-1.5 rounded-lg border-2 border-[#1E968C]/30 bg-background focus:border-[#178075] focus:outline-none transition-all"
+                          {/* City Autocomplete with Google Places */}
+                          <CityAutocomplete
+                            value=""
+                            onChange={() => {}}
+                            placeholder="ابحث عن مدينة..."
+                            multiSelect={true}
+                            selectedCities={tempCities}
+                            onSelectCity={(city) => {
+                              if (navigator.vibrate) navigator.vibrate(10);
+                              toggleCity(city);
+                            }}
+                            onRemoveCity={(city) => {
+                              if (navigator.vibrate) navigator.vibrate(10);
+                              toggleCity(city);
+                            }}
+                            showRemoteOption={true}
                           />
-                          <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar">
-                            {filteredCities.map((city) => (
-                              <button
-                                key={city}
-                                onClick={() => toggleCity(city)}
-                                className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
-                                  tempCities.includes(city)
-                                    ? 'bg-primary text-white'
-                                    : 'bg-background text-foreground hover:bg-secondary/80 border border-border'
-                                }`}
-                              >
-                                {city}
-                              </button>
-                            ))}
-                          </div>
                         </div>
                       </motion.div>
                     )}
@@ -2229,16 +2267,18 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         )}
 
         {/* Content Views - Grid / Text */}
-        <AnimatePresence mode="wait">
-          {displayMode === 'text' ? (
-            <motion.div
-              key="text-view"
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -30 }}
-              transition={{ duration: 0.25 }}
-            >
-              <CompactListView
+        <div className="relative">
+          <AnimatePresence mode="wait">
+            {displayMode === 'text' ? (
+              <motion.div
+                key="text-view"
+                initial={{ opacity: 0, x: 30 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -30 }}
+                transition={{ duration: 0.25 }}
+                className="relative"
+              >
+                <CompactListView
                 requests={filteredRequests}
                 myOffers={myOffers}
                 userId={user?.id}
@@ -2262,6 +2302,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 onLoadMore={onLoadMore}
                 hasMore={hasMore}
                 isLoadingMore={isLoadingMore}
+                externalScrollY={currentScrollY}
               />
             </motion.div>
           ) : (
@@ -2279,7 +2320,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.2 }}
-                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative"
+                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative -mx-4"
                 >
           {filteredRequests.map((req, index) => {
             const myOffer = getMyOffer(req.id);
@@ -2287,50 +2328,64 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             const isMyRequest = !!user?.id && requestAuthorId === user.id;
             const isNinthItem = index === 8; // 9th item (0-indexed)
             const isTouchHovered = touchHoveredCardId === req.id; // هل الإصبع فوق هذا الكارت؟
+            const isUnread = !isMyRequest && !viewedRequestIds.has(req.id); // طلب غير مقروء
             return (
-              <motion.div
-                ref={(el) => {
-                  // Store ref in cardRefs map for touch detection
-                  if (el) {
-                    cardRefs.current.set(req.id, el);
+              <div key={req.id} className="flex items-stretch">
+                {/* Right Margin - الهامش الأيمن مع النقطة */}
+                <div className="w-4 flex-shrink-0 flex items-center justify-center">
+                  {isUnread && (
+                    <motion.div
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 25, delay: index < 9 ? index * 0.03 : 0 }}
+                    >
+                      <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(30,150,140,0.6)]" />
+                    </motion.div>
+                  )}
+                </div>
+                {/* Card Container */}
+                <motion.div
+                  ref={(el) => {
+                    // Store ref in cardRefs map for touch detection
+                    if (el) {
+                      cardRefs.current.set(req.id, el);
+                    }
+                    // Also handle ninthItemRef
+                    if (isNinthItem && el) {
+                      (ninthItemRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+                    }
+                  }}
+                  data-request-id={req.id}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={isTouchHovered 
+                    ? { opacity: 1, y: -8, scale: 1.02 } 
+                    : { opacity: 1, y: 0, scale: 1 }
                   }
-                  // Also handle ninthItemRef
-                  if (isNinthItem && el) {
-                    (ninthItemRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-                  }
-                }}
-                data-request-id={req.id}
-                key={req.id}
-                initial={{ opacity: 0, y: 15 }}
-                animate={isTouchHovered 
-                  ? { opacity: 1, y: -8, scale: 1.02 } 
-                  : { opacity: 1, y: 0, scale: 1 }
-                }
-                transition={{ 
-                  type: "spring", 
-                  stiffness: 400, 
-                  damping: 30,
-                  delay: index < 9 ? index * 0.03 : 0 // تأخير خفيف فقط لأول 9 كروت
-                }}
-                whileHover={{ y: -8, scale: 1.02 }}
-                className={`bg-card border border-border rounded-2xl overflow-hidden transition-colors flex flex-col cursor-pointer relative shadow-sm ${isTouchHovered ? '' : 'group'}`}
-                 onClick={() => {
-                   // Update guest viewed requests in localStorage
-                   if (isGuest) {
-                     setGuestViewedIds(prev => {
-                       const newSet = new Set(prev);
-                       newSet.add(req.id);
-                       try {
-                         localStorage.setItem('guestViewedRequestIds', JSON.stringify([...newSet]));
-                       } catch (e) {
-                         console.error('Error saving guest viewed requests:', e);
-                       }
-                       return newSet;
-                     });
-                   }
-                   onSelectRequest(req);
-                 }}
-              >
+                  transition={{ 
+                    type: "spring", 
+                    stiffness: 400, 
+                    damping: 30,
+                    delay: index < 9 ? index * 0.03 : 0 // تأخير خفيف فقط لأول 9 كروت
+                  }}
+                  whileHover={{ y: -8, scale: 1.02 }}
+                  className={`flex-1 bg-card border border-border rounded-2xl overflow-hidden transition-colors flex flex-col cursor-pointer relative shadow-sm ${isTouchHovered ? '' : 'group'}`}
+                   onClick={() => {
+                     // Update guest viewed requests in localStorage
+                     if (isGuest) {
+                       setGuestViewedIds(prev => {
+                         const newSet = new Set(prev);
+                         newSet.add(req.id);
+                         try {
+                           localStorage.setItem('guestViewedRequestIds', JSON.stringify([...newSet]));
+                         } catch (e) {
+                           console.error('Error saving guest viewed requests:', e);
+                         }
+                         return newSet;
+                       });
+                     }
+                     onSelectRequest(req);
+                   }}
+                >
                 {/* My Request Indicator - مؤشر طلبي الخاص */}
                 {isMyRequest && (
                   <motion.div
@@ -2687,6 +2742,9 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   </div>
                 </div>
               </motion.div>
+                {/* Left Margin - الهامش الأيسر (للتناظر) */}
+                <div className="w-7 flex-shrink-0" />
+              </div>
             );
           })}
                 </motion.div>
@@ -2863,6 +2921,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             </div>
           </>
         )}
+        </div>
       </div>
     </div>
   );
