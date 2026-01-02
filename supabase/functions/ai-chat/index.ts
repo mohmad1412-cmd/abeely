@@ -172,7 +172,13 @@ Deno.serve(async (req) => {
     const conversationHistory = chatHistory.length > 0 ? chatHistory : history;
 
     if (!ANTHROPIC_API_KEY) {
-      return res({ error: "ANTHROPIC_API_KEY is not configured in Supabase Edge Functions" }, 500);
+      console.error("❌ ANTHROPIC_API_KEY is missing!");
+      console.error("Available env vars:", Object.keys(Deno.env.toObject()).filter(k => !k.includes("SECRET")));
+      return res({ 
+        error: "ANTHROPIC_API_KEY غير مهيأ في Supabase Edge Functions",
+        solution: "يرجى إضافة ANTHROPIC_API_KEY في: Supabase Dashboard → Settings → Edge Functions → Add new secret",
+        command: "supabase secrets set ANTHROPIC_API_KEY=sk-ant-xxxxx"
+      }, 500);
     }
 
     let systemInstruction = "";

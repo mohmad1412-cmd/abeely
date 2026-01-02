@@ -56,81 +56,93 @@ const ListItem: React.FC<{
 
   return (
     <motion.button
-      className={`w-full text-right p-4 border-b border-border/50 flex items-start gap-3 transition-colors ${
-        isPressed ? "bg-primary/5" : "bg-card hover:bg-secondary/30"
-      } ${isNew ? "bg-primary/[0.02]" : ""}`}
+      className={`w-full text-right p-4 rounded-2xl border transition-all mb-3 overflow-hidden shadow-sm flex items-start gap-3 ${
+        isPressed 
+          ? "bg-primary/5 border-primary/20 scale-[0.98]" 
+          : "bg-card hover:bg-secondary/10 border-border/40 hover:border-primary/20"
+      } ${isNew ? "border-primary/20 bg-primary/[0.01]" : ""}`}
       onClick={onTap}
       onTouchStart={() => setIsPressed(true)}
       onTouchEnd={() => setIsPressed(false)}
       onMouseDown={() => setIsPressed(true)}
       onMouseUp={() => setIsPressed(false)}
       onMouseLeave={() => setIsPressed(false)}
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: Math.min(index * 0.03, 0.3) }}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ 
+        delay: Math.min(index * 0.03, 0.3),
+        type: "spring",
+        stiffness: 400,
+        damping: 30
+      }}
     >
       {/* New Indicator */}
       {isNew && (
-        <div className="flex-shrink-0 w-2 h-2 mt-2 rounded-full bg-primary animate-pulse" />
+        <div className="absolute top-0 right-0 w-8 h-8 flex items-center justify-center overflow-hidden">
+          <div className="absolute top-0 right-0 w-full h-full bg-primary/10 rotate-45 translate-x-1/2 -translate-y-1/2" />
+          <div className="relative z-10 w-1.5 h-1.5 rounded-full bg-primary mr-2 mt-2" />
+        </div>
       )}
       
       {/* Content */}
       <div className="flex-1 min-w-0">
         {/* Title */}
-        <h3 className={`font-bold text-base mb-1 line-clamp-1 ${isNew ? "text-foreground" : "text-foreground/80"}`}>
+        <h3 className={`font-bold text-base mb-1.5 line-clamp-1 ${isNew ? "text-foreground" : "text-foreground/80"}`}>
           {request.title || request.description?.slice(0, 40) || "طلب"}
         </h3>
         
         {/* Description */}
-        <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+        <p className="text-sm text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
           {request.description}
         </p>
         
         {/* Meta Row */}
-        <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <div className="flex items-center flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground/70 font-medium">
           {request.location && (
-            <span className="flex items-center gap-1">
-              <MapPin size={12} />
+            <span className="flex items-center gap-1.5">
+              <MapPin size={13} className="text-primary/60" />
               {request.location}
             </span>
           )}
           
           {budgetDisplay && (
-            <span className="flex items-center gap-1">
-              <DollarSign size={12} />
+            <span className="flex items-center gap-1.5">
+              <DollarSign size={13} className="text-primary/60" />
               {budgetDisplay}
             </span>
           )}
           
-          <span className="flex items-center gap-1">
-            <Clock size={12} />
+          <span className="flex items-center gap-1.5">
+            <Clock size={13} className="text-primary/60" />
             {timeAgo}
           </span>
           
-          <span className="flex items-center gap-1">
-            <MessageCircle size={12} />
+          <span className="flex items-center gap-1.5">
+            <MessageCircle size={13} className="text-primary/60" />
             {request.offersCount || request.offers?.length || 0}
           </span>
         </div>
       </div>
 
       {/* Right Side - Status & Arrow */}
-      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+      <div className="flex flex-col items-end gap-3 flex-shrink-0 self-center">
         {hasOffer ? (
-          <span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${
+          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold shadow-sm ${
             offerAccepted 
-              ? "bg-emerald-500/10 text-emerald-600" 
-              : "bg-amber-500/10 text-amber-600"
+              ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" 
+              : "bg-amber-500/10 text-amber-600 border border-amber-500/20"
           }`}>
             {offerAccepted ? "✓ معتمد" : "بانتظار"}
           </span>
         ) : request.categories?.[0] ? (
-          <span className="px-2 py-1 rounded-lg bg-secondary text-[10px] font-medium text-muted-foreground">
+          <span className="px-2.5 py-1 rounded-full bg-secondary/80 text-[10px] font-bold text-muted-foreground border border-border/50">
             {request.categories[0]}
           </span>
         ) : null}
         
-        <ChevronLeft size={18} className="text-muted-foreground/50" />
+        <div className="w-8 h-8 rounded-full bg-secondary/30 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+          <ChevronLeft size={16} className="text-muted-foreground/50 group-hover:text-primary/70" />
+        </div>
       </div>
     </motion.button>
   );
@@ -169,17 +181,7 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
 
   // Empty state
   if (requests.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-        <div className="w-16 h-16 rounded-full bg-secondary/50 flex items-center justify-center mb-4">
-          <AlertCircle size={32} className="text-muted-foreground" />
-        </div>
-        <h3 className="font-bold text-lg mb-2">لا توجد طلبات</h3>
-        <p className="text-sm text-muted-foreground">
-          لا توجد طلبات مطابقة للبحث حالياً
-        </p>
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -194,15 +196,11 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
           <span className="text-sm text-muted-foreground">
             {requests.length} طلب
           </span>
-          <span className="text-xs text-muted-foreground flex items-center gap-1">
-            <Sparkles size={12} className="text-primary" />
-            عرض مبسط
-          </span>
         </div>
       </div>
 
       {/* List */}
-      <div>
+      <div className="p-4 pb-20">
         {requests.map((request, index) => (
           <ListItem
             key={request.id}

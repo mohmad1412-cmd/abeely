@@ -117,6 +117,7 @@ const App: React.FC = () => {
     radarWords: [],
     notifyOnInterest: true,
     roleMode: "requester",
+    showNameToApprovedProvider: true,
   });
   const [isModeSwitching, setIsModeSwitching] = useState(false);
   const [profileRole, setProfileRole] = useState<'requester' | 'provider'>('provider'); // Temporary state for button animation
@@ -1714,13 +1715,14 @@ const App: React.FC = () => {
                   description: "",
                   location: "",
                   status: "active",
-                  authorId: user?.id || null,
-                  authorName: user?.user_metadata?.full_name || user?.email || "مستخدم",
+                  author: user?.id || null,
+                  authorName: user?.display_name || user?.email || "مستخدم",
                   isPublic: true,
-                  createdAt: new Date().toISOString(),
+                  createdAt: new Date(),
                   offers: [],
                   offersCount: 0,
                   viewCount: 0,
+                  messages: [],
                 };
                 setSelectedRequest(tempRequest);
               }
@@ -1763,10 +1765,23 @@ const App: React.FC = () => {
           </SwipeBackWrapper>
         );
       case "marketplace":
-        // Render based on active bottom tab - NO animations for smooth instant switching
-        if (activeBottomTab === "my-requests") {
-          return (
-            <div className="h-full flex flex-col overflow-hidden relative">
+        // All three pages are always mounted - CSS controls visibility for smooth transitions
+        const mergedRequests = user?.id 
+          ? [...myRequests.filter(r => !allRequests.some(ar => ar.id === r.id)), ...allRequests]
+          : allRequests;
+        return (
+          <div className="h-full flex flex-col overflow-hidden relative">
+            {/* MyRequests - always mounted, visibility controlled by CSS */}
+            <div 
+              className={`absolute inset-0 ${
+                activeBottomTab === "my-requests" 
+                  ? "z-10 pointer-events-auto visible" 
+                  : "z-0 pointer-events-none invisible"
+              }`}
+              style={{ 
+                willChange: 'visibility',
+              }}
+            >
               <MyRequests
                 requests={myRequests}
                 archivedRequests={archivedRequests}
@@ -1788,7 +1803,7 @@ const App: React.FC = () => {
                 onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
                 onArchiveRequest={async (requestId) => {
                   try {
-                    await archiveRequest(requestId);
+                    await archiveRequest(requestId, user?.id || '');
                     setMyRequests(prev => prev.filter(r => r.id !== requestId));
                     setArchivedRequests(prev => {
                       const req = myRequests.find(r => r.id === requestId);
@@ -1800,7 +1815,7 @@ const App: React.FC = () => {
                 }}
                 onUnarchiveRequest={async (requestId) => {
                   try {
-                    await unarchiveRequest(requestId);
+                    await unarchiveRequest(requestId, user?.id || '');
                     setArchivedRequests(prev => prev.filter(r => r.id !== requestId));
                     setMyRequests(prev => {
                       const req = archivedRequests.find(r => r.id === requestId);
@@ -1819,18 +1834,21 @@ const App: React.FC = () => {
                 }}
                 userId={user?.id}
                 viewedRequestIds={viewedRequestIds}
-              />
-              <BottomNavigation
-                activeTab={activeBottomTab}
-                onTabChange={setActiveBottomTab}
+                onCreateRequest={() => handleNavigate("create-request")}
               />
             </div>
-          );
-        }
 
-        if (activeBottomTab === "my-offers") {
-          return (
-            <div className="h-full flex flex-col overflow-hidden relative">
+            {/* MyOffers - always mounted, visibility controlled by CSS */}
+            <div 
+              className={`absolute inset-0 ${
+                activeBottomTab === "my-offers" 
+                  ? "z-10 pointer-events-auto visible" 
+                  : "z-0 pointer-events-none invisible"
+              }`}
+              style={{ 
+                willChange: 'visibility',
+              }}
+            >
               <MyOffers
                 offers={myOffers}
                 archivedOffers={archivedOffers}
@@ -1853,7 +1871,7 @@ const App: React.FC = () => {
                 onSelectOffer={(offer) => handleSelectOffer(offer, false)}
                 onArchiveOffer={async (offerId) => {
                   try {
-                    await archiveOffer(offerId);
+                    await archiveOffer(offerId, user?.id || '');
                     setMyOffers(prev => prev.filter(o => o.id !== offerId));
                     setArchivedOffers(prev => {
                       const offer = myOffers.find(o => o.id === offerId);
@@ -1865,7 +1883,7 @@ const App: React.FC = () => {
                 }}
                 onUnarchiveOffer={async (offerId) => {
                   try {
-                    await unarchiveOffer(offerId);
+                    await unarchiveOffer(offerId, user?.id || '');
                     setArchivedOffers(prev => prev.filter(o => o.id !== offerId));
                     setMyOffers(prev => {
                       const offer = archivedOffers.find(o => o.id === offerId);
@@ -1888,23 +1906,21 @@ const App: React.FC = () => {
                 userId={user?.id}
                 viewedRequestIds={viewedRequestIds}
               />
-              <BottomNavigation
-                activeTab={activeBottomTab}
-                onTabChange={setActiveBottomTab}
-              />
             </div>
-          );
-        }
 
-        // Default: Marketplace
-        const mergedRequests = user?.id 
-          ? [...myRequests.filter(r => !allRequests.some(ar => ar.id === r.id)), ...allRequests]
-          : allRequests;
-        return (
-          <div className="h-full flex flex-col overflow-hidden relative">
-            {allRequests && Array.isArray(allRequests)
-              ? (
-                <>
+            {/* Marketplace - always mounted, visibility controlled by CSS */}
+            <div 
+              className={`absolute inset-0 ${
+                activeBottomTab === "marketplace" 
+                  ? "z-10 pointer-events-auto visible" 
+                  : "z-0 pointer-events-none invisible"
+              }`}
+              style={{ 
+                willChange: 'visibility',
+              }}
+            >
+              {allRequests && Array.isArray(allRequests)
+                ? (
                   <Marketplace
                     requests={mergedRequests}
                     interestsRequests={interestsRequests}
@@ -1935,9 +1951,7 @@ const App: React.FC = () => {
                     loadError={requestsLoadError}
                     savedScrollPosition={marketplaceScrollPos}
                     onScrollPositionChange={setMarketplaceScrollPos}
-                    // Viewed requests from Backend
                     viewedRequestIds={viewedRequestIds}
-                    // Header integration props
                     mode={mode}
                     toggleMode={toggleMode}
                     isModeSwitching={isModeSwitching}
@@ -1966,24 +1980,25 @@ const App: React.FC = () => {
                     isDarkMode={isDarkMode}
                     toggleTheme={() => setIsDarkMode(!isDarkMode)}
                     onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
+                    onCreateRequest={() => handleNavigate("create-request")}
                   />
-                  <BottomNavigation
-                    activeTab={activeBottomTab}
-                    onTabChange={(tab) => {
-                      setActiveBottomTab(tab);
-                    }}
-                  />
-                </>
-              )
-              : (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <p className="text-muted-foreground">
-                      جاري تحميل الطلبات...
-                    </p>
+                )
+                : (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <p className="text-muted-foreground">
+                        جاري تحميل الطلبات...
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+            </div>
+
+            {/* Bottom Navigation - shared across all tabs */}
+            <BottomNavigation
+              activeTab={activeBottomTab}
+              onTabChange={setActiveBottomTab}
+            />
           </div>
         );
       case "request-detail":
@@ -2513,9 +2528,8 @@ const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Global Floating Orb */}
-      {/* Navigate mode: marketplace - shows Plus icon to navigate to create-request */}
-      {/* Voice mode: create-request - shows Mic icon for voice input */}
+      {/* Global Floating Orb - Hidden for now, replaced by header button */}
+      {/* TODO: May be re-enabled later for voice input on create-request page */}
       <GlobalFloatingOrb
         mode={view === "create-request" ? "voice" : "navigate"}
         onNavigate={() => handleNavigate("create-request")}
@@ -2525,12 +2539,7 @@ const App: React.FC = () => {
           }
         }}
         processingStatus={voiceProcessingStatus}
-        isVisible={
-          // Show on marketplace and create-request only
-          (view === "marketplace" || view === "create-request") &&
-          // Hide when viewing other people's requests
-          !(view === "request-detail" && selectedRequest && selectedRequest.authorId !== user?.id)
-        }
+        isVisible={false} // Hidden - using header button instead
         hideForScrollButton={isScrollButtonVisible && view === "marketplace"}
         isHeaderCompressed={isMarketplaceHeaderCompressed && view === "marketplace"}
       />

@@ -41,6 +41,8 @@ interface MyRequestsProps {
   isDarkMode?: boolean;
   toggleTheme?: () => void;
   onOpenLanguagePopup?: () => void;
+  // Create Request navigation
+  onCreateRequest?: () => void;
 }
 
 export const MyRequests: React.FC<MyRequestsProps> = ({
@@ -61,6 +63,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   isDarkMode = false,
   toggleTheme,
   onOpenLanguagePopup,
+  onCreateRequest,
 }) => {
   // Header compression state - for smooth scroll animations
   const [isHeaderCompressed, setIsHeaderCompressed] = useState(false);
@@ -231,48 +234,14 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
               toggleTheme={toggleTheme}
               onOpenLanguagePopup={onOpenLanguagePopup}
               title="طلباتي"
+              isScrolled={!isHeaderCompressed}
+              showCreateRequestButton={true}
+              onCreateRequest={onCreateRequest}
             />
           </motion.div>
         </div>
       </div>
 
-      {/* Fixed gradient overlay at top of screen - subtle always, stronger when scrolling up */}
-      {/* Base subtle gradient - always visible */}
-      <div
-        className="fixed top-0 left-0 right-0 h-40 pointer-events-none z-[25]"
-        style={{
-          background: isDarkMode
-            ? 'linear-gradient(to bottom, rgba(9, 9, 11, 0.8) 0%, rgba(9, 9, 11, 0.5) 35%, rgba(9, 9, 11, 0.2) 60%, transparent 100%)'
-            : 'linear-gradient(to bottom, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.5) 35%, rgba(255, 255, 255, 0.2) 60%, transparent 100%)'
-        }}
-      />
-      {/* Stronger gradient - appears when header is expanded (scrolling up) */}
-      <AnimatePresence>
-        {!isHeaderCompressed && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4, ease: "easeInOut" }}
-            className="fixed top-0 left-0 right-0 h-64 pointer-events-none z-[25]"
-            style={{
-              background: isDarkMode
-                ? 'linear-gradient(to bottom, rgba(9, 9, 11, 1) 0%, rgba(9, 9, 11, 0.98) 12%, rgba(9, 9, 11, 0.92) 28%, rgba(9, 9, 11, 0.8) 45%, rgba(9, 9, 11, 0.55) 62%, rgba(9, 9, 11, 0.25) 80%, transparent 100%)'
-                : 'linear-gradient(to bottom, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.98) 12%, rgba(255, 255, 255, 0.92) 28%, rgba(255, 255, 255, 0.8) 45%, rgba(255, 255, 255, 0.55) 62%, rgba(255, 255, 255, 0.25) 80%, transparent 100%)'
-            }}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Fixed gradient overlay at bottom of screen - subtle always */}
-      <div
-        className="fixed bottom-0 left-0 right-0 h-40 pointer-events-none z-[25]"
-        style={{
-          background: isDarkMode
-            ? 'linear-gradient(to top, rgba(9, 9, 11, 0.8) 0%, rgba(9, 9, 11, 0.5) 35%, rgba(9, 9, 11, 0.2) 60%, transparent 100%)'
-            : 'linear-gradient(to top, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.5) 35%, rgba(255, 255, 255, 0.2) 60%, transparent 100%)'
-        }}
-      />
 
       {/* Content with Floating Filter Island */}
       <div className="px-4 pb-24">

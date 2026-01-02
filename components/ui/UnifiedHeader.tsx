@@ -92,6 +92,9 @@ interface UnifiedHeaderProps {
   onOpenLanguagePopup?: () => void;
   // Hide profile button
   hideProfileButton?: boolean;
+  // Create Request button (for Marketplace)
+  showCreateRequestButton?: boolean;
+  onCreateRequest?: () => void;
 }
 
 export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
@@ -144,6 +147,8 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   toggleTheme,
   onOpenLanguagePopup,
   hideProfileButton = false,
+  showCreateRequestButton = false,
+  onCreateRequest,
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isLinkCopied, setIsLinkCopied] = useState(false);
@@ -288,24 +293,20 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   setIsProfileDropdownOpen(!isProfileDropdownOpen);
                 }}
                 whileTap={{ scale: 0.95 }}
-                className="relative w-11 h-11 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center overflow-visible border border-white/20 shrink-0 shadow-lg hover:shadow-xl transition-shadow"
+                className="relative w-9 h-9 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center overflow-visible border border-white/20 shrink-0 shadow-lg hover:shadow-xl transition-shadow"
               >
                 <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
                   {user?.avatar_url ? (
                     <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
                   ) : isGuest ? (
-                    <User size={20} className="text-muted-foreground" />
+                    <User size={16} className="text-muted-foreground" />
                   ) : (
-                    <span className="text-base font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
+                    <span className="text-sm font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
                   )}
                 </div>
-                {/* Decorative icon - gear for users, sparkle for guests */}
-                <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 rounded-full bg-card border border-border flex items-center justify-center shadow-sm">
-                  {isGuest ? (
-                    <ChevronDown size={10} className="text-muted-foreground" />
-                  ) : (
-                    <Settings size={10} className="text-muted-foreground" />
-                  )}
+                {/* Decorative icon - arrow dropdown indicator */}
+                <div className="absolute -bottom-1 -left-1 w-5 h-5 rounded-full bg-primary border-2 border-white dark:border-gray-800 flex items-center justify-center shadow-lg">
+                  <ChevronDown size={14} strokeWidth={3} className="text-white" />
                 </div>
               </motion.button>
               
@@ -448,26 +449,28 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
               </motion.div>
               {/* Page Title - only when no back button */}
               {title && (
-                <motion.h1 
-                  className="text-xl font-bold text-foreground text-right ml-auto"
-                  initial={{ opacity: 0, scale: 0.9, y: -60 }}
-                  animate={{ 
-                    opacity: isScrolled ? 1 : 0.15,
-                    scale: isScrolled ? 1 : 0.8,
-                    y: isScrolled ? 0 : -80,
-                  }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 280,
-                    damping: 24,
-                    mass: 0.9,
-                  }}
-                  style={{
-                    pointerEvents: isScrolled ? 'auto' : 'none',
-                  }}
-                >
-                  {title}
-                </motion.h1>
+                <div className="flex items-center gap-3 ml-auto">
+                  <motion.h1 
+                    className="text-base font-bold text-foreground text-right"
+                    initial={{ opacity: 0, scale: 0.9, y: -60 }}
+                    animate={{ 
+                      opacity: isScrolled ? 1 : 0.15,
+                      scale: isScrolled ? 1 : 0.8,
+                      y: isScrolled ? 0 : -80,
+                    }}
+                    transition={{
+                      type: "spring",
+                      stiffness: 280,
+                      damping: 24,
+                      mass: 0.9,
+                    }}
+                    style={{
+                      pointerEvents: isScrolled ? 'auto' : 'none',
+                    }}
+                  >
+                    {title}
+                  </motion.h1>
+                </div>
               )}
             </>
           )}
@@ -489,6 +492,37 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           )}
         </div>
       </div>
+
+      {/* Create Request Button - Always visible when enabled, independent of hideActionButtons */}
+      {showCreateRequestButton && onCreateRequest && (
+        <motion.button
+          key="create-request-btn"
+          onClick={onCreateRequest}
+          initial={{ opacity: 0, scale: 0.9, y: -60 }}
+          animate={{ 
+            opacity: isScrolled ? 1 : 0.15,
+            scale: isScrolled ? 1 : 0.8,
+            y: isScrolled ? 0 : -80,
+          }}
+          transition={{
+            type: "spring",
+            stiffness: 280,
+            damping: 24,
+            mass: 0.9,
+          }}
+          style={{
+            pointerEvents: isScrolled ? 'auto' : 'none',
+          }}
+          className="relative flex items-center gap-2 h-10 px-4 rounded-full group active:scale-95 bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card overflow-hidden"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          <Plus size={18} strokeWidth={2.5} className="relative z-10 text-foreground" />
+          <span className="relative z-10 text-sm font-medium text-foreground whitespace-nowrap">
+            أنشئ طلب
+          </span>
+        </motion.button>
+      )}
 
       {!hideActionButtons && (
       <div className="flex items-center gap-2">

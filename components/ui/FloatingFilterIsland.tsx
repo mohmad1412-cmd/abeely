@@ -223,65 +223,71 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
       }}
     >
       <motion.div
-        layoutId="shared-filter-island"
-        layout
-        className="flex items-center justify-between bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border relative shadow-lg origin-center w-full"
+        className="flex items-center justify-between bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border relative mx-auto shadow-lg origin-center w-auto"
         style={{
           minWidth: 280,
-          maxWidth: '100%',
+          maxWidth: 400,
           scale: islandScale,
           gap,
           opacity,
         }}
-        transition={{ type: "spring", stiffness: 400, damping: 40 }}
       >
         {filters.map((filter, idx) => (
-          <div
-            key={filter.id}
-            ref={(el) => {
-              if (el) dropdownRefs.current.set(filter.id, el);
-            }}
-            className="relative"
-          >
-            <motion.button
-              onClick={() => toggleDropdown(filter.id)}
-              whileTap={{ scale: 0.96 }}
-              className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-full transition-all ${
-                openDropdownId === filter.id
-                  ? "bg-primary/15 text-primary"
-                  : "hover:bg-secondary/60 text-foreground"
-              }`}
+          <React.Fragment key={filter.id}>
+            {idx > 0 && (
+              <motion.div 
+                className="w-[1px] h-6 bg-border/60"
+                animate={{ 
+                  height: isCompact ? 16 : 24,
+                  opacity: isCompact ? 0.4 : 0.6 
+                }}
+              />
+            )}
+            <div
+              ref={(el) => {
+                if (el) dropdownRefs.current.set(filter.id, el);
+              }}
+              className="relative flex-1"
             >
-              <div className="flex items-center gap-1.5">
-                <span className="text-primary">{filter.icon}</span>
-                <motion.span 
-                  className="text-xs font-bold whitespace-nowrap"
-                  animate={{
-                    fontSize: isCompact ? "10px" : "12px",
-                  }}
-                  transition={{ type: "spring", ...springConfig }}
-                >
-                  {filter.getLabel()}
-                </motion.span>
-                {filter.showCount !== false && filter.options.find(o => o.value === filter.value)?.count !== undefined && (
+              <motion.button
+                onClick={() => toggleDropdown(filter.id)}
+                whileTap={{ scale: 0.96 }}
+                className={`flex items-center justify-between gap-2 px-3 h-10 rounded-full transition-all w-full ${
+                  openDropdownId === filter.id
+                    ? "bg-primary/15 text-primary"
+                    : "hover:bg-secondary/60 text-foreground"
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="text-primary">{filter.icon}</span>
                   <motion.span 
-                    className="inline-flex items-center justify-center min-w-[1rem] h-4 rounded-full px-1 text-[9px] font-bold bg-primary text-white"
+                    className="text-xs font-bold whitespace-nowrap"
                     animate={{
-                      scale: isCompact ? 0.9 : 1,
+                      fontSize: isCompact ? "10px" : "12px",
                     }}
                     transition={{ type: "spring", ...springConfig }}
                   >
-                    {filter.options.find(o => o.value === filter.value)?.count}
+                    {filter.getLabel()}
                   </motion.span>
-                )}
-              </div>
-              <motion.div
-                animate={{ rotate: openDropdownId === filter.id ? 180 : 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 20 }}
-              >
-                <ChevronDown size={14} className="text-muted-foreground" />
-              </motion.div>
-            </motion.button>
+                  {filter.showCount !== false && filter.options.find(o => o.value === filter.value)?.count !== undefined && (
+                    <motion.span 
+                      className="inline-flex items-center justify-center min-w-[1rem] h-4 rounded-full px-1 text-[9px] font-bold bg-primary text-white"
+                      animate={{
+                        scale: isCompact ? 0.9 : 1,
+                      }}
+                      transition={{ type: "spring", ...springConfig }}
+                    >
+                      {filter.options.find(o => o.value === filter.value)?.count}
+                    </motion.span>
+                  )}
+                </div>
+                <motion.div
+                  animate={{ rotate: openDropdownId === filter.id ? 180 : 0 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                >
+                  <ChevronDown size={14} className="text-muted-foreground" />
+                </motion.div>
+              </motion.button>
             
             {/* Dropdown Menu */}
             <AnimatePresence>
@@ -350,6 +356,7 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
               )}
             </AnimatePresence>
           </div>
+          </React.Fragment>
         ))}
       </motion.div>
     </motion.div>

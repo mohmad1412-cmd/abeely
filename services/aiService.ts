@@ -88,18 +88,47 @@ export async function generateDraftWithCta(
     }
     
     if (error) {
+      console.error("❌ Supabase Edge Function Error:", {
+        message: error.message,
+        name: error.name,
+        context: error.context,
+        details: JSON.stringify(error, null, 2)
+      });
+      
+      // إذا كان الخطأ متعلق بـ ANTHROPIC_API_KEY
+      if (error.message?.includes("ANTHROPIC_API_KEY") || 
+          error.context?.body?.includes("ANTHROPIC_API_KEY")) {
+        return {
+          summary: text,
+          aiResponse: "⚠️ خدمة الذكاء الاصطناعي غير مهيئة في السيرفر. يرجى التواصل مع الدعم الفني لإضافة ANTHROPIC_API_KEY في Supabase Edge Functions.",
+          isClarification: true,
+        } as any;
+      }
+      
       console.warn("⚠️ Supabase function error, falling back to direct API:", error);
     }
-  } catch (err) {
-    console.warn("⚠️ Failed to invoke Supabase function, falling back to direct API:", err);
+  } catch (err: any) {
+    console.error("❌ Failed to invoke Supabase function:", {
+      message: err?.message,
+      stack: err?.stack
+    });
+    console.warn("⚠️ Falling back to direct API...");
   }
 
   // 2. Fallback to direct client-side call (if VITE_ANTHROPIC_API_KEY exists)
   const anthropic = getClient();
   if (!anthropic) {
+    console.error("❌ No Anthropic client available. VITE_ANTHROPIC_API_KEY:", apiKey ? "موجود" : "غير موجود");
     return {
       summary: text,
-      aiResponse: "عذراً، يبدو أن هناك مشكلة في الربط مع المساعد الذكي. تأكد من إعداد مفاتيح API.",
+      aiResponse: `⚠️ خدمة الذكاء الاصطناعي غير متوفرة حالياً.
+
+**الحل:**
+1. تأكد من إضافة ANTHROPIC_API_KEY في Supabase Edge Functions
+2. أو أضف VITE_ANTHROPIC_API_KEY في متغيرات البيئة
+
+للمساعدة، تواصل مع الدعم الفني.`,
+      isClarification: true,
     };
   }
 

@@ -1037,20 +1037,13 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const [showManualTitle, setShowManualTitle] = useState(false);
   const [titleShake, setTitleShake] = useState(false);
 
-  // Check AI connection on mount
+  // Check AI connection on mount - نفترض دائماً أن AI متصل (سواء Edge Function أو مباشر)
+  // العنوان سيتم توليده تلقائياً من الوصف إذا لم يكن موجوداً
   useEffect(() => {
-    const checkAI = async () => {
-      // Check if Anthropic API key is available
-      const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        setIsAIConnected(false);
-        setShowManualTitle(true);
-        return;
-      }
-      // Assume connected if API key exists (actual connection test happens on first use)
-      setIsAIConnected(true);
-    };
-    checkAI();
+    // نفترض أن AI متصل - الفحص الفعلي يتم عند الاستخدام
+    // إذا فشل، سنعرض حقل العنوان في تلك اللحظة
+    setIsAIConnected(true);
+    setShowManualTitle(false); // لا نعرض حقل العنوان اليدوي افتراضياً
   }, []);
 
   // Check if can submit - يظهر الزر بعد تعبئة الوصف والمدينة فقط
@@ -1160,10 +1153,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // Voice processing status for GlobalFloatingOrb
   const [voiceProcessingStatus, setVoiceProcessingStatus] = useState<VoiceProcessingStatus>({ stage: 'idle' });
   
-  // Auto-trigger AI analysis state
-  const [firstTypingTime, setFirstTypingTime] = useState<number | null>(null);
-  const autoTriggerTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const hasAutoTriggeredRef = useRef(false);
+  // حالة إنشاء العنوان بالذكاء الاصطناعي
+  const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
+  const [isTitleEditable, setIsTitleEditable] = useState(false);
+  const hasGeneratedTitleRef = useRef(false);
 
   // Refs for field positions
   const descriptionFieldRef = useRef<HTMLDivElement>(null);
@@ -1182,101 +1175,91 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     }, 2000);
   };
 
-  // Auto-trigger AI analysis for description
-  const triggerAutoAnalysis = useCallback(async () => {
-    if (hasAutoTriggeredRef.current) return;
-    if (!description.trim() || description.trim().length < 5) return;
-    if (isAiLoading) return;
+  // إنشاء العنوان بالذكاء الاصطناعي - يعمل فقط عند اكتمال الوصف وبدء كتابة الموقع
+  const generateTitleFromDescription = useCallback(async () => {
+    if (hasGeneratedTitleRef.current) return;
+    if (!description.trim() || description.trim().length < 10) return;
+    if (isGeneratingTitle) return;
     
-    hasAutoTriggeredRef.current = true;
-    setIsAiLoading(true);
+    hasGeneratedTitleRef.current = true;
+    setIsGeneratingTitle(true);
     
     try {
-      const response = await processCustomerRequest(
-        description.trim(),
-        undefined,
-        Object.keys(clarificationAnswers).length > 0 ? clarificationAnswers : undefined
-      );
-
-      if (response.success && response.data) {
-        const data = response.data;
-        setLanguageDetected(data.language_detected);
-
-        if (data.clarification_needed && data.clarification_pages.length > 0) {
-          // Parse and show clarification pages
-          const pages: ClarificationPage[] = data.clarification_pages.map((page, index) => {
-            const match = page.match(/(?:Page|صفحة)\s*(\d+)\/(\d+):\s*(.+)/i);
-            return {
-              pageNumber: match ? parseInt(match[1]) : index + 1,
-              totalPages: match ? parseInt(match[2]) : data.total_pages,
-              question: match ? match[3].trim() : page,
-            };
-          });
-          
-          setClarificationPages(pages);
-          setCurrentClarificationPage(0);
-          setShowFinalReview(false);
+      // استخراج عنوان ذكي من الوصف
+      const desc = description.trim();
+      
+      // محاولة استخدام AI للعنوان والتصنيف
+      const response = await processCustomerRequest(desc);
+      
+      if (response.success && response.data?.final_review) {
+        const review = response.data.final_review;
+        
+        // تعيين العنوان
+        if (review.title) {
+          setTitle(review.title);
+          setShowTitle(true);
         } else {
-          // No clarification needed - show final review
-          setFinalReview(data.final_review);
-          setShowFinalReview(true);
-          setClarificationPages([]);
+          // Fallback: استخراج العنوان من أول جملة
+          const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
+          const generatedTitle = firstSentence.length > 50 
+            ? firstSentence.slice(0, 47) + "..." 
+            : firstSentence;
+          setTitle(generatedTitle);
+          setShowTitle(true);
         }
+        
+        // تعيين التصنيف إذا كان متوفراً
+        if (review.system_category && review.system_category !== 'غير محدد') {
+          setAdditionalFields((prev) =>
+            prev.map((f) =>
+              f.id === "category"
+                ? { ...f, enabled: true, value: review.system_category }
+                : f
+            )
+          );
+          setShowAdditionalFields(true);
+        }
+      } else {
+        // Fallback: استخراج العنوان محلياً
+        const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
+        const generatedTitle = firstSentence.length > 50 
+          ? firstSentence.slice(0, 47) + "..." 
+          : firstSentence;
+        setTitle(generatedTitle);
+        setShowTitle(true);
       }
     } catch (error) {
-      console.error("Auto-analysis error:", error);
+      console.error("Error generating title:", error);
+      // Fallback: استخراج العنوان محلياً
+      const desc = description.trim();
+      const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
+      const generatedTitle = firstSentence.length > 50 
+        ? firstSentence.slice(0, 47) + "..." 
+        : firstSentence;
+      setTitle(generatedTitle);
+      setShowTitle(true);
     } finally {
-      setIsAiLoading(false);
+      setIsGeneratingTitle(false);
     }
-  }, [description, clarificationAnswers, isAiLoading]);
+  }, [description, isGeneratingTitle]);
 
-  // Auto-trigger logic: 15 chars OR 40 seconds from first character
+  // إنشاء العنوان تلقائياً عند بدء كتابة الموقع (بعد اكتمال الوصف)
   useEffect(() => {
-    // Clear previous timer
-    if (autoTriggerTimerRef.current) {
-      clearTimeout(autoTriggerTimerRef.current);
-      autoTriggerTimerRef.current = null;
+    // الشروط: الوصف موجود + بدأ كتابة الموقع + لم يتم إنشاء العنوان بعد
+    if (
+      description.trim().length >= 10 && 
+      location.trim().length > 0 && 
+      !hasGeneratedTitleRef.current &&
+      !title.trim()
+    ) {
+      generateTitleFromDescription();
     }
-
-    // Don't trigger if already done or if in clarification mode
-    if (hasAutoTriggeredRef.current || clarificationPages.length > 0 || showFinalReview) {
-      return;
-    }
-
-    const trimmedDescription = description.trim();
     
-    // Track first typing time
-    if (trimmedDescription.length > 0 && !firstTypingTime) {
-      setFirstTypingTime(Date.now());
-    } else if (trimmedDescription.length === 0) {
-      setFirstTypingTime(null);
-      hasAutoTriggeredRef.current = false;
+    // إعادة تعيين الحالة إذا تم مسح الوصف
+    if (description.trim().length === 0) {
+      hasGeneratedTitleRef.current = false;
     }
-
-    // Trigger conditions:
-    // 1. 15+ characters - trigger after 1.5 seconds of no typing
-    // 2. 40 seconds from first character
-    if (trimmedDescription.length >= 15) {
-      autoTriggerTimerRef.current = setTimeout(() => {
-        triggerAutoAnalysis();
-      }, 1500); // Wait 1.5s after user stops typing
-    } else if (firstTypingTime) {
-      const elapsed = Date.now() - firstTypingTime;
-      const remaining = 40000 - elapsed;
-      
-      if (remaining > 0 && trimmedDescription.length >= 5) {
-        autoTriggerTimerRef.current = setTimeout(() => {
-          triggerAutoAnalysis();
-        }, remaining);
-      }
-    }
-
-    return () => {
-      if (autoTriggerTimerRef.current) {
-        clearTimeout(autoTriggerTimerRef.current);
-      }
-    };
-  }, [description, firstTypingTime, triggerAutoAnalysis, clarificationPages.length, showFinalReview]);
+  }, [description, location, title, generateTitleFromDescription]);
 
   // Update voice processing status (both internal and external)
   const updateVoiceStatus = useCallback((status: VoiceProcessingStatus) => {
@@ -1576,8 +1559,29 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       }
     }
     
+    // توليد عنوان ذكي من الوصف إذا لم يكن هناك عنوان
+    let finalTitle = title.trim();
+    if (!finalTitle && description.trim()) {
+      // استخراج عنوان من أول جملة أو أول 50 حرف
+      const desc = description.trim();
+      const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
+      finalTitle = firstSentence.length > 50 
+        ? firstSentence.slice(0, 47) + "..." 
+        : firstSentence;
+      
+      // إذا كان العنوان قصيراً جداً، نستخدم الوصف كاملاً مع قص
+      if (finalTitle.length < 10) {
+        finalTitle = desc.length > 50 ? desc.slice(0, 47) + "..." : desc;
+      }
+    }
+    
+    // إذا لا زال فارغاً، نستخدم رسالة افتراضية
+    if (!finalTitle) {
+      finalTitle = "طلب جديد";
+    }
+    
     const request: Partial<Request> = {
-      title: title || description.slice(0, 50) || "طلب جديد",
+      title: finalTitle,
       description: description.trim(),
       location: location.trim(),
       budgetMin,
@@ -1642,122 +1646,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         isGuest={isGuest}
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToSettings={onNavigateToSettings}
-        showSubmitButton
         hideProfileButton
-        canSubmit={editingRequestId ? editButtonState.canSave : canSubmit}
-        isEditMode={!!editingRequestId}
-        editButtonIsSaved={editButtonState.isSaved}
-        onSubmit={async () => {
-          const isEditing = !!editingRequestId;
-          console.log("=== onSubmit called ===");
-          console.log("Mode:", isEditing ? "EDITING" : "CREATING");
-          console.log("editingRequestId:", editingRequestId);
-          console.log("Current values:", { 
-            title, 
-            description: description.slice(0, 50) + "...", 
-            location,
-            isAIConnected,
-            additionalFields: additionalFields.map(f => ({ id: f.id, enabled: f.enabled, value: f.value }))
-          });
-          
-          // في وضع التعديل - لا تفعل شيء إذا لا توجد تغييرات
-          if (isEditing && !editButtonState.canSave) {
-            console.log("No changes to save - returning");
-            return;
-          }
-          
-          try {
-            // التحقق من البيانات الأساسية
-            if (!description.trim() || !location.trim()) {
-              console.error("Missing required fields:", { 
-                hasDescription: !!description.trim(), 
-                hasLocation: !!location.trim() 
-              });
-              if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
-              return;
-            }
-            
-            // إذا لم يكن هناك عنوان - فتح حقل العنوان تلقائياً
-            if (!title.trim()) {
-              console.log("No title - showing title field");
-              if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100]);
-              setShowManualTitle(true);
-              setShowTitle(true);
-              setTitleShake(true);
-              setTimeout(() => setTitleShake(false), 600);
-              
-              // Scroll to title field if it exists
-              setTimeout(() => {
-                const titleInput = document.querySelector('input[type="text"][placeholder*="عنوان"]') as HTMLInputElement;
-                if (titleInput) {
-                  titleInput.focus();
-                  titleInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-              }, 100);
-              return;
-            }
-            
-            // استخراج العنوان من الوصف إذا لم يكن موجوداً (fallback)
-            let finalTitle = title.trim();
-            if (!finalTitle && description.trim()) {
-              // استخراج عنوان ذكي من الوصف
-              const desc = description.trim();
-              // أخذ أول جملة أو أول 50 حرف
-              const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
-              finalTitle = firstSentence.length > 50 
-                ? firstSentence.slice(0, 47) + "..." 
-                : firstSentence;
-              console.log("Auto-generated title from description:", finalTitle);
-              setTitle(finalTitle);
-            }
-
-            console.log("Validation passed - starting submission...");
-            if (navigator.vibrate) navigator.vibrate(15);
-            
-            // بدء الإرسال
-            setIsSubmitting(true);
-            
-            // نشر/تحديث الطلب
-            const requestId = await handlePublish();
-            
-            if (requestId) {
-              // نجاح الإرسال/التحديث
-              setCreatedRequestId(requestId);
-              setSubmitSuccess(true);
-              setIsSubmitting(false);
-              
-              if (!isEditing) {
-                // في وضع الإنشاء فقط - انتقال للطلب بعد 3 ثواني
-                setTimeout(() => {
-                  if (onGoToRequest && requestId) {
-                    onGoToRequest(requestId);
-                  }
-                }, 3000);
-              }
-              // في وضع التعديل - نبقى في الصفحة والزر سيتحول تلقائياً لـ "تم الحفظ"
-            } else {
-              // فشل الإرسال
-              setIsSubmitting(false);
-              setShowCelebration(true);
-              setTimeout(() => setShowCelebration(false), 2000);
-            }
-          } catch (error) {
-            console.error("Error in onSubmit:", error);
-            setIsSubmitting(false);
-            setSubmitSuccess(false);
-          }
-        }}
-        isSubmitting={isSubmitting}
-        submitSuccess={editingRequestId ? editButtonState.isSaved : submitSuccess}
-        onGoToRequest={() => {
-          if (editingRequestId) {
-            // في وضع التعديل وتم الحفظ - العودة للصفحة السابقة
-            handleBack();
-          } else if (createdRequestId && onGoToRequest) {
-            onGoToRequest(createdRequestId);
-          }
-        }}
-        justBecameReady={editingRequestId ? false : justBecameReady}
       />
 
       {/* Main Content */}
@@ -2059,67 +1948,142 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           )}
         </AnimatePresence>
 
-        {/* Dynamic Title - يظهر كـ text إذا AI متصل، أو كحقل إدخال إذا غير متصل */}
+        {/* عرض العنوان المُنشأ أو حقل إدخال العنوان */}
         {clarificationPages.length === 0 && !showFinalReview && (
           <AnimatePresence mode="wait">
-          {/* حقل العنوان اليدوي - يظهر إذا AI غير متصل */}
-          {showManualTitle && (
-            <motion.div
-              key="manual-title"
-              initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-              animate={{ 
-                opacity: 1, 
-                height: "auto", 
-                marginBottom: 16,
-                x: titleShake ? [0, -10, 10, -10, 10, -5, 5, 0] : 0
-              }}
-              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-              transition={{ 
-                duration: 0.3,
-                x: { duration: 0.5, ease: "easeInOut" }
-              }}
-              className="overflow-hidden"
-            >
-              <div className="relative">
-                <div className="flex items-center gap-2 mb-2">
-                  <FileText size={16} className="text-amber-500" />
-                  <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
-                    عنوان الطلب (مطلوب)
-                  </span>
-                  {isAIConnected === false && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
-                      AI غير متصل
+            {/* العنوان المُنشأ بالذكاء الاصطناعي */}
+            {title.trim() && !isTitleEditable && (
+              <motion.div
+                key="ai-generated-title"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mb-4"
+              >
+                <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border border-emerald-200 dark:border-emerald-800">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                      <Sparkles size={16} className="text-emerald-600" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">عنوان الطلب</p>
+                      <p className="text-sm font-bold text-foreground truncate">{title}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsTitleEditable(true)}
+                    className="shrink-0 p-2 rounded-lg hover:bg-emerald-200/50 dark:hover:bg-emerald-800/50 transition-colors"
+                  >
+                    <FileText size={16} className="text-emerald-600" />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* حقل تعديل العنوان */}
+            {isTitleEditable && (
+              <motion.div
+                key="editable-title"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mb-4"
+              >
+                <div className="relative">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText size={16} className="text-primary" />
+                    <span className="text-xs font-medium text-muted-foreground">تعديل العنوان</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="اكتب عنواناً واضحاً لطلبك..."
+                      className="flex-1 px-4 py-3 rounded-xl border-2 border-primary/50 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => setIsTitleEditable(false)}
+                      className="shrink-0 p-3 rounded-xl bg-primary text-white hover:bg-primary/90 transition-colors"
+                    >
+                      <Check size={18} />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* حقل العنوان اليدوي - يظهر إذا AI غير متصل أو لم يُنشأ عنوان */}
+            {!title.trim() && !isGeneratingTitle && showManualTitle && (
+              <motion.div
+                key="manual-title"
+                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                animate={{ 
+                  opacity: 1, 
+                  height: "auto", 
+                  marginBottom: 16,
+                  x: titleShake ? [0, -10, 10, -10, 10, -5, 5, 0] : 0
+                }}
+                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                transition={{ 
+                  duration: 0.3,
+                  x: { duration: 0.5, ease: "easeInOut" }
+                }}
+                className="overflow-hidden"
+              >
+                <div className="relative">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText size={16} className="text-amber-500" />
+                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                      عنوان الطلب (مطلوب)
                     </span>
+                    {isAIConnected === false && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                        AI غير متصل
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="اكتب عنواناً واضحاً لطلبك..."
+                    className={`w-full px-4 py-3 rounded-xl border-2 transition-all duration-300 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none ${
+                      titleShake 
+                        ? "border-red-400 ring-2 ring-red-200 dark:ring-red-900/50" 
+                        : needsManualTitle
+                          ? "border-amber-300 dark:border-amber-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-900/50"
+                          : "border-border focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    }`}
+                  />
+                  {!title.trim() && needsManualTitle && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-xs text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1"
+                    >
+                      <span>⚠️</span>
+                      <span>أضف عنواناً لطلبك حتى تتمكن من الإرسال</span>
+                    </motion.p>
                   )}
                 </div>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="اكتب عنواناً واضحاً لطلبك..."
-                  className={`w-full px-4 py-3 rounded-xl border-2 transition-all duration-300 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none ${
-                    titleShake 
-                      ? "border-red-400 ring-2 ring-red-200 dark:ring-red-900/50" 
-                      : needsManualTitle
-                        ? "border-amber-300 dark:border-amber-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-900/50"
-                        : "border-border focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  }`}
-                />
-                {!title.trim() && needsManualTitle && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-xs text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1"
-                  >
-                    <span>⚠️</span>
-                    <span>أضف عنواناً لطلبك حتى تتمكن من الإرسال</span>
-                  </motion.p>
-                )}
-              </div>
-            </motion.div>
-          )}
-          
-          {/* العنوان المُستخرج من AI - يُعرض الآن في الـ header فقط */}
+              </motion.div>
+            )}
+
+            {/* مؤشر إنشاء العنوان */}
+            {isGeneratingTitle && (
+              <motion.div
+                key="generating-title"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="mb-4 flex items-center gap-3 p-3 rounded-xl bg-secondary/50 border border-border"
+              >
+                <Loader2 size={18} className="animate-spin text-primary" />
+                <span className="text-sm text-muted-foreground">جاري إنشاء العنوان...</span>
+              </motion.div>
+            )}
           </AnimatePresence>
         )}
 
@@ -2399,6 +2363,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               }}
             />
           </motion.div>
+          
         </div>
 
         {/* Additional Fields Section - Only show when AI suggests them */}
@@ -2431,8 +2396,70 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             </motion.div>
           )}
         </AnimatePresence>
+        
+        {/* مسافة للأزرار العائمة */}
+        <div className="h-24" />
       </div>
 
+      {/* زر الإرسال العائم في الأسفل */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-background via-background to-transparent pt-6 pb-6 px-4">
+        <div className="max-w-lg mx-auto">
+          {/* زر أرسل الطلب الآن */}
+          <motion.button
+            layout
+            onClick={async () => {
+              if (!canSubmit) return;
+              
+              if (navigator.vibrate) navigator.vibrate(15);
+              setIsSubmitting(true);
+              
+              try {
+                const requestId = await handlePublish();
+                if (requestId) {
+                  setCreatedRequestId(requestId);
+                  setSubmitSuccess(true);
+                  setShowSuccessNotification(true);
+                  
+                  if (!editingRequestId) {
+                    setTimeout(() => {
+                      if (onGoToRequest && requestId) {
+                        onGoToRequest(requestId);
+                      }
+                    }, 2000);
+                  }
+                }
+              } catch (error) {
+                console.error("Error submitting:", error);
+              } finally {
+                setIsSubmitting(false);
+              }
+            }}
+            disabled={!canSubmit || isSubmitting}
+            className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg ${
+              canSubmit && !isSubmitting
+                ? 'bg-primary text-white hover:bg-primary/90 shadow-primary/30'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none'
+            }`}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 size={20} className="animate-spin" />
+                <span>جاري الإرسال...</span>
+              </>
+            ) : submitSuccess ? (
+              <>
+                <Check size={20} />
+                <span>تم الإرسال!</span>
+              </>
+            ) : (
+              <>
+                <span>أرسل الطلب الآن</span>
+                <ChevronLeft size={20} />
+              </>
+            )}
+          </motion.button>
+        </div>
+      </div>
 
       {/* Floating AI Input is now handled by GlobalFloatingOrb in App.tsx */}
     </motion.div>

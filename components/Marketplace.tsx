@@ -91,6 +91,8 @@ interface MarketplaceProps {
   isDarkMode?: boolean;
   toggleTheme?: () => void;
   onOpenLanguagePopup?: () => void;
+  // Create Request navigation
+  onCreateRequest?: () => void;
 }
 
 export const Marketplace: React.FC<MarketplaceProps> = ({
@@ -137,13 +139,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   onNavigateToSettings,
   isDarkMode = false,
   toggleTheme,
+  onCreateRequest,
   onOpenLanguagePopup,
 }) => {
   // View mode state - "all" or "interests"
   const [viewMode, setViewMode] = useState<"all" | "interests">("all");
 
   // Display mode state - "grid" or "text"
-  const [displayMode, setDisplayMode] = useState<ViewMode>("grid");
+  const [displayMode, setDisplayMode] = useState<ViewMode>("text");
 
   // Scroll state for glass header animation
   const [isScrolled, setIsScrolled] = useState(false);
@@ -790,6 +793,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               onOpenLanguagePopup={onOpenLanguagePopup}
               title="سوق الطلبات"
               isScrolled={!isHeaderCompressed}
+              showCreateRequestButton={true}
+              onCreateRequest={onCreateRequest}
             />
           </motion.div>
 
@@ -814,10 +819,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 scale: isHeaderCompressed ? 0.92 : 1,
               }}
               transition={{ type: "spring", stiffness: 400, damping: 40 }}
-              className="flex items-center bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border relative mx-auto shadow-lg origin-center w-auto"
+              className="flex flex-row-reverse items-center bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border relative mx-auto shadow-lg origin-center w-auto"
               style={{ minWidth: 280, maxWidth: 400 }}
+              dir="rtl"
             >
-              {/* Filter Button - Always visible on the left */}
+              {/* Filter Button - Always visible on the right (RTL) */}
               <motion.button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -853,7 +859,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       animate={{ x: 0, opacity: 1 }}
                       exit={{ x: 100, opacity: 0 }}
                       transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                      className="flex items-center gap-2 flex-1 px-2 min-w-0"
+                      className="flex flex-row-reverse items-center gap-2 flex-1 px-2 min-w-0"
+                      dir="rtl"
                     >
                       <input
                         ref={searchInputRef}
@@ -861,7 +868,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         placeholder="ابحث في الطلبات..."
-                        className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-foreground placeholder:text-muted-foreground py-2"
+                        dir="rtl"
+                        className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-foreground placeholder:text-muted-foreground py-2 text-right"
                         autoFocus
                         onBlur={() => {
                           // Delay to allow click events on other buttons to fire first
@@ -994,8 +1002,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               </motion.button>
             </motion.div>
 
-            <div className="flex items-center gap-2">
-                {/* View Mode Selector */}
+            {/* View Mode Selector - Hidden (keeping text mode only) */}
+            {/* <div className="flex items-center gap-2">
                 <div className="hidden sm:flex items-center bg-secondary/40 backdrop-blur-sm rounded-xl p-0.5 gap-0.5 border border-border/30">
                   {[
                     { id: 'grid' as ViewMode, icon: <LayoutGrid className="w-4 h-4" /> },
@@ -1024,7 +1032,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     </button>
                   ))}
                 </div>
-            </div>
+            </div> */}
           </motion.div>
 
           {/* Active Filters Display - Second Row */}
@@ -1216,46 +1224,9 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Fixed gradient overlay at top of screen - subtle always, stronger when scrolling up */}
-      {/* Base subtle gradient - always visible */}
-      <div
-        className="fixed top-0 left-0 right-0 h-40 pointer-events-none z-[25]"
-        style={{
-          background: isDarkMode
-            ? 'linear-gradient(to bottom, rgba(9, 9, 11, 0.8) 0%, rgba(9, 9, 11, 0.5) 35%, rgba(9, 9, 11, 0.2) 60%, transparent 100%)'
-            : 'linear-gradient(to bottom, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.5) 35%, rgba(255, 255, 255, 0.2) 60%, transparent 100%)'
-        }}
-      />
-      {/* Stronger gradient - appears when header is expanded (scrolling up) */}
-      <AnimatePresence>
-        {!isHeaderCompressed && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4, ease: "easeInOut" }}
-            className="fixed top-0 left-0 right-0 h-64 pointer-events-none z-[25]"
-            style={{
-              background: isDarkMode
-                ? 'linear-gradient(to bottom, rgba(9, 9, 11, 1) 0%, rgba(9, 9, 11, 0.98) 12%, rgba(9, 9, 11, 0.92) 28%, rgba(9, 9, 11, 0.8) 45%, rgba(9, 9, 11, 0.55) 62%, rgba(9, 9, 11, 0.25) 80%, transparent 100%)'
-                : 'linear-gradient(to bottom, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.98) 12%, rgba(255, 255, 255, 0.92) 28%, rgba(255, 255, 255, 0.8) 45%, rgba(255, 255, 255, 0.55) 62%, rgba(255, 255, 255, 0.25) 80%, transparent 100%)'
-            }}
-          />
-        )}
-      </AnimatePresence>
 
-      {/* Fixed gradient overlay at bottom of screen - subtle always */}
-      <div
-        className="fixed bottom-0 left-0 right-0 h-40 pointer-events-none z-[25]"
-        style={{
-          background: isDarkMode
-            ? 'linear-gradient(to top, rgba(9, 9, 11, 0.8) 0%, rgba(9, 9, 11, 0.5) 35%, rgba(9, 9, 11, 0.2) 60%, transparent 100%)'
-            : 'linear-gradient(to top, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.5) 35%, rgba(255, 255, 255, 0.2) 60%, transparent 100%)'
-        }}
-      />
-
-      {/* Floating View Mode Toggle - Bottom Left, always visible above the orb */}
-      <motion.div
+      {/* Floating View Mode Toggle - Hidden (keeping text mode only) */}
+      {/* <motion.div
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         className="fixed z-[99] sm:hidden"
@@ -1269,7 +1240,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         >
           {displayMode === 'grid' ? <AlignJustify size={18} /> : <LayoutGrid size={18} />}
         </motion.button>
-      </motion.div>
+      </motion.div> */}
 
       {/* Floating Scroll to Top Button - Same position as the orb */}
       {/* يظهر فقط إذا كان هناك أكثر من 9 طلبات وتم السكرول للأسفل */}
@@ -2718,7 +2689,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               </motion.div>
             );
           })}
-              </motion.div>
+                </motion.div>
               </div>
             </motion.div>
           )}

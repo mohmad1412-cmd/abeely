@@ -20,7 +20,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   ];
 
   return (
-    <nav className="fixed bottom-3 left-3 right-3 z-50 bg-card/95 backdrop-blur-xl border border-border rounded-2xl shadow-lg safe-area-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border shadow-lg safe-area-bottom">
       <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
         {tabs.map((tab) => {
           const Icon = tab.icon;
@@ -40,16 +40,12 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
               }`}
               whileTap={{ scale: 0.94 }}
             >
-              {/* Subtle Active Background */}
-              {isActive && (
-                <motion.div
-                  layoutId="activeGlow"
-                  className="absolute inset-x-2 inset-y-2 bg-primary/5 rounded-xl -z-10"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.2 }}
-                />
-              )}
+              {/* Subtle Active Background - no layoutId for instant switching */}
+              <div
+                className={`absolute inset-x-2 inset-y-2 rounded-xl -z-10 transition-opacity duration-150 ${
+                  isActive ? "bg-primary/5 opacity-100" : "opacity-0"
+                }`}
+              />
 
               <motion.div
                 animate={{
@@ -73,56 +69,12 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                 {tab.label}
               </span>
 
-              {/* Minimalist Dot Indicator with Wave Effect */}
-              {isActive && (
-                <>
-                  {/* Outer Ripple Wave - Most visible */}
-                  <motion.div
-                    className="absolute -bottom-0.5 h-2 w-2 rounded-full border-2 border-primary"
-                    initial={{ scale: 0.5, opacity: 1 }}
-                    animate={{ 
-                      scale: [0.5, 4, 6],
-                      opacity: [1, 0.4, 0],
-                    }}
-                    transition={{ 
-                      duration: 0.7, 
-                      ease: "easeOut",
-                    }}
-                    key={`${activeTab}-ripple`}
-                  />
-                  {/* Inner Ripple Wave */}
-                  <motion.div
-                    className="absolute -bottom-0.5 h-1.5 w-1.5 rounded-full bg-primary/60"
-                    initial={{ scale: 0.5, opacity: 0.9 }}
-                    animate={{ 
-                      scale: [0.5, 3, 5],
-                      opacity: [0.9, 0.3, 0],
-                    }}
-                    transition={{ 
-                      duration: 0.5, 
-                      ease: "easeOut",
-                      delay: 0.05,
-                    }}
-                    key={`${activeTab}-wave`}
-                  />
-                  {/* Main Dot with gentle pulse */}
-                  <motion.div
-                    layoutId="bottomNavIndicator"
-                    className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-primary shadow-[0_0_8px_rgba(30,150,140,0.6)]"
-                    initial={{ scale: 0.5, opacity: 0 }}
-                    animate={{ 
-                      scale: [0.5, 1.4, 1],
-                      opacity: [0, 1, 1],
-                    }}
-                    transition={{ 
-                      scale: { duration: 0.4, ease: "easeOut" },
-                      opacity: { duration: 0.2 },
-                      layout: { type: "spring", stiffness: 500, damping: 30 }
-                    }}
-                    key={`${activeTab}-dot`}
-                  />
-                </>
-              )}
+              {/* Minimalist Dot Indicator - CSS transition for instant switching */}
+              <div
+                className={`absolute -bottom-0.5 h-1 w-1 rounded-full bg-primary shadow-[0_0_8px_rgba(30,150,140,0.6)] transition-all duration-150 ${
+                  isActive ? "opacity-100 scale-100" : "opacity-0 scale-0"
+                }`}
+              />
             </motion.button>
           );
         })}
