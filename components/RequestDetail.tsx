@@ -1508,21 +1508,21 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 rounded-xl border"
+                className="flex flex-col gap-4 mb-6 p-4 rounded-xl border"
                 style={{
                   background: 'linear-gradient(135deg, rgba(30, 150, 140, 0.08) 0%, rgba(30, 150, 140, 0.04) 50%, rgba(21, 54, 89, 0.08) 100%)',
                   borderColor: 'rgba(30, 150, 140, 0.15)'
                 }}
               >
-                {/* Location - First */}
-                <div className="flex flex-col gap-1.5">
+                {/* Location - First Row */}
+                <div className="flex flex-col gap-1.5 w-full">
                   <span 
-                    className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
+                    className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground whitespace-nowrap"
                     onClick={() => setClickedIcons(prev => ({ ...prev, location: !prev.location }))}
                   >
                     <MapPin size={18} className={clickedIcons.location ? "text-primary" : "text-red-500"} /> الموقع
                   </span>
-                  <span className="font-bold text-sm flex items-center gap-1.5">
+                  <span className="font-bold text-sm flex items-center gap-1.5 whitespace-nowrap">
                     {request.location && request.location !== "غير محدد" ? (() => {
                       // Parse location: "حي النرجس، الرياض" or "الرياض"
                       const locationParts = request.location.split('،').map(s => s.trim());
@@ -1559,56 +1559,51 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   </span>
                 </div>
 
-                {/* Published Date - Second */}
-                <div className="flex flex-col gap-1.5">
+                {/* Published Date - Second Row */}
+                <div className="flex flex-col gap-1.5 w-full">
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
                     <Calendar size={18} /> النشر/ آخر تحديث
                   </span>
                   <span className="font-bold text-sm">
-                    منذ {formatTimeAgo(request.createdAt, false)}
+                    {formatTimeAgo(request.createdAt, false)}
                   </span>
                 </div>
 
-                {/* View Count */}
-                {viewCount > 0 && (
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                      <Eye size={18} className="text-primary" /> المشاهدات
-                    </span>
-                    <span className="font-bold text-sm text-primary">
-                      {viewCount} مشاهدة
-                    </span>
+                {/* Budget and Delivery Time - Third Row */}
+                {(request.budgetType === "fixed" && request.budgetMin && request.budgetMax) || request.deliveryTimeFrom ? (
+                  <div className="flex flex-col sm:flex-row gap-4 w-full">
+                    {/* Budget */}
+                    {(request.budgetType === "fixed" && request.budgetMin && request.budgetMax) && (
+                      <div className="flex flex-col gap-1.5 flex-1">
+                        <span 
+                          className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
+                          onClick={() => setClickedIcons(prev => ({ ...prev, budget: !prev.budget }))}
+                        >
+                          <DollarSign size={18} className={clickedIcons.budget ? "text-primary" : "text-primary"} />{" "}
+                          الميزانية
+                        </span>
+                        <span className="font-bold text-sm text-primary">
+                          {request.budgetMin} - {request.budgetMax} ر.س
+                        </span>
+                      </div>
+                    )}
+                    
+                    {/* Delivery Time */}
+                    {request.deliveryTimeFrom && (
+                      <div className="flex flex-col gap-1.5 flex-1">
+                        <span 
+                          className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
+                          onClick={() => setClickedIcons(prev => ({ ...prev, delivery: !prev.delivery }))}
+                        >
+                          <Clock size={18} className={clickedIcons.delivery ? "text-primary" : "text-primary"} /> مدة التنفيذ
+                        </span>
+                        <span className="font-bold text-sm text-muted-foreground">
+                          {request.deliveryTimeFrom}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                )}
-
-                {/* Budget */}
-                <div className="flex flex-col gap-1.5">
-                  <span 
-                    className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
-                    onClick={() => setClickedIcons(prev => ({ ...prev, budget: !prev.budget }))}
-                  >
-                    <DollarSign size={18} className={clickedIcons.budget ? "text-primary" : "text-primary"} />{" "}
-                    الميزانية
-                  </span>
-                  <span className={`font-bold text-sm ${request.budgetType === "fixed" && request.budgetMin && request.budgetMax ? "text-primary" : "text-muted-foreground"}`}>
-                    {request.budgetType === "fixed" && request.budgetMin && request.budgetMax
-                      ? `${request.budgetMin} - ${request.budgetMax} ر.س`
-                      : "غير محددة"}
-                  </span>
-                </div>
-                
-                {/* Delivery Time */}
-                <div className="flex flex-col gap-1.5">
-                  <span 
-                    className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
-                    onClick={() => setClickedIcons(prev => ({ ...prev, delivery: !prev.delivery }))}
-                  >
-                    <Clock size={18} className={clickedIcons.delivery ? "text-primary" : "text-primary"} /> مدة التنفيذ
-                  </span>
-                  <span className="font-bold text-sm text-muted-foreground">
-                    {request.deliveryTimeFrom || "غير محددة"}
-                  </span>
-                </div>
+                ) : null}
               </motion.div>
 
               <motion.div
