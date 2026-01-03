@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, CheckCircle } from "lucide-react";
+import { UnifiedFilterIsland } from "./UnifiedFilterIsland";
 
 interface FilterOption {
   value: string;
@@ -23,12 +24,14 @@ interface FloatingFilterIslandProps {
   filters: FilterDropdownConfig[];
   scrollContainerRef?: React.RefObject<HTMLElement>;
   className?: string;
+  isActive?: boolean;
 }
 
 export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
   filters,
   scrollContainerRef,
   className = "",
+  isActive = true,
 }) => {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const islandRef = useRef<HTMLDivElement>(null);
@@ -179,68 +182,43 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
   return (
     <div
       ref={islandRef}
-      className={`sticky top-0 z-30 flex justify-center px-4 pt-3 pb-2 ${className}`}
+      className={`${className}`}
     >
-      <motion.div
-        className="flex items-center justify-between bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border relative mx-auto shadow-lg origin-center w-auto"
-        animate={{
-          scale: isCompact ? 0.95 : 1,
-          opacity: isCompact ? 0.95 : 1,
-        }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        style={{
-          minWidth: 280,
-          maxWidth: 400,
-          gap: isCompact ? 4 : 8,
-        }}
-      >
+      <UnifiedFilterIsland isActive={isActive} autoWidth={true}>
         {filters.map((filter, idx) => (
           <React.Fragment key={filter.id}>
             {idx > 0 && (
-              <div 
-                className="w-[1px] bg-border/60 transition-all duration-200"
-                style={{ 
-                  height: isCompact ? 16 : 24,
-                  opacity: isCompact ? 0.4 : 0.6 
-                }}
-              />
+              <div className="w-px h-6 bg-border/50" />
             )}
             <div
               ref={(el) => {
                 if (el) dropdownRefs.current.set(filter.id, el);
               }}
-              className="relative flex-1"
+              className="relative"
             >
               <motion.button
                 onClick={() => toggleDropdown(filter.id)}
                 whileTap={{ scale: 0.96 }}
-                className={`flex items-center justify-between gap-2 px-3 h-10 rounded-full transition-all w-full ${
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-full transition-all whitespace-nowrap ${
                   openDropdownId === filter.id
                     ? "bg-primary/15 text-primary"
                     : "hover:bg-secondary/60 text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <div className="flex items-center gap-1.5">
-                  <span className="text-primary">{filter.icon}</span>
-                  <span 
-                    className="text-xs font-bold whitespace-nowrap"
-                  >
-                    {filter.getLabel()}
+                <span className="text-primary">{filter.icon}</span>
+                <span className="text-xs font-bold">
+                  {filter.getLabel()}
+                </span>
+                {filter.showCount !== false && filter.options.find(o => o.value === filter.value)?.count !== undefined && (
+                  <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[10px] font-bold bg-primary text-white">
+                    {filter.options.find(o => o.value === filter.value)?.count}
                   </span>
-                  {filter.showCount !== false && filter.options.find(o => o.value === filter.value)?.count !== undefined && (
-                    <span 
-                      className="inline-flex items-center justify-center min-w-[1rem] h-4 rounded-full px-1 text-[9px] font-bold bg-primary text-white transition-transform duration-200"
-                      style={{ transform: isCompact ? 'scale(0.9)' : 'scale(1)' }}
-                    >
-                      {filter.options.find(o => o.value === filter.value)?.count}
-                    </span>
-                  )}
-                </div>
+                )}
                 <motion.div
                   animate={{ rotate: openDropdownId === filter.id ? 180 : 0 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <ChevronDown size={14} className="text-muted-foreground" />
+                  <ChevronDown size={12} className="text-muted-foreground" />
                 </motion.div>
               </motion.button>
             
@@ -260,7 +238,7 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.95 }}
                     transition={{ duration: 0.2, ease: "easeOut" }}
-                    className="absolute w-64 bg-card dark:bg-card border border-border rounded-3xl shadow-2xl z-50 overflow-hidden"
+                    className="absolute w-64 bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden"
                     style={{
                       ...dropdownStyle,
                       marginTop: dropdownStyle.bottom ? 0 : 8, // mt-2 only when below
@@ -268,42 +246,40 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
                       overflowY: 'auto',
                     }}
                   >
-                    <div className="p-3">
-                      {filter.options.map((option, optIdx) => (
-                        <React.Fragment key={option.value}>
-                          {optIdx > 0 && <div className="my-1.5 border-t border-white/20 dark:border-slate-700/50" />}
-                          <motion.button
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => {
-                              if (navigator.vibrate) navigator.vibrate(10);
-                              filter.onChange(option.value);
-                              setOpenDropdownId(null);
-                            }}
-                            className={`w-full flex items-center justify-between gap-4 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                              filter.value === option.value 
-                                ? "bg-primary/15 text-primary dark:bg-primary/20" 
-                                : "text-foreground hover:bg-white/50 dark:hover:bg-slate-800/50"
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              {option.icon && <span className={filter.value === option.value ? "text-primary" : "text-muted-foreground"}>{option.icon}</span>}
-                              <span>{option.label}</span>
-                            </div>
-                            {option.count !== undefined ? (
-                              <span
-                                className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[11px] font-bold ${
-                                  filter.value === option.value
-                                    ? "bg-primary text-white"
-                                    : "bg-primary/10 text-primary"
-                                }`}
-                              >
-                                {option.count}
-                              </span>
-                            ) : filter.value === option.value ? (
-                              <CheckCircle size={14} className="text-primary" />
-                            ) : null}
-                          </motion.button>
-                        </React.Fragment>
+                    <div className="p-2 flex flex-col gap-1">
+                      {filter.options.map((option) => (
+                        <motion.button
+                          key={option.value}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => {
+                            if (navigator.vibrate) navigator.vibrate(10);
+                            filter.onChange(option.value);
+                            setOpenDropdownId(null);
+                          }}
+                          className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                            filter.value === option.value 
+                              ? "bg-primary/15 text-primary border border-primary/20" 
+                              : "text-foreground hover:bg-secondary/80 border border-transparent"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 text-right">
+                            {option.icon && <span className={filter.value === option.value ? "text-primary" : "text-muted-foreground"}>{option.icon}</span>}
+                            <span className="font-bold">{option.label}</span>
+                          </div>
+                          {option.count !== undefined ? (
+                            <span
+                              className={`inline-flex items-center justify-center min-w-[1.5rem] h-6 rounded-full px-2 text-[11px] font-bold ${
+                                filter.value === option.value
+                                  ? "bg-primary text-white"
+                                  : "bg-secondary text-muted-foreground"
+                              }`}
+                            >
+                              {option.count}
+                            </span>
+                          ) : filter.value === option.value ? (
+                            <CheckCircle size={16} className="text-primary" />
+                          ) : null}
+                        </motion.button>
                       ))}
                     </div>
                   </motion.div>
@@ -313,7 +289,7 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
           </div>
           </React.Fragment>
         ))}
-      </motion.div>
+      </UnifiedFilterIsland>
     </div>
   );
 };

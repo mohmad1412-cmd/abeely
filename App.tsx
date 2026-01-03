@@ -18,6 +18,8 @@ import { AuthPage } from "./components/AuthPage";
 import { Messages } from "./components/Messages";
 import { CreateRequestV2 } from "./components/CreateRequestV2";
 import { GlobalFloatingOrb, VoiceProcessingStatus } from "./components/GlobalFloatingOrb";
+import { InterestToast, useInterestToast } from "./components/ui/InterestToast";
+import { notificationSound } from "./services/notificationSoundService";
 
 
 // Types & Data
@@ -213,6 +215,14 @@ const App: React.FC = () => {
   const [isScrollButtonVisible, setIsScrollButtonVisible] = useState(false);
   // Track if marketplace header is compressed (for floating orb animation)
   const [isMarketplaceHeaderCompressed, setIsMarketplaceHeaderCompressed] = useState(false);
+  
+  // ==========================================
+  // Interest Toast for New Matching Requests
+  // ==========================================
+  const { currentToast, isVisible: isToastVisible, showToast, hideToast } = useInterestToast();
+  const [newRequestIds, setNewRequestIds] = useState<Set<string>>(new Set()); // للتتبع الطلبات الجديدة للانيميشن
+  // Track current view mode in marketplace (to detect if on interests page)
+  const [currentMarketplaceViewMode, setCurrentMarketplaceViewMode] = useState<'all' | 'interests'>('all');
 
   // ==========================================
   // Scroll Persistence
@@ -701,15 +711,24 @@ const App: React.FC = () => {
           }
         }).catch(() => {});
       } else if (event === "TOKEN_REFRESHED" && session?.user && isMounted) {
-        // تحديث الـ profile فقط
+        // تحديث الـ profile فقط - لا تسجيل خروج!
+        console.log("🔄 Token refreshed, updating profile...");
         const profile = await getCurrentUser();
         if (profile && isMounted) {
           setUser(profile);
         }
       } else if (event === "SIGNED_OUT" && isMounted) {
+        // فقط عند تسجيل خروج صريح من المستخدم
+        console.log("👋 User signed out");
         setUser(null);
         setIsGuest(false);
         setAppView("auth");
+      } else if (event === "USER_UPDATED" && session?.user && isMounted) {
+        // تحديث بيانات المستخدم
+        const profile = await getCurrentUser();
+        if (profile && isMounted) {
+          setUser(profile);
+        }
       }
     });
 
@@ -1258,10 +1277,35 @@ const App: React.FC = () => {
 
         // Increase unread count
         setUnreadInterestsCount((prev) => prev + 1);
+        
+        // Mark as new for animation
+        setNewRequestIds((prev) => new Set([...prev, newRequest.id]));
+        
+        // Clear new request animation after 5 seconds
+        setTimeout(() => {
+          setNewRequestIds((prev) => {
+            const next = new Set(prev);
+            next.delete(newRequest.id);
+            return next;
+          });
+        }, 5000);
 
-        // Show notification if enabled (will be handled by database trigger)
+        // Smart notification based on current view
         if (userPreferences.notifyOnInterest) {
           console.log("🎯 طلب جديد يطابق اهتماماتك:", newRequest.title);
+          
+          // Check if user is currently viewing interests page
+          const isOnInterestsPage = view === 'marketplace' && currentMarketplaceViewMode === 'interests';
+          
+          if (isOnInterestsPage) {
+            // User is on interests page - just play subtle sound + vibration
+            // The request will appear with animation in the list
+            notificationSound.notify(true); // Subtle sound
+          } else {
+            // User is elsewhere - show full Toast notification
+            notificationSound.notify(false); // Full notification sound
+            showToast(newRequest);
+          }
         }
       },
     );
@@ -1274,6 +1318,9 @@ const App: React.FC = () => {
     userPreferences.interestedCategories,
     userPreferences.interestedCities,
     userPreferences.notifyOnInterest,
+    view,
+    currentMarketplaceViewMode,
+    showToast,
   ]);
 
   // ==========================================
@@ -1432,13 +1479,23 @@ const App: React.FC = () => {
 
     // Update viewed requests immediately for optimistic UI
     // Backend will be updated by RequestDetail component via markRequestAsViewed
-    if (user?.id && !isGuest) {
-      setViewedRequestIds((prev) => {
-        const newSet = new Set(prev);
-        newSet.add(req.id);
-        return newSet;
-      });
-    }
+    // تحديث فوري للطلبات المشاهدة (للجميع - مسجلين وزوار)
+    console.log("📖 Opening request:", req.id, "| user:", user?.id, "| isGuest:", isGuest);
+    
+    // تحديث viewedRequestIds دائماً (للتحديث الفوري)
+    setViewedRequestIds((prev) => {
+      const newSet = new Set(prev);
+      newSet.add(req.id);
+      console.log("✅ Added to viewedRequestIds:", req.id, "| Total:", newSet.size);
+      return newSet;
+    });
+    
+    // أيضاً إزالة الطلب من قائمة الطلبات الجديدة (لإخفاء الانيميشن)
+    setNewRequestIds((prev) => {
+      const next = new Set(prev);
+      next.delete(req.id);
+      return next;
+    });
   };
 
   const handleSelectOffer = (offer: Offer, fromSidebar = false) => {
@@ -1712,6 +1769,10 @@ const App: React.FC = () => {
               
               if (foundRequest) {
                 setSelectedRequest(foundRequest);
+                // إذا كان الطلب للمستخدم الحالي، تأكد من أن mode هو "requests"
+                if (user?.id && foundRequest.author === user.id) {
+                  setMode("requests");
+                }
                 handleNavigate("request-detail");
               } else {
                 // جلب الطلب الفعلي من قاعدة البيانات
@@ -1737,6 +1798,8 @@ const App: React.FC = () => {
                         }
                         return [fetchedRequest, ...prev];
                       });
+                      // تأكد من أن mode هو "requests" عند عرض طلب المستخدم
+                      setMode("requests");
                     }
                     
                     handleNavigate("request-detail");
@@ -1890,6 +1953,7 @@ const App: React.FC = () => {
                 userId={user?.id}
                 viewedRequestIds={viewedRequestIds}
                 onCreateRequest={() => handleNavigate("create-request")}
+                isActive={activeBottomTab === "my-requests"}
               />
             </div>
 
@@ -1961,6 +2025,7 @@ const App: React.FC = () => {
                 userId={user?.id}
                 viewedRequestIds={viewedRequestIds}
                 onCreateRequest={() => handleNavigate("create-request")}
+                isActive={activeBottomTab === "my-offers"}
               />
             </div>
 
@@ -2037,6 +2102,9 @@ const App: React.FC = () => {
                     toggleTheme={() => setIsDarkMode(!isDarkMode)}
                     onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
                     onCreateRequest={() => handleNavigate("create-request")}
+                    isActive={activeBottomTab === "marketplace"}
+                    onViewModeChange={setCurrentMarketplaceViewMode}
+                    newRequestIds={newRequestIds}
                   />
                 )
                 : (
@@ -2627,6 +2695,19 @@ const App: React.FC = () => {
         isVisible={false} // Hidden - using header button instead
         hideForScrollButton={isScrollButtonVisible && view === "marketplace"}
         isHeaderCompressed={isMarketplaceHeaderCompressed && view === "marketplace"}
+      />
+      
+      {/* Interest Toast - Shows when new matching request arrives */}
+      <InterestToast
+        request={currentToast}
+        isVisible={isToastVisible}
+        onClose={hideToast}
+        onClick={() => {
+          if (currentToast) {
+            hideToast();
+            handleSelectRequest(currentToast);
+          }
+        }}
       />
     </div>
   );

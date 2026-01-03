@@ -11,14 +11,10 @@ import {
   searchCities, 
   searchPlaces,
   CityResult, 
-  getDefaultCities,
   getCurrentLocation,
   reverseGeocode,
 } from '../../services/placesService';
 import { useGoogleMapsLoader } from '../../hooks/useGoogleMapsLoader';
-
-// المدن الأساسية للاختيار السريع
-const QUICK_CITIES = ['الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'الدمام', 'الخبر'];
 
 interface CityAutocompleteProps {
   value: string;
@@ -46,7 +42,7 @@ interface CityAutocompleteProps {
 export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   value,
   onChange,
-  placeholder = "ابحث عن مدينة...",
+  placeholder = "ابحث عن مدينة، شارع، معلم، أو محل",
   label,
   className = "",
   showRemoteOption = true,
@@ -71,9 +67,16 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, bottom: 0, left: 0, width: 0 });
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [mapCenter, setMapCenter] = useState({ lat: 24.7136, lng: 46.6753 }); // الرياض كموقع افتراضي
+  const [selectedMapLocation, setSelectedMapLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [isLoadingMapLocation, setIsLoadingMapLocation] = useState(false);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const markerRef = useRef<google.maps.Marker | null>(null);
   
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // حساب موقع القائمة المنسدلة
@@ -115,7 +118,8 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   // البحث مع debounce
   const handleSearch = useCallback(async (query: string) => {
     if (!query || query.trim().length < 2) {
-      setResults(getDefaultCities().slice(0, 10));
+      // إذا لم يكتب المستخدم شيء، نعرض قائمة فارغة
+      setResults([]);
       return;
     }
 
@@ -124,12 +128,11 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
       // استخدام searchPlaces للبحث العام أو searchCities للمدن فقط
       const searchFn = searchMode === 'places' ? searchPlaces : searchCities;
       const searchResults = await searchFn(query);
-      setResults(searchResults.length > 0 ? searchResults : getDefaultCities().filter(
-        c => c.name.includes(query)
-      ));
+      // نعرض نتائج البحث فقط بدون fallback
+      setResults(searchResults);
     } catch (error) {
       console.error('Search error:', error);
-      setResults(getDefaultCities().filter(c => c.name.includes(query)));
+      setResults([]);
     } finally {
       setIsLoading(false);
     }
@@ -193,21 +196,55 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   // عند فتح القائمة
   const handleFocus = () => {
     setIsOpen(true);
-    if (results.length === 0) {
-      setResults(getDefaultCities().slice(0, 10));
-    }
+    // دائماً نبدأ بقائمة فارغة - المستخدم يبحث مباشرة
+    setResults([]);
+    setSearchQuery('');
+    setHighlightedIndex(-1);
   };
 
   // اختيار مدينة
   const handleSelectCity = (city: CityResult) => {
-    console.log('handleSelectCity:', city.name, 'multiSelect:', multiSelect, 'onSelectCity exists:', !!onSelectCity);
+    // بناء اسم العرض الذكي
+    // إذا كان مدينة معروفة (العنوان الإضافي هو المملكة فقط) → نستخدم الاسم فقط
+    // إذا كان قرية/حي/محل → نضيف المدينة التابعة لها
+    let displayName = city.name;
+    
+    // استخراج المدينة من العنوان الكامل
+    if (city.fullAddress && city.fullAddress !== city.name) {
+      // العنوان الكامل عادة: "اسم المكان، المدينة، المنطقة، المملكة"
+      const addressParts = city.fullAddress
+        .split(/[،,]/)
+        .map(p => p.trim())
+        .filter(p => p && p !== city.name);
+      
+      // تنظيف كل جزء من الكلمات غير المرغوبة (المملكة، السعودية، Saudi)
+      // ثم نفلتر الأجزاء الفارغة
+      const cleanedParts = addressParts
+        .map(p => p
+          .replace(/المملكة العربية السعودية/g, '')
+          .replace(/السعودية/g, '')
+          .replace(/Saudi Arabia/gi, '')
+          .replace(/Saudi/gi, '')
+          .trim()
+        )
+        .filter(p => p.length > 0);
+      
+      // إذا بقي أجزاء، نأخذ آخر جزء (عادة المدينة الرئيسية)
+      // مثال: ["طريق الملك عبدالعزيز", "الرياض"] → نأخذ "الرياض"
+      // مثال: ["حائل"] → نأخذ "حائل"
+      if (cleanedParts.length > 0) {
+        // آخر جزء هو المدينة الرئيسية
+        const mainCity = cleanedParts[cleanedParts.length - 1];
+        displayName = `${city.name}، ${mainCity}`;
+      }
+    }
+    
     if (multiSelect && onSelectCity) {
-      console.log('Calling onSelectCity with:', city.name);
-      onSelectCity(city.name);
+      onSelectCity(displayName);
       setSearchQuery('');
     } else {
-      setSearchQuery(city.name);
-      onChange(city.name, city);
+      setSearchQuery(displayName);
+      onChange(displayName, city);
     }
     setIsOpen(false);
     setHighlightedIndex(-1);
@@ -229,7 +266,12 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   // إغلاق عند النقر خارج المكون
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // تجاهل النقر داخل الـ container أو داخل الـ dropdown (المُعرض عبر Portal)
+      const isInsideContainer = containerRef.current && containerRef.current.contains(target);
+      const isInsideDropdown = dropdownRef.current && dropdownRef.current.contains(target);
+      
+      if (!isInsideContainer && !isInsideDropdown) {
         setIsOpen(false);
         if (!multiSelect) {
           setSearchQuery(value);
@@ -282,17 +324,17 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   };
 
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
+    <div ref={containerRef} className={`relative w-full ${className}`}>
       {/* Label */}
       {label && (
-        <label className="block text-sm font-medium text-muted-foreground mb-2">
+        <label className="block text-sm font-medium text-muted-foreground mb-2 text-right">
           {label}
         </label>
       )}
 
       {/* Multi-select chips */}
       {multiSelect && selectedCities.length > 0 && !hideChips && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
+        <div className="flex flex-wrap justify-start gap-1.5 mb-2 w-full">
           {selectedCities.map((city) => (
             <motion.span
               key={city}
@@ -315,7 +357,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
       )}
 
       {/* Input Field */}
-      <div className="relative">
+      <div className="relative w-full">
         <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
           {isLoading ? (
             <Loader2 size={18} className="animate-spin text-emerald-500" />
@@ -336,7 +378,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
           autoFocus={autoFocus}
           className={`
             w-full pr-10 pl-10 py-3 rounded-xl border-2 bg-card
-            text-foreground placeholder:text-muted-foreground/60
+            text-foreground placeholder:text-muted-foreground/60 text-right
             focus:outline-none transition-all duration-200
             ${isOpen 
               ? 'border-emerald-500 ring-2 ring-emerald-500/20' 
@@ -346,20 +388,34 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
           `}
         />
 
-        {/* Clear / Dropdown button */}
+        {/* Clear / Dropdown toggle button */}
         <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
           {searchQuery && !disabled && (
             <button
+              type="button"
               onClick={handleClear}
               className="p-1 hover:bg-secondary rounded-full transition-colors text-muted-foreground hover:text-foreground"
             >
               <X size={16} />
             </button>
           )}
-          <ChevronDown 
-            size={16} 
-            className={`transition-transform ${isOpen ? 'rotate-180 text-emerald-500' : 'text-muted-foreground'}`}
-          />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!disabled) {
+                setIsOpen(!isOpen);
+              }
+            }}
+            className="p-1 hover:bg-secondary rounded-full transition-colors cursor-pointer"
+            disabled={disabled}
+          >
+            <ChevronDown 
+              size={16} 
+              className={`transition-transform duration-200 ${isOpen ? 'rotate-180 text-emerald-500' : 'text-muted-foreground'}`}
+            />
+          </button>
         </div>
 
       </div>
@@ -369,6 +425,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
       {isOpen && createPortal(
         <AnimatePresence>
           <motion.div
+            ref={dropdownRef}
             initial={{ opacity: 0, y: dropdownDirection === 'up' ? 10 : -10, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: dropdownDirection === 'up' ? 10 : -10, scale: 0.98 }}
@@ -438,21 +495,28 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
             )}
             
             {/* Map Option */}
-            {showMapOption && onOpenMap && (
+            {showMapOption && (
               <button
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   setIsOpen(false);
-                  onOpenMap();
+                  // الحصول على الموقع الحالي كمركز للخريطة
+                  if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                      (pos) => setMapCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                      () => {} // تجاهل الخطأ - استخدم الموقع الافتراضي
+                    );
+                  }
+                  setShowMapModal(true);
                 }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-right transition-colors cursor-pointer hover:bg-secondary/50 text-foreground border-b border-border"
               >
                 <Map size={18} className="text-emerald-600" />
                 <div className="flex-1">
                   <span className="font-medium">اختر من الخريطة</span>
-                  <span className="text-xs text-muted-foreground block">تحديد يدوي للموقع</span>
+                  <span className="text-xs text-muted-foreground block">حدد موقعك على الخريطة</span>
                 </div>
               </button>
             )}
@@ -504,7 +568,6 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      console.log('Button clicked for city:', city.name);
                       handleSelectCity(city);
                     }}
                     className={`
@@ -542,20 +605,23 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                 );
               })
             ) : (
-              <div className="px-4 py-6 text-center text-muted-foreground">
-                {isLoading ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <Loader2 size={18} className="animate-spin" />
-                    <span>جاري البحث...</span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <Search size={24} className="text-muted-foreground/50" />
-                    <span>لا توجد نتائج</span>
-                    <span className="text-xs">جرب البحث باسم مختلف</span>
-                  </div>
-                )}
-              </div>
+              // نعرض رسالة "لا توجد نتائج" فقط إذا كان المستخدم قد بحث بالفعل (اكتب حرفين على الأقل)
+              searchQuery.trim().length >= 2 && (
+                <div className="px-4 py-6 text-center text-muted-foreground">
+                  {isLoading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>جاري البحث...</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2">
+                      <Search size={24} className="text-muted-foreground/50" />
+                      <span>لا توجد نتائج</span>
+                      <span className="text-xs">جرب البحث باسم مختلف</span>
+                    </div>
+                  )}
+                </div>
+              )
             )}
 
             {/* Hint for manual entry */}
@@ -578,6 +644,160 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
             )}
           </motion.div>
         </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Map Modal */}
+      {showMapModal && createPortal(
+        <div 
+          className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowMapModal(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="bg-card rounded-2xl shadow-2xl w-[95vw] max-w-lg mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/30">
+              <button
+                type="button"
+                onClick={() => setShowMapModal(false)}
+                className="p-2 hover:bg-secondary rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
+              <h3 className="font-bold text-lg">اختر موقعك على الخريطة</h3>
+              <div className="w-8" />
+            </div>
+
+            {/* Map Container */}
+            <div className="relative h-[50vh] min-h-[300px]">
+              <div
+                ref={(el) => {
+                  if (el && !mapRef.current && window.google?.maps) {
+                    const map = new window.google.maps.Map(el, {
+                      center: mapCenter,
+                      zoom: 12,
+                      disableDefaultUI: true,
+                      zoomControl: true,
+                      mapTypeControl: false,
+                      streetViewControl: false,
+                      fullscreenControl: false,
+                      gestureHandling: 'greedy',
+                    });
+                    mapRef.current = map;
+
+                    // Marker
+                    const marker = new window.google.maps.Marker({
+                      position: mapCenter,
+                      map: map,
+                      draggable: true,
+                      animation: window.google.maps.Animation.DROP,
+                    });
+                    markerRef.current = marker;
+                    setSelectedMapLocation(mapCenter);
+
+                    // Click on map to move marker
+                    map.addListener('click', (e: google.maps.MapMouseEvent) => {
+                      if (e.latLng) {
+                        const pos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                        marker.setPosition(pos);
+                        setSelectedMapLocation(pos);
+                      }
+                    });
+
+                    // Drag marker
+                    marker.addListener('dragend', () => {
+                      const pos = marker.getPosition();
+                      if (pos) {
+                        setSelectedMapLocation({ lat: pos.lat(), lng: pos.lng() });
+                      }
+                    });
+                  }
+                }}
+                className="w-full h-full"
+              />
+
+              {/* Center crosshair indicator */}
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div className="w-4 h-4 border-2 border-emerald-500 rounded-full bg-white/80 shadow-lg" />
+              </div>
+
+              {/* Loading overlay */}
+              {isLoadingMapLocation && (
+                <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                  <div className="bg-white rounded-xl px-4 py-3 flex items-center gap-2 shadow-lg">
+                    <Loader2 className="animate-spin text-emerald-500" size={20} />
+                    <span className="text-sm font-medium">جاري تحديد العنوان...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer with confirm button */}
+            <div className="p-4 border-t border-border bg-secondary/20">
+              <button
+                type="button"
+                disabled={!selectedMapLocation || isLoadingMapLocation}
+                onClick={async () => {
+                  if (!selectedMapLocation) return;
+                  
+                  setIsLoadingMapLocation(true);
+                  try {
+                    const result = await reverseGeocode(selectedMapLocation.lat, selectedMapLocation.lng);
+                    if (result) {
+                      // بناء اسم العرض بنفس منطق handleSelectCity
+                      let displayName = result.name;
+                      if (result.fullAddress && result.fullAddress !== result.name) {
+                        const addressParts = result.fullAddress
+                          .split(/[،,]/)
+                          .map(p => p.trim())
+                          .filter(p => p && p !== result.name);
+                        
+                        const cleanedParts = addressParts
+                          .map(p => p
+                            .replace(/المملكة العربية السعودية/g, '')
+                            .replace(/السعودية/g, '')
+                            .replace(/Saudi Arabia/gi, '')
+                            .replace(/Saudi/gi, '')
+                            .trim()
+                          )
+                          .filter(p => p.length > 0);
+                        
+                        if (cleanedParts.length > 0) {
+                          const mainCity = cleanedParts[cleanedParts.length - 1];
+                          displayName = `${result.name}، ${mainCity}`;
+                        }
+                      }
+                      
+                      setSearchQuery(displayName);
+                      onChange(displayName, result);
+                    }
+                  } catch (error) {
+                    console.error('Reverse geocode error:', error);
+                  } finally {
+                    setIsLoadingMapLocation(false);
+                    setShowMapModal(false);
+                    // تنظيف الخريطة
+                    if (markerRef.current) {
+                      markerRef.current.setMap(null);
+                      markerRef.current = null;
+                    }
+                    mapRef.current = null;
+                  }
+                }}
+                className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <MapPin size={18} />
+                <span>تأكيد الموقع</span>
+              </button>
+            </div>
+          </motion.div>
+        </div>,
         document.body
       )}
     </div>

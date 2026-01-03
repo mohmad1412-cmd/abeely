@@ -1737,3 +1737,93 @@ button, a, input, textarea, select {
     padding-top: max(16px, env(safe-area-inset-top));
 }
 
+/* ========================================
+   CREATE REQUEST BUTTON - Premium Style with Animated Border
+   ======================================== */
+
+.create-request-btn {
+    border: 1.5px solid var(--border);
+    position: relative;
+    isolation: isolate;
+}
+
+/* Animated border glow */
+.create-request-border {
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: linear-gradient(90deg, var(--primary), #17a89d, var(--primary), #17a89d, var(--primary));
+    background-size: 300% 100%;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: borderGlow 3s linear infinite;
+    opacity: 0.6;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.create-request-btn:hover .create-request-border {
+    opacity: 1;
+    animation-duration: 2s;
+}
+
+.dark .create-request-border {
+    background: linear-gradient(90deg, var(--primary), #23c4b6, var(--primary), #23c4b6, var(--primary));
+    background-size: 300% 100%;
+    opacity: 0.7;
+}
+
+.dark .create-request-btn:hover .create-request-border {
+    opacity: 1;
+}
+
+/* Inner shimmer glow */
+.create-request-shimmer {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(110deg, transparent 30%, rgba(30, 150, 140, 0.25) 50%, transparent 70%);
+    background-size: 200% 100%;
+    animation: shimmerGlow 2.5s ease-in-out infinite;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.create-request-btn:hover .create-request-shimmer {
+    opacity: 0.6;
+    animation-duration: 2s;
+}
+
+.dark .create-request-shimmer {
+    background: linear-gradient(110deg, transparent 30%, rgba(45, 181, 169, 0.3) 50%, transparent 70%);
+    background-size: 200% 100%;
+    opacity: 0.5;
+}
+
+.dark .create-request-btn:hover .create-request-shimmer {
+    opacity: 0.7;
+}
+
+@keyframes borderGlow {
+    0% {
+        background-position: 0% 50%;
+    }
+    100% {
+        background-position: 300% 50%;
+    }
+}
+
+@keyframes shimmerGlow {
+    0%, 100% {
+        background-position: -100% 0%;
+        opacity: 0.4;
+    }
+    50% {
+        background-position: 200% 0%;
+        opacity: 0.6;
+    }
+}
+

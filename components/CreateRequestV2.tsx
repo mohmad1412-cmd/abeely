@@ -8,6 +8,7 @@ import {
   Clock,
   Tag,
   FileText,
+  FileEdit,
   Sparkles,
   Check,
   ChevronDown,
@@ -399,6 +400,7 @@ const GlowingField: React.FC<{
   isRequired?: boolean;
   rightElement?: React.ReactNode;
   fieldRef?: React.RefObject<HTMLDivElement>;
+  onBlur?: () => void;
 }> = ({
   label,
   icon,
@@ -410,6 +412,7 @@ const GlowingField: React.FC<{
   isRequired = false,
   rightElement,
   fieldRef,
+  onBlur,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [textareaHeight, setTextareaHeight] = useState(100);
@@ -536,7 +539,10 @@ const GlowingField: React.FC<{
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
+            onBlur={() => {
+              setIsFocused(false);
+              onBlur?.();
+            }}
             placeholder={placeholder}
             style={{ height: textareaHeight }}
             className="flex-1 bg-transparent text-foreground resize-none focus:outline-none placeholder:text-muted-foreground/50 text-right"
@@ -549,7 +555,10 @@ const GlowingField: React.FC<{
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
+            onBlur={() => {
+              setIsFocused(false);
+              onBlur?.();
+            }}
             placeholder={placeholder}
             className="flex-1 bg-transparent text-foreground focus:outline-none placeholder:text-muted-foreground/50 text-right py-1"
             dir="rtl"
@@ -1071,9 +1080,12 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     setShowManualTitle(false); // لا نعرض حقل العنوان اليدوي افتراضياً
   }, []);
 
-  // Check if can submit - يظهر الزر بعد تعبئة الوصف والمدينة فقط
+  // حالة إنشاء العنوان بالذكاء الاصطناعي (يجب تعريفها قبل canSubmit)
+  const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
+  
+  // Check if can submit - يظهر الزر بعد تعبئة الوصف والمدينة فقط + لا يكون في وضع التوليد
   const needsManualTitle = !title.trim();
-  const canSubmit = !!(description.trim() && location.trim());
+  const canSubmit = !!(description.trim() && location.trim() && !isGeneratingTitle);
   
   // Submit states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1178,8 +1190,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // Voice processing status for GlobalFloatingOrb
   const [voiceProcessingStatus, setVoiceProcessingStatus] = useState<VoiceProcessingStatus>({ stage: 'idle' });
   
-  // حالة إنشاء العنوان بالذكاء الاصطناعي
-  const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
+  // حالة تعديل العنوان
   const [isTitleEditable, setIsTitleEditable] = useState(false);
   const hasGeneratedTitleRef = useRef(false);
 
@@ -1200,11 +1211,14 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     }, 2000);
   };
 
-  // إنشاء العنوان بالذكاء الاصطناعي - يعمل فقط عند اكتمال الوصف وبدء كتابة الموقع
-  const generateTitleFromDescription = useCallback(async () => {
-    if (hasGeneratedTitleRef.current) return;
-    if (!description.trim() || description.trim().length < 10) return;
+  // إنشاء العنوان بالذكاء الاصطناعي - يعمل عند الانتقال عن حقل الوصف
+  const generateTitleFromDescription = useCallback(async (forceRegenerate: boolean = false) => {
+    // Skip if already generating
     if (isGeneratingTitle) return;
+    // Skip if already generated (unless forcing regeneration)
+    if (hasGeneratedTitleRef.current && !forceRegenerate) return;
+    // Skip if description is too short
+    if (!description.trim() || description.trim().length < 3) return;
     
     hasGeneratedTitleRef.current = true;
     setIsGeneratingTitle(true);
@@ -1268,23 +1282,14 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     }
   }, [description, isGeneratingTitle]);
 
-  // إنشاء العنوان تلقائياً عند بدء كتابة الموقع (بعد اكتمال الوصف)
+  // إعادة تعيين حالة التوليد إذا تم مسح الوصف
   useEffect(() => {
-    // الشروط: الوصف موجود + بدأ كتابة الموقع + لم يتم إنشاء العنوان بعد
-    if (
-      description.trim().length >= 10 && 
-      location.trim().length > 0 && 
-      !hasGeneratedTitleRef.current &&
-      !title.trim()
-    ) {
-      generateTitleFromDescription();
-    }
-    
-    // إعادة تعيين الحالة إذا تم مسح الوصف
     if (description.trim().length === 0) {
       hasGeneratedTitleRef.current = false;
+      setShowTitle(false);
+      setTitle('');
     }
-  }, [description, location, title, generateTitleFromDescription]);
+  }, [description]);
 
   // Update voice processing status (both internal and external)
   const updateVoiceStatus = useCallback((status: VoiceProcessingStatus) => {
@@ -1612,7 +1617,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       budgetMin,
       budgetMax,
       categories: additionalFields.find((f) => f.id === "category" && f.enabled)
-        ? [additionalFields.find((f) => f.id === "category")!.value]
+        ? [additionalFields.find((f) => f.id === "category")!.value] // value is label, getCategoryIdsByLabels will convert it
         : undefined,
       deliveryTimeFrom: additionalFields.find((f) => f.id === "deliveryTime" && f.enabled)?.value,
     };
@@ -1672,6 +1677,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToSettings={onNavigateToSettings}
         hideProfileButton
+        backButton
+        onBack={onGoToMarketplace}
+        showTitleEditButton={!!(title && title.trim())}
+        onTitleEdit={() => setIsTitleEditable(true)}
       />
 
       {/* Main Content */}
@@ -1987,20 +1996,17 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               >
                 <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border border-emerald-200 dark:border-emerald-800">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
-                      <Sparkles size={16} className="text-emerald-600" />
-                    </div>
+                    <button
+                      onClick={() => setIsTitleEditable(true)}
+                      className="shrink-0 p-2 rounded-lg hover:bg-emerald-200/50 dark:hover:bg-emerald-800/50 transition-colors"
+                    >
+                      <FileEdit size={18} className="text-emerald-600" />
+                    </button>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">عنوان الطلب</p>
                       <p className="text-sm font-bold text-foreground truncate">{title}</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setIsTitleEditable(true)}
-                    className="shrink-0 p-2 rounded-lg hover:bg-emerald-200/50 dark:hover:bg-emerald-800/50 transition-colors"
-                  >
-                    <FileText size={16} className="text-emerald-600" />
-                  </button>
                 </div>
               </motion.div>
             )}
@@ -2025,7 +2031,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       placeholder="اكتب عنواناً واضحاً لطلبك..."
-                      className="flex-1 px-4 py-3 rounded-xl border-2 border-primary/50 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      className="flex-1 px-4 py-3 rounded-xl border-2 border-primary/50 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full max-w-full"
                       autoFocus
                     />
                     <button
@@ -2125,6 +2131,12 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             isGlowing={glowingFields.has("description")}
             isRequired
             fieldRef={descriptionFieldRef}
+            onBlur={() => {
+              // عند الانتقال عن حقل الوصف، أعد توليد العنوان والتصنيفات
+              if (description.trim().length >= 3) {
+                generateTitleFromDescription(true); // force regenerate
+              }
+            }}
           />
 
           {/* Location with Google Places Autocomplete */}
@@ -2172,12 +2184,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   showRemoteOption={true}
                   showGPSOption={true}
                   showMapOption={true}
-                  onOpenMap={() => {
-                    if (navigator.vibrate) navigator.vibrate(10);
-                    // فتح Google Maps في نافذة جديدة
-                    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=المملكة+العربية+السعودية`;
-                    window.open(mapsUrl, '_blank');
-                  }}
                   showAllCitiesOption={true}
                 />
               </div>
@@ -2220,7 +2226,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             <div className="px-4 pt-2 pb-3">
               {/* Uploaded Files Preview */}
               {(attachedFiles.length > 0 || selectedImageUrls.length > 0) && (
-                <div className="flex gap-2 flex-wrap mb-3">
+                <div className="flex gap-2 flex-wrap justify-start w-full mb-3">
                   {attachedFiles.map((file, index) => {
                     const isImage = file.type.startsWith("image/");
                     const isVideo = file.type.startsWith("video/");
@@ -2347,8 +2353,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   <span className="text-xs text-muted-foreground">رفع ملف/صورة</span>
                 </button>
                 
-                {/* Search Image Box */}
-                <button
+                {/* Search Image Box - Hidden for now */}
+                {/* <button
                   type="button"
                   onClick={() => handleImageSearch(false)}
                   className="flex-1 flex flex-col items-center justify-center h-24 bg-background border border-border rounded-lg cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
@@ -2361,7 +2367,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">
                     بحث صورة من الإنترنت
                   </span>
-                </button>
+                </button> */}
               </div>
 
               {/* Image Search Results - Horizontal Scrollable */}
@@ -2549,14 +2555,21 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               setIsSubmitting(false);
             }
           }}
-          disabled={!canSubmit || isSubmitting}
+          disabled={!canSubmit || isSubmitting || isGeneratingTitle}
           className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg ${
-            canSubmit && !isSubmitting
+            isGeneratingTitle
+              ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-2 border-amber-500/30 cursor-wait shadow-none'
+              : canSubmit && !isSubmitting
               ? 'bg-primary text-white hover:bg-primary/90 shadow-primary/30'
               : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none'
           }`}
         >
-          {isSubmitting ? (
+          {isGeneratingTitle ? (
+            <>
+              <Loader2 size={20} className="animate-spin" />
+              <span>جاري تحليل الوصف وإنشاء العنوان...</span>
+            </>
+          ) : isSubmitting ? (
             <>
               <Loader2 size={20} className="animate-spin" />
               <span>جاري الإرسال...</span>

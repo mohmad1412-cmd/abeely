@@ -45,6 +45,7 @@ import { Badge } from "./ui/Badge";
 import { AnimatePresence, motion } from "framer-motion";
 import { CardsGridSkeleton } from "./ui/LoadingSkeleton";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
+import { UnifiedFilterIsland } from "./ui/UnifiedFilterIsland";
 import CompactListView from "./ui/CompactListView";
 import { CityAutocomplete } from "./ui/CityAutocomplete";
 import { searchCities as searchCitiesAPI, CityResult, DEFAULT_SAUDI_CITIES } from "../services/placesService";
@@ -98,6 +99,12 @@ interface MarketplaceProps {
   onOpenLanguagePopup?: () => void;
   // Create Request navigation
   onCreateRequest?: () => void;
+  // Is this page currently active
+  isActive?: boolean;
+  // View mode change callback for smart notifications
+  onViewModeChange?: (mode: 'all' | 'interests') => void;
+  // New request IDs for animation
+  newRequestIds?: Set<string>;
 }
 
 export const Marketplace: React.FC<MarketplaceProps> = ({
@@ -146,9 +153,17 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   toggleTheme,
   onCreateRequest,
   onOpenLanguagePopup,
+  isActive = true,
+  onViewModeChange,
+  newRequestIds = new Set(),
 }) => {
   // View mode state - "all" or "interests"
   const [viewMode, setViewMode] = useState<"all" | "interests">("all");
+  
+  // Notify parent when viewMode changes for smart notifications
+  useEffect(() => {
+    onViewModeChange?.(viewMode);
+  }, [viewMode, onViewModeChange]);
   
   // Display Mode (Grid / Text)
   const [displayMode, setDisplayMode] = useState<ViewMode>("text");
@@ -213,11 +228,32 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   // Icon toggle state for search/filter button
   const [iconToggle, setIconToggle] = useState(false);
 
-  // Viewed requests tracking - الطلبات المشاهدة (من Backend للمسجلين، من localStorage للزوار)
-  const [guestViewedIds, setGuestViewedIds] = useState<Set<string>>(new Set()); // للزوار فقط
+  // Viewed requests tracking - الطلبات المشاهدة
+  // نستخدم دائماً backendViewedIds من App.tsx لأن التحديث يحدث هناك
+  // للزوار: نحتفظ بنسخة محلية للـ localStorage فقط
+  const [localGuestViewedIds, setLocalGuestViewedIds] = useState<Set<string>>(() => {
+    if (!isGuest) return new Set<string>();
+    try {
+      const stored = localStorage.getItem('guestViewedRequestIds');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          return new Set<string>(parsed);
+        }
+      }
+    } catch (e) {}
+    return new Set<string>();
+  });
 
-  // استخدام بيانات Backend إذا كان المستخدم مسجل، وإلا localStorage للزوار
-  const viewedRequestIds = isGuest ? guestViewedIds : (backendViewedIds || new Set<string>());
+  // دمج البيانات: backendViewedIds (من App.tsx) + localGuestViewedIds (للزوار من localStorage)
+  const viewedRequestIds = new Set([
+    ...(backendViewedIds || []),
+    ...(isGuest ? localGuestViewedIds : [])
+  ]);
+  
+  // Alias for backward compatibility
+  const guestViewedIds = localGuestViewedIds;
+  const setGuestViewedIds = setLocalGuestViewedIds;
 
   // Search term state
   const [searchTerm, setSearchTerm] = useState("");
@@ -263,10 +299,15 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     return () => clearInterval(interval);
   }, [hasActiveFilters]);
 
-  // Load viewed requests from localStorage for guests only
+  // إعادة تحميل viewed requests من localStorage عند تغيير حالة isGuest
   useEffect(() => {
-    if (!isGuest) return; // فقط للزوار
+    if (!isGuest) {
+      // إذا أصبح المستخدم مسجل، أفرغ guestViewedIds لأننا سنستخدم backendViewedIds
+      setGuestViewedIds(new Set<string>());
+      return;
+    }
     
+    // للزوار، أعد تحميل من localStorage
     try {
       const stored = localStorage.getItem('guestViewedRequestIds');
       if (stored) {
@@ -766,6 +807,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
   // Use interestsRequests when in interests mode, otherwise use all requests
   const requestsToFilter = viewMode === "interests" ? interestsRequests : requests;
+  
+  // حساب عدد الطلبات غير المقروءة في اهتماماتي
+  const unreadInterestsRequestsCount = interestsRequests.filter(
+    (req) => !viewedRequestIds.has(req.id)
+  ).length;
 
   const filteredRequests = requestsToFilter.filter((req) => {
     // Text search
@@ -858,12 +904,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         ref={headerRef}
         className="sticky top-0 z-[60] overflow-visible"
       >
-        {/* Container for both header and tabs - shrinks together */}
+        {/* Container for both header and tabs - fixed compact size */}
         <div 
-          className="flex flex-col overflow-visible origin-top will-change-transform"
+          className="flex flex-col overflow-visible origin-top"
           style={{
-            transform: isHeaderCompressed ? 'scale(0.92) translateY(-6px)' : 'scale(1) translateY(0)',
-            transition: 'transform 0.15s ease-out',
+            transform: 'scale(0.92) translateY(4px)',
           }}
         >
           {/* Main Header Content */}
@@ -900,237 +945,192 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               isScrolled={!isHeaderCompressed}
               showCreateRequestButton={true}
               onCreateRequest={onCreateRequest}
+              isActive={isActive}
             />
           </div>
 
           {/* Switch Container - Filter button (left) + Tabs/Search (center) + Search button (right) */}
-          <motion.div 
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ 
-              opacity: 1, 
-              y: 0,
-            }}
-            transition={{ type: "spring", stiffness: 400, damping: 40 }}
-            className={`flex items-center justify-center overflow-visible px-4 ${hasActiveFilters ? '' : 'pb-2'}`}
-            style={{ paddingTop: 12 }}
-          >
-            {/* Switch Container - Filter button (left) + Tabs/Search (center) + Search button (right) */}
-            <div 
-              className="flex flex-row-reverse items-center bg-card/95 backdrop-blur-xl rounded-full p-1.5 border border-border relative mx-auto shadow-lg origin-center w-auto"
-              style={{ minWidth: 280, maxWidth: 400 }}
-              dir="rtl"
+          <UnifiedFilterIsland hasActiveFilters={hasActiveFilters} isActive={isActive}>
+            {/* Filter Button - Always visible on the right (RTL) */}
+            <motion.button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsFiltersPopupOpen(true);
+              }}
+              className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-all shrink-0 ${
+                (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax)
+                  ? 'bg-primary text-white' 
+                  : 'text-muted-foreground hover:text-primary hover:bg-secondary/50'
+              }`}
+              whileTap={{ scale: 0.96 }}
             >
-              {/* Filter Button - Always visible on the right (RTL) */}
-              <motion.button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsFiltersPopupOpen(true);
-                }}
-                className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-all shrink-0 ${
-                  (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax)
-                    ? 'bg-primary text-white' 
-                    : 'text-muted-foreground hover:text-primary hover:bg-secondary/50'
-                }`}
-                whileTap={{ scale: 0.96 }}
-              >
-                <Filter size={15} strokeWidth={2.5} />
-                {(searchCategories.length + searchCities.length + (searchBudgetMin || searchBudgetMax ? 1 : 0)) > 0 && (
-                  <motion.span 
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute -top-1 -left-1 min-w-[16px] h-[16px] px-1 rounded-full bg-white text-primary text-[9px] font-bold flex items-center justify-center shadow-md border border-primary/20"
-                  >
-                    {searchCategories.length + searchCities.length + (searchBudgetMin || searchBudgetMax ? 1 : 0)}
-                  </motion.span>
-                )}
-              </motion.button>
+              <Filter size={15} strokeWidth={2.5} />
+              {(searchCategories.length + searchCities.length + (searchBudgetMin || searchBudgetMax ? 1 : 0)) > 0 && (
+                <motion.span 
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute -top-1 -left-1 min-w-[16px] h-[16px] px-1 rounded-full bg-white text-primary text-[9px] font-bold flex items-center justify-center shadow-md border border-primary/20"
+                >
+                  {searchCategories.length + searchCities.length + (searchBudgetMin || searchBudgetMax ? 1 : 0)}
+                </motion.span>
+              )}
+            </motion.button>
 
-              {/* Center Content - Tabs or Search Input */}
-              <div className="flex-1 flex items-center relative min-w-0">
-                <AnimatePresence mode="popLayout" initial={false}>
-                  {isSearchInputOpen || searchTerm ? (
-                    /* Search Input Mode */
-                    <motion.div
-                      key="search-input"
-                      initial={{ x: 100, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: 100, opacity: 0 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                      className="flex items-center gap-2 flex-1 px-2 min-w-0"
+            {/* Center Content - Tabs or Search Input */}
+            <div className="flex-1 flex items-center relative min-w-0 overflow-hidden">
+              <AnimatePresence mode="popLayout" initial={false}>
+                {isSearchInputOpen || searchTerm ? (
+                  /* Search Input Mode */
+                  <motion.div
+                    key="search-input"
+                    initial={{ x: 100, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: 100, opacity: 0 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    className="flex items-center gap-1.5 flex-1 px-2 min-w-0 overflow-hidden"
+                    dir="rtl"
+                  >
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="ابحث في الطلبات..."
                       dir="rtl"
-                    >
-                      <input
-                        ref={searchInputRef}
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="ابحث في الطلبات..."
-                        dir="rtl"
-                        className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-foreground placeholder:text-muted-foreground py-2 text-right"
-                        autoFocus
-                        onBlur={() => {
-                          // Delay to allow click events on other buttons to fire first
-                          setTimeout(() => {
-                            if (!searchTerm) {
-                              setIsSearchInputOpen(false);
-                            }
-                          }, 150);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Escape') {
-                            setSearchTerm('');
+                      className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-foreground placeholder:text-muted-foreground py-2 text-right min-w-0"
+                      autoFocus
+                      onBlur={() => {
+                        // Delay to allow click events on other buttons to fire first
+                        setTimeout(() => {
+                          if (!searchTerm) {
                             setIsSearchInputOpen(false);
                           }
-                        }}
-                      />
-                      {searchTerm && (
-                        <motion.button
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          onClick={() => {
-                            setSearchTerm('');
-                            searchInputRef.current?.focus();
-                          }}
-                          className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-                        >
-                          <X size={14} strokeWidth={2.5} />
-                        </motion.button>
-                      )}
+                        }, 150);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setSearchTerm('');
+                          setIsSearchInputOpen(false);
+                        }
+                      }}
+                    />
+                    {searchTerm && (
                       <motion.button
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
-                        transition={{ delay: 0.15 }}
                         onClick={() => {
                           setSearchTerm('');
-                          setIsSearchInputOpen(false);
+                          searchInputRef.current?.focus();
                         }}
-                        className="text-[11px] font-medium text-primary/70 hover:text-primary px-2 py-1 rounded-lg hover:bg-primary/10 transition-colors shrink-0"
+                        className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors shrink-0"
                       >
-                        إلغاء
+                        <X size={14} strokeWidth={2.5} />
                       </motion.button>
-                    </motion.div>
-                  ) : (
-                    /* Normal Tabs Mode */
-                    <motion.div
-                      key="tabs"
-                      initial={{ x: -100, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: -100, opacity: 0 }}
-                      transition={{ duration: 0.2, ease: "easeOut" }}
-                      className="flex items-center w-full relative"
-                    >
-                      {/* Animated capsule indicator */}
-                      {!hasActiveFilters && (
-                        <motion.div
-                          className="absolute inset-y-0 rounded-full bg-primary shadow-md z-0"
-                          animate={{
-                            left: viewMode === "all" ? '50%' : '0%',
-                          }}
-                          style={{ width: '50%' }}
-                          transition={{ duration: 0.2, ease: "easeOut" }}
-                        />
-                      )}
-                      <button
-                        onClick={() => {
-                          if (navigator.vibrate) navigator.vibrate(15);
-                          if (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax) {
-                            handleResetSearch();
-                          }
-                          setViewMode("all");
-                        }}
-                        className={`flex-1 py-3 px-4 text-xs font-bold rounded-full transition-colors relative flex flex-col items-center justify-center gap-1 ${
-                          viewMode === "all" && !hasActiveFilters
-                            ? "text-white"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        <span className="relative z-10">الكل</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (navigator.vibrate) navigator.vibrate(15);
-                          if (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax) {
-                            handleResetSearch();
-                          }
-                          setViewMode("interests");
-                        }}
-                        className={`flex-1 py-3 px-4 text-xs font-bold rounded-full transition-colors relative flex flex-col items-center justify-center gap-1 ${
-                          viewMode === "interests" && !hasActiveFilters
-                            ? "text-white"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        <span className="relative z-10 flex items-center gap-1.5">
-                          اهتماماتي
-                          {(unreadInterestsCount > 0 || interestsRequests.length > 0) && (
-                            <span className={`inline-flex items-center justify-center min-w-[1rem] h-4 rounded-full px-1 text-[10px] font-bold transition-colors ${
-                              viewMode === "interests" && !hasActiveFilters ? "bg-white/20 text-white" : "bg-primary/10 text-primary"
-                            }`}>
-                              {interestsRequests.length > 0 ? interestsRequests.length : unreadInterestsCount}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Search Button - Moves from right to left when clicked */}
-              <button
-                onClick={() => {
-                  if (navigator.vibrate) navigator.vibrate(10);
-                  if (!isSearchInputOpen && !searchTerm) {
-                    setIsSearchInputOpen(true);
-                    setTimeout(() => searchInputRef.current?.focus(), 100);
-                  }
-                }}
-                className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-colors shrink-0 bg-transparent active:scale-95 ${
-                  isSearchInputOpen || searchTerm
-                    ? 'text-primary'
-                    : 'text-muted-foreground hover:text-primary'
-                }`}
-              >
-                <Search size={15} strokeWidth={2.5} />
-              </button>
-            </div>
-
-            {/* View Mode Selector - Hidden (keeping text mode only) */}
-            {/* <div className="flex items-center gap-2">
-                <div className="hidden sm:flex items-center bg-secondary/40 backdrop-blur-sm rounded-xl p-0.5 gap-0.5 border border-border/30">
-                  {[
-                    { id: 'grid' as ViewMode, icon: <LayoutGrid className="w-4 h-4" /> },
-                    { id: 'text' as ViewMode, icon: <AlignJustify className="w-4 h-4" /> },
-                  ].map((mode) => (
-                    <button
-                      key={mode.id}
+                    )}
+                    <motion.button
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.15 }}
                       onClick={() => {
-                        if (navigator.vibrate) navigator.vibrate(8);
-                        setDisplayMode(mode.id);
+                        setSearchTerm('');
+                        setIsSearchInputOpen(false);
                       }}
-                      className={`relative w-9 h-9 flex items-center justify-center rounded-lg transition-all ${
-                        displayMode === mode.id
-                          ? 'text-white'
-                          : 'text-muted-foreground hover:text-foreground'
+                      className="text-[11px] font-medium text-primary/70 hover:text-primary px-2 py-1 rounded-lg hover:bg-primary/10 transition-colors shrink-0"
+                    >
+                      إلغاء
+                    </motion.button>
+                  </motion.div>
+                ) : (
+                  /* Normal Tabs Mode */
+                  <motion.div
+                    key="tabs"
+                    initial={{ x: -100, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -100, opacity: 0 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    className="flex items-center w-full relative"
+                  >
+                    {/* Animated capsule indicator */}
+                    {!hasActiveFilters && (
+                      <motion.div
+                        className="absolute inset-y-0 rounded-full bg-primary shadow-md z-0"
+                        animate={{
+                          left: viewMode === "all" ? '50%' : '0%',
+                        }}
+                        style={{ width: '50%' }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                      />
+                    )}
+                    <button
+                      onClick={() => {
+                        if (navigator.vibrate) navigator.vibrate(15);
+                        if (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax) {
+                          handleResetSearch();
+                        }
+                        setViewMode("all");
+                      }}
+                      className={`flex-1 py-3 px-4 text-xs font-bold rounded-full transition-colors relative flex flex-col items-center justify-center gap-1 ${
+                        viewMode === "all" && !hasActiveFilters
+                          ? "text-white"
+                          : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      {displayMode === mode.id && (
-                        <motion.div
-                          layoutId="display-mode-active"
-                          className="absolute inset-0 bg-primary rounded-lg shadow-sm"
-                          transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-                        />
-                      )}
-                      <span className="relative z-10">{mode.icon}</span>
+                      <span className="relative z-10">الكل</span>
                     </button>
-                  ))}
-                </div>
-            </div> */}
-          </motion.div>
+                    <button
+                      onClick={() => {
+                        if (navigator.vibrate) navigator.vibrate(15);
+                        if (searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax) {
+                          handleResetSearch();
+                        }
+                        setViewMode("interests");
+                      }}
+                      className={`flex-1 py-3 px-4 text-xs font-bold rounded-full transition-colors relative flex flex-col items-center justify-center gap-1 ${
+                        viewMode === "interests" && !hasActiveFilters
+                          ? "text-white"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <span className="relative z-10 flex items-center gap-1.5">
+                        اهتماماتي
+                        {unreadInterestsRequestsCount > 0 && (
+                          <span className={`inline-flex items-center justify-center min-w-[1.2rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-all animate-pulse ${
+                            viewMode === "interests" && !hasActiveFilters 
+                              ? "bg-white text-primary shadow-sm" 
+                              : "bg-primary text-white shadow-lg shadow-primary/30"
+                          }`}>
+                            {unreadInterestsRequestsCount}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Search Button - Moves from right to left when clicked */}
+            <button
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(10);
+                if (!isSearchInputOpen && !searchTerm) {
+                  setIsSearchInputOpen(true);
+                  setTimeout(() => searchInputRef.current?.focus(), 100);
+                }
+              }}
+              className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-colors shrink-0 bg-transparent active:scale-95 ${
+                isSearchInputOpen || searchTerm
+                  ? 'text-primary'
+                  : 'text-muted-foreground hover:text-primary'
+              }`}
+            >
+              <Search size={15} strokeWidth={2.5} />
+            </button>
+          </UnifiedFilterIsland>
 
           {/* Active Filters Display - Second Row */}
           {(searchCategories.length > 0 || searchCities.length > 0 || searchBudgetMin || searchBudgetMax) && (
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-3 pb-2 mt-1">
               <div className="flex items-center gap-1.5">
                 {/* التصنيفات - إظهار المختارة أو "كل التصنيفات" */}
                 {searchCategories.length > 0 ? (
@@ -1219,19 +1219,36 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         </div>
         
         {/* ===== TOP FADE OVERLAY ===== */}
-        {/* تدريج إخفائي - جزء من الـ sticky header */}
+        {/* تدريج إخفائي - الكروت تختفي تدريجياً لما توصل الهيدر */}
         <div
-          className="absolute left-0 right-0 bottom-0 translate-y-full h-20 pointer-events-none"
+          className="absolute left-0 right-0 bottom-0 translate-y-full h-24 pointer-events-none z-[55]"
           style={{
             background: `linear-gradient(to bottom, 
               hsl(var(--background)) 0%, 
-              hsl(var(--background) / 0.7) 35%,
-              hsl(var(--background) / 0.3) 60%, 
+              hsl(var(--background)) 20%,
+              hsl(var(--background) / 0.85) 40%,
+              hsl(var(--background) / 0.5) 65%, 
+              hsl(var(--background) / 0.15) 85%,
               transparent 100%
             )`,
           }}
         />
       </div>
+
+      {/* ===== FIXED FADE OVERLAY ===== */}
+      {/* تدريج إخفائي ثابت تحت الهيدر - الكروت تختفي تدريجياً لما توصل الأعلى */}
+      <div
+        className="fixed top-[135px] left-0 right-0 h-20 pointer-events-none z-[50]"
+        style={{
+          background: `linear-gradient(to bottom, 
+            hsl(var(--background)) 0%, 
+            hsl(var(--background)) 35%,
+            hsl(var(--background) / 0.7) 55%,
+            hsl(var(--background) / 0.3) 80%, 
+            transparent 100%
+          )`,
+        }}
+      />
 
       {/* Pull-to-Refresh Indicator - Emerges from under the header */}
       <AnimatePresence>
@@ -1510,7 +1527,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         </div>
                         
                         {/* Category Chips */}
-                        <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto no-scrollbar">
+                        <div className="flex flex-wrap justify-start gap-2 max-h-32 overflow-y-auto no-scrollbar w-full">
                           {AVAILABLE_CATEGORIES
                             .filter(cat => cat.label.toLowerCase().includes(popupCategorySearch.toLowerCase()))
                             .map((cat) => (
@@ -1715,7 +1732,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         document.body
       )}
 
-      <div className="px-4 pt-6 pb-4">
+      <div className="px-4 pt-4 pb-4">
         {/* 1. Sub-Filters (Interests Panel) - ALWAYS TOP when in interests mode */}
         <AnimatePresence>
         {viewMode === "interests" && showInterestsPanel && (
@@ -1807,7 +1824,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="flex flex-wrap gap-2 pt-1">
+                        <div className="flex flex-wrap justify-start gap-2 pt-1 w-full">
                           {userInterests.length === 0 ? (
                             <span className="text-xs text-muted-foreground italic">لم تحدد تصنيفات بعد</span>
                           ) : (
@@ -1853,7 +1870,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="flex flex-wrap gap-2 pt-1">
+                        <div className="flex flex-wrap justify-start gap-2 pt-1 w-full">
                           {interestedCities.length === 0 ? (
                             <span className="text-xs text-muted-foreground italic">جميع المدن</span>
                           ) : (
@@ -1896,7 +1913,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="flex flex-wrap gap-2 pt-1">
+                        <div className="flex flex-wrap justify-start gap-2 pt-1 w-full">
                           {radarWords.length === 0 ? (
                             <span className="text-xs text-muted-foreground italic">لم تحدد كلمات رادار بعد</span>
                           ) : (
@@ -2227,7 +2244,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             className="w-full pr-10 pl-4 py-2.5 rounded-xl border-2 border-border bg-card text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
                           />
                         </div>
-                        <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar">
+                        <div className="flex flex-wrap justify-start gap-2 max-h-48 overflow-y-auto no-scrollbar w-full">
                           {filteredCategories.map((cat) => (
                             <button
                               key={cat.id}
@@ -2290,7 +2307,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       >
                         {/* Selected Cities Chips */}
                         {tempCities.length > 0 && !tempCities.includes('كل المدن') && (
-                          <div className="flex flex-wrap gap-1.5 mt-3">
+                          <div className="flex flex-wrap justify-start gap-1.5 mt-3 w-full">
                             {tempCities.map((city) => (
                               <motion.span
                                 key={city}
@@ -2415,7 +2432,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           </button>
                         </div>
                         {tempRadarWords.length > 0 && (
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap justify-start gap-2 w-full">
                             {tempRadarWords.map((word) => (
                               <div
                                 key={word}
@@ -2465,6 +2482,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
         {/* Content Views - Grid / Text */}
         <div className="relative">
+          {/* تأثير التلاشي التدريجي في الأعلى - الكروت تتلاشى عند الصعود */}
+          <div 
+            className="pointer-events-none absolute top-0 left-0 right-0 h-16 z-20"
+            style={{
+              background: 'linear-gradient(to bottom, hsl(var(--background)) 0%, hsl(var(--background) / 0.8) 40%, transparent 100%)',
+            }}
+          />
           <AnimatePresence mode="wait">
             {displayMode === 'text' ? (
               <motion.div
@@ -2481,6 +2505,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 userId={user?.id}
                 isGuest={isGuest}
                 viewedRequestIds={viewedRequestIds}
+                newRequestIds={newRequestIds}
                 onSelectRequest={(req) => {
                   if (isGuest) {
                     setGuestViewedIds(prev => {
@@ -2527,20 +2552,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             const isTouchHovered = touchHoveredCardId === req.id; // هل الإصبع فوق هذا الكارت؟
             const isUnread = !isMyRequest && !viewedRequestIds.has(req.id); // طلب غير مقروء
             return (
-              <div key={req.id} className="flex items-stretch">
-                {/* Right Margin - الهامش الأيمن مع النقطة */}
-                <div className="w-4 flex-shrink-0 flex items-center justify-center">
-                  {isUnread && (
-                    <motion.div
-                      initial={{ scale: 0, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 25, delay: index < 9 ? index * 0.03 : 0 }}
-                    >
-                      <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(30,150,140,0.6)]" />
-                    </motion.div>
-                  )}
-                </div>
-                {/* Card Container */}
+              <div key={req.id} className="flex items-stretch px-4">
+                {/* Card Container - الاكتفاء بأيقونة العين للدلالة على القراءة */}
                 <motion.div
                   ref={(el) => {
                     // Store ref in cardRefs map for touch detection

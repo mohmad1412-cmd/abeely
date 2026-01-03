@@ -43,6 +43,8 @@ interface MyRequestsProps {
   onOpenLanguagePopup?: () => void;
   // Create Request navigation
   onCreateRequest?: () => void;
+  // Is this page currently active
+  isActive?: boolean;
 }
 
 export const MyRequests: React.FC<MyRequestsProps> = ({
@@ -64,6 +66,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   toggleTheme,
   onOpenLanguagePopup,
   onCreateRequest,
+  isActive = true,
 }) => {
   // Header compression state - for smooth scroll animations
   const [isHeaderCompressed, setIsHeaderCompressed] = useState(false);
@@ -144,6 +147,18 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   // Filter configurations for FloatingFilterIsland
   const filterConfigs = useMemo(() => [
     {
+      id: "sortOrder",
+      icon: <ArrowUpDown size={14} />,
+      options: [
+        { value: "createdAt", label: "وقت الإنشاء", icon: <Calendar size={12} /> },
+        { value: "updatedAt", label: "آخر تحديث", icon: <Clock size={12} /> },
+      ],
+      value: sortOrder,
+      onChange: (value: string) => setSortOrder(value as SortOrder),
+      getLabel: () => sortOrder === "updatedAt" ? "آخر تحديث" : "تاريخ الإنشاء",
+      showCount: false,
+    },
+    {
       id: "reqFilter",
       icon: <FileText size={14} />,
       options: [
@@ -163,18 +178,6 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
         }
       },
       showCount: true,
-    },
-    {
-      id: "sortOrder",
-      icon: <ArrowUpDown size={14} />,
-      options: [
-        { value: "createdAt", label: "وقت الإنشاء", icon: <Calendar size={12} /> },
-        { value: "updatedAt", label: "آخر تحديث", icon: <Clock size={12} /> },
-      ],
-      value: sortOrder,
-      onChange: (value: string) => setSortOrder(value as SortOrder),
-      getLabel: () => sortOrder === "updatedAt" ? "آخر تحديث" : "الإنشاء",
-      showCount: false,
     },
   ], [reqFilter, sortOrder, counts]);
 
@@ -198,17 +201,15 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
         ref={headerRef}
         className="sticky top-0 z-[60] overflow-visible"
       >
-        <div className="flex flex-col overflow-visible">
-          {/* Main Header Content - Hides when scrolling down */}
-          <motion.div
-            animate={{
-              height: isHeaderCompressed ? 0 : 'auto',
-              opacity: isHeaderCompressed ? 0 : 1,
-            }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
-            style={{ overflow: isHeaderCompressed ? 'hidden' : 'visible' }}
-            className="px-4"
-          >
+        {/* Container for header and filter island - fixed compact size */}
+        <div 
+          className="flex flex-col overflow-visible origin-top"
+          style={{
+            transform: 'scale(0.92) translateY(4px)',
+          }}
+        >
+          {/* Main Header Content */}
+          <div className="px-4">
             <UnifiedHeader
               mode="requests"
               toggleMode={() => {}}
@@ -237,19 +238,22 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
               isScrolled={!isHeaderCompressed}
               showCreateRequestButton={true}
               onCreateRequest={onCreateRequest}
+              isActive={isActive}
             />
-          </motion.div>
+          </div>
+          
+          {/* Filter Island - inside scaled container */}
+          <FloatingFilterIsland 
+            filters={filterConfigs}
+            scrollContainerRef={scrollContainerRef}
+            isActive={isActive}
+          />
         </div>
       </div>
 
 
-      {/* Content with Floating Filter Island */}
+      {/* Content */}
       <div className="px-4 pb-24">
-        {/* Floating Filter Island */}
-        <FloatingFilterIsland 
-          filters={filterConfigs}
-          scrollContainerRef={scrollContainerRef}
-        />
         <div key={reqFilter} className="grid grid-cols-1 gap-6 min-h-[100px] pt-2">
           {filteredRequests.length === 0 && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-8">

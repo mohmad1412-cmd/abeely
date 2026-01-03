@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import ReactDOM from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   ArrowLeftRight, 
@@ -16,6 +17,7 @@ import {
   ChevronsDown,
   Loader2,
   FileText,
+  FileEdit,
   Search,
   Filter,
   User,
@@ -105,6 +107,11 @@ interface UnifiedHeaderProps {
   // Three-dot menu (for RequestDetail)
   showThreeDotsMenu?: boolean;
   threeDotsMenuItems?: DropdownMenuItem[];
+  // Is this page currently active
+  isActive?: boolean;
+  // Title edit button (for CreateRequestV2)
+  showTitleEditButton?: boolean;
+  onTitleEdit?: () => void;
 }
 
 export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
@@ -165,6 +172,9 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   onCreateRequest,
   showThreeDotsMenu = false,
   threeDotsMenuItems = [],
+  isActive = true,
+  showTitleEditButton = false,
+  onTitleEdit,
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isLinkCopied, setIsLinkCopied] = useState(false);
@@ -247,8 +257,9 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   };
 
   const headerContent = (
-    <div className="h-16 flex items-center justify-between pt-[env(safe-area-inset-top,0px)]">
-      <div className="flex items-center gap-3 flex-1 min-w-0">
+    <>
+      <div className="h-16 flex items-center justify-between pt-[env(safe-area-inset-top,0px)]">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
         {backButton ? (
           <motion.button
             onClick={() => {
@@ -281,11 +292,36 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           </motion.button>
         ) : null}
         
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          {!backButton && !hideProfileButton && title && (
+        {backButton && title && (
+          <>
+            {showTitleEditButton && onTitleEdit && (
+              <button
+                onClick={onTitleEdit}
+                className="shrink-0 p-2 rounded-lg hover:bg-emerald-200/50 dark:hover:bg-emerald-800/50 transition-colors"
+              >
+                <FileEdit size={18} className="text-emerald-600" />
+              </button>
+            )}
+            <h1 className="text-sm font-medium text-foreground truncate flex-1 min-w-0">
+              {title}
+            </h1>
+          </>
+        )}
+        {!backButton && !hideProfileButton && title && isActive && (
             <>
-              {/* Combined container for title and profile - styled like Create Request button */}
-              <div className="flex items-center gap-2 h-10 px-3 pr-1.5 rounded-full bg-card/80 backdrop-blur-sm border border-border shadow-lg min-w-0">
+              {/* Combined container for title and profile - styled like filter tabs */}
+              <motion.div 
+                layout
+                layoutId="header-title-container"
+                className="flex items-center gap-2 h-10 px-3 pr-1.5 rounded-full bg-card/95 backdrop-blur-xl border border-border shadow-lg min-w-0"
+                initial={false}
+                transition={{ 
+                  type: "spring", 
+                  stiffness: 300, 
+                  damping: 35,
+                  layout: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }
+                }}
+              >
                 {/* Profile Button - on the right (first in RTL) */}
                 <div 
                   className="relative shrink-0" 
@@ -297,45 +333,89 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                     setIsProfileDropdownOpen(!isProfileDropdownOpen);
                   }}
                   whileTap={{ scale: 0.95 }}
-                  className="relative w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center overflow-visible border border-primary/20 shrink-0"
+                  className={`relative flex items-center justify-center overflow-visible shrink-0 ${
+                    isGuest 
+                      ? 'w-auto h-8 px-3 gap-1.5 rounded-full bg-red-500 border border-red-400 shadow-lg shadow-red-500/30' 
+                      : 'w-7 h-7 rounded-full bg-primary/10 border border-primary/20'
+                  }`}
                 >
-                  <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
-                    {user?.avatar_url ? (
-                      <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
-                    ) : isGuest ? (
-                      <User size={14} className="text-muted-foreground" />
-                    ) : (
-                      <span className="text-xs font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
-                    )}
-                  </div>
+                  {isGuest ? (
+                    <>
+                      <LogIn size={14} className="text-white" />
+                      <span className="text-xs font-bold text-white">دخول</span>
+                    </>
+                  ) : (
+                    <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
+                      {user?.avatar_url ? (
+                        <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-xs font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
+                      )}
+                    </div>
+                  )}
+                  {/* Dropdown arrow indicator - only for logged in users */}
+                  {!isGuest && (
+                    <motion.div 
+                      className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-card border border-border shadow-sm flex items-center justify-center"
+                      animate={{ rotate: isProfileDropdownOpen ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <ChevronDown size={10} strokeWidth={2.5} className="text-muted-foreground" />
+                    </motion.div>
+                  )}
                 </motion.button>
                 
-                {/* Profile Dropdown - For all users */}
-                <AnimatePresence>
-                  {isProfileDropdownOpen && (
-                    <>
-                      {/* Backdrop - blocks scroll */}
+                {/* Profile Dropdown - For all users - Rendered via Portal */}
+                {isProfileDropdownOpen && ReactDOM.createPortal(
+                  <AnimatePresence>
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-[99998]"
+                    >
+                      {/* Backdrop - blocks scroll and all interactions */}
                       <div 
-                        className="fixed inset-0 z-40 touch-none" 
-                        onClick={() => setIsProfileDropdownOpen(false)}
+                        className="absolute inset-0 touch-none pointer-events-auto bg-black/20" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsProfileDropdownOpen(false);
+                        }}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onTouchStart={(e) => e.preventDefault()}
                         onWheel={(e) => e.preventDefault()}
                         onTouchMove={(e) => e.preventDefault()}
+                        style={{ 
+                          WebkitTouchCallout: 'none',
+                          WebkitUserSelect: 'none',
+                          userSelect: 'none'
+                        }}
                       />
                       <motion.div
                         initial={{ opacity: 0, y: -10, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -10, scale: 0.95 }}
                         transition={{ duration: 0.2, ease: 'easeOut' }}
-                        className="absolute top-full right-0 mt-2 w-56 bg-card/95 backdrop-blur-xl rounded-2xl border border-border shadow-2xl z-50 overflow-hidden"
+                        className="fixed w-56 bg-card rounded-2xl border border-border shadow-2xl overflow-hidden pointer-events-auto"
+                        style={{ 
+                          top: profileDropdownRef.current ? profileDropdownRef.current.getBoundingClientRect().bottom + 8 : 60,
+                          right: 16,
+                          zIndex: 99999,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
                       >
                         {/* User Info */}
                         <div className="p-4 border-b border-border/50">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border border-primary/20 shrink-0">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden shrink-0 ${
+                              isGuest 
+                                ? 'bg-red-500/15 border border-red-500/30' 
+                                : 'bg-primary/10 border border-primary/20'
+                            }`}>
                               {user?.avatar_url ? (
                                 <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
                               ) : isGuest ? (
-                                <User size={18} className="text-muted-foreground" />
+                                <LogIn size={18} className="text-red-500" />
                               ) : (
                                 <span className="text-sm font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
                               )}
@@ -443,18 +523,19 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                           </button>
                         </div>
                       </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
+                    </motion.div>
+                  </AnimatePresence>,
+                  document.body
+                )}
                 </div>
                 
                 {/* Page Title - on the left (after profile in RTL) */}
                 {title && (
-                  <h1 className="text-sm font-bold text-foreground truncate flex-1">
+                  <h1 className="text-sm font-medium text-foreground truncate flex-1">
                     {title}
                   </h1>
                 )}
-              </div>
+              </motion.div>
             </>
           )}
           
@@ -470,47 +551,84 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   setIsProfileDropdownOpen(!isProfileDropdownOpen);
                 }}
                 whileTap={{ scale: 0.95 }}
-                className="relative w-9 h-9 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center overflow-visible border border-white/20 shrink-0 shadow-lg hover:shadow-xl transition-shadow"
+                className={`relative flex items-center justify-center overflow-visible shrink-0 shadow-lg hover:shadow-xl transition-shadow ${
+                  isGuest 
+                    ? 'h-9 px-3 gap-1.5 rounded-full bg-red-500 border border-red-400' 
+                    : 'w-9 h-9 rounded-full bg-card/80 backdrop-blur-sm border border-white/20'
+                }`}
               >
-                <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
-                  {user?.avatar_url ? (
-                    <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
-                  ) : isGuest ? (
-                    <User size={16} className="text-muted-foreground" />
-                  ) : (
-                    <span className="text-sm font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
-                  )}
-                </div>
-                {/* Decorative icon - arrow dropdown indicator */}
-                <div className="absolute -bottom-1 -left-1 w-5 h-5 rounded-full bg-primary border-2 border-white dark:border-gray-800 flex items-center justify-center shadow-lg">
-                  <ChevronDown size={14} strokeWidth={3} className="text-white" />
-                </div>
+                {isGuest ? (
+                  <>
+                    <LogIn size={16} className="text-white" />
+                    <span className="text-xs font-bold text-white">دخول</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
+                      {user?.avatar_url ? (
+                        <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-sm font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
+                      )}
+                    </div>
+                    {/* Decorative icon - arrow dropdown indicator */}
+                    <div className="absolute -bottom-1 -left-1 w-5 h-5 rounded-full bg-primary border-2 border-white dark:border-gray-800 flex items-center justify-center shadow-lg">
+                      <ChevronDown size={14} strokeWidth={3} className="text-white" />
+                    </div>
+                  </>
+                )}
               </motion.button>
               
-              {/* Profile Dropdown */}
-              <AnimatePresence>
-                {isProfileDropdownOpen && (
-                  <>
+              {/* Profile Dropdown - Rendered via Portal */}
+              {isProfileDropdownOpen && ReactDOM.createPortal(
+                <AnimatePresence>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-[99998]"
+                  >
+                    {/* Backdrop - blocks scroll and all interactions */}
                     <div 
-                      className="fixed inset-0 z-40 touch-none" 
-                      onClick={() => setIsProfileDropdownOpen(false)}
+                      className="absolute inset-0 touch-none pointer-events-auto bg-black/20" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsProfileDropdownOpen(false);
+                      }}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onWheel={(e) => e.preventDefault()}
                       onTouchMove={(e) => e.preventDefault()}
+                      style={{ 
+                        WebkitTouchCallout: 'none',
+                        WebkitUserSelect: 'none',
+                        userSelect: 'none'
+                      }}
                     />
                     <motion.div
                       initial={{ opacity: 0, y: -10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -10, scale: 0.95 }}
                       transition={{ duration: 0.2, ease: 'easeOut' }}
-                      className="absolute top-full right-0 mt-2 w-56 bg-card/95 backdrop-blur-xl rounded-2xl border border-border shadow-2xl z-50 overflow-hidden"
+                      className="fixed w-56 bg-card rounded-2xl border border-border shadow-2xl overflow-hidden pointer-events-auto"
+                      style={{ 
+                        top: profileDropdownRef.current ? profileDropdownRef.current.getBoundingClientRect().bottom + 8 : 60,
+                        right: 16,
+                        zIndex: 99999,
+                      }}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <div className="p-4 border-b border-border/50">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border border-primary/20 shrink-0">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden shrink-0 ${
+                            isGuest 
+                              ? 'bg-red-500/15 border border-red-500/30' 
+                              : 'bg-primary/10 border border-primary/20'
+                          }`}>
                             {user?.avatar_url ? (
                               <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
                             ) : isGuest ? (
-                              <User size={18} className="text-muted-foreground" />
+                              <LogIn size={18} className="text-red-500" />
                             ) : (
                               <span className="text-sm font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
                             )}
@@ -614,9 +732,10 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                         </button>
                       </div>
                     </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
+                  </motion.div>
+                </AnimatePresence>,
+                document.body
+              )}
             </div>
           )}
           
@@ -627,7 +746,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
               initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -5 }}
-              className="px-4 h-10 flex items-center gap-2 rounded-full bg-card/80 backdrop-blur-sm border border-border shadow-lg min-w-0 flex-1"
+              className="px-4 h-10 flex items-center gap-2 rounded-full bg-card/95 backdrop-blur-xl border border-border shadow-lg min-w-0 flex-1"
             >
               <span className="font-bold text-sm text-foreground truncate block flex-1">
                 {title}
@@ -650,15 +769,27 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
       </div>
 
       {/* Create Request Button - Always visible when enabled, independent of hideActionButtons */}
-      {showCreateRequestButton && onCreateRequest && (
+      {showCreateRequestButton && onCreateRequest && isActive && (
         <motion.button
           key="create-request-btn"
+          layout
+          layoutId="header-create-request-btn"
           onClick={onCreateRequest}
-          initial={{ opacity: 1, scale: 1 }}
+          initial={false}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          className="relative flex items-center gap-2 h-10 px-4 rounded-full group active:scale-95 bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card overflow-hidden"
+          className="create-request-btn relative flex items-center gap-2 h-10 px-4 rounded-full group active:scale-95 overflow-hidden bg-card/95 backdrop-blur-xl shadow-lg hover:bg-card"
+          transition={{ 
+            type: "spring", 
+            stiffness: 300, 
+            damping: 35,
+            layout: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }
+          }}
         >
+          {/* Animated border glow */}
+          <div className="create-request-border" />
+          {/* Inner shimmer glow */}
+          <div className="create-request-shimmer" />
           <Plus size={18} strokeWidth={2.5} className="relative z-10 text-foreground" />
           <span className="relative z-10 text-sm font-medium text-foreground whitespace-nowrap">
             أنشئ طلب
@@ -1122,7 +1253,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
         )}
       </div>
       )}
-    </div>
+    </>
   );
 
   return (

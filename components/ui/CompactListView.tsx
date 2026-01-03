@@ -27,6 +27,8 @@ interface CompactListViewProps {
   isLoadingMore?: boolean;
   // External scroll position (from parent)
   externalScrollY?: number;
+  // New request IDs for special animation
+  newRequestIds?: Set<string>;
 }
 
 // ============================================
@@ -38,7 +40,8 @@ const ListItem: React.FC<{
   myOffer?: Offer;
   isViewed: boolean;
   index: number;
-}> = ({ request, onTap, myOffer, isViewed, index }) => {
+  isNew?: boolean; // طلب جديد وصل للتو
+}> = ({ request, onTap, myOffer, isViewed, index, isNew = false }) => {
   const [isPressed, setIsPressed] = useState(false);
   
   // Format time ago
@@ -57,26 +60,61 @@ const ListItem: React.FC<{
 
   return (
     <motion.button
-      className={`w-full text-right p-4 rounded-2xl border transition-all mb-3 overflow-hidden shadow-sm flex items-start gap-3 ${
+      className={`w-full text-right p-4 rounded-2xl border transition-all mb-3 overflow-hidden shadow-sm flex items-start gap-3 relative ${
         isPressed 
           ? "bg-primary/5 border-primary/20 scale-[0.98]" 
           : "bg-card hover:bg-secondary/10 border-border/40 hover:border-primary/20"
-      } ${!isViewed ? "border-primary/20 bg-primary/[0.01]" : ""}`}
+      } ${!isViewed ? "border-primary/20 bg-primary/[0.01]" : ""} ${isNew ? "ring-2 ring-primary/40 ring-offset-2 ring-offset-background" : ""}`}
       onClick={onTap}
       onTouchStart={() => setIsPressed(true)}
       onTouchEnd={() => setIsPressed(false)}
       onMouseDown={() => setIsPressed(true)}
       onMouseUp={() => setIsPressed(false)}
       onMouseLeave={() => setIsPressed(false)}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ 
+      initial={isNew ? { opacity: 0, scale: 0.9, y: -20 } : { opacity: 0, y: 10 }}
+      animate={isNew ? { 
+        opacity: 1, 
+        scale: 1, 
+        y: 0,
+      } : { opacity: 1, y: 0 }}
+      transition={isNew ? { 
+        type: "spring",
+        stiffness: 300,
+        damping: 20,
+        mass: 1
+      } : { 
         delay: Math.min(index * 0.03, 0.3),
         type: "spring",
         stiffness: 400,
         damping: 30
       }}
     >
+      {/* New Request Glow Animation */}
+      {isNew && (
+        <motion.div
+          className="absolute inset-0 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 pointer-events-none"
+          animate={{
+            opacity: [0.3, 0.6, 0.3],
+          }}
+          transition={{
+            duration: 1.5,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+        />
+      )}
+      {/* New Request Badge */}
+      {isNew && (
+        <motion.div
+          className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center gap-1 shadow-lg z-10"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.2, type: "spring", stiffness: 500 }}
+        >
+          <Sparkles size={10} />
+          جديد
+        </motion.div>
+      )}
       {/* Content */}
       <div className="flex-1 min-w-0">
         {/* Title */}
@@ -155,6 +193,7 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
   hasMore = false,
   isLoadingMore = false,
   externalScrollY = 0,
+  newRequestIds = new Set(),
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -189,15 +228,15 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
     >
 
       {/* List Content */}
-      <div className="px-4 py-4 pb-20 relative z-[1] w-full">
+      <div className="px-4 pt-0 pb-20 relative z-[1] w-full">
         {requests.map((request, index) => {
           const isUnread = !viewedRequestIds.has(request.id);
           return (
             <div key={request.id} className="relative w-full">
-              {/* نقطة غير مقروء */}
+              {/* نقطة غير مقروء - خارج الكرت على اليمين - فقط للجوالات */}
               {isUnread && (
                 <motion.div
-                  className="absolute right-0 top-1/2 -translate-y-1/2 -translate-x-2 z-10"
+                  className="absolute -right-3 top-1/2 -translate-y-1/2 z-10 block md:hidden"
                   initial={{ scale: 0, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ type: "spring", stiffness: 500, damping: 25, delay: Math.min(index * 0.03, 0.3) }}
@@ -205,13 +244,14 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
                   <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(30,150,140,0.6)]" />
                 </motion.div>
               )}
-              {/* الكرت */}
+              {/* الكرت - في مكانه الطبيعي */}
               <ListItem
                 request={request}
                 onTap={() => onSelectRequest(request)}
                 myOffer={getMyOffer(request.id)}
                 isViewed={viewedRequestIds.has(request.id)}
                 index={index}
+                isNew={newRequestIds.has(request.id)}
               />
             </div>
           );

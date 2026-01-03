@@ -40,7 +40,177 @@ export interface CityResult {
   country: string;
   lat?: number;
   lng?: number;
+  placeType?: string; // نوع المكان الأصلي من Google
+  placeTypeArabic?: string; // نوع المكان بالعربي
 }
+
+/**
+ * تحويل أنواع Google Places إلى أسماء عربية
+ */
+const PLACE_TYPE_ARABIC_MAP: Record<string, string> = {
+  // الشوارع والطرق
+  'route': 'شارع',
+  'street_address': 'شارع',
+  'intersection': 'تقاطع',
+  'highway': 'طريق سريع',
+  
+  // الأحياء والمناطق
+  'sublocality': 'حي',
+  'sublocality_level_1': 'حي',
+  'sublocality_level_2': 'حي فرعي',
+  'neighborhood': 'حي',
+  
+  // المدن والمحافظات
+  'locality': 'مدينة',
+  'administrative_area_level_1': 'منطقة',
+  'administrative_area_level_2': 'محافظة',
+  'administrative_area_level_3': 'مركز',
+  
+  // المعالم والأماكن المهمة
+  'point_of_interest': 'معلم',
+  'natural_feature': 'معلم طبيعي',
+  'park': 'حديقة',
+  'tourist_attraction': 'معلم سياحي',
+  'museum': 'متحف',
+  'stadium': 'ملعب',
+  'university': 'جامعة',
+  'school': 'مدرسة',
+  'hospital': 'مستشفى',
+  'airport': 'مطار',
+  'train_station': 'محطة قطار',
+  'bus_station': 'محطة حافلات',
+  'subway_station': 'محطة مترو',
+  
+  // المحلات والمؤسسات التجارية
+  'establishment': 'مؤسسة',
+  'store': 'محل',
+  'shopping_mall': 'مول تجاري',
+  'supermarket': 'سوبرماركت',
+  'grocery_or_supermarket': 'بقالة',
+  'convenience_store': 'بقالة',
+  'clothing_store': 'محل ملابس',
+  'electronics_store': 'محل إلكترونيات',
+  'furniture_store': 'محل أثاث',
+  'hardware_store': 'محل أدوات',
+  'home_goods_store': 'محل مستلزمات منزلية',
+  'jewelry_store': 'محل مجوهرات',
+  'shoe_store': 'محل أحذية',
+  'book_store': 'مكتبة',
+  'pet_store': 'محل حيوانات',
+  'florist': 'محل زهور',
+  'bakery': 'مخبز',
+  'pharmacy': 'صيدلية',
+  'gas_station': 'محطة وقود',
+  'car_dealer': 'معرض سيارات',
+  'car_repair': 'ورشة سيارات',
+  'car_wash': 'مغسلة سيارات',
+  
+  // المطاعم والمقاهي
+  'restaurant': 'مطعم',
+  'cafe': 'مقهى',
+  'bar': 'مقهى',
+  'food': 'مطعم',
+  'meal_delivery': 'توصيل طعام',
+  'meal_takeaway': 'مطعم وجبات',
+  
+  // الخدمات
+  'bank': 'بنك',
+  'atm': 'صراف آلي',
+  'post_office': 'بريد',
+  'police': 'شرطة',
+  'fire_station': 'إطفاء',
+  'embassy': 'سفارة',
+  'local_government_office': 'دائرة حكومية',
+  'courthouse': 'محكمة',
+  'city_hall': 'بلدية',
+  
+  // الصحة واللياقة
+  'doctor': 'عيادة',
+  'dentist': 'عيادة أسنان',
+  'physiotherapist': 'علاج طبيعي',
+  'gym': 'نادي رياضي',
+  'spa': 'سبا',
+  'beauty_salon': 'صالون تجميل',
+  'hair_care': 'صالون حلاقة',
+  
+  // السكن والإقامة
+  'lodging': 'فندق',
+  'hotel': 'فندق',
+  'motel': 'فندق',
+  
+  // الترفيه
+  'movie_theater': 'سينما',
+  'night_club': 'نادي ليلي',
+  'amusement_park': 'ملاهي',
+  'bowling_alley': 'بولينج',
+  'casino': 'كازينو',
+  'zoo': 'حديقة حيوان',
+  'aquarium': 'أكواريوم',
+  
+  // الديني
+  'mosque': 'مسجد',
+  'church': 'كنيسة',
+  'hindu_temple': 'معبد',
+  'place_of_worship': 'مكان عبادة',
+  
+  // المباني
+  'premise': 'مبنى',
+  'subpremise': 'شقة/وحدة',
+  'building': 'مبنى',
+  'room': 'غرفة',
+  'floor': 'طابق',
+  
+  // أخرى
+  'parking': 'موقف سيارات',
+  'transit_station': 'محطة',
+  'real_estate_agency': 'عقارات',
+  'travel_agency': 'وكالة سفر',
+  'insurance_agency': 'تأمين',
+  'lawyer': 'محامي',
+  'accounting': 'محاسب',
+  'moving_company': 'نقل عفش',
+  'storage': 'تخزين',
+  'laundry': 'مغسلة',
+  'library': 'مكتبة',
+  'cemetery': 'مقبرة',
+  'campground': 'مخيم',
+  'rv_park': 'موقف كرفانات',
+};
+
+/**
+ * الحصول على نوع المكان بالعربي من أنواع Google
+ */
+const getPlaceTypeArabic = (types: string[]): { type: string; arabicType: string } => {
+  // ترتيب الأولوية: نبحث عن النوع الأكثر تحديداً أولاً
+  const priorityOrder = [
+    // محلات ومطاعم (أولوية عالية)
+    'restaurant', 'cafe', 'store', 'shopping_mall', 'supermarket', 
+    'pharmacy', 'gas_station', 'bank', 'hospital', 'hotel',
+    'mosque', 'school', 'university', 'airport', 'stadium',
+    // أحياء وشوارع
+    'sublocality', 'sublocality_level_1', 'neighborhood', 'route',
+    // مدن ومناطق
+    'locality', 'administrative_area_level_2', 'administrative_area_level_1',
+    // معالم
+    'point_of_interest', 'establishment',
+  ];
+  
+  for (const priority of priorityOrder) {
+    if (types.includes(priority) && PLACE_TYPE_ARABIC_MAP[priority]) {
+      return { type: priority, arabicType: PLACE_TYPE_ARABIC_MAP[priority] };
+    }
+  }
+  
+  // البحث في كل الأنواع
+  for (const type of types) {
+    if (PLACE_TYPE_ARABIC_MAP[type]) {
+      return { type, arabicType: PLACE_TYPE_ARABIC_MAP[type] };
+    }
+  }
+  
+  // نوع افتراضي
+  return { type: types[0] || 'unknown', arabicType: '' };
+};
 
 // مدن سعودية افتراضية للـ fallback
 export const DEFAULT_SAUDI_CITIES = [
@@ -179,6 +349,9 @@ export const searchCities = async (
       const region = parts.length > 1 ? parts[0] : undefined;
       const country = parts.length > 0 ? parts[parts.length - 1] : 'المملكة العربية السعودية';
 
+      // استخراج نوع المكان بالعربي
+      const { type: placeType, arabicType: placeTypeArabic } = getPlaceTypeArabic(prediction.types || []);
+
       return {
         placeId: prediction.place_id,
         name: mainText,
@@ -186,6 +359,8 @@ export const searchCities = async (
         city: mainText,
         region,
         country,
+        placeType,
+        placeTypeArabic,
       };
     });
 
@@ -355,6 +530,9 @@ export const searchPlaces = async (
       const region = parts.length > 1 ? parts[0] : undefined;
       const country = parts.length > 0 ? parts[parts.length - 1] : 'المملكة العربية السعودية';
 
+      // استخراج نوع المكان بالعربي
+      const { type: placeType, arabicType: placeTypeArabic } = getPlaceTypeArabic(prediction.types || []);
+
       return {
         placeId: prediction.place_id,
         name: mainText,
@@ -362,6 +540,8 @@ export const searchPlaces = async (
         city: mainText,
         region,
         country,
+        placeType,
+        placeTypeArabic,
       };
     });
 

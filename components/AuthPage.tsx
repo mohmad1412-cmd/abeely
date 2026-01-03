@@ -9,7 +9,9 @@ import {
   ChevronLeft,
   Shield,
   AlertCircle,
-  X
+  X,
+  FileText,
+  Lock
 } from 'lucide-react';
 import {
   sendOTP,
@@ -102,6 +104,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'error' | 'info'>('error');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   // Refs للتركيز التلقائي
   const phoneInputRef = React.useRef<HTMLInputElement>(null);
@@ -321,7 +325,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
 
       {/* Content */}
       <LayoutGroup>
-      <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 py-6 sm:py-10">
+      <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 py-6 sm:py-10 overflow-hidden">
         {/* Logo - Animates position between steps - Responsive for 6.3" screens */}
         <motion.div
           layout
@@ -384,7 +388,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
         {/* Content Area */}
         <motion.div
           layout
-          className="w-full max-w-sm"
+          className="w-full max-w-sm min-w-0 overflow-hidden"
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ 
@@ -408,8 +412,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 className="space-y-5"
               >
                 {/* Phone Input Card - تصميم متناسق */}
-                <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 shadow-xl">
-                  <div className="flex items-center gap-3" dir="ltr">
+                <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 shadow-xl overflow-hidden">
+                  <div className="flex items-center gap-3 w-full" dir="ltr">
                     <div className="bg-white/20 rounded-xl px-4 py-3 text-white font-bold text-lg shrink-0 border border-white/10">
                       966+
                     </div>
@@ -466,6 +470,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   <User size={16} />
                   <span>تصفح كضيف</span>
                 </button>
+
+                {/* Terms & Privacy Notice */}
+                <p className="text-white/50 text-[10px] text-center leading-relaxed mt-2">
+                  بتسجيل دخولك، أنت توافق على{' '}
+                  <button 
+                    onClick={() => setShowTermsModal(true)}
+                    className="text-white/80 underline underline-offset-2 hover:text-white transition-colors"
+                  >
+                    شروط الاستخدام
+                  </button>
+                  {' '}و{' '}
+                  <button 
+                    onClick={() => setShowPrivacyModal(true)}
+                    className="text-white/80 underline underline-offset-2 hover:text-white transition-colors"
+                  >
+                    سياسة الخصوصية
+                  </button>
+                </p>
 
                 {/* ============================================
                     خيارات الدخول المخفية مؤقتاً - يمكن إعادتها لاحقاً
@@ -525,7 +547,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 transition={{ type: "spring", stiffness: 400, damping: 35 }}
                 className="space-y-3 sm:space-y-4"
               >
-                <div className="relative flex items-center gap-2" dir="ltr">
+                <div className="relative flex items-center gap-2 w-full" dir="ltr">
                   <div className="text-white/70 font-bold text-base sm:text-lg shrink-0">
                     +966
                   </div>
@@ -543,7 +565,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                     }}
                     placeholder="0501234567"
                     dir="ltr"
-                    className="flex-1 py-3 sm:py-4 px-3 sm:px-4 rounded-xl sm:rounded-2xl bg-white/10 border-2 border-white/20 text-white text-left text-lg sm:text-xl font-medium placeholder:text-white/40 placeholder:text-sm sm:placeholder:text-base focus:border-white/50 outline-none transition-all"
+                    className="flex-1 min-w-0 py-3 sm:py-4 px-3 sm:px-4 rounded-xl sm:rounded-2xl bg-white/10 border-2 border-white/20 text-white text-left text-lg sm:text-xl font-medium placeholder:text-white/40 placeholder:text-sm sm:placeholder:text-base focus:border-white/50 outline-none transition-all"
                     maxLength={10}
                   />
                 </div>
@@ -566,6 +588,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   <span>إرسال رمز التحقق</span>
                   <ChevronLeft size={18} />
                 </button>
+
+                {/* Terms & Privacy Notice */}
+                <p className="text-white/60 text-[10px] sm:text-xs text-center leading-relaxed">
+                  بتسجيل دخولك، أنت توافق على{' '}
+                  <button 
+                    onClick={() => setShowTermsModal(true)}
+                    className="text-white/90 underline underline-offset-2 hover:text-white transition-colors"
+                  >
+                    شروط الاستخدام
+                  </button>
+                  {' '}و{' '}
+                  <button 
+                    onClick={() => setShowPrivacyModal(true)}
+                    className="text-white/90 underline underline-offset-2 hover:text-white transition-colors"
+                  >
+                    سياسة الخصوصية
+                  </button>
+                </p>
               </motion.div>
             )}
 
@@ -853,6 +893,228 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
           <span>بياناتك محمية ومشفرة بالكامل</span>
         </div>
       </div>
+
+      {/* Terms of Service Modal */}
+      <AnimatePresence>
+        {showTermsModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center"
+          >
+            <div 
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowTermsModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 100 }}
+              transition={{ type: "spring", damping: 30, stiffness: 400 }}
+              className="relative w-full max-w-lg bg-card rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col overflow-hidden"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <FileText size={20} className="text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-foreground">شروط الاستخدام</h3>
+                    <p className="text-xs text-muted-foreground">آخر تحديث: يناير 2026</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowTermsModal(false)}
+                  className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
+                >
+                  <X size={18} className="text-muted-foreground" />
+                </button>
+              </div>
+              
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 text-sm text-foreground leading-relaxed">
+                <section>
+                  <h4 className="font-bold text-base mb-2">1. القبول بالشروط</h4>
+                  <p className="text-muted-foreground">
+                    باستخدامك لمنصة أبيلي، فإنك توافق على الالتزام بهذه الشروط والأحكام. إذا كنت لا توافق على أي جزء من هذه الشروط، يُرجى عدم استخدام المنصة.
+                  </p>
+                </section>
+                
+                <section>
+                  <h4 className="font-bold text-base mb-2">2. وصف الخدمة</h4>
+                  <p className="text-muted-foreground">
+                    أبيلي هي منصة سوق عكسي تربط بين طالبي الخدمات ومقدميها. نحن نوفر البنية التحتية للتواصل ولا نتدخل في التفاصيل التعاقدية بين الأطراف.
+                  </p>
+                </section>
+                
+                <section>
+                  <h4 className="font-bold text-base mb-2">3. مسؤوليات المستخدم</h4>
+                  <ul className="text-muted-foreground space-y-2 list-disc list-inside">
+                    <li>تقديم معلومات صحيحة ودقيقة</li>
+                    <li>عدم استخدام المنصة لأغراض غير قانونية</li>
+                    <li>احترام الآخرين والتعامل بأخلاق مهنية</li>
+                    <li>الحفاظ على سرية بيانات الحساب</li>
+                  </ul>
+                </section>
+                
+                <section>
+                  <h4 className="font-bold text-base mb-2">4. حدود المسؤولية</h4>
+                  <p className="text-muted-foreground">
+                    أبيلي ليست مسؤولة عن جودة الخدمات المقدمة من مقدمي الخدمات، ولا عن أي نزاعات تنشأ بين المستخدمين. نحن نوفر أدوات للتقييم والإبلاغ لضمان تجربة آمنة.
+                  </p>
+                </section>
+                
+                <section>
+                  <h4 className="font-bold text-base mb-2">5. الدفع والعمولات</h4>
+                  <p className="text-muted-foreground">
+                    جميع المعاملات المالية تتم مباشرة بين المستخدمين. قد تفرض أبيلي رسوم خدمة على بعض المعاملات، وسيتم الإعلان عنها بوضوح قبل إتمام أي عملية.
+                  </p>
+                </section>
+                
+                <section>
+                  <h4 className="font-bold text-base mb-2">6. إنهاء الحساب</h4>
+                  <p className="text-muted-foreground">
+                    يحق لنا تعليق أو إنهاء حسابك في حال مخالفة هذه الشروط، مع إشعارك بالسبب عند الإمكان.
+                  </p>
+                </section>
+                
+                <section>
+                  <h4 className="font-bold text-base mb-2">7. التعديلات</h4>
+                  <p className="text-muted-foreground">
+                    نحتفظ بحق تعديل هذه الشروط في أي وقت. سيتم إشعارك بأي تغييرات جوهرية عبر البريد الإلكتروني أو إشعار داخل التطبيق.
+                  </p>
+                </section>
+              </div>
+              
+              {/* Footer */}
+              <div className="p-4 border-t border-border shrink-0">
+                <button
+                  onClick={() => setShowTermsModal(false)}
+                  className="w-full py-3 rounded-xl bg-primary text-white font-bold hover:bg-primary/90 transition-colors"
+                >
+                  فهمت، موافق
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Privacy Policy Modal */}
+      <AnimatePresence>
+        {showPrivacyModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center"
+          >
+            <div 
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowPrivacyModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 100 }}
+              transition={{ type: "spring", damping: 30, stiffness: 400 }}
+              className="relative w-full max-w-lg bg-card rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col overflow-hidden"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Lock size={20} className="text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-foreground">سياسة الخصوصية</h3>
+                    <p className="text-xs text-muted-foreground">آخر تحديث: يناير 2026</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPrivacyModal(false)}
+                  className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
+                >
+                  <X size={18} className="text-muted-foreground" />
+                </button>
+              </div>
+              
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 text-sm text-foreground leading-relaxed">
+                <section>
+                  <h4 className="font-bold text-base mb-2">1. البيانات التي نجمعها</h4>
+                  <ul className="text-muted-foreground space-y-2 list-disc list-inside">
+                    <li>معلومات الحساب: الاسم، رقم الجوال، البريد الإلكتروني</li>
+                    <li>بيانات الاستخدام: سجل الطلبات والعروض</li>
+                    <li>معلومات الجهاز: نوع الجهاز، نظام التشغيل</li>
+                    <li>الموقع الجغرافي: عند الموافقة فقط</li>
+                  </ul>
+                </section>
+                
+                <section>
+                  <h4 className="font-bold text-base mb-2">2. كيف نستخدم بياناتك</h4>
+                  <ul className="text-muted-foreground space-y-2 list-disc list-inside">
+                    <li>تقديم خدمات المنصة وتحسينها</li>
+                    <li>التواصل معك بخصوص حسابك</li>
+                    <li>إرسال إشعارات عن العروض والطلبات</li>
+                    <li>تحليل الاستخدام لتطوير المنصة</li>
+                  </ul>
+                </section>
+                
+                <section>
+                  <h4 className="font-bold text-base mb-2">3. مشاركة البيانات</h4>
+                  <p className="text-muted-foreground">
+                    لا نبيع بياناتك لأطراف ثالثة. قد نشارك معلومات محدودة مع مقدمي الخدمات الضروريين لتشغيل المنصة (مثل خدمات الرسائل النصية).
+                  </p>
+                </section>
+                
+                <section>
+                  <h4 className="font-bold text-base mb-2">4. حماية البيانات</h4>
+                  <p className="text-muted-foreground">
+                    نستخدم تقنيات تشفير متقدمة لحماية بياناتك. جميع الاتصالات مشفرة بتقنية SSL/TLS، ونخزن البيانات في خوادم آمنة.
+                  </p>
+                </section>
+                
+                <section>
+                  <h4 className="font-bold text-base mb-2">5. حقوقك</h4>
+                  <ul className="text-muted-foreground space-y-2 list-disc list-inside">
+                    <li>الوصول إلى بياناتك الشخصية</li>
+                    <li>تصحيح البيانات غير الدقيقة</li>
+                    <li>طلب حذف حسابك وبياناتك</li>
+                    <li>الانسحاب من الرسائل التسويقية</li>
+                  </ul>
+                </section>
+                
+                <section>
+                  <h4 className="font-bold text-base mb-2">6. ملفات تعريف الارتباط</h4>
+                  <p className="text-muted-foreground">
+                    نستخدم ملفات تعريف الارتباط لتحسين تجربتك. يمكنك التحكم في إعدادات الكوكيز من متصفحك، لكن قد يؤثر ذلك على بعض الوظائف.
+                  </p>
+                </section>
+                
+                <section>
+                  <h4 className="font-bold text-base mb-2">7. التواصل معنا</h4>
+                  <p className="text-muted-foreground">
+                    لأي استفسارات حول الخصوصية، تواصل معنا عبر البريد الإلكتروني: privacy@abily.sa
+                  </p>
+                </section>
+              </div>
+              
+              {/* Footer */}
+              <div className="p-4 border-t border-border shrink-0">
+                <button
+                  onClick={() => setShowPrivacyModal(false)}
+                  className="w-full py-3 rounded-xl bg-primary text-white font-bold hover:bg-primary/90 transition-colors"
+                >
+                  فهمت، موافق
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

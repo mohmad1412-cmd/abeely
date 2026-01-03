@@ -1303,32 +1303,35 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   </motion.div>
                 )}
 
-                {/* Title Overlay - Above Image with Simple Glassmorphism */}
+                {/* Title Overlay - Pill-shaped design matching UnifiedHeader */}
                 <motion.div
                   layoutId={`title-${request.id}`}
                   initial={{ opacity: 1 }}
                   animate={{ opacity: isScrolled ? 0 : 1 }}
                   transition={{ duration: 0.3 }}
-                  className="absolute top-4 right-4 left-4 z-20 flex items-center gap-2 px-4 py-2.5 rounded-xl"
-                  style={{ 
-                    background: 'rgba(255, 255, 255, 0.85)',
-                    backdropFilter: 'blur(12px)',
-                    WebkitBackdropFilter: 'blur(12px)',
-                    boxShadow: '0 2px 12px rgba(0, 0, 0, 0.1)',
-                  }}
+                  className="absolute top-4 right-4 left-4 z-20 px-4 h-10 flex items-center gap-2 rounded-full bg-card/95 backdrop-blur-xl border border-border shadow-lg"
                 >
-                  <h1 className="flex-1 text-base font-bold text-foreground truncate">{request.title}</h1>
+                  <h1 className="flex-1 text-sm font-bold text-foreground truncate">{request.title}</h1>
                   
-                  {/* Three-dot Menu Button */}
-                  <DropdownMenu
-                    trigger={
-                      <button className="p-1.5 rounded-lg hover:bg-black/5 transition-colors">
-                        <MoreVertical size={20} strokeWidth={2.5} className="text-muted-foreground" />
-                      </button>
-                    }
-                    items={dropdownItems}
-                    align="left"
-                  />
+                  {/* Edit Button for owner, Menu for others */}
+                  {isMyRequest ? (
+                    <button 
+                      onClick={handleEditRequest}
+                      className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0"
+                    >
+                      <Edit size={18} strokeWidth={2.5} className="text-muted-foreground" />
+                    </button>
+                  ) : (
+                    <DropdownMenu
+                      trigger={
+                        <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0">
+                          <MoreVertical size={18} strokeWidth={2.5} className="text-muted-foreground" />
+                        </button>
+                      }
+                      items={dropdownItems}
+                      align="left"
+                    />
+                  )}
                 </motion.div>
 
                 {/* Translation Toggle - Below Title */}
@@ -1433,32 +1436,35 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   </motion.div>
                 )}
                 
-                {/* Title Overlay - Same Simple Glassmorphism Style as With Images */}
+                {/* Title Overlay - Pill-shaped design matching UnifiedHeader */}
                 <motion.div
                   layoutId={`title-${request.id}`}
                   initial={{ opacity: 1 }}
                   animate={{ opacity: isScrolled ? 0 : 1 }}
                   transition={{ duration: 0.3 }}
-                  className="absolute top-4 right-4 left-4 z-20 flex items-center gap-2 px-4 py-2.5 rounded-xl"
-                  style={{ 
-                    background: 'rgba(255, 255, 255, 0.85)',
-                    backdropFilter: 'blur(12px)',
-                    WebkitBackdropFilter: 'blur(12px)',
-                    boxShadow: '0 2px 12px rgba(0, 0, 0, 0.1)',
-                  }}
+                  className="absolute top-4 right-4 left-4 z-20 px-4 h-10 flex items-center gap-2 rounded-full bg-card/95 backdrop-blur-xl border border-border shadow-lg"
                 >
-                  <h1 className="flex-1 text-base font-bold text-foreground truncate">{request.title}</h1>
+                  <h1 className="flex-1 text-sm font-bold text-foreground truncate">{request.title}</h1>
                   
-                  {/* Three-dot Menu Button */}
-                  <DropdownMenu
-                    trigger={
-                      <button className="p-1.5 rounded-lg hover:bg-black/5 transition-colors">
-                        <MoreVertical size={20} strokeWidth={2.5} className="text-muted-foreground" />
-                      </button>
-                    }
-                    items={dropdownItems}
-                    align="left"
-                  />
+                  {/* Edit Button for owner, Menu for others */}
+                  {isMyRequest ? (
+                    <button 
+                      onClick={handleEditRequest}
+                      className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0"
+                    >
+                      <Edit size={18} strokeWidth={2.5} className="text-muted-foreground" />
+                    </button>
+                  ) : (
+                    <DropdownMenu
+                      trigger={
+                        <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0">
+                          <MoreVertical size={18} strokeWidth={2.5} className="text-muted-foreground" />
+                        </button>
+                      }
+                      items={dropdownItems}
+                      align="left"
+                    />
+                  )}
                 </motion.div>
 
                 {/* Translation Toggle - Below Title (No Images State) */}
@@ -1480,7 +1486,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 <div>
                   {/* Category Badges */}
                   {mode === "offers" && request.categories && request.categories.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap justify-start gap-2 w-full">
                       {request.categories.map((c) => {
                         const category = AVAILABLE_CATEGORIES.find(cat => cat.id === c);
                         return (
@@ -2222,7 +2228,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     </div>
 
                     {/* Floating Label Inputs Row */}
-                    <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="grid grid-cols-2 gap-3 mb-4">
                       {/* Price Field */}
                       <motion.div 
                         className="relative"
@@ -2232,6 +2238,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         <input
                           id="price"
                           type="number"
+                          min="0"
+                          step="0.01"
                           className={`peer w-full h-11 rounded-lg border-2 bg-background px-3 pt-3 text-sm outline-none transition-all appearance-none text-right ${
                             shakingFields.price 
                               ? "border-red-500" 
@@ -2242,9 +2250,13 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           placeholder=""
                           value={offerPrice}
                           onChange={(e) => {
-                            setOfferPrice(e.target.value);
-                            if (shakingFields.price && e.target.value) {
-                              setShakingFields(prev => ({ ...prev, price: false }));
+                            const value = e.target.value;
+                            // Allow empty string or valid numbers
+                            if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                              setOfferPrice(value);
+                              if (shakingFields.price && value) {
+                                setShakingFields(prev => ({ ...prev, price: false }));
+                              }
                             }
                           }}
                           onFocus={() => setIsPriceFocused(true)}
@@ -2296,25 +2308,20 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         </label>
                       </div>
 
-                      {/* City Field - Dropdown */}
-                      <div className="mb-4">
-                        <CityAutocomplete
-                          value={offerCity}
-                          onChange={(val) => setOfferCity(val)}
-                          placeholder="اختر المدينة..."
-                          label="المدينة"
-                          showRemoteOption={true}
-                          showGPSOption={true}
-                          showMapOption={true}
-                          onOpenMap={() => {
-                            if (navigator.vibrate) navigator.vibrate(10);
-                            // فتح Google Maps في نافذة جديدة
-                            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=المملكة+العربية+السعودية`;
-                            window.open(mapsUrl, '_blank');
-                          }}
-                          showAllCitiesOption={true}
-                        />
-                      </div>
+                    </div>
+
+                    {/* City Field - Dropdown - On its own row */}
+                    <div className="mb-4">
+                      <CityAutocomplete
+                        value={offerCity}
+                        onChange={(val) => setOfferCity(val)}
+                        placeholder="اختر المدينة..."
+                        label="الموقع"
+                        showRemoteOption={true}
+                        showGPSOption={true}
+                        showMapOption={true}
+                        showAllCitiesOption={true}
+                      />
                     </div>
 
                     {/* Offer Title Field */}
