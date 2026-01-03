@@ -17,7 +17,7 @@ import { FaHandPointUp } from "react-icons/fa";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { FloatingFilterIsland } from "./ui/FloatingFilterIsland";
-import { UnifiedHeader } from "./ui/UnifiedHeader";
+import { AVAILABLE_CATEGORIES } from "../data";
 
 type RequestFilter = "active" | "approved" | "all" | "completed";
 type SortOrder = "updatedAt" | "createdAt";
@@ -146,18 +146,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
 
   // Filter configurations for FloatingFilterIsland
   const filterConfigs = useMemo(() => [
-    {
-      id: "sortOrder",
-      icon: <ArrowUpDown size={14} />,
-      options: [
-        { value: "createdAt", label: "وقت الإنشاء", icon: <Calendar size={12} /> },
-        { value: "updatedAt", label: "آخر تحديث", icon: <Clock size={12} /> },
-      ],
-      value: sortOrder,
-      onChange: (value: string) => setSortOrder(value as SortOrder),
-      getLabel: () => sortOrder === "updatedAt" ? "آخر تحديث" : "تاريخ الإنشاء",
-      showCount: false,
-    },
+    // Removed sortOrder filter - hiding "تاريخ التقديم" and "تاريخ الإنشاء" options
     {
       id: "reqFilter",
       icon: <FileText size={14} />,
@@ -165,30 +154,30 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
         { value: "all", label: "كل طلباتي", count: counts.all },
         { value: "active", label: "طلباتي النشطة", count: counts.active },
         { value: "approved", label: "طلباتي المعتمدة", count: counts.approved },
-        { value: "completed", label: "المكتملة والمؤرشفة", count: counts.completed },
+        { value: "completed", label: "طلباتي المكتملة والمؤرشفة", count: counts.completed },
       ],
       value: reqFilter,
       onChange: (value: string) => setReqFilter(value as RequestFilter),
       getLabel: () => {
         switch (reqFilter) {
           case "all": return "كل طلباتي";
-          case "active": return "النشطة";
-          case "approved": return "المعتمدة";
-          case "completed": return "المكتملة";
+          case "active": return "طلباتي النشطة";
+          case "approved": return "طلباتي المعتمدة";
+          case "completed": return "طلباتي المكتملة والمؤرشفة";
         }
       },
       showCount: true,
     },
-  ], [reqFilter, sortOrder, counts]);
+  ], [reqFilter, counts]);
 
   const getStatusConfig = (req: Request) => {
     if (req.status === 'assigned' || req.status === 'completed') {
-      return { text: "تم اعتماد عرض", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400", icon: "✅" };
+      return { text: "تم اعتماد عرض", color: "bg-primary/15 text-primary", icon: "✅" };
     }
     if (req.status === 'archived') {
       return { text: "مؤرشف", color: "bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400", icon: "📦" };
     }
-    return { text: "نشط", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400", icon: "🟢" };
+    return { text: "نشط", color: "bg-primary/15 text-primary", icon: "🟢" };
   };
 
   return (
@@ -201,6 +190,21 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
         ref={headerRef}
         className="sticky top-0 z-[60] overflow-visible"
       >
+        {/* طبقة متدرجة خلف عناصر الهيدر - تعزل الكروت */}
+        <div
+          className="absolute left-0 right-0 pointer-events-none"
+          style={{
+            top: '-50px',
+            height: 'calc(100% + 100px)',
+            background: `linear-gradient(to bottom,
+              hsl(var(--background)) 0%,
+              hsl(var(--background)) 60%,
+              hsl(var(--background) / 0.8) 75%,
+              hsl(var(--background) / 0) 100%
+            )`,
+            zIndex: -1,
+          }}
+        />
         {/* Container for header and filter island - fixed compact size */}
         <div 
           className="flex flex-col overflow-visible origin-top"
@@ -208,40 +212,6 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
             transform: 'scale(0.92) translateY(4px)',
           }}
         >
-          {/* Main Header Content */}
-          <div className="px-4">
-            <UnifiedHeader
-              mode="requests"
-              toggleMode={() => {}}
-              isModeSwitching={false}
-              unreadCount={0}
-              hasUnreadMessages={false}
-              user={user}
-              setView={() => {}}
-              setPreviousView={() => {}}
-              titleKey={reqFilter === "all" ? 0 : reqFilter === "active" ? 1 : reqFilter === "approved" ? 2 : 3}
-              notifications={[]}
-              onMarkAsRead={() => {}}
-              onNotificationClick={() => {}}
-              onClearAll={() => {}}
-              onSignOut={onSignOut || (() => {})}
-              currentView="my-requests"
-              transparent={true}
-              hideActionButtons={true}
-              onNavigateToProfile={onNavigateToProfile}
-              onNavigateToSettings={onNavigateToSettings}
-              isGuest={isGuest}
-              isDarkMode={isDarkMode}
-              toggleTheme={toggleTheme}
-              onOpenLanguagePopup={onOpenLanguagePopup}
-              title="طلباتي"
-              isScrolled={!isHeaderCompressed}
-              showCreateRequestButton={true}
-              onCreateRequest={onCreateRequest}
-              isActive={isActive}
-            />
-          </div>
-          
           {/* Filter Island - inside scaled container */}
           <FloatingFilterIsland 
             filters={filterConfigs}
@@ -256,12 +226,12 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
       <div className="px-4 pb-24">
         <div key={reqFilter} className="grid grid-cols-1 gap-6 min-h-[100px] pt-2">
           {filteredRequests.length === 0 && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-8">
-              <motion.div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-brand flex items-center justify-center" animate={{ scale: [1, 1.05, 1], rotate: [0, 3, -3, 0] }} transition={{ duration: 2, repeat: Infinity }}>
+            <div className="text-center py-8">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-brand flex items-center justify-center">
                 <span className="text-xl font-black text-white">أ</span>
-              </motion.div>
+              </div>
               <p className="text-sm text-muted-foreground">لا توجد طلبات</p>
-            </motion.div>
+            </div>
           )}
           {filteredRequests.map((req, index) => {
             const requestOffers = receivedOffersMap.get(req.id) || [];
@@ -273,14 +243,8 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
             return (
               <motion.div
                 key={req.id}
-                initial={{ opacity: 0, y: 20 }}
+                initial={false}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ 
-                  type: "spring", 
-                  stiffness: 400, 
-                  damping: 30,
-                  delay: index < 9 ? index * 0.03 : 0
-                }}
                 whileHover={{ y: -8, scale: 1.02 }}
                 onClick={() => onSelectRequest(req)}
                 className="bg-card border border-border rounded-2xl p-4 pt-5 transition-colors cursor-pointer relative shadow-sm group text-right"
@@ -344,7 +308,11 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                   {req.categories && req.categories.length > 0 && (
                     <span className="flex items-center gap-1">
                       <Briefcase size={14} />
-                      {req.categories[0]}
+                      {(() => {
+                        const catLabel = req.categories[0];
+                        const categoryObj = AVAILABLE_CATEGORIES.find(c => c.label === catLabel || c.id === catLabel);
+                        return categoryObj?.label || catLabel;
+                      })()}
                     </span>
                   )}
                 </div>
@@ -378,7 +346,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                         </span>
                       )}
                       {acceptedOffer && (
-                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400">
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/15 text-primary">
                           ✅ عرض معتمد
                         </span>
                       )}
@@ -429,7 +397,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                 
                 {requestOffers.length === 0 && req.status === 'active' && (
                   <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
-                    <span className="text-amber-500">⏳</span>
+                    <span className="text-accent">⏳</span>
                     <span>بانتظار العروض...</span>
                   </div>
                 )}

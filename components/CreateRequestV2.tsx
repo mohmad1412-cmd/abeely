@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import ReactDOM from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MapPin,
@@ -29,6 +30,7 @@ import {
   ZoomIn,
   Trash2,
   Download,
+  AlertCircle,
 } from "lucide-react";
 import { findApproximateImages } from "../services/geminiService";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
@@ -43,6 +45,101 @@ import {
 import { VoiceProcessingStatus } from "./GlobalFloatingOrb";
 import { CityAutocomplete } from "./ui/CityAutocomplete";
 import { CityResult } from "../services/placesService";
+import { verifyGuestPhone, confirmGuestPhone, getCurrentUser } from "../services/authService";
+
+// ============================================
+// Submit Button with Shake Effect
+// ============================================
+interface SubmitButtonWithShakeProps {
+  canSubmit: boolean;
+  isSubmitting: boolean;
+  isGeneratingTitle: boolean;
+  submitSuccess: boolean;
+  isGuest: boolean;
+  editingRequestId?: string | null;
+  onGuestVerification: () => void;
+  onSubmit: () => Promise<void>;
+  onGoToRequest?: (requestId?: string) => void;
+}
+
+const SubmitButtonWithShake: React.FC<SubmitButtonWithShakeProps> = ({
+  canSubmit,
+  isSubmitting,
+  isGeneratingTitle,
+  submitSuccess,
+  isGuest,
+  editingRequestId,
+  onGuestVerification,
+  onSubmit,
+  onGoToRequest,
+}) => {
+  const [isShaking, setIsShaking] = useState(false);
+
+  const handleClick = async () => {
+    if (!canSubmit && !isSubmitting && !isGeneratingTitle) {
+      // زر معطل - إضافة اهتزاز وحد أحمر
+      setIsShaking(true);
+      if (navigator.vibrate) {
+        navigator.vibrate([50, 30, 50, 30, 50]);
+      }
+      setTimeout(() => setIsShaking(false), 500);
+      return;
+    }
+
+    if (!canSubmit) return;
+    
+    // Check if user is guest - require phone verification and terms acceptance
+    if (isGuest && !editingRequestId) {
+      onGuestVerification();
+      return;
+    }
+    
+    await onSubmit();
+  };
+
+  return (
+    <motion.button
+      layout
+      onClick={handleClick}
+      disabled={!canSubmit || isSubmitting || isGeneratingTitle}
+      animate={isShaking ? {
+        x: [0, -10, 10, -10, 10, 0],
+        transition: { duration: 0.5 }
+      } : {}}
+      className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg ${
+        isGeneratingTitle
+          ? 'bg-accent/20 text-accent-foreground border-2 border-accent/30 cursor-wait shadow-none'
+          : canSubmit && !isSubmitting
+          ? 'bg-primary text-white hover:bg-primary/90 shadow-primary/30'
+          : isShaking
+          ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none border-2 border-red-500'
+          : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none'
+      }`}
+    >
+      {isGeneratingTitle ? (
+        <>
+          <Loader2 size={20} className="animate-spin" />
+          <span>جاري تحليل الوصف وإنشاء العنوان...</span>
+        </>
+      ) : isSubmitting ? (
+        <>
+          <Loader2 size={20} className="animate-spin" />
+          <span>جاري الإرسال...</span>
+        </>
+      ) : submitSuccess ? (
+        <>
+          <Check size={20} />
+          <span>تم الإرسال!</span>
+        </>
+      ) : (
+        <>
+          <span>أرسل الطلب الآن</span>
+          <ChevronLeft size={20} />
+        </>
+      )}
+    </motion.button>
+  );
+};
 
 // ============================================
 // Types
@@ -121,14 +218,27 @@ const extractInfoFromMessage = async (
       console.warn("⚠️ Anthropic API doesn't support audio, audio blob will be ignored");
     }
     
-    const prompt = `أنت مساعد ذكي في منصة "أبيلي" لطلب الخدمات. تفهم اللهجة السعودية والعربية الفصحى.
+    const prompt = `أنت مساعد ذكي في منصة "أبيلي" للطلبات. تفهم اللهجة السعودية والعربية الفصحى.
 
 ## تنبيه مهم: ${isFirstInteraction ? 'هذه أول رسالة من العميل' : 'هذه رسالة متابعة (لا تكرر الترحيب!)'}
+
+## مهم جداً جداً - فهم اللهجة السعودية:
+### كلمات لها معاني خاصة:
+- "جيب" + منتج (سيارة/جوال/إلخ) = نوع سيارة SUV/دفع رباعي، وليس "اجلب لي"!
+  - "جيب لكزس" = سيارة لكزس من نوع SUV
+  - "جيب تويوتا" = لاند كروزر أو FJ أو برادو
+  - "أبي جيب" = أريد سيارة SUV
+- "جيب" لوحده (أمر) = اجلب (نادر في سياق السوق)
+
+### نوع الطلب:
+- شراء: ذكر منتج + سعر (مثل: "جيب لكزس بقيمة 300 ألف" = يريد شراء سيارة SUV لكزس)
+- بيع: "أبي أبيع" أو ذكر البيع
+- خدمة: يحتاج أحد يسوي له شي (تصليح، صيانة، تركيب، تنظيف، إلخ)
 
 ## مهم جداً - قواعد الفهم:
 1. لا تفترض أي شيء! إذا كانت الرسالة غير واضحة، اسأل للتوضيح
 2. افهم السياق الكامل قبل استخراج أي معلومات
-3. "أبي/أبغى/أريد" = يريد خدمة، ليس معلومات تقنية
+3. "أبي/أبغى/أريد" = يريد شيء (خدمة أو منتج)، ليس معلومات تقنية
 4. لا تنشئ حقول مخصصة إلا إذا ذكر العميل تفاصيل تقنية واضحة
 5. ركز على فهم: ماذا يريد؟ أين؟ متى؟ بكم？
 
@@ -142,17 +252,21 @@ const extractInfoFromMessage = async (
 ## كيف تتصرف:
 ${!currentData.description 
   ? `- الطلب فارغ. افهم ماذا يريد العميل بالضبط
-   - إذا الرسالة غامضة: اسأل "وش بالضبط تحتاج؟ صف لي الخدمة اللي تبيها"
+   - إذا الرسالة غامضة: اسأل "وش بالضبط تحتاج؟"
    - إذا واضحة: استخرج الوصف واسأل عن الموقع`
   : !currentData.location
   ? `- عندنا الوصف. نحتاج الموقع فقط
-   - اسأل: "وين موقعك؟ أو الخدمة عن بعد؟"`
+   - اسأل: "وين موقعك؟"`
   : `- الطلب مكتمل! أخبره بلطف أن طلبه جاهز ويضغط زر الإرسال الأخضر
    - إذا أراد إضافة تفاصيل، ساعده`}
 
 ## قواعد الاستخراج:
-- title: عنوان قصير وواضح (3-5 كلمات) يعبر عن الخدمة المطلوبة
-- description: وصف مهني للخدمة المطلوبة (لا تضف معلومات لم يذكرها)
+- title: عنوان قصير وواضح (3-5 كلمات) يعبر عن الطلب الفعلي
+  * للشراء: "شراء جيب لكزس" أو "طلب سيارة لكزس"
+  * للبيع: "بيع ايفون" 
+  * للخدمات: "تصليح مكيف" أو "طلب سباك"
+  * لا تستخدم كلمة "خدمة" إلا للخدمات الفعلية!
+- description: وصف مهني للطلب (لا تضف معلومات لم يذكرها)
 - location: المدينة فقط (الرياض، جدة، عن بعد، إلخ)
 - budget: فقط إذا ذكر رقم أو نطاق سعري
 - deliveryTime: فقط إذا ذكر وقت محدد
@@ -166,11 +280,14 @@ ${!currentData.description
 - تعقيد الأمور البسيطة
 - الفهم الحرفي للكلمات بدون سياق
 - الردود الطويلة والرسمية - كن مختصراً وودوداً
+- استخدام كلمة "خدمة" لطلبات الشراء أو البيع!
 
 ## أمثلة على الفهم الصحيح:
-- "أبي سباك" → طلب خدمة سباكة (ليس معلومات عن السباكة)
+- "جيب لكزس بقيمة 300 ألف" → شراء جيب لكزس (وليس "خدمة لكزس"!)
+- "أبي سباك" → طلب سباك
 - "أبي مصمم" → طلب مصمم جرافيك أو ديكور (اسأل للتوضيح)
-- "أبي أحد ينظف البيت" → طلب خدمة تنظيف منزلي
+- "أبي أحد ينظف البيت" → طلب تنظيف منزلي
+- "عندي ايفون أبي أبيعه" → بيع ايفون
 
 JSON فقط:
 {"title":null,"description":null,"location":null,"budget":null,"deliveryTime":null,"category":null,"customFields":[],"followUpQuestion":"سؤالك هنا"}`;
@@ -475,7 +592,7 @@ const GlowingField: React.FC<{
         isGlowing
           ? "border-primary shadow-[0_0_20px_rgba(30,150,140,0.4)] bg-primary/5"
           : isCompleted
-          ? "border-emerald-500 bg-card"
+          ? "border-primary bg-card"
           : isFocused
           ? "border-primary shadow-md bg-card"
           : "border-border bg-card"
@@ -488,10 +605,10 @@ const GlowingField: React.FC<{
         className="flex items-center gap-2 px-4 pt-3 pb-1 cursor-text"
         onClick={() => inputRef.current?.focus()}
       >
-        <span className={`${isGlowing ? "text-primary" : isCompleted ? "text-emerald-500" : "text-muted-foreground"}`}>
+        <span className={`${isGlowing ? "text-primary" : isCompleted ? "text-primary" : "text-muted-foreground"}`}>
           {icon}
         </span>
-        <span className={`text-sm font-medium ${isGlowing ? "text-primary" : isCompleted ? "text-emerald-500" : "text-muted-foreground"}`}>
+        <span className={`text-sm font-medium ${isGlowing ? "text-primary" : isCompleted ? "text-primary" : "text-muted-foreground"}`}>
           {label}
           {isRequired && (
             <AnimatePresence mode="wait">
@@ -504,7 +621,7 @@ const GlowingField: React.FC<{
                   transition={{ type: "spring", stiffness: 500, damping: 25 }}
                   className="inline-flex items-center justify-center mr-1"
                 >
-                  <Check size={14} className="text-emerald-500" />
+                  <Check size={14} className="text-primary" />
                 </motion.span>
               ) : (
                 <motion.span
@@ -927,6 +1044,29 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   
   // Show additional fields only when AI suggests them
   const [showAdditionalFields, setShowAdditionalFields] = useState(false);
+  
+  // ==========================================
+  // Optional Fields (Budget, Delivery, Attachments)
+  // ==========================================
+  const [isAttachmentsExpanded, setIsAttachmentsExpanded] = useState(false);
+  
+  // Budget fields (from - to)
+  const [budgetMin, setBudgetMin] = useState("");
+  const [budgetMax, setBudgetMax] = useState("");
+  
+  // Delivery time - selected preset or custom value
+  const [deliveryValue, setDeliveryValue] = useState("");
+  const [customDeliveryValue, setCustomDeliveryValue] = useState("");
+  
+  // Delivery time presets
+  const deliveryPresets = [
+    { value: "فوراً", label: "فوراً" },
+    { value: "يوم واحد", label: "يوم" },
+    { value: "يومين", label: "يومين" },
+    { value: "أسبوع", label: "أسبوع" },
+    { value: "شهر", label: "شهر" },
+    { value: "غير محدد", label: "غير محدد" },
+  ];
 
   // ==========================================
   // دالة لاستخراج القيم الحالية كـ snapshot
@@ -1004,24 +1144,38 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       setLocation(newLocation);
       
       // حساب قيم الحقول الإضافية
-      let budgetValue = "";
-      if (requestToEdit.budgetMin && requestToEdit.budgetMax) {
-        budgetValue = `${requestToEdit.budgetMin} - ${requestToEdit.budgetMax}`;
-      } else if (requestToEdit.budgetMin || requestToEdit.budgetMax) {
-        budgetValue = requestToEdit.budgetMin || requestToEdit.budgetMax || "";
+      const editBudgetMin = requestToEdit.budgetMin || "";
+      const editBudgetMax = requestToEdit.budgetMax || "";
+      let editBudgetValue = "";
+      if (editBudgetMin && editBudgetMax) {
+        editBudgetValue = `${editBudgetMin} - ${editBudgetMax}`;
+      } else if (editBudgetMin || editBudgetMax) {
+        editBudgetValue = editBudgetMin || editBudgetMax;
       }
       
-      const deliveryValue = requestToEdit.deliveryTimeFrom || "";
+      const editDeliveryValue = requestToEdit.deliveryTimeFrom || "";
       const categoryValue = requestToEdit.categories?.join("، ") || "";
       
-      // تعبئة الحقول الإضافية
+      // تعيين القيم في الـ state الجديد
+      if (editBudgetMin) setBudgetMin(editBudgetMin);
+      if (editBudgetMax) setBudgetMax(editBudgetMax);
+      
+      // Check if delivery value is a preset
+      const isPreset = ["فوراً", "يوم واحد", "يومين", "أسبوع", "شهر", "غير محدد"].includes(editDeliveryValue);
+      if (isPreset) {
+        setDeliveryValue(editDeliveryValue);
+      } else if (editDeliveryValue) {
+        setCustomDeliveryValue(editDeliveryValue);
+      }
+      
+      // تعبئة الحقول الإضافية (للتوافق مع الكود القديم)
       setAdditionalFields(prevFields => {
         return prevFields.map(field => {
-          if (field.id === "budget" && budgetValue) {
-            return { ...field, value: budgetValue, enabled: true };
+          if (field.id === "budget" && editBudgetValue) {
+            return { ...field, value: editBudgetValue, enabled: true };
           }
-          if (field.id === "deliveryTime" && deliveryValue) {
-            return { ...field, value: deliveryValue, enabled: true };
+          if (field.id === "deliveryTime" && editDeliveryValue) {
+            return { ...field, value: editDeliveryValue, enabled: true };
           }
           if (field.id === "category" && categoryValue) {
             return { ...field, value: categoryValue, enabled: true };
@@ -1031,7 +1185,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       });
       
       // إظهار الحقول الإضافية إذا كانت مفعّلة
-      if (budgetValue || deliveryValue || categoryValue) {
+      if (editBudgetValue || editDeliveryValue || categoryValue) {
         setShowAdditionalFields(true);
       }
       
@@ -1045,8 +1199,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         title: newTitle.trim(),
         description: newDescription.trim(),
         location: newLocation.trim(),
-        budget: budgetValue.trim(),
-        deliveryTime: deliveryValue.trim(),
+        budget: editBudgetValue.trim(),
+        deliveryTime: editDeliveryValue.trim(),
         category: categoryValue.trim(),
       });
     }
@@ -1091,6 +1245,36 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
+  
+  // Guest verification states
+  const [guestVerificationStep, setGuestVerificationStep] = useState<'none' | 'phone' | 'otp' | 'terms'>('none');
+  const [guestPhone, setGuestPhone] = useState("");
+  const [guestOTP, setGuestOTP] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [isSendingOTP, setIsSendingOTP] = useState(false);
+  const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
+  const [guestError, setGuestError] = useState<string | null>(null);
+  
+  // ترجمة رسائل الخطأ من Supabase للعربية
+  const translateAuthError = (error: string): string => {
+    const errorMap: Record<string, string> = {
+      'Token has expired or is invalid': 'انتهت صلاحية رمز التحقق. يرجى طلب رمز جديد.',
+      'Invalid OTP': 'رمز التحقق غير صحيح',
+      'OTP expired': 'انتهت صلاحية رمز التحقق',
+      'Phone number is invalid': 'رقم الجوال غير صحيح',
+      'Rate limit exceeded': 'تم تجاوز الحد المسموح. انتظر قليلاً ثم حاول مرة أخرى.',
+      'For security purposes, you can only request this after': 'لأسباب أمنية، يمكنك طلب رمز جديد بعد',
+    };
+    
+    // البحث عن ترجمة مطابقة أو جزئية
+    for (const [key, value] of Object.entries(errorMap)) {
+      if (error.toLowerCase().includes(key.toLowerCase())) {
+        return value;
+      }
+    }
+    
+    return error;
+  };
   
   // Track previous submit state for celebration
   const prevCanSubmit = useRef(false);
@@ -1569,25 +1753,35 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     }
   };
 
-  // Handle publish
-  const handlePublish = async (): Promise<string | null> => {
-    // Extract budget values if budget field is enabled
-    const budgetField = additionalFields.find((f) => f.id === "budget" && f.enabled);
-    let budgetMin: string | undefined;
-    let budgetMax: string | undefined;
+  // Handle publish (internal function - called after guest verification if needed)
+  const handlePublishInternal = async (): Promise<string | null> => {
+    // Get current user (in case user just logged in via guest verification)
+    let currentUserId = user?.id;
+    if (!currentUserId) {
+      const currentUser = await getCurrentUser();
+      currentUserId = currentUser?.id || null;
+    }
     
-    if (budgetField?.value) {
-      // Handle budget in format "500-1000" or "1000-2000 ر.س" or single value
-      const budgetValue = budgetField.value.replace(/[^\d-]/g, ''); // Remove non-numeric except dash
-      if (budgetValue.includes('-')) {
-        const [min, max] = budgetValue.split('-').map(v => v.trim());
-        budgetMin = min;
-        budgetMax = max;
-      } else if (budgetValue) {
-        // Single value - treat as min
-        budgetMin = budgetValue;
+    // Extract budget values - use direct state values first, then additionalFields
+    const budgetField = additionalFields.find((f) => f.id === "budget" && f.enabled);
+    let finalBudgetMin: string | undefined = budgetMin.trim() || undefined;
+    let finalBudgetMax: string | undefined = budgetMax.trim() || undefined;
+    
+    // Fallback to additionalFields if state is empty
+    if (!finalBudgetMin && !finalBudgetMax && budgetField?.value) {
+      const rawBudget = budgetField.value.replace(/[^\d-]/g, '');
+      if (rawBudget.includes('-')) {
+        const [min, max] = rawBudget.split('-').map(v => v.trim());
+        finalBudgetMin = min || undefined;
+        finalBudgetMax = max || undefined;
+      } else if (rawBudget) {
+        finalBudgetMin = rawBudget;
       }
     }
+    
+    // Extract delivery time - use preset or custom value
+    const deliveryField = additionalFields.find((f) => f.id === "deliveryTime" && f.enabled);
+    const finalDeliveryTime = customDeliveryValue.trim() || deliveryValue.trim() || deliveryField?.value || "";
     
     // توليد عنوان ذكي من الوصف إذا لم يكن هناك عنوان
     let finalTitle = title.trim();
@@ -1614,20 +1808,22 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       title: finalTitle,
       description: description.trim(),
       location: location.trim(),
-      budgetMin,
-      budgetMax,
+      budgetMin: finalBudgetMin,
+      budgetMax: finalBudgetMax,
       categories: additionalFields.find((f) => f.id === "category" && f.enabled)
         ? [additionalFields.find((f) => f.id === "category")!.value] // value is label, getCategoryIdsByLabels will convert it
         : undefined,
-      deliveryTimeFrom: additionalFields.find((f) => f.id === "deliveryTime" && f.enabled)?.value,
+      deliveryTimeFrom: finalDeliveryTime || undefined,
     };
 
     // تحديد ما إذا كان تعديل أو إنشاء جديد
     const isEditing = !!editingRequestId;
     console.log(isEditing ? "Updating request:" : "Publishing request:", request);
     console.log("editingRequestId:", editingRequestId);
+    console.log("currentUserId:", currentUserId);
     
     // تمرير معلومات التعديل إذا كنا في وضع التعديل
+    // Note: onPublish will use user?.id from App.tsx, but we ensure we have currentUserId here
     const result = await onPublish(request, isEditing, editingRequestId || undefined);
     
     // تحديث حالة الحفظ
@@ -1671,7 +1867,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         onClearAll={onClearAll}
         onSignOut={onSignOut}
         onGoToMarketplace={onGoToMarketplace}
-        title={title && title.trim() ? title : (editingRequestId ? "تعديل الطلب" : "إنشاء طلب جديد")}
+        title={isGeneratingTitle ? "جاري كتابة العنوان..." : (title && title.trim() ? title : (editingRequestId ? "تعديل الطلب" : "إنشاء طلب جديد"))}
         hideModeToggle
         isGuest={isGuest}
         onNavigateToProfile={onNavigateToProfile}
@@ -1745,7 +1941,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                     <motion.div
                       className={`relative rounded-2xl border-2 transition-all duration-300 ${
                         hasAnswer
-                          ? "border-emerald-500 bg-card"
+                          ? "border-primary bg-card"
                           : "border-border bg-card hover:border-primary/50"
                       }`}
                     >
@@ -1757,10 +1953,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                           textarea?.focus();
                         }}
                       >
-                        <span className={hasAnswer ? "text-emerald-500" : "text-muted-foreground"}>
+                        <span className={hasAnswer ? "text-primary" : "text-muted-foreground"}>
                           <MessageSquare size={18} />
                         </span>
-                        <span className={`text-sm font-medium ${hasAnswer ? "text-emerald-500" : "text-muted-foreground"}`}>
+                        <span className={`text-sm font-medium ${hasAnswer ? "text-primary" : "text-muted-foreground"}`}>
                           إجابتك
                           {hasAnswer && (
                             <motion.span
@@ -1768,7 +1964,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                               animate={{ scale: 1, opacity: 1 }}
                               className="inline-flex items-center justify-center mr-1"
                             >
-                              <Check size={14} className="text-emerald-500" />
+                              <Check size={14} className="text-primary" />
                             </motion.span>
                           )}
                         </span>
@@ -1902,7 +2098,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   </div>
                   <span className={`px-3 py-1 rounded-full text-sm ${
                     finalReview.system_category === 'غير محدد'
-                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                      ? 'bg-accent/15 text-accent-foreground'
                       : 'bg-primary/10 text-primary'
                   }`}>
                     {finalReview.system_category}
@@ -1951,9 +2147,17 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                     
                     // Wait for state to update, then submit
                     setTimeout(async () => {
+                      // Check if user is guest - require phone verification and terms acceptance
+                      if (isGuest && !editingRequestId) {
+                        setShowFinalReview(false);
+                        setFinalReview(null);
+                        setGuestVerificationStep('phone');
+                        return;
+                      }
+                      
                       try {
                         setIsSubmitting(true);
-                        const requestId = await handlePublish();
+                        const requestId = await handlePublishInternal();
                         if (requestId) {
                           setCreatedRequestId(requestId);
                           setSubmitSuccess(true);
@@ -1985,32 +2189,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         {/* عرض العنوان المُنشأ أو حقل إدخال العنوان */}
         {clarificationPages.length === 0 && !showFinalReview && (
           <AnimatePresence mode="wait">
-            {/* العنوان المُنشأ بالذكاء الاصطناعي */}
-            {title.trim() && !isTitleEditable && (
-              <motion.div
-                key="ai-generated-title"
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="mb-4"
-              >
-                <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border border-emerald-200 dark:border-emerald-800">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <button
-                      onClick={() => setIsTitleEditable(true)}
-                      className="shrink-0 p-2 rounded-lg hover:bg-emerald-200/50 dark:hover:bg-emerald-800/50 transition-colors"
-                    >
-                      <FileEdit size={18} className="text-emerald-600" />
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">عنوان الطلب</p>
-                      <p className="text-sm font-bold text-foreground truncate">{title}</p>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
             {/* حقل تعديل العنوان */}
             {isTitleEditable && (
               <motion.div
@@ -2031,7 +2209,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       placeholder="اكتب عنواناً واضحاً لطلبك..."
-                      className="flex-1 px-4 py-3 rounded-xl border-2 border-primary/50 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full max-w-full"
+                      className="flex-1 px-3 py-2 text-sm rounded-xl border-2 border-primary/50 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary  w-full max-w-full"
                       autoFocus
                     />
                     <button
@@ -2065,12 +2243,12 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               >
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-2">
-                    <FileText size={16} className="text-amber-500" />
-                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                    <FileText size={16} className="text-accent" />
+                    <span className="text-xs font-medium text-accent-foreground">
                       عنوان الطلب (مطلوب)
                     </span>
                     {isAIConnected === false && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/15 text-accent-foreground">
                         AI غير متصل
                       </span>
                     )}
@@ -2080,19 +2258,19 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="اكتب عنواناً واضحاً لطلبك..."
-                    className={`w-full px-4 py-3 rounded-xl border-2 transition-all duration-300 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none ${
+                    className={`w-full px-3 py-2 text-sm rounded-xl border-2 transition-all duration-300 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none ${
                       titleShake 
                         ? "border-red-400 ring-2 ring-red-200 dark:ring-red-900/50" 
                         : needsManualTitle
-                          ? "border-amber-300 dark:border-amber-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 dark:focus:ring-amber-900/50"
-                          : "border-border focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          ? "border-accent/50 focus:border-primary "
+                          : "border-border focus:border-primary "
                     }`}
                   />
                   {!title.trim() && needsManualTitle && (
                     <motion.p
                       initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="text-xs text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1"
+                      className="text-xs text-accent-foreground mt-1.5 flex items-center gap-1"
                     >
                       <span>⚠️</span>
                       <span>أضف عنواناً لطلبك حتى تتمكن من الإرسال</span>
@@ -2120,57 +2298,100 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
 
         {/* Core Fields */}
         <div className="space-y-4 mb-6">
-          {/* Description */}
-          <GlowingField
-            label="وصف الطلب"
-            icon={<FileText size={18} />}
-            value={description}
-            onChange={setDescription}
-            placeholder="صف طلبك بالتفصيل..."
-            multiline
-            isGlowing={glowingFields.has("description")}
-            isRequired
-            fieldRef={descriptionFieldRef}
-            onBlur={() => {
-              // عند الانتقال عن حقل الوصف، أعد توليد العنوان والتصنيفات
-              if (description.trim().length >= 3) {
-                generateTitleFromDescription(true); // force regenerate
-              }
-            }}
-          />
+          {/* Combined Description and Location Field */}
+          <motion.div
+            ref={descriptionFieldRef}
+            className={`relative rounded-2xl border transition-all duration-300 ${
+              glowingFields.has("description") || glowingFields.has("location")
+                ? "border-primary shadow-[0_0_20px_rgba(30,150,140,0.4)] bg-primary/5"
+                : (description.trim().length > 0 && location)
+                ? "border-primary bg-card"
+                : "border-border bg-card"
+            }`}
+            animate={glowingFields.has("description") || glowingFields.has("location") ? { scale: [1, 1.01, 1] } : {}}
+            transition={{ duration: 0.5, repeat: (glowingFields.has("description") || glowingFields.has("location")) ? 2 : 0 }}
+          >
+            {/* Description Label */}
+            <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+              <span className={glowingFields.has("description") ? "text-primary" : description.trim().length > 0 ? "text-primary" : "text-muted-foreground"}>
+                <FileText size={18} />
+              </span>
+              <span className={`text-sm font-medium ${glowingFields.has("description") ? "text-primary" : description.trim().length > 0 ? "text-primary" : "text-muted-foreground"}`}>
+                وصف الطلب
+                {description.trim().length === 0 && (
+                  <span className="text-red-500 mr-1">*</span>
+                )}
+                {description.trim().length > 0 && (
+                  <motion.span
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="inline-flex items-center justify-center mr-1"
+                  >
+                    <Check size={14} className="text-primary" />
+                  </motion.span>
+                )}
+              </span>
+              {glowingFields.has("description") && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="mr-auto"
+                >
+                  <Sparkles size={14} className="text-primary" />
+                </motion.div>
+              )}
+            </div>
 
-          {/* Location with Google Places Autocomplete */}
-          <div ref={locationFieldRef}>
-            <motion.div
-              className={`relative rounded-2xl border-2 transition-all duration-300 ${
-                location
-                  ? "border-emerald-500 bg-card"
-                  : glowingFields.has("location")
-                  ? "border-primary bg-primary/5 shadow-[0_0_15px_rgba(37,99,235,0.3)]"
-                  : "border-border bg-card hover:border-primary/50"
-              }`}
-            >
-              {/* Label */}
-              <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-                <span className={location ? "text-emerald-500" : glowingFields.has("location") ? "text-primary" : "text-muted-foreground"}>
+            {/* Description Textarea */}
+            <div className="px-4 pb-4">
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                onFocus={() => {
+                  setGlowingFields(prev => new Set(prev).add("description"));
+                }}
+                onBlur={() => {
+                  setGlowingFields(prev => {
+                    const next = new Set(prev);
+                    next.delete("description");
+                    return next;
+                  });
+                  // عند الانتقال عن حقل الوصف، أعد توليد العنوان والتصنيفات
+                  if (description.trim().length >= 3) {
+                    generateTitleFromDescription(true); // force regenerate
+                  }
+                }}
+                placeholder="صف طلبك بالتفصيل..."
+                className="w-full min-h-[100px] bg-transparent text-foreground resize-none focus:outline-none placeholder:text-muted-foreground/50 text-right"
+                dir="rtl"
+              />
+            </div>
+
+            {/* Divider */}
+            <div className="px-4 border-t border-border/50">
+              {/* Location Label */}
+              <div className="flex items-center gap-2 pt-3 pb-1">
+                <span className={glowingFields.has("location") ? "text-primary" : location ? "text-primary" : "text-muted-foreground"}>
                   <MapPin size={18} />
                 </span>
-                <span className={`text-sm font-medium ${location ? "text-emerald-500" : glowingFields.has("location") ? "text-primary" : "text-muted-foreground"}`}>
+                <span className={`text-sm font-medium ${glowingFields.has("location") ? "text-primary" : location ? "text-primary" : "text-muted-foreground"}`}>
                   الموقع
-                  <span className="text-red-500 mr-1">*</span>
+                  {!location && (
+                    <span className="text-red-500 mr-1">*</span>
+                  )}
                   {location && (
                     <motion.span
                       initial={{ scale: 0, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       className="inline-flex items-center justify-center mr-1"
                     >
-                      <Check size={14} className="text-emerald-500" />
+                      <Check size={14} className="text-primary" />
                     </motion.span>
                   )}
                 </span>
               </div>
               {/* City Autocomplete Input */}
-              <div className="px-4 pb-3">
+              <div className="px-4 pb-3" ref={locationFieldRef}>
                 <CityAutocomplete
                   value={location}
                   onChange={(value: string, cityResult?: CityResult) => {
@@ -2180,50 +2401,160 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       console.log('City coordinates:', cityResult.lat, cityResult.lng);
                     }
                   }}
-                  placeholder="ابحث عن مدينة..."
+                  placeholder="ابحث عن مدن، معالم، أو محلات..."
                   showRemoteOption={true}
                   showGPSOption={true}
                   showMapOption={true}
                   showAllCitiesOption={true}
                 />
               </div>
-            </motion.div>
-          </div>
-
-          {/* Attachments Field */}
-          <motion.div
-            className={`relative rounded-2xl border-2 transition-all duration-300 ${
-              attachedFiles.length > 0 || selectedImageUrls.length > 0
-                ? "border-emerald-500 bg-card"
-                : "border-border bg-card hover:border-primary/50"
-            }`}
-          >
-            {/* Label */}
-            <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-              <span className={attachedFiles.length > 0 || selectedImageUrls.length > 0 ? "text-emerald-500" : "text-muted-foreground"}>
-                <Paperclip size={18} />
-              </span>
-              <span className={`text-sm font-medium ${attachedFiles.length > 0 || selectedImageUrls.length > 0 ? "text-emerald-500" : "text-muted-foreground"}`}>
-                المرفقات وصور توضيحية
-                {(attachedFiles.length > 0 || selectedImageUrls.length > 0) && (
-                  <motion.span
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="inline-flex items-center justify-center mr-1"
-                  >
-                    <Check size={14} className="text-emerald-500" />
-                  </motion.span>
-                )}
-              </span>
-              {(attachedFiles.length > 0 || selectedImageUrls.length > 0) && (
-                <span className="text-xs text-muted-foreground mr-auto">
-                  {attachedFiles.length + selectedImageUrls.length} ملف
-                </span>
-              )}
             </div>
 
-            {/* Attachment Area */}
-            <div className="px-4 pt-2 pb-3">
+            {/* Budget Field - From/To on its own row */}
+            <div className="px-4 py-3 border-t border-border/50">
+              <div className="flex items-center gap-2 mb-2">
+                <span className={budgetMin || budgetMax ? "text-primary" : "text-muted-foreground"}>
+                  <DollarSign size={16} />
+                </span>
+                <span className={`text-xs font-medium ${budgetMin || budgetMax ? "text-primary" : "text-muted-foreground"}`}>
+                  الميزانية
+                  {(budgetMin || budgetMax) && (
+                    <Check size={12} className="inline mr-1" />
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={budgetMin}
+                    onChange={(e) => setBudgetMin(e.target.value.replace(/[^\d]/g, ''))}
+                    placeholder="من"
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:border-primary  text-center"
+                    dir="rtl"
+                  />
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">ر.س</span>
+                </div>
+                <span className="text-muted-foreground text-sm">-</span>
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={budgetMax}
+                    onChange={(e) => setBudgetMax(e.target.value.replace(/[^\d]/g, ''))}
+                    placeholder="إلى"
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:border-primary  text-center"
+                    dir="rtl"
+                  />
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">ر.س</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Delivery Time Field - Presets + Custom on its own row */}
+            <div className="px-4 py-3 border-t border-border/50">
+              <div className="flex items-center gap-2 mb-2">
+                <span className={deliveryValue || customDeliveryValue ? "text-primary" : "text-muted-foreground"}>
+                  <Clock size={16} />
+                </span>
+                <span className={`text-xs font-medium ${deliveryValue || customDeliveryValue ? "text-primary" : "text-muted-foreground"}`}>
+                  مدة التنفيذ
+                  {(deliveryValue || customDeliveryValue) && (
+                    <Check size={12} className="inline mr-1" />
+                  )}
+                </span>
+              </div>
+              {/* Preset Options */}
+              <div className="flex flex-wrap gap-2 mb-2">
+                {deliveryPresets.map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => {
+                      if (deliveryValue === preset.value) {
+                        setDeliveryValue("");
+                      } else {
+                        setDeliveryValue(preset.value);
+                        setCustomDeliveryValue("");
+                      }
+                    }}
+                    className={`px-3 py-1.5 text-xs rounded-full border transition-all ${
+                      deliveryValue === preset.value
+                        ? "bg-primary text-white border-primary"
+                        : "bg-background border-border hover:border-primary/50 text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              {/* Custom Input */}
+              <input
+                type="text"
+                value={customDeliveryValue}
+                onChange={(e) => {
+                  setCustomDeliveryValue(e.target.value);
+                  if (e.target.value) {
+                    setDeliveryValue("");
+                  }
+                }}
+                placeholder="أو اكتب مدة مخصصة..."
+                className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:border-primary "
+                dir="rtl"
+              />
+            </div>
+
+            {/* Attachments Section - Collapsible */}
+            <div className="px-4 border-t border-border/50">
+              {/* Label - Clickable to expand/collapse */}
+              <button
+                type="button"
+                onClick={() => setIsAttachmentsExpanded(!isAttachmentsExpanded)}
+                className="w-full flex items-center justify-between gap-2 pt-3 pb-2"
+              >
+                <div className="flex items-center gap-2">
+                  <span className={attachedFiles.length > 0 || selectedImageUrls.length > 0 ? "text-primary" : "text-muted-foreground"}>
+                    <Paperclip size={18} />
+                  </span>
+                  <span className={`text-sm font-medium ${attachedFiles.length > 0 || selectedImageUrls.length > 0 ? "text-primary" : "text-muted-foreground"}`}>
+                    المرفقات وصور توضيحية
+                    {(attachedFiles.length > 0 || selectedImageUrls.length > 0) && (
+                      <motion.span
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="inline-flex items-center justify-center mr-1"
+                      >
+                        <Check size={14} className="text-primary" />
+                      </motion.span>
+                    )}
+                  </span>
+                  {(attachedFiles.length > 0 || selectedImageUrls.length > 0) && (
+                    <span className="text-xs text-muted-foreground">
+                      {attachedFiles.length + selectedImageUrls.length} ملف
+                    </span>
+                  )}
+                </div>
+                <motion.span
+                  animate={{ rotate: isAttachmentsExpanded ? 180 : 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="text-muted-foreground"
+                >
+                  <ChevronDown size={16} />
+                </motion.span>
+              </button>
+
+              {/* Collapsible Attachment Area */}
+              <AnimatePresence>
+                {isAttachmentsExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pt-2 pb-3">
               {/* Uploaded Files Preview */}
               {(attachedFiles.length > 0 || selectedImageUrls.length > 0) && (
                 <div className="flex gap-2 flex-wrap justify-start w-full mb-3">
@@ -2470,23 +2801,27 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   )}
                 </div>
               )}
-            </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-            {/* Hidden File Input */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="image/*,video/*,.pdf,.doc,.docx"
-              className="hidden"
-              onChange={(e) => {
-                const files = Array.from(e.target.files || []);
-                if (files.length > 0) {
-                  setAttachedFiles(prev => [...prev, ...files]);
-                }
-                e.target.value = "";
-              }}
-            />
+              {/* Hidden File Input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,video/*,.pdf,.doc,.docx"
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  if (files.length > 0) {
+                    setAttachedFiles(prev => [...prev, ...files]);
+                  }
+                  e.target.value = "";
+                }}
+              />
+            </div>
           </motion.div>
           
         </div>
@@ -2526,16 +2861,20 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       {/* زر الإرسال العائم في الأسفل */}
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4">
         {/* زر أرسل الطلب الآن */}
-        <motion.button
-          layout
-          onClick={async () => {
-            if (!canSubmit) return;
-            
+        <SubmitButtonWithShake
+          canSubmit={canSubmit}
+          isSubmitting={isSubmitting}
+          isGeneratingTitle={isGeneratingTitle}
+          submitSuccess={submitSuccess}
+          isGuest={isGuest}
+          editingRequestId={editingRequestId}
+          onGuestVerification={() => setGuestVerificationStep('phone')}
+          onSubmit={async () => {
             if (navigator.vibrate) navigator.vibrate(15);
             setIsSubmitting(true);
             
             try {
-              const requestId = await handlePublish();
+              const requestId = await handlePublishInternal();
               if (requestId) {
                 setCreatedRequestId(requestId);
                 setSubmitSuccess(true);
@@ -2555,37 +2894,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               setIsSubmitting(false);
             }
           }}
-          disabled={!canSubmit || isSubmitting || isGeneratingTitle}
-          className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg ${
-            isGeneratingTitle
-              ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-2 border-amber-500/30 cursor-wait shadow-none'
-              : canSubmit && !isSubmitting
-              ? 'bg-primary text-white hover:bg-primary/90 shadow-primary/30'
-              : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none'
-          }`}
-        >
-          {isGeneratingTitle ? (
-            <>
-              <Loader2 size={20} className="animate-spin" />
-              <span>جاري تحليل الوصف وإنشاء العنوان...</span>
-            </>
-          ) : isSubmitting ? (
-            <>
-              <Loader2 size={20} className="animate-spin" />
-              <span>جاري الإرسال...</span>
-            </>
-          ) : submitSuccess ? (
-            <>
-              <Check size={20} />
-              <span>تم الإرسال!</span>
-            </>
-          ) : (
-            <>
-              <span>أرسل الطلب الآن</span>
-              <ChevronLeft size={20} />
-            </>
-          )}
-        </motion.button>
+          onGoToRequest={onGoToRequest}
+        />
       </div>
 
       {/* Attachment Preview Modal */}
@@ -2716,6 +3026,286 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           </>
         )}
       </AnimatePresence>
+
+      {/* Guest Verification Modal */}
+      {isGuest && guestVerificationStep !== 'none' && ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-card rounded-2xl p-6 max-w-md w-full shadow-2xl border border-border"
+          >
+            {guestVerificationStep === 'phone' && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-right">التحقق من رقم الجوال</h3>
+                <p className="text-sm text-muted-foreground text-right">
+                  لإتمام إنشاء الطلب، نحتاج للتحقق من رقم جوالك. سيتم إرسال رمز تحقق على رقمك.
+                </p>
+                <div className={`relative flex items-center gap-2 border-2 rounded-lg bg-background px-4 h-12 focus-within:border-primary transition-all ${guestError ? 'border-red-500' : 'border-border'}`}>
+                  <span className="text-muted-foreground font-medium shrink-0">+966</span>
+                  <input
+                    type="tel"
+                    value={guestPhone}
+                    onChange={(e) => {
+                      setGuestPhone(e.target.value);
+                      setGuestError(null);
+                    }}
+                    placeholder="5XXXXXXXX"
+                    className="flex-1 h-full bg-transparent text-base outline-none text-left"
+                    dir="ltr"
+                    autoFocus
+                  />
+                </div>
+                
+                {/* عرض رسالة الخطأ */}
+                <AnimatePresence>
+                  {guestError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+                    >
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                        <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
+                          {guestError}
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      if (!guestPhone.trim()) {
+                        setGuestError("يرجى إدخال رقم الجوال");
+                        return;
+                      }
+                      setIsSendingOTP(true);
+                      setGuestError(null);
+                      const result = await verifyGuestPhone(guestPhone);
+                      setIsSendingOTP(false);
+                      if (result.success) {
+                        setGuestVerificationStep('otp');
+                        setGuestError(null);
+                      } else {
+                        const translatedError = translateAuthError(result.error || "فشل إرسال رمز التحقق");
+                        setGuestError(translatedError);
+                      }
+                    }}
+                    disabled={isSendingOTP}
+                    className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
+                    {isSendingOTP ? "جاري الإرسال..." : "إرسال رمز التحقق"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setGuestVerificationStep('none');
+                      setGuestPhone("");
+                      setGuestError(null);
+                    }}
+                    className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {guestVerificationStep === 'otp' && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-right">أدخل رمز التحقق</h3>
+                <p className="text-sm text-muted-foreground text-right">
+                  تم إرسال رمز التحقق إلى {guestPhone}
+                </p>
+                <input
+                  type="text"
+                  value={guestOTP}
+                  onChange={(e) => {
+                    setGuestOTP(e.target.value.replace(/\D/g, '').slice(0, 4));
+                    setGuestError(null);
+                  }}
+                  placeholder="0000"
+                  className={`w-full h-14 px-4 text-center rounded-xl border-2 bg-background text-3xl font-black tracking-[0.5em] outline-none transition-all focus:border-primary ${
+                    guestError ? 'border-red-500' : 'border-border'
+                  }`}
+                  dir="ltr"
+                  maxLength={4}
+                  autoFocus
+                />
+                
+                {/* عرض رسالة الخطأ */}
+                <AnimatePresence>
+                  {guestError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+                    >
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                        <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
+                          {guestError}
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      if (guestOTP.length !== 4) {
+                        setGuestError("يرجى إدخال رمز التحقق المكون من 4 أرقام");
+                        return;
+                      }
+                      setIsVerifyingOTP(true);
+                      setGuestError(null);
+                      const result = await confirmGuestPhone(guestPhone, guestOTP);
+                      setIsVerifyingOTP(false);
+                      if (result.success) {
+                        setGuestVerificationStep('terms');
+                        setGuestError(null);
+                      } else {
+                        const translatedError = translateAuthError(result.error || "رمز التحقق غير صحيح");
+                        setGuestError(translatedError);
+                        setGuestOTP("");
+                      }
+                    }}
+                    disabled={isVerifyingOTP}
+                    className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
+                    {isVerifyingOTP ? "جاري التحقق..." : "تحقق"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setGuestVerificationStep('phone');
+                      setGuestOTP("");
+                      setGuestError(null);
+                    }}
+                    className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
+                  >
+                    رجوع
+                  </button>
+                </div>
+                
+                {/* زر إعادة إرسال الرمز */}
+                <button
+                  onClick={async () => {
+                    setIsSendingOTP(true);
+                    setGuestError(null);
+                    const result = await verifyGuestPhone(guestPhone);
+                    setIsSendingOTP(false);
+                    if (result.success) {
+                      setGuestOTP("");
+                      setGuestError(null);
+                    } else {
+                      const translatedError = translateAuthError(result.error || "فشل إرسال رمز التحقق");
+                      setGuestError(translatedError);
+                    }
+                  }}
+                  disabled={isSendingOTP}
+                  className="w-full text-center text-sm text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+                >
+                  {isSendingOTP ? "جاري إعادة الإرسال..." : "لم يصلك الرمز؟ إعادة الإرسال"}
+                </button>
+              </div>
+            )}
+            
+            {guestVerificationStep === 'terms' && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-right">الشروط والأحكام</h3>
+                <div className="bg-secondary/50 rounded-lg p-4 max-h-60 overflow-y-auto text-sm text-muted-foreground text-right">
+                  <p className="mb-2">بإنشاء هذا الطلب، أنت توافق على:</p>
+                  <ul className="list-disc list-inside space-y-1 mr-4">
+                    <li>الشروط والأحكام الخاصة بمنصة أبيلي</li>
+                    <li>سياسة الخصوصية</li>
+                    <li>أنك ستستخدم المنصة بشكل قانوني وأخلاقي</li>
+                    <li>أن المعلومات المقدمة صحيحة ودقيقة</li>
+                  </ul>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                    className="w-5 h-5 rounded border-border text-primary focus:ring-primary cursor-pointer accent-primary"
+                  />
+                  <span className="text-sm">أوافق على الشروط والأحكام</span>
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      if (!termsAccepted) {
+                        setGuestError("يرجى الموافقة على الشروط والأحكام");
+                        return;
+                      }
+                      setGuestError(null);
+                      
+                      // Get the now-logged-in user
+                      const userProfile = await getCurrentUser();
+                      if (!userProfile?.id) {
+                        setGuestError("فشل تسجيل الدخول. حاول مرة أخرى.");
+                        return;
+                      }
+                      
+                      // Close modal and proceed with publishing
+                      setGuestVerificationStep('none');
+                      setTermsAccepted(false);
+                      setGuestPhone("");
+                      setGuestOTP("");
+                      
+                      // Proceed with publishing
+                      if (navigator.vibrate) navigator.vibrate(15);
+                      setIsSubmitting(true);
+                      
+                      try {
+                        const requestId = await handlePublishInternal();
+                        if (requestId) {
+                          setCreatedRequestId(requestId);
+                          setSubmitSuccess(true);
+                          setShowSuccessNotification(true);
+                          
+                          if (!editingRequestId) {
+                            setTimeout(() => {
+                              if (onGoToRequest && requestId) {
+                                onGoToRequest(requestId);
+                              }
+                            }, 2000);
+                          }
+                        }
+                      } catch (error) {
+                        console.error("Error submitting:", error);
+                        setGuestError("حدث خطأ في إنشاء الطلب. حاول مرة أخرى.");
+                      } finally {
+                        setIsSubmitting(false);
+                      }
+                    }}
+                    disabled={!termsAccepted}
+                    className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    موافق وإنشاء الطلب
+                  </button>
+                  <button
+                    onClick={() => {
+                      setGuestVerificationStep('otp');
+                      setTermsAccepted(false);
+                      setGuestError(null);
+                    }}
+                    className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
+                  >
+                    رجوع
+                  </button>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </div>,
+        document.body
+      )}
 
       {/* Floating AI Input is now handled by GlobalFloatingOrb in App.tsx */}
     </motion.div>

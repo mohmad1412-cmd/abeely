@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import { 
   MapPin, 
@@ -9,11 +9,14 @@ import {
   Eye,
   Sparkles,
   Check,
-  AlertCircle
+  Hourglass
 } from "lucide-react";
-import { Request, Offer } from "../../types";
-import { formatDistanceToNow } from "date-fns";
-import { ar } from "date-fns/locale";
+import { Request, Offer, Category, SupportedLocale, getCategoryLabel } from "../../types";
+import { formatTimeAgo } from "../../utils/timeFormat";
+import { AVAILABLE_CATEGORIES } from "../../data";
+import { getCategories, getCurrentLocale } from "../../services/categoriesService";
+import { getKnownCategoryColor } from "../../utils/categoryColors";
+import { CategoryIcon } from "./CategoryIcon";
 
 interface CompactListViewProps {
   requests: Request[];
@@ -41,21 +44,30 @@ const ListItem: React.FC<{
   isViewed: boolean;
   index: number;
   isNew?: boolean; // طلب جديد وصل للتو
-}> = ({ request, onTap, myOffer, isViewed, index, isNew = false }) => {
+  categories?: Category[]; // التصنيفات من الباك اند
+  locale?: SupportedLocale; // اللغة الحالية
+}> = ({ request, onTap, myOffer, isViewed, index, isNew = false, categories = AVAILABLE_CATEGORIES, locale = 'ar' }) => {
   const [isPressed, setIsPressed] = useState(false);
   
   // Format time ago
   const timeAgo = request.createdAt 
-    ? formatDistanceToNow(new Date(request.createdAt), { addSuffix: true, locale: ar })
+    ? formatTimeAgo(request.createdAt, true)
     : "";
 
   // Status
   const hasOffer = !!myOffer;
   const offerAccepted = myOffer?.status === "accepted";
 
-  // Get budget display
-  const budgetDisplay = request.budgetMin || request.budgetMax
-    ? `${request.budgetMin || "?"} - ${request.budgetMax || "?"} ر.س`
+  // Get budget display - only show if both min and max exist
+  const budgetDisplay = request.budgetMin && request.budgetMax
+    ? `الميزانية: ${request.budgetMin} - ${request.budgetMax}`
+    : null;
+
+  // Get delivery time display - only show if deliveryTimeFrom exists and type is not 'not-specified' or 'immediate'
+  const deliveryDisplay = request.deliveryTimeFrom && 
+    request.deliveryTimeType !== 'not-specified' && 
+    request.deliveryTimeType !== 'immediate'
+    ? request.deliveryTimeFrom
     : null;
 
   return (
@@ -117,6 +129,33 @@ const ListItem: React.FC<{
       )}
       {/* Content */}
       <div className="flex-1 min-w-0">
+        {/* Categories - above title */}
+        {request.categories && request.categories.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-1.5">
+            {request.categories.map((catLabel, idx) => {
+              const categoryObj = categories.find(c => c.label === catLabel || c.id === catLabel);
+              const displayLabel = categoryObj ? getCategoryLabel(categoryObj, locale) : catLabel;
+              const categoryId = categoryObj?.id || catLabel;
+              const isOther = catLabel === 'أخرى' || catLabel === 'other' || categoryId === 'other';
+              
+              return (
+                <span
+                  key={idx}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                    getKnownCategoryColor(categoryId)
+                  }`}
+                >
+                  <CategoryIcon 
+                    icon={categoryObj?.icon} 
+                    emoji={categoryObj?.emoji} 
+                    size={12} 
+                  />
+                  <span className="truncate max-w-[80px]">{displayLabel}</span>
+                </span>
+              );
+            })}
+          </div>
+        )}
         {/* Title */}
         <h3 className={`font-bold text-base mb-1.5 line-clamp-1 ${!isViewed ? "text-foreground" : "text-foreground/80"}`}>
           {request.title || request.description?.slice(0, 40) || "طلب"}
@@ -136,6 +175,11 @@ const ListItem: React.FC<{
             </span>
           )}
           
+          <span className="flex items-center gap-1.5">
+            <Clock size={13} className="text-primary/60" />
+            {timeAgo}
+          </span>
+          
           {budgetDisplay && (
             <span className="flex items-center gap-1.5">
               <DollarSign size={13} className="text-primary/60" />
@@ -143,33 +187,26 @@ const ListItem: React.FC<{
             </span>
           )}
           
-          <span className="flex items-center gap-1.5">
-            <Clock size={13} className="text-primary/60" />
-            {timeAgo}
-          </span>
-          
-          <span className="flex items-center gap-1.5">
-            <MessageCircle size={13} className="text-primary/60" />
-            {request.offersCount || request.offers?.length || 0}
-          </span>
+          {deliveryDisplay && (
+            <span className="flex items-center gap-1.5">
+              <Hourglass size={13} className="text-primary/60" />
+              التنفيذ خلال: {deliveryDisplay}
+            </span>
+          )}
         </div>
       </div>
 
       {/* Right Side - Status & Arrow */}
       <div className="flex flex-col items-end gap-3 flex-shrink-0 self-center">
-        {hasOffer ? (
+        {hasOffer && (
           <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold shadow-sm ${
             offerAccepted 
-              ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" 
-              : "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+              ? "bg-primary/10 text-primary border border-primary/20" 
+              : "bg-accent/15 text-accent-foreground border border-accent/25"
           }`}>
             {offerAccepted ? "✓ معتمد" : "بانتظار"}
           </span>
-        ) : request.categories?.[0] ? (
-          <span className="px-2.5 py-1 rounded-full bg-secondary/80 text-[10px] font-bold text-muted-foreground border border-border/50">
-            {request.categories[0]}
-          </span>
-        ) : null}
+        )}
         
         <div className="w-8 h-8 rounded-full bg-secondary/30 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
           <ChevronLeft size={16} className="text-muted-foreground/50 group-hover:text-primary/70" />
@@ -196,6 +233,32 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
   newRequestIds = new Set(),
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [categories, setCategories] = useState<Category[]>(AVAILABLE_CATEGORIES);
+  const [locale, setLocale] = useState<SupportedLocale>('ar');
+  
+  // Load categories from backend and get current locale
+  useEffect(() => {
+    const loadCategories = async () => {
+      const backendCategories = await getCategories();
+      if (backendCategories.length > 0) {
+        setCategories(backendCategories);
+      }
+    };
+    loadCategories();
+    setLocale(getCurrentLocale());
+    
+    // الاستماع لتغييرات اللغة
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'locale' && e.newValue) {
+        const newLocale = e.newValue as SupportedLocale;
+        if (newLocale === 'ar' || newLocale === 'en' || newLocale === 'ur') {
+          setLocale(newLocale);
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
   
   // Get my offer for a request
   const getMyOffer = useCallback((requestId: string) => {
@@ -223,12 +286,10 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
   return (
     <div 
       ref={containerRef}
-      className="relative"
-      onScroll={handleScroll}
+      className="relative w-full"
     >
-
-      {/* List Content */}
-      <div className="px-4 pt-0 pb-20 relative z-[1] w-full">
+      {/* List Content - بدون سكرول داخلي */}
+      <div className="px-4 pt-2 pb-20 relative z-[1] w-full">
         {requests.map((request, index) => {
           const isUnread = !viewedRequestIds.has(request.id);
           return (
@@ -252,6 +313,8 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
                 isViewed={viewedRequestIds.has(request.id)}
                 index={index}
                 isNew={newRequestIds.has(request.id)}
+                categories={categories}
+                locale={locale}
               />
             </div>
           );

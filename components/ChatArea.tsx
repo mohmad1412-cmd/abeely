@@ -131,14 +131,14 @@ const FloatingInput = ({
         onChange={onChange}
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
-        className={`peer w-full h-12 rounded-lg border-2 bg-background px-3 text-base outline-none transition-all ${
-          shake || isOverLimit ? "border-red-500" : isNearLimit ? "border-amber-500" : isFocused ? "border-primary" : "border-border"
+        className={`peer w-full px-3 py-2 text-sm rounded-lg border-2 bg-background outline-none transition-all ${
+          shake || isOverLimit ? "border-red-500" : isNearLimit ? "border-accent" : isFocused ? "border-primary" : "border-border"
         } ${centered ? "text-center" : "text-right"}`}
       />
       <label
         className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
           isFocused || hasValue
-            ? `top-0 ${centered ? "left-1/2 -translate-x-1/2" : "right-2"} -translate-y-1/2 bg-background px-1 text-[11px] font-bold ${shake || isOverLimit ? "text-red-500" : isNearLimit ? "text-amber-500" : "text-primary"}`
+            ? `top-0 ${centered ? "left-1/2 -translate-x-1/2" : "right-2"} -translate-y-1/2 bg-background px-1 text-[11px] font-bold ${shake || isOverLimit ? "text-red-500" : isNearLimit ? "text-accent" : "text-primary"}`
             : `top-1/2 ${centered ? "left-1/2 -translate-x-1/2" : "right-3"} -translate-y-1/2 text-sm ${shake || isOverLimit ? "text-red-500" : "text-muted-foreground"}`
         }`}
       >
@@ -154,7 +154,7 @@ const FloatingInput = ({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 5 }}
               className={`absolute left-2 bottom-0 translate-y-1/2 bg-background px-1 text-[11px] font-bold ${
-                isOverLimit ? "text-red-500" : "text-amber-500"
+                isOverLimit ? "text-red-500" : "text-accent"
               }`}
             >
               {valueLength}/{maxLength}
@@ -299,7 +299,7 @@ const FloatingTextarea = ({
         rows={rows}
         style={textareaHeight ? { height: `${textareaHeight}px` } : undefined}
         className={`peer block w-full rounded-lg border-2 bg-background px-3 pt-5 pb-12 text-base outline-none transition-colors resize-none min-h-[80px] max-h-[500px] leading-6 ${
-          shake || isOverLimit ? "border-red-500" : isNearLimit ? "border-amber-500" : isFocused ? "border-primary" : "border-border"
+          shake || isOverLimit ? "border-red-500" : isNearLimit ? "border-accent" : isFocused ? "border-primary" : "border-border"
         } text-right`}
       />
       
@@ -331,7 +331,7 @@ const FloatingTextarea = ({
       <label
         className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 z-20 ${
           isFocused || hasValue
-            ? `top-0 right-2 -translate-y-1/2 bg-background px-1 text-[11px] font-bold ${shake || isOverLimit ? "text-red-500" : isNearLimit ? "text-amber-500" : "text-primary"}`
+            ? `top-0 right-2 -translate-y-1/2 bg-background px-1 text-[11px] font-bold ${shake || isOverLimit ? "text-red-500" : isNearLimit ? "text-accent" : "text-primary"}`
             : `top-4 right-3 text-sm ${shake || isOverLimit ? "text-red-500" : "text-muted-foreground"}`
         }`}
       >
@@ -347,7 +347,7 @@ const FloatingTextarea = ({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 5 }}
               className={`absolute left-2 bottom-0 translate-y-1/2 bg-background px-1 text-[11px] font-bold ${
-                isOverLimit ? "text-red-500" : "text-amber-500"
+                isOverLimit ? "text-red-500" : "text-accent"
               }`}
             >
               {valueLength}/{maxLength}
@@ -2179,7 +2179,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         msg.role === "user"
                           ? "bg-primary text-primary-foreground rounded-tr-none ml-auto"
                           : msg.isSuccess
-                          ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 border border-green-200 dark:border-green-800 rounded-tl-none mr-auto"
+                          ? "bg-primary/10 text-primary border border-primary/20 rounded-tl-none mr-auto"
                           : "bg-secondary text-secondary-foreground rounded-tl-none border border-border mr-auto"
                       }`}
                     >
@@ -2315,7 +2315,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                                               }
                                             }}
                                             placeholder={currentQ.inputPlaceholder}
-                                            className="w-full pr-10 pl-12 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                            className="w-full pr-10 pl-12 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:border-primary"
                                           />
                                           <button
                                             type="button"
@@ -2383,7 +2383,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                                           }
                                         }}
                                         placeholder={currentQ.inputPlaceholder}
-                                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:border-primary"
                                       />
                                     )}
                                   </div>
@@ -2712,7 +2712,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                          value={guestPhone}
                          onChange={(e) => setGuestPhone(e.target.value)}
                          placeholder="5XX XXX XXX"
-                         className="w-full h-12 px-4 text-right rounded-lg border-2 border-border bg-background text-base outline-none transition-all focus:border-primary"
+                         className="w-full px-3 py-2 text-sm text-right rounded-lg border-2 border-border bg-background outline-none transition-all focus:border-primary"
                          dir="ltr"
                        />
                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">+966</span>
@@ -3771,7 +3771,7 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
                             chatMsg.role === "user"
                               ? "bg-primary text-primary-foreground rounded-tr-none"
                               : chatMsg.isSuccess
-                              ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 border border-green-200 dark:border-green-800 rounded-tl-none"
+                              ? "bg-primary/10 text-primary border border-primary/20 rounded-tl-none"
                               : "bg-secondary text-secondary-foreground rounded-tl-none border border-border"
                           }`}
                         >
@@ -3945,9 +3945,9 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
                       
                       {/* Location Chip */}
                       {draftData.locationCoords && (
-                        <div className="flex items-center gap-2 p-2 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-                          <MapPin size={16} className="text-green-600 dark:text-green-400" />
-                          <span className="text-xs font-medium text-green-700 dark:text-green-300 flex-1">
+                        <div className="flex items-center gap-2 p-2 rounded-lg bg-primary/10 border border-primary/20">
+                          <MapPin size={16} className="text-primary" />
+                          <span className="text-xs font-medium text-primary flex-1">
                             📍 {draftData.locationCoords.address || `${draftData.locationCoords.lat.toFixed(4)}, ${draftData.locationCoords.lng.toFixed(4)}`}
                           </span>
                           <button
@@ -4205,8 +4205,8 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
                               className={`flex-1 py-4 px-2 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1.5 ${
                                 isSelected
                                   ? opt.val === 2
-                                    ? "bg-blue-500 border-blue-400 text-white shadow-lg scale-[1.02]"
-                                    : "bg-gradient-to-br from-blue-700 to-blue-900 border-blue-600 text-white shadow-lg scale-[1.02]"
+                                    ? "bg-primary border-primary text-white shadow-lg scale-[1.02]"
+                                    : "bg-primary/90 border-primary/80 text-white shadow-lg scale-[1.02]"
                                   : "bg-background border-border text-muted-foreground/60 hover:border-primary/30 hover:bg-secondary/20"
                               }`}
                             >
@@ -4225,12 +4225,12 @@ const DraftPreviewCard: React.FC<DraftPreviewCardProps> = ({
                           );
                         })}
                       </div>
-                      <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200/50 flex items-start gap-2.5">
+                      <div className="p-3 rounded-xl bg-accent/10 border border-accent/20 flex items-start gap-2.5">
                         <AlertTriangle
                           size={16}
-                          className="text-amber-500 shrink-0 mt-0.5"
+                          className="text-accent shrink-0 mt-0.5"
                         />
-                        <p className="text-[10px] text-amber-800 dark:text-amber-300 leading-relaxed font-medium">
+                        <p className="text-[10px] text-accent-foreground leading-relaxed font-medium">
                           تنبيه: اختيار مستوى جدية أعلى قد يقلل من عدد العروض
                           الواردة ولكنه يضمن جودتها وجدية مقدميها بشكل أكبر.
                         </p>

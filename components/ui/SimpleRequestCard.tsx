@@ -10,11 +10,14 @@ import {
   ChevronLeft,
   Check,
   Send,
-  Lock
+  Lock,
+  Hourglass
 } from "lucide-react";
 import { Request, Offer } from "../../types";
-import { formatDistanceToNow } from "date-fns";
-import { ar } from "date-fns/locale";
+import { formatTimeAgo } from "../../utils/timeFormat";
+import { AVAILABLE_CATEGORIES } from "../../data";
+import { getKnownCategoryColor } from "../../utils/categoryColors";
+import { CategoryIcon } from "./CategoryIcon";
 
 interface SimpleRequestCardProps {
   request: Request;
@@ -41,7 +44,7 @@ export const SimpleRequestCard: React.FC<SimpleRequestCardProps> = ({
   
   // Format time ago
   const timeAgo = request.createdAt 
-    ? formatDistanceToNow(new Date(request.createdAt), { addSuffix: true, locale: ar })
+    ? formatTimeAgo(request.createdAt, true)
     : "";
 
   // Status
@@ -50,13 +53,17 @@ export const SimpleRequestCard: React.FC<SimpleRequestCardProps> = ({
   const isNew = !isViewed && !isMyRequest;
   const isCompleted = request.status === "assigned" || request.status === "completed";
 
-  // Get budget display
-  const budgetDisplay = request.budgetMin || request.budgetMax
-    ? `${request.budgetMin || "?"}-${request.budgetMax || "?"}`
+  // Get budget display - only show if both min and max exist
+  const budgetDisplay = request.budgetMin && request.budgetMax
+    ? `الميزانية: ${request.budgetMin} - ${request.budgetMax}`
     : null;
 
-  // Get first category
-  const firstCategory = request.categories?.[0] || "";
+  // Get delivery time display - only show if deliveryTimeFrom exists and type is not 'not-specified' or 'immediate'
+  const deliveryDisplay = request.deliveryTimeFrom && 
+    request.deliveryTimeType !== 'not-specified' && 
+    request.deliveryTimeType !== 'immediate'
+    ? request.deliveryTimeFrom
+    : null;
 
   // ====================================
   // MINIMAL VARIANT - Text only, super clean
@@ -103,7 +110,7 @@ export const SimpleRequestCard: React.FC<SimpleRequestCardProps> = ({
         <div className="flex items-center gap-2 flex-shrink-0">
           {hasOffer && (
             <span className={`w-6 h-6 rounded-full flex items-center justify-center ${
-              offerAccepted ? "bg-emerald-500/20 text-emerald-600" : "bg-amber-500/20 text-amber-600"
+              offerAccepted ? "bg-primary/15 text-primary" : "bg-accent/20 text-accent-foreground"
             }`}>
               {offerAccepted ? <Check size={12} /> : <Clock size={12} />}
             </span>
@@ -159,9 +166,15 @@ export const SimpleRequestCard: React.FC<SimpleRequestCardProps> = ({
                 </span>
               )}
               {budgetDisplay && (
-                <span className="flex items-center gap-1 text-emerald-600">
+                <span className="flex items-center gap-1 text-primary">
                   <DollarSign size={11} />
                   {budgetDisplay}
+                </span>
+              )}
+              {deliveryDisplay && (
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  <Hourglass size={11} />
+                  التنفيذ خلال: {deliveryDisplay}
                 </span>
               )}
               <span className="flex items-center gap-1">
@@ -182,7 +195,7 @@ export const SimpleRequestCard: React.FC<SimpleRequestCardProps> = ({
               </div>
             ) : hasOffer ? (
               <span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${
-                offerAccepted ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"
+                offerAccepted ? "bg-primary/10 text-primary" : "bg-accent/15 text-accent-foreground"
               }`}>
                 {offerAccepted ? "✓" : "⏳"}
               </span>
@@ -245,7 +258,7 @@ export const SimpleRequestCard: React.FC<SimpleRequestCardProps> = ({
               </span>
             ) : hasOffer ? (
               <span className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${
-                offerAccepted ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"
+                offerAccepted ? "bg-primary text-white" : "bg-accent text-accent-foreground"
               }`}>
                 {offerAccepted ? <Check size={10} /> : <Clock size={10} />}
                 {offerAccepted ? "معتمد" : "بانتظار"}
@@ -286,28 +299,38 @@ export const SimpleRequestCard: React.FC<SimpleRequestCardProps> = ({
                 {budgetDisplay}
               </span>
             )}
+            {deliveryDisplay && (
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <Hourglass size={12} />
+                التنفيذ خلال: {deliveryDisplay}
+              </span>
+            )}
           </div>
           <span>{timeAgo}</span>
         </div>
 
-        {/* Category Tag */}
-        {firstCategory && (
-          <div className="mt-3 flex items-center justify-between">
-            <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium">
-              {firstCategory}
-            </span>
-            
-            {/* Stats */}
-            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-              <span className="flex items-center gap-0.5">
-                <Eye size={12} />
-                {request.viewCount || 0}
-              </span>
-              <span className="flex items-center gap-0.5">
-                <MessageCircle size={12} />
-                {request.offersCount || receivedOffersCount || request.offers?.length || 0}
-              </span>
-            </div>
+        {/* Categories - All categories displayed as circles */}
+        {request.categories && request.categories.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {request.categories.map((catLabel, idx) => {
+              const categoryObj = AVAILABLE_CATEGORIES.find(c => c.label === catLabel || c.id === catLabel);
+              const categoryId = categoryObj?.id || catLabel;
+              const categoryColor = getKnownCategoryColor(categoryId);
+              
+              return (
+                <div
+                  key={idx}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center border ${categoryColor}`}
+                  title={categoryObj?.label || catLabel}
+                >
+                  <CategoryIcon 
+                    icon={categoryObj?.icon} 
+                    emoji={categoryObj?.emoji} 
+                    size={14} 
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
 

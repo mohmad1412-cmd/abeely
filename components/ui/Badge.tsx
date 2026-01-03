@@ -38,20 +38,20 @@ export const Badge: React.FC<BadgeProps> = ({
       !rounded-lg
     `,
     success: `
-      bg-emerald-500/15 text-emerald-700 dark:text-emerald-400
-      border border-emerald-500/20
+      bg-primary/15 text-primary
+      border border-primary/20
     `,
     warning: `
-      bg-amber-500/15 text-amber-700 dark:text-amber-400
-      border border-amber-500/20
+      bg-accent/15 text-accent-foreground
+      border border-accent/25
     `,
     error: `
       bg-red-500/15 text-red-700 dark:text-red-400
       border border-red-500/20
     `,
     info: `
-      bg-blue-500/15 text-blue-700 dark:text-blue-400
-      border border-blue-500/20
+      bg-primary/15 text-primary
+      border border-primary/20
     `,
     gradient: `
       bg-gradient-to-r from-primary to-accent text-white

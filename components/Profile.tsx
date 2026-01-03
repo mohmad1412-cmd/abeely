@@ -216,7 +216,7 @@ export const Profile: React.FC<ProfileProps> = ({
                               }
                             }}
                             maxLength={60}
-                            className="w-full text-2xl font-bold bg-background border border-border rounded-lg px-3 py-2 pr-20 focus:outline-none focus:ring-2 focus:ring-primary"
+                            className="w-full text-2xl font-bold bg-background border border-border rounded-lg px-3 py-2 pr-20 focus:outline-none focus:border-primary"
                             autoFocus
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
@@ -309,7 +309,7 @@ export const Profile: React.FC<ProfileProps> = ({
                         }}
                         rows={4}
                         maxLength={200}
-                        className="w-full text-sm leading-relaxed bg-background border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                        className="w-full text-sm leading-relaxed bg-background border border-border rounded-lg px-3 py-2 focus:outline-none focus:border-primary resize-none"
                         autoFocus
                       />
                       <div className="absolute bottom-2 left-3 text-xs text-muted-foreground">
@@ -392,12 +392,12 @@ export const Profile: React.FC<ProfileProps> = ({
               <div className="text-xs text-muted-foreground">{profileRole === 'provider' ? 'نسبة إكمال' : 'معدل التوظيف'}</div>
             </div>
             <div className="bg-card p-4 rounded-xl border border-border text-center hover:border-primary/50 transition-colors">
-              <Clock className="mx-auto mb-2 text-blue-500" />
+              <Clock className="mx-auto mb-2 text-primary" />
               <div className="font-bold text-xl">سريع</div>
               <div className="text-xs text-muted-foreground">{profileRole === 'provider' ? 'سرعة الرد' : 'سرعة الدفع'}</div>
             </div>
             <div className="bg-card p-4 rounded-xl border border-border text-center hover:border-primary/50 transition-colors">
-              <DollarSign className="mx-auto mb-2 text-green-500" />
+              <DollarSign className="mx-auto mb-2 text-primary" />
               <div className="font-bold text-xl">50k+</div>
               <div className="text-xs text-muted-foreground">قيمة التعاملات</div>
             </div>

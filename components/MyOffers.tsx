@@ -13,7 +13,6 @@ import {
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { FloatingFilterIsland } from "./ui/FloatingFilterIsland";
-import { UnifiedHeader } from "./ui/UnifiedHeader";
 
 type OfferFilter = "all" | "accepted" | "pending" | "completed";
 type SortOrder = "updatedAt" | "createdAt";
@@ -150,18 +149,7 @@ export const MyOffers: React.FC<MyOffersProps> = ({
 
   // Filter configurations for FloatingFilterIsland
   const filterConfigs = useMemo(() => [
-    {
-      id: "sortOrder",
-      icon: <ArrowUpDown size={14} />,
-      options: [
-        { value: "createdAt", label: "وقت التقديم", icon: <Calendar size={12} /> },
-        { value: "updatedAt", label: "آخر تحديث", icon: <Clock size={12} /> },
-      ],
-      value: sortOrder,
-      onChange: (value: string) => setSortOrder(value as SortOrder),
-      getLabel: () => sortOrder === "updatedAt" ? "آخر تحديث" : "تاريخ التقديم",
-      showCount: false,
-    },
+    // Removed sortOrder filter - hiding "تاريخ التقديم" and "تاريخ الإنشاء" options
     {
       id: "offerFilter",
       icon: <Briefcase size={14} />,
@@ -169,27 +157,27 @@ export const MyOffers: React.FC<MyOffersProps> = ({
         { value: "all", label: "كل عروضي", count: counts.all },
         { value: "pending", label: "عروضي قيد الانتظار", count: counts.pending },
         { value: "accepted", label: "عروضي المقبولة", count: counts.accepted },
-        { value: "completed", label: "المكتملة والمؤرشفة", count: counts.completed },
+        { value: "completed", label: "عروضي المكتملة والمؤرشفة", count: counts.completed },
       ],
       value: offerFilter,
       onChange: (value: string) => setOfferFilter(value as OfferFilter),
       getLabel: () => {
         switch (offerFilter) {
           case "all": return "كل عروضي";
-          case "pending": return "قيد الانتظار";
-          case "accepted": return "المقبولة";
-          case "completed": return "المكتملة";
+          case "pending": return "عروضي قيد الانتظار";
+          case "accepted": return "عروضي المقبولة";
+          case "completed": return "عروضي المكتملة والمؤرشفة";
         }
       },
       showCount: true,
     },
-  ], [offerFilter, sortOrder, counts]);
+  ], [offerFilter, counts]);
 
   const getContactStatus = (offer: Offer) => {
     if (offer.status === "accepted") {
-      return { text: "عرضك مقبول، ابدأ التواصل", color: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400", icon: "✅" };
+      return { text: "عرضك مقبول، ابدأ التواصل", color: "bg-primary/15 text-primary", icon: "✅" };
     } else if (offer.status === "negotiating") {
-      return { text: "صاحب الطلب بدأ التفاوض معك", color: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400", icon: "💬" };
+      return { text: "صاحب الطلب بدأ التفاوض معك", color: "bg-primary/15 text-primary", icon: "💬" };
     }
     if (offer.isNegotiable) {
       return { text: "انتظر قبول الطلب أو بدء التفاوض", color: "bg-gray-100 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400", icon: "⏳" };
@@ -207,6 +195,21 @@ export const MyOffers: React.FC<MyOffersProps> = ({
         ref={headerRef}
         className="sticky top-0 z-[60] overflow-visible"
       >
+        {/* طبقة متدرجة خلف عناصر الهيدر - تعزل الكروت */}
+        <div
+          className="absolute left-0 right-0 pointer-events-none"
+          style={{
+            top: '-50px',
+            height: 'calc(100% + 100px)',
+            background: `linear-gradient(to bottom,
+              hsl(var(--background)) 0%,
+              hsl(var(--background)) 60%,
+              hsl(var(--background) / 0.8) 75%,
+              hsl(var(--background) / 0) 100%
+            )`,
+            zIndex: -1,
+          }}
+        />
         {/* Container for header and filter island - fixed compact size */}
         <div 
           className="flex flex-col overflow-visible origin-top"
@@ -214,40 +217,6 @@ export const MyOffers: React.FC<MyOffersProps> = ({
             transform: 'scale(0.92) translateY(4px)',
           }}
         >
-          {/* Main Header Content */}
-          <div className="px-4">
-            <UnifiedHeader
-              mode="offers"
-              toggleMode={() => {}}
-              isModeSwitching={false}
-              unreadCount={0}
-              hasUnreadMessages={false}
-              user={user}
-              setView={() => {}}
-              setPreviousView={() => {}}
-              titleKey={offerFilter === "all" ? 0 : offerFilter === "pending" ? 1 : offerFilter === "accepted" ? 2 : 3}
-              notifications={[]}
-              onMarkAsRead={() => {}}
-              onNotificationClick={() => {}}
-              onClearAll={() => {}}
-              onSignOut={onSignOut || (() => {})}
-              currentView="my-offers"
-              transparent={true}
-              hideActionButtons={true}
-              onNavigateToProfile={onNavigateToProfile}
-              onNavigateToSettings={onNavigateToSettings}
-              isGuest={isGuest}
-              isDarkMode={isDarkMode}
-              toggleTheme={toggleTheme}
-              onOpenLanguagePopup={onOpenLanguagePopup}
-              title="عروضي"
-              isScrolled={!isHeaderCompressed}
-              showCreateRequestButton={true}
-              onCreateRequest={onCreateRequest}
-              isActive={isActive}
-            />
-          </div>
-          
           {/* Filter Island - inside scaled container */}
           <FloatingFilterIsland 
             filters={filterConfigs}
@@ -262,12 +231,12 @@ export const MyOffers: React.FC<MyOffersProps> = ({
       <div className="px-4 pb-24">
         <div key={offerFilter} className="grid grid-cols-1 gap-6 min-h-[100px] pt-2">
           {filteredOffers.length === 0 && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-8">
-              <motion.div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-brand flex items-center justify-center" animate={{ scale: [1, 1.05, 1], rotate: [0, 3, -3, 0] }} transition={{ duration: 2, repeat: Infinity }}>
+            <div className="text-center py-8">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-brand flex items-center justify-center">
                 <span className="text-xl font-black text-white">أ</span>
-              </motion.div>
+              </div>
               <p className="text-sm text-muted-foreground">لا توجد عروض</p>
-            </motion.div>
+            </div>
           )}
           {filteredOffers.map((offer, index) => {
             const relatedReq = allRequests.find((r) => r.id === offer.requestId);
@@ -278,14 +247,8 @@ export const MyOffers: React.FC<MyOffersProps> = ({
             return (
               <motion.div
                 key={offer.id}
-                initial={{ opacity: 0, y: 20 }}
+                initial={false}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ 
-                  type: "spring", 
-                  stiffness: 400, 
-                  damping: 30,
-                  delay: index < 9 ? index * 0.03 : 0
-                }}
                 whileHover={{ y: -8, scale: 1.02 }}
                 onClick={() => {
                   if (onSelectOffer) {
@@ -310,8 +273,8 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                         offer.status === "pending"
                           ? "bg-orange-100 text-orange-700"
                           : offer.status === "accepted"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-blue-100 text-blue-700"
+                          ? "bg-primary/15 text-primary"
+                          : "bg-primary/10 text-primary"
                       }`}
                     >
                       {offer.status === "pending"
@@ -353,7 +316,7 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                   <span className="font-bold text-foreground">{offer.price} ر.س</span>
                   <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${
                     offer.isNegotiable 
-                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" 
+                      ? "bg-primary/10 text-primary" 
                       : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
                   }`}>
                     {offer.isNegotiable ? "قابل للتفاوض" : "غير قابل للتفاوض"}
@@ -413,7 +376,7 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                                   window.open(`https://wa.me/${relatedReq.whatsappNumber}`, '_blank');
                                 }
                               }}
-                              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-green-500 hover:bg-green-600 active:scale-95 active:bg-green-700 text-white transition-all shadow-sm"
+                              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-primary hover:bg-primary/90 active:scale-95 text-white transition-all shadow-sm"
                               title="تواصل عبر واتساب"
                             >
                               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">

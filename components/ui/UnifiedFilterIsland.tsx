@@ -42,8 +42,8 @@ export const UnifiedFilterIsland: React.FC<UnifiedFilterIslandProps> = ({
         <motion.div 
           layout
           layoutId="unified-filter-island-container"
-          className={`${autoWidth ? 'inline-flex' : 'flex'} items-center bg-card/95 backdrop-blur-xl rounded-full p-1 gap-0.5 border border-border shadow-lg max-w-[calc(100vw-32px)]`}
-          style={autoWidth ? undefined : { minWidth: 280, maxWidth: 380 }}
+          className={`${autoWidth ? 'inline-flex' : 'inline-flex'} items-center ${autoWidth ? 'justify-start' : 'justify-between'} bg-card/95 backdrop-blur-xl rounded-full p-1.5 gap-1.5 border border-border shadow-lg ${autoWidth ? '' : 'max-w-[500px] min-w-[320px]'}`}
+          style={autoWidth ? undefined : { maxWidth: '500px', minWidth: '320px' }}
           dir="rtl"
           transition={{ 
             type: "spring", 

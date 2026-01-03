@@ -7,73 +7,116 @@
    ======================================== */
 
 :root {
+    /* ========================================
+       ABEELY UNIFIED DESIGN SYSTEM
+       Primary: Teal/Turquoise (#1E968C)
+       Secondary: Warm Blush/Peach (#C9A99A)
+       ======================================== */
+    
     /* Core Colors - Light Mode */
-    /* خلفية خفيفة جداً بلمسة من لون الهوية */
-    --background: #f8fafa;
-    --foreground: #0f172a;
-    /* الكروت أفتح قليلاً - قريبة للأبيض */
+    --background: #faf9f8;
+    --foreground: #2d2a26;
+    --foreground-rgb: 45, 42, 38;
     --card: #ffffff;
-    --card-foreground: #0f172a;
+    --card-foreground: #2d2a26;
     --popover: #ffffff;
-    --popover-foreground: #0f172a;
+    --popover-foreground: #2d2a26;
     
-    /* Primary - Brand Teal #1E968C */
+    /* Primary - Teal (التركوازي) */
     --primary: #1E968C;
+    /* RGB helpers (for rgba(var(--*-rgb), a) usage across the app) */
+    --primary-rgb: 30, 150, 140;
     --primary-foreground: #ffffff;
+    --primary-muted: rgba(30, 150, 140, 0.08);
+    --primary-glow: rgba(30, 150, 140, 0.12);
     
-    /* Secondary - Soft Gray */
-    --secondary: #f1f5f9;
-    --secondary-foreground: #0f172a;
+    /* Secondary - Warm Blush (اللحمي الدافئ) */
+    --secondary: #f5ebe7;
+    --secondary-foreground: #5c4a42;
     
-    /* Muted */
-    --muted: #f1f5f9;
-    --muted-foreground: #64748b;
+    /* Muted - Neutral Warm */
+    --muted: #f3eeeb;
+    --muted-foreground: #8b7d75;
+    --muted-foreground-rgb: 139, 125, 117;
     
-    /* Accent - Brand Deep Blue #153659 */
-    --accent: #153659;
-    --accent-foreground: #ffffff;
+    /* Accent - Warm Blush (للتمييز) */
+    --accent: #C9A99A;
+    --accent-rgb: 201, 169, 154;
+    --accent-foreground: #3d302a;
     
-    /* Destructive - Red */
-    --destructive: #ef4444;
+    /* Destructive - Soft Red */
+    --destructive: #e05252;
     --destructive-foreground: #ffffff;
     
-    /* Borders & Inputs */
-    --border: #e2e8f0;
-    --input: #e2e8f0;
+    /* Borders & Inputs - دافئة مع لمسة تركوازية خفيفة */
+    --border: #c5d5d3;
+    --border-subtle: #d8e2e0;
+    --border-accent: rgba(30, 150, 140, 0.35);
+    --input: #c5d5d3;
     --ring: #1E968C;
+    
+    /* Unified Glow - فقط لون واحد للومضات */
+    --glow-color: rgba(30, 150, 140, 0.12);
+    --glow-color-strong: rgba(30, 150, 140, 0.2);
+    
+    /* Status Colors - Unified */
+    --status-complete: #1E968C;
+    --status-pending: #C9A99A;
+    --status-active: #1E968C;
     
     /* Radius */
     --radius: 0.75rem;
 }
 
 .dark {
-    --background: #0a0a0f;
-    --foreground: #f8fafc;
-    --card: #111118;
-    --card-foreground: #f8fafc;
-    --popover: #111118;
-    --popover-foreground: #f8fafc;
+    /* Dark Mode - Same Identity */
+    --background: #0f0e0d;
+    --foreground: #f5f2ef;
+    --foreground-rgb: 245, 242, 239;
+    --card: #1a1816;
+    --card-foreground: #f5f2ef;
+    --popover: #1a1816;
+    --popover-foreground: #f5f2ef;
     
     /* Primary - Lighter Teal for Dark Mode */
     --primary: #2db5a9;
+    --primary-rgb: 45, 181, 169;
     --primary-foreground: #ffffff;
+    --primary-muted: rgba(45, 181, 169, 0.1);
+    --primary-glow: rgba(45, 181, 169, 0.15);
     
-    --secondary: #1e1e2d;
-    --secondary-foreground: #f8fafc;
+    /* Secondary - Warm Blush (darker) */
+    --secondary: #2a2420;
+    --secondary-foreground: #e8d5cc;
     
-    --muted: #1e1e2d;
-    --muted-foreground: #94a3b8;
+    /* Muted */
+    --muted: #252220;
+    --muted-foreground: #a69890;
+    --muted-foreground-rgb: 166, 152, 144;
     
-    /* Accent - Brand Deep Blue */
-    --accent: #153659;
-    --accent-foreground: #ffffff;
+    /* Accent - Warm Blush */
+    --accent: #b8998a;
+    --accent-rgb: 184, 153, 138;
+    --accent-foreground: #f5ebe7;
     
-    --destructive: #dc2626;
+    --destructive: #dc4545;
     --destructive-foreground: #ffffff;
     
-    --border: #27272a;
-    --input: #27272a;
+    /* Borders - دافئة مع لمسة تركوازية خفيفة */
+    --border: #2f4544;
+    --border-subtle: #263938;
+    --border-accent: rgba(45, 181, 169, 0.4);
+    --input: #2f4544;
     --ring: #2db5a9;
+    
+    /* Unified Glow */
+    --glow-color: rgba(45, 181, 169, 0.12);
+    --glow-color-strong: rgba(45, 181, 169, 0.2);
+    
+    /* Status Colors */
+    --status-complete: #2db5a9;
+    --status-pending: #b8998a;
+    --status-active: #2db5a9;
 }
 
 * {
@@ -393,26 +436,95 @@ p, span, div, button, a, label, input, textarea, select {
 }
 
 /* ========================================
-   INPUT STYLES
+   INPUT STYLES - Unified Design System
    ======================================== */
+
+/* Base Input Style - Standard */
+.input-base {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--background);
+    color: var(--foreground);
+    transition: all 0.2s ease;
+}
+
+.input-base:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(30, 150, 140, 0.15);
+}
+
+.input-base::placeholder {
+    color: var(--muted-foreground);
+    opacity: 0.6;
+}
+
+.dark .input-base:focus {
+    box-shadow: 0 0 0 3px rgba(45, 181, 169, 0.2);
+}
+
+/* Input on Card Background */
+.input-card {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    transition: all 0.2s ease;
+}
+
+.input-card:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(30, 150, 140, 0.15);
+}
+
+.input-card::placeholder {
+    color: var(--muted-foreground);
+    opacity: 0.6;
+}
+
+.dark .input-card:focus {
+    box-shadow: 0 0 0 3px rgba(45, 181, 169, 0.2);
+}
+
+/* Premium Input Style */
 .input-premium {
     width: 100%;
     padding: 0.75rem 1rem;
     border-radius: 0.75rem;
-    border: 1px solid var(--input);
-    background: var(--background);
+    border: 2px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
     transition: all 0.2s ease;
 }
 
 .input-premium:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(30, 150, 140, 0.1);
+    box-shadow: 0 0 0 3px rgba(30, 150, 140, 0.15);
 }
 
 .input-premium::placeholder {
     color: var(--muted-foreground);
     opacity: 0.5;
+}
+
+.dark .input-premium:focus {
+    box-shadow: 0 0 0 3px rgba(45, 181, 169, 0.2);
+}
+
+/* Active/Focused Input Highlight */
+.input-active {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(30, 150, 140, 0.15) !important;
+}
+
+.dark .input-active {
+    box-shadow: 0 0 0 3px rgba(45, 181, 169, 0.2) !important;
 }
 
 /* Hide number input spinner arrows */
@@ -1155,41 +1267,44 @@ button, a, input, textarea, select {
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Soft Pulse Animation - gentle glow effect */
+/* ========================================
+   UNIFIED GLOW/PULSE EFFECTS
+   Single color, subtle animations only
+   ======================================== */
+
+/* Soft Pulse - Very subtle, single color */
 @keyframes soft-pulse {
-    0% {
-        box-shadow: 0 0 0 0 rgba(30, 150, 140, 0);
-    }
-    40% {
-        box-shadow: 0 0 12px 2px rgba(30, 150, 140, 0.35);
+    0%, 100% {
+        box-shadow: 0 0 0 0 var(--glow-color);
     }
     50% {
-        box-shadow: 0 0 10px 2px rgba(30, 150, 140, 0.3);
-    }
-    70% {
-        box-shadow: 0 0 8px 2px rgba(30, 150, 140, 0.2);
-    }
-    85% {
-        box-shadow: 0 0 4px 1px rgba(30, 150, 140, 0.1);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(30, 150, 140, 0);
+        box-shadow: 0 0 8px 2px var(--glow-color);
     }
 }
 
 .animate-soft-pulse {
-    animation: soft-pulse-continuous 3s ease-in-out infinite;
+    animation: soft-pulse-unified 2.5s ease-in-out infinite;
 }
 
-@keyframes soft-pulse-continuous {
+@keyframes soft-pulse-unified {
     0%, 100% {
-        border-color: rgba(30, 150, 140, 0.15);
-        box-shadow: 0 0 0 0 rgba(30, 150, 140, 0);
+        border-color: var(--border);
+        box-shadow: none;
     }
     50% {
-        border-color: rgba(30, 150, 140, 0.6);
-        box-shadow: 0 0 12px 2px rgba(30, 150, 140, 0.3);
+        border-color: var(--primary);
+        box-shadow: 0 0 6px 1px var(--glow-color);
     }
+}
+
+/* Subtle border glow - very light */
+.glow-subtle {
+    box-shadow: 0 0 4px 0 var(--glow-color);
+}
+
+/* Active state glow */
+.glow-active {
+    box-shadow: 0 0 0 2px var(--glow-color);
 }
 
 /* Auto-scroll text animation for long text - smooth left to right */

@@ -602,7 +602,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                 {selectedRadarWords.map((word) => (
                                   <div
                                     key={word}
-                                    className="px-2 py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-600 dark:text-amber-400 font-medium"
+                                    className="px-2 py-1 bg-accent/15 border border-accent/25 rounded-lg text-xs text-accent-foreground font-medium"
                                   >
                                     📡 {word}
                                   </div>

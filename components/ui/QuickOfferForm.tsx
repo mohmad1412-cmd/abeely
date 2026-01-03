@@ -45,9 +45,14 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
   const [description, setDescription] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: boolean }>({});
+  const [shakingFields, setShakingFields] = useState<{ [key: string]: boolean }>({});
+  const priceInputRef = useRef<HTMLInputElement>(null);
+  const descriptionInputRef = useRef<HTMLTextAreaElement>(null);
 
   // Common durations for quick select
   const quickDurations = ["يوم", "يومين", "3 أيام", "أسبوع", "أسبوعين", "شهر"];
+
+  const [isShaking, setIsShaking] = useState(false);
 
   // Validate and submit
   const handleSubmit = async () => {
@@ -91,13 +96,61 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
     }
   };
 
+  const handleButtonClick = () => {
+    if (isSubmitting) return;
+    
+    // التحقق من الحقول المطلوبة
+    const hasPrice = price.trim().length > 0;
+    const hasDescription = title.trim().length > 0 || description.trim().length > 0;
+    
+    // إذا كان هناك حقول ناقصة، أضف اهتزاز وحد أحمر
+    if (!hasPrice || !hasDescription) {
+      setIsShaking(true);
+      
+      // إضافة اهتزاز للحقول الناقصة
+      const newShakingFields: { [key: string]: boolean } = {};
+      if (!hasPrice) {
+        newShakingFields.price = true;
+        // التركيز على حقل السعر أولاً
+        setTimeout(() => priceInputRef.current?.focus(), 100);
+      } else if (!hasDescription) {
+        newShakingFields.title = true;
+        // التركيز على حقل الوصف إذا كان السعر موجود
+        setTimeout(() => descriptionInputRef.current?.focus(), 100);
+      }
+      setShakingFields(newShakingFields);
+      
+      // إضافة أخطاء
+      const newErrors: { [key: string]: boolean } = {};
+      if (!hasPrice) newErrors.price = true;
+      if (!hasDescription) newErrors.title = true;
+      setErrors(newErrors);
+      
+      // اهتزاز هاتفي
+      if (navigator.vibrate) {
+        navigator.vibrate([50, 30, 50, 30, 50]);
+      }
+      
+      // إزالة الاهتزاز بعد 500ms
+      setTimeout(() => {
+        setIsShaking(false);
+        setShakingFields({});
+      }, 500);
+      
+      return;
+    }
+    
+    // إذا كانت جميع الحقول مكتملة، أرسل
+    handleSubmit();
+  };
+
   // Success state
   if (showSuccess) {
     return (
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-emerald-500 rounded-2xl p-6 text-white text-center"
+        className="bg-primary rounded-2xl p-6 text-white text-center"
       >
         <motion.div
           initial={{ scale: 0 }}
@@ -159,21 +212,27 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
         {/* Price - Most important */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-            <DollarSign size={14} className="text-emerald-500" />
+            <DollarSign size={14} className="text-primary" />
             السعر المقترح <span className="text-red-500">*</span>
           </label>
           <div className="relative">
-            <input
+            <motion.input
+              ref={priceInputRef}
               type="number"
               value={price}
               onChange={(e) => {
                 setPrice(e.target.value);
                 setErrors({ ...errors, price: false });
+                setShakingFields({ ...shakingFields, price: false });
               }}
               placeholder="مثال: 500"
-              className={`w-full px-4 py-3 rounded-xl border text-lg font-bold text-center transition-colors ${
-                errors.price 
-                  ? "border-red-500 bg-red-50 dark:bg-red-900/10" 
+              animate={shakingFields.price ? {
+                x: [0, -8, 8, -8, 8, 0],
+                transition: { duration: 0.5 }
+              } : {}}
+              className={`w-full px-3 py-2 text-sm rounded-xl border-2 font-bold text-center transition-colors ${
+                errors.price || shakingFields.price
+                  ? "border-red-500 bg-red-50 dark:bg-red-900/10 ring-2 ring-red-500/30" 
                   : "border-border bg-background focus:border-primary"
               }`}
             />
@@ -195,7 +254,7 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
         {/* Duration - Quick select */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-            <Clock size={14} className="text-blue-500" />
+            <Clock size={14} className="text-primary" />
             مدة التنفيذ
           </label>
           <div className="flex flex-wrap gap-2">
@@ -221,27 +280,43 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
             <FileText size={14} className="text-purple-500" />
             ملخص عرضك
           </label>
-          <textarea
+          <motion.textarea
+            ref={descriptionInputRef}
             value={description}
             onChange={(e) => {
               setDescription(e.target.value);
               setErrors({ ...errors, title: false });
+              setShakingFields({ ...shakingFields, title: false });
             }}
             placeholder="صف عرضك باختصار... (اختياري)"
             rows={3}
-            className={`w-full px-4 py-3 rounded-xl border resize-none transition-colors ${
-              errors.title 
-                ? "border-red-500 bg-red-50 dark:bg-red-900/10" 
+            animate={shakingFields.title ? {
+              x: [0, -8, 8, -8, 8, 0],
+              transition: { duration: 0.5 }
+            } : {}}
+            className={`w-full px-4 py-3 rounded-xl border-2 resize-none transition-colors ${
+              errors.title || shakingFields.title
+                ? "border-red-500 bg-red-50 dark:bg-red-900/10 ring-2 ring-red-500/30" 
                 : "border-border bg-background focus:border-primary"
             }`}
           />
         </div>
 
         {/* Submit Button */}
-        <button
-          onClick={handleSubmit}
+        <motion.button
+          onClick={handleButtonClick}
           disabled={isSubmitting}
-          className="w-full py-4 rounded-2xl bg-primary text-white font-bold text-lg flex items-center justify-center gap-3 shadow-lg shadow-primary/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:shadow-xl"
+          animate={isShaking ? {
+            x: [0, -10, 10, -10, 10, 0],
+            transition: { duration: 0.5 }
+          } : {}}
+          className={`w-full py-4 rounded-2xl bg-primary text-white font-bold text-lg flex items-center justify-center gap-3 shadow-lg shadow-primary/25 transition-all hover:shadow-xl ${
+            isSubmitting 
+              ? 'opacity-50 cursor-wait' 
+              : isShaking
+              ? 'border-2 border-red-500 cursor-not-allowed'
+              : 'cursor-pointer'
+          }`}
         >
           {isSubmitting ? (
             <>
@@ -254,7 +329,7 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
               إرسال العرض
             </>
           )}
-        </button>
+        </motion.button>
 
         {/* Guest Notice */}
         {isGuest && (

@@ -252,10 +252,12 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
 
     // إذا لم يوجد profile، أنشئ واحداً سريعاً
     if ((!profile || error) && user.id) {
+      // للمستخدمين الجدد: الاسم فارغ حتى يدخله المستخدم بنفسه
+      // فقط Google/Apple يأتي معهم اسم من user_metadata
       const displayName =
         (user.user_metadata?.full_name as string | undefined) ||
         (user.user_metadata?.name as string | undefined) ||
-        (user.email ? user.email.split('@')[0] : 'مستخدم جديد');
+        null; // فارغ للمستخدمين الجدد عبر الجوال
 
       const { data: upserted, error: upsertError } = await supabase
         .from('profiles')
@@ -267,6 +269,8 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
           role: 'user',
           is_guest: false,
           is_verified: !!(user.phone || user.email),
+          // ملاحظة: لا نضع has_onboarded هنا لأن العمود قد لا يكون موجوداً
+          // الـ onboarding يعتمد على localStorage + التحقق من الاهتمامات والاسم
         })
         .select()
         .single();

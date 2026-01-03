@@ -621,12 +621,21 @@ export const reverseGeocode = async (
     if (!result) return null;
 
     // استخراج المعلومات من العنوان
+    let street = '';
+    let neighborhood = '';
+    let sublocality = '';
     let city = '';
     let region = '';
     let country = 'المملكة العربية السعودية';
 
     for (const component of result.address_components) {
-      if (component.types.includes('locality')) {
+      if (component.types.includes('route') || component.types.includes('street_address')) {
+        street = component.long_name;
+      } else if (component.types.includes('neighborhood') || component.types.includes('sublocality_level_1')) {
+        neighborhood = component.long_name;
+      } else if (component.types.includes('sublocality') || component.types.includes('sublocality_level_2')) {
+        if (!neighborhood) sublocality = component.long_name;
+      } else if (component.types.includes('locality')) {
         city = component.long_name;
       } else if (component.types.includes('administrative_area_level_2')) {
         if (!city) city = component.long_name;
@@ -637,9 +646,19 @@ export const reverseGeocode = async (
       }
     }
 
+    // بناء اسم العرض: الشارع، الحي، المدينة (بدون السعودية)
+    const addressParts: string[] = [];
+    if (street) addressParts.push(street);
+    if (neighborhood || sublocality) addressParts.push(neighborhood || sublocality);
+    if (city) addressParts.push(city);
+    
+    const displayName = addressParts.length > 0 
+      ? addressParts.join('، ')
+      : result.formatted_address.split('،')[0];
+
     return {
       placeId: result.place_id,
-      name: city || result.formatted_address.split('،')[0],
+      name: displayName,
       fullAddress: result.formatted_address,
       city: city || result.formatted_address.split('،')[0],
       region,

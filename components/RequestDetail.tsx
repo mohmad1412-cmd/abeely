@@ -44,8 +44,8 @@ import {
   Link,
   AlertTriangle,
 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
-import { ar } from "date-fns/locale";
+import { format } from "date-fns";
+import { formatTimeAgo } from "../utils/timeFormat";
 import { AnimatePresence, motion } from "framer-motion";
 import { AVAILABLE_CATEGORIES } from "../data";
 import { verifyGuestPhone, confirmGuestPhone, getCurrentUser } from "../services/authService";
@@ -1163,7 +1163,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     {
       id: 'copy-id',
       label: isIdCopied ? "✓ تم النسخ!" : `رقم الطلب: ${request.id.slice(0, 8)}...`,
-      icon: isIdCopied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />,
+      icon: isIdCopied ? <Check size={16} className="text-primary" /> : <Copy size={16} />,
       keepOpenOnClick: true, // نبقي الـ dropdown مفتوح لإظهار التأكيد
       onClick: async () => {
         if (isIdCopied) return; // منع النقر المتكرر
@@ -1286,13 +1286,13 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     className="absolute bottom-8 left-4 z-20"
                   >
                     {isMyRequest ? (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-amber-50 text-amber-700 border border-amber-200 backdrop-blur-md dark:bg-amber-500/10 dark:text-amber-100 dark:border-amber-400/30">
-                        <Check size={14} strokeWidth={2.5} className="text-amber-500" />
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-accent/15 text-accent-foreground border border-accent/25 backdrop-blur-md">
+                        <Check size={14} strokeWidth={2.5} className="text-accent" />
                         <span>طلبك</span>
                       </div>
                     ) : isMyOffer ? (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-card border border-border text-emerald-600 dark:text-emerald-400 backdrop-blur-md">
-                        <Check size={14} strokeWidth={2.5} className="text-emerald-500" />
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-card border border-border text-primary backdrop-blur-md">
+                        <Check size={14} strokeWidth={2.5} className="text-primary" />
                         <span>لقد قدمت عرض</span>
                       </div>
                     ) : (
@@ -1419,13 +1419,13 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     className="absolute bottom-8 left-4 z-20"
                   >
                     {isMyRequest ? (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-amber-50 text-amber-700 border border-amber-200 backdrop-blur-md dark:bg-amber-500/10 dark:text-amber-100 dark:border-amber-400/30">
-                        <Check size={14} strokeWidth={2.5} className="text-amber-500" />
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-accent/15 text-accent-foreground border border-accent/25 backdrop-blur-md">
+                        <Check size={14} strokeWidth={2.5} className="text-accent" />
                         <span>طلبك</span>
                       </div>
                     ) : isMyOffer ? (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-card border border-border text-emerald-600 dark:text-emerald-400 backdrop-blur-md">
-                        <Check size={14} strokeWidth={2.5} className="text-emerald-500" />
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-card border border-border text-primary backdrop-blur-md">
+                        <Check size={14} strokeWidth={2.5} className="text-primary" />
                         <span>لقد قدمت عرض</span>
                       </div>
                     ) : (
@@ -1520,7 +1520,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
                     onClick={() => setClickedIcons(prev => ({ ...prev, location: !prev.location }))}
                   >
-                    <MapPin size={18} className={clickedIcons.location ? "text-green-500" : "text-red-500"} /> الموقع
+                    <MapPin size={18} className={clickedIcons.location ? "text-primary" : "text-red-500"} /> الموقع
                   </span>
                   <span className="font-bold text-sm flex items-center gap-1.5">
                     {request.location && request.location !== "غير محدد" ? (() => {
@@ -1565,7 +1565,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     <Calendar size={18} /> النشر/ آخر تحديث
                   </span>
                   <span className="font-bold text-sm">
-                    منذ {formatDistanceToNow(request.createdAt, { addSuffix: false, locale: ar })}
+                    منذ {formatTimeAgo(request.createdAt, false)}
                   </span>
                 </div>
 
@@ -1573,9 +1573,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 {viewCount > 0 && (
                   <div className="flex flex-col gap-1.5">
                     <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                      <Eye size={18} className="text-blue-500" /> المشاهدات
+                      <Eye size={18} className="text-primary" /> المشاهدات
                     </span>
-                    <span className="font-bold text-sm text-blue-600">
+                    <span className="font-bold text-sm text-primary">
                       {viewCount} مشاهدة
                     </span>
                   </div>
@@ -1587,7 +1587,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
                     onClick={() => setClickedIcons(prev => ({ ...prev, budget: !prev.budget }))}
                   >
-                    <DollarSign size={18} className={clickedIcons.budget ? "text-green-500" : "text-primary"} />{" "}
+                    <DollarSign size={18} className={clickedIcons.budget ? "text-primary" : "text-primary"} />{" "}
                     الميزانية
                   </span>
                   <span className={`font-bold text-sm ${request.budgetType === "fixed" && request.budgetMin && request.budgetMax ? "text-primary" : "text-muted-foreground"}`}>
@@ -1603,7 +1603,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
                     onClick={() => setClickedIcons(prev => ({ ...prev, delivery: !prev.delivery }))}
                   >
-                    <Clock size={18} className={clickedIcons.delivery ? "text-green-500" : "text-blue-500"} /> مدة التنفيذ
+                    <Clock size={18} className={clickedIcons.delivery ? "text-primary" : "text-primary"} /> مدة التنفيذ
                   </span>
                   <span className="font-bold text-sm text-muted-foreground">
                     {request.deliveryTimeFrom || "غير محددة"}
@@ -1638,7 +1638,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => onCompleteRequest(request.id)}
-                    className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold shadow-lg hover:shadow-xl transition-all mb-4"
+                    className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-primary text-white font-bold shadow-lg hover:shadow-xl transition-all mb-4"
                   >
                     <CheckCircle size={20} />
                     <span>تم إكمال الطلب</span>
@@ -1757,7 +1757,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                               {/* 1. Accept Button (Appears Right in RTL because it's first) */}
                               <Button
                                 size="sm"
-                                className="flex-1 bg-green-600 hover:bg-green-700 text-white shadow-sm h-10 text-sm font-bold disabled:opacity-50"
+                                className="flex-1 bg-primary hover:bg-primary/90 text-white shadow-sm h-10 text-sm font-bold disabled:opacity-50"
                                 onClick={() => handleAcceptOffer(offer.id)}
                                 disabled={isAcceptingOffer || isGuest}
                               >
@@ -1771,7 +1771,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                               {onNavigateToMessages && !isGuest && (
                                 <Button
                                   size="sm"
-                                  className="bg-blue-100 text-blue-700 hover:bg-blue-200 border-transparent h-10 text-sm font-bold shadow-sm"
+                                  className="bg-primary/15 text-primary hover:bg-primary/25 border-transparent h-10 text-sm font-bold shadow-sm"
                                   onClick={async () => {
                                     // Get provider user ID from offer (assuming it's stored)
                                     // For now, we'll need to fetch it or pass it through props
@@ -1863,7 +1863,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           {offer.status === "accepted" && (
                             <div className="w-full space-y-3">
                               {/* Status Badge */}
-                              <div className="bg-green-500/10 text-green-700 dark:text-green-400 rounded-lg text-sm font-bold flex items-center justify-center gap-2 border border-green-500/20 px-4 py-2.5">
+                              <div className="bg-primary/10 text-primary rounded-lg text-sm font-bold flex items-center justify-center gap-2 border border-primary/20 px-4 py-2.5">
                                 <CheckCircle size={20} /> ✅ العرض مقبول
                               </div>
                               
@@ -1873,7 +1873,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                 {request.whatsappNumber && (request.contactMethod === 'whatsapp' || request.contactMethod === 'both' || request.isCreatedViaWhatsApp) && (
                                   <Button
                                     size="sm"
-                                    className="flex-1 bg-green-500 hover:bg-green-600 text-white h-10"
+                                    className="flex-1 bg-primary hover:bg-primary/90 text-white h-10"
                                     onClick={() => window.open(`https://wa.me/${request.whatsappNumber}`, '_blank')}
                                   >
                                     <svg className="w-4 h-4 ml-2" viewBox="0 0 24 24" fill="currentColor">
@@ -1919,14 +1919,14 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         className="p-4 rounded-xl bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-200 dark:border-blue-800"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                            <MessageCircle size={20} className="text-blue-600 dark:text-blue-400" />
+                          <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                            <MessageCircle size={20} className="text-primary dark:text-primary" />
                           </div>
                           <div className="flex-1">
-                            <h4 className="font-bold text-blue-700 dark:text-blue-400 text-sm">
+                            <h4 className="font-bold text-primary text-sm">
                               🎉 صاحب الطلب بدأ التفاوض معك!
                             </h4>
-                            <p className="text-xs text-blue-600/80 dark:text-blue-400/70 mt-0.5">
+                            <p className="text-xs text-primary/80 dark:text-primary/70 mt-0.5">
                               يمكنك الآن التواصل والتفاوض على التفاصيل
                             </p>
                           </div>
@@ -1942,7 +1942,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => onCompleteRequest(request.id)}
-                        className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold shadow-lg hover:shadow-xl transition-all"
+                        className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-primary text-white font-bold shadow-lg hover:shadow-xl transition-all"
                       >
                         <CheckCircle size={20} />
                         <span>تم إكمال الطلب</span>
@@ -2012,9 +2012,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         {/* Status Badge */}
                         <span className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 border ${
                           myOffer.status === "accepted" 
-                            ? "bg-green-50 dark:bg-green-950 text-green-600 border-green-200" 
+                            ? "bg-primary/10 text-primary border-primary/30" 
                             : myOffer.status === "negotiating"
-                            ? "bg-blue-50 dark:bg-blue-950 text-blue-600 border-blue-200"
+                            ? "bg-primary/10 text-primary border-primary/30"
                             : "bg-yellow-50 dark:bg-yellow-950 text-yellow-600 border-yellow-200"
                         }`}>
                           {myOffer.status === "accepted" && <CheckCircle size={14} />}
@@ -2051,7 +2051,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         {/* Duration - Second */}
                         <div className="flex flex-col gap-1.5">
                           <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                            <Clock size={18} className="text-blue-500" /> المدة
+                            <Clock size={18} className="text-primary" /> المدة
                           </span>
                           <span className="font-bold text-sm">
                             {myOffer.deliveryTime}
@@ -2315,7 +2315,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       <CityAutocomplete
                         value={offerCity}
                         onChange={(val) => setOfferCity(val)}
-                        placeholder="اختر المدينة..."
+                        placeholder="ابحث عن مدن، معالم، أو محلات..."
                         label="الموقع"
                         showRemoteOption={true}
                         showGPSOption={true}
@@ -3140,12 +3140,12 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     <>
                       {/* رسالة إغلاق المحادثة */}
                       {isConversationClosed && (
-                        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-center mb-4">
-                          <Lock size={24} className="mx-auto mb-2 text-amber-600 dark:text-amber-400" />
+                        <div className="bg-accent/10 border border-accent/20 rounded-xl p-4 text-center mb-4">
+                          <Lock size={24} className="mx-auto mb-2 text-accent-foreground" />
                           <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
                             هذه المحادثة مغلقة
                           </p>
-                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                          <p className="text-xs text-accent-foreground mt-1">
                             {conversationClosedReason || 'تم إغلاق هذه المحادثة'}
                           </p>
                         </div>
@@ -3203,7 +3203,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       سجل دخولك لإرسال رسائل
                     </div>
                   ) : isConversationClosed ? (
-                    <div className="text-center py-2 text-amber-600 dark:text-amber-400 text-sm flex items-center justify-center gap-2">
+                    <div className="text-center py-2 text-accent-foreground text-sm flex items-center justify-center gap-2">
                       <Lock size={16} />
                       لا يمكن إرسال رسائل في محادثة مغلقة
                     </div>
@@ -3291,7 +3291,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
               <div className="p-4 border-t border-border bg-secondary/20">
                 <div className="flex gap-2 relative">
                   <input
-                    className="flex-1 border border-border rounded-full px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none pl-12 bg-background text-foreground text-base"
+                    className="flex-1 border border-border rounded-full px-4 py-3 focus:border-primary outline-none pl-12 bg-background text-foreground text-base"
                     placeholder="اكتب فكرتك أو سجلها صوتياً..."
                     value={aiInput}
                     onChange={(e) => setAiInput(e.target.value)}
@@ -3429,9 +3429,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                      className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center"
+                      className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/15 flex items-center justify-center"
                     >
-                      <Check size={32} className="text-green-600" />
+                      <Check size={32} className="text-primary" />
                     </motion.div>
                     <h4 className="font-bold text-lg mb-2">تم إرسال البلاغ</h4>
                     <p className="text-muted-foreground text-sm">شكراً لك، سنراجع البلاغ في أقرب وقت</p>
@@ -3476,7 +3476,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         value={reportDescription}
                         onChange={(e) => setReportDescription(e.target.value)}
                         placeholder="هل تريد إضافة تفاصيل أكثر عن المشكلة؟"
-                        className="w-full px-4 py-3 rounded-xl border border-border bg-background resize-none h-24 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/50"
+                        className="w-full px-4 py-3 rounded-xl border border-border bg-background resize-none h-24 text-sm focus:outline-none focus:border-primary  transition-all placeholder:text-muted-foreground/50"
                         maxLength={500}
                       />
                       <p className="text-xs text-muted-foreground mt-1 text-left">

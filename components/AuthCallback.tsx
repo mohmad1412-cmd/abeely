@@ -157,7 +157,7 @@ export default function AuthCallback({ onSuccess, onError }: AuthCallbackProps) 
         <div className={`
           w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center
           ${status === 'loading' ? 'bg-white/20' : ''}
-          ${status === 'success' ? 'bg-green-500/90 shadow-lg shadow-green-500/30' : ''}
+          ${status === 'success' ? 'bg-primary shadow-lg shadow-primary/30' : ''}
           ${status === 'error' ? 'bg-red-500/90 shadow-lg shadow-red-500/30' : ''}
         `}>
           {status === 'loading' && (

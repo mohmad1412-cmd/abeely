@@ -1,42 +1,25 @@
 import { supabase } from './supabaseClient';
-import { Category } from '../types';
+import { Category, SupportedLocale, getCategoryLabel } from '../types';
+import { AVAILABLE_CATEGORIES } from '../data';
 
 /**
  * خدمة إدارة التصنيفات
  * تجلب التصنيفات من الباك إند وتوفر fallback للتصنيفات المحلية
+ * مع دعم متعدد اللغات (العربية، الإنجليزية، الأوردية)
  */
 
-// تصنيف "غير محدد" الثابت
-export const UNSPECIFIED_CATEGORY: Category = { 
-  id: 'unspecified', 
-  label: 'غير محدد', 
-  emoji: '❓' 
+// تصنيف "أخرى" الافتراضي (بدلاً من "غير محدد")
+export const OTHER_CATEGORY: Category = { 
+  id: 'other', 
+  label: 'أخرى',
+  label_en: 'Other',
+  label_ur: 'دیگر',
+  icon: 'Grid3x3',
+  emoji: '📦' 
 };
 
-// التصنيفات المحلية (fallback) مع إضافة "غير محدد"
-const LOCAL_CATEGORIES: Category[] = [
-  { id: 'tech', label: 'خدمات تقنية وبرمجة', emoji: '💻' },
-  { id: 'design', label: 'تصميم وجرافيكس', emoji: '🎨' },
-  { id: 'writing', label: 'كتابة ومحتوى', emoji: '✍️' },
-  { id: 'marketing', label: 'تسويق ومبيعات', emoji: '📊' },
-  { id: 'engineering', label: 'هندسة وعمارة', emoji: '🏗️' },
-  { id: 'mobile', label: 'خدمات جوال', emoji: '📱' },
-  { id: 'maintenance', label: 'صيانة ومنزل', emoji: '🔧' },
-  { id: 'transport', label: 'نقل وخدمات لوجستية', emoji: '🚚' },
-  { id: 'health', label: 'صحة ولياقة', emoji: '🩺' },
-  { id: 'translation', label: 'ترجمة ولغات', emoji: '🌐' },
-  { id: 'education', label: 'تعليم وتدريب', emoji: '📚' },
-  { id: 'legal', label: 'قانون واستشارات', emoji: '⚖️' },
-  { id: 'finance', label: 'مالية ومحاسبة', emoji: '💰' },
-  { id: 'photography', label: 'تصوير وفيديو', emoji: '📷' },
-  { id: 'events', label: 'مناسبات وحفلات', emoji: '🎉' },
-  { id: 'beauty', label: 'تجميل وعناية', emoji: '💅' },
-  { id: 'cleaning', label: 'تنظيف وخدمات منزلية', emoji: '🧹' },
-  { id: 'food', label: 'طعام ومطاعم', emoji: '🍽️' },
-  { id: 'car', label: 'سيارات وقطع غيار', emoji: '🚗' },
-  { id: 'other', label: 'أخرى', emoji: '📦' },
-  UNSPECIFIED_CATEGORY,
-];
+// التصنيفات المحلية (fallback) - استخدام القائمة الشاملة من data.ts
+const LOCAL_CATEGORIES: Category[] = AVAILABLE_CATEGORIES;
 
 // نوع التصنيف المقترح
 export interface PendingCategory {
@@ -66,7 +49,7 @@ export async function getCategories(forceRefresh = false): Promise<Category[]> {
   try {
     const { data, error } = await supabase
       .from('categories')
-      .select('id, label, emoji, description')
+      .select('id, label, label_en, label_ur, icon, emoji, description')
       .eq('is_active', true)
       .order('sort_order');
 
@@ -84,7 +67,11 @@ export async function getCategories(forceRefresh = false): Promise<Category[]> {
     categoriesCache = data.map(cat => ({
       id: cat.id,
       label: cat.label,
+      label_en: cat.label_en,
+      label_ur: cat.label_ur,
+      icon: cat.icon,
       emoji: cat.emoji || '📦',
+      description: cat.description,
     }));
     cacheTimestamp = Date.now();
 
@@ -112,7 +99,7 @@ export async function getCategoriesByIds(categoryIds: string[]): Promise<Categor
 }
 
 /**
- * البحث في التصنيفات
+ * البحث في التصنيفات (يبحث في جميع اللغات)
  */
 export async function searchCategories(query: string): Promise<Category[]> {
   const categories = await getCategories();
@@ -120,8 +107,26 @@ export async function searchCategories(query: string): Promise<Category[]> {
   
   return categories.filter(cat => 
     cat.label.toLowerCase().includes(lowerQuery) ||
-    cat.id.toLowerCase().includes(lowerQuery)
+    cat.id.toLowerCase().includes(lowerQuery) ||
+    cat.label_en?.toLowerCase().includes(lowerQuery) ||
+    cat.label_ur?.toLowerCase().includes(lowerQuery)
   );
+}
+
+/**
+ * الحصول على اسم التصنيف بناءً على اللغة
+ */
+export function getCategoryDisplayLabel(category: Category, locale: SupportedLocale = 'ar'): string {
+  return getCategoryLabel(category, locale);
+}
+
+/**
+ * الحصول على اسم التصنيف بالـ ID واللغة
+ */
+export async function getCategoryLabelById(categoryId: string, locale: SupportedLocale = 'ar'): Promise<string> {
+  const category = await getCategoryById(categoryId);
+  if (!category) return categoryId;
+  return getCategoryLabel(category, locale);
 }
 
 /**
@@ -163,6 +168,9 @@ export async function getRequestCategories(requestId: string): Promise<Category[
     return (data || []).map((cat: any) => ({
       id: cat.id,
       label: cat.label,
+      label_en: cat.label_en,
+      label_ur: cat.label_ur,
+      icon: cat.icon,
       emoji: cat.emoji || '📦',
     }));
   } catch (err) {
@@ -217,7 +225,8 @@ export async function approvePendingCategory(
   pendingCategoryId: string,
   finalLabel: string,
   finalEmoji: string = '📦',
-  finalId?: string
+  finalId?: string,
+  finalIcon?: string
 ): Promise<boolean> {
   try {
     // إنشاء ID فريد إذا لم يتم توفيره
@@ -233,6 +242,7 @@ export async function approvePendingCategory(
         id: categoryId,
         label: finalLabel,
         emoji: finalEmoji,
+        icon: finalIcon || 'Grid3x3',
         description: `تصنيف تمت إضافته بناءً على اقتراح`,
         is_active: true,
         sort_order: 50, // ترتيب متوسط
@@ -322,7 +332,7 @@ export async function mergePendingCategory(
 }
 
 /**
- * التحقق من وجود تصنيف بالاسم
+ * التحقق من وجود تصنيف بالاسم (يبحث في جميع اللغات)
  */
 export async function findCategoryByLabel(label: string): Promise<Category | null> {
   const categories = await getCategories();
@@ -331,12 +341,14 @@ export async function findCategoryByLabel(label: string): Promise<Category | nul
   return categories.find(cat => 
     cat.label.toLowerCase() === lowerLabel ||
     cat.label.toLowerCase().includes(lowerLabel) ||
-    lowerLabel.includes(cat.label.toLowerCase())
+    lowerLabel.includes(cat.label.toLowerCase()) ||
+    cat.label_en?.toLowerCase() === lowerLabel ||
+    cat.label_en?.toLowerCase().includes(lowerLabel)
   ) || null;
 }
 
 /**
- * تحويل أسماء التصنيفات إلى IDs
+ * تحويل أسماء التصنيفات إلى IDs (يدعم جميع اللغات)
  */
 export async function getCategoryIdsByLabels(labels: string[]): Promise<string[]> {
   const categories = await getCategories();
@@ -347,7 +359,10 @@ export async function getCategoryIdsByLabels(labels: string[]): Promise<string[]
     const matched = categories.find(cat => 
       cat.label.toLowerCase() === lowerLabel ||
       cat.label.toLowerCase().includes(lowerLabel) ||
-      lowerLabel.includes(cat.label.toLowerCase())
+      lowerLabel.includes(cat.label.toLowerCase()) ||
+      cat.label_en?.toLowerCase() === lowerLabel ||
+      cat.label_en?.toLowerCase().includes(lowerLabel) ||
+      cat.id.toLowerCase() === lowerLabel
     );
     
     if (matched) {
@@ -355,9 +370,9 @@ export async function getCategoryIdsByLabels(labels: string[]): Promise<string[]
     }
   }
   
-  // إذا لم نجد أي تصنيف، نضيف "غير محدد"
+  // إذا لم نجد أي تصنيف، نضيف "أخرى"
   if (ids.length === 0) {
-    ids.push('unspecified');
+    ids.push('other');
   }
   
   return [...new Set(ids)]; // إزالة التكرار
@@ -390,5 +405,49 @@ export function subscribeToCategoriesUpdates(callback: (categories: Category[]) 
   };
 }
 
+/**
+ * الحصول على اللغة الحالية من localStorage أو الافتراضي
+ */
+export function getCurrentLocale(): SupportedLocale {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('locale');
+    if (stored === 'en' || stored === 'ar' || stored === 'ur') {
+      return stored;
+    }
+  }
+  return 'ar'; // العربية هي الافتراضية
+}
 
-
+/**
+ * البحث المتقدم في التصنيفات بناءً على كلمات مفتاحية
+ */
+export async function findCategoriesByKeywords(keywords: string[]): Promise<Category[]> {
+  const categories = await getCategories();
+  const results: { category: Category; score: number }[] = [];
+  
+  for (const category of categories) {
+    let score = 0;
+    const searchableText = [
+      category.label,
+      category.label_en || '',
+      category.label_ur || '',
+      category.description || '',
+      category.id,
+    ].join(' ').toLowerCase();
+    
+    for (const keyword of keywords) {
+      if (searchableText.includes(keyword.toLowerCase())) {
+        score++;
+      }
+    }
+    
+    if (score > 0) {
+      results.push({ category, score });
+    }
+  }
+  
+  // ترتيب حسب الأعلى تطابقاً
+  return results
+    .sort((a, b) => b.score - a.score)
+    .map(r => r.category);
+}

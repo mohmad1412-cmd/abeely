@@ -684,7 +684,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                             otp[i] 
                               ? 'bg-white text-[#153659] shadow-xl shadow-white/30 border-2 border-white' 
                               : 'bg-white/15 text-white border-2 border-white/30 hover:border-white/50 focus:border-white focus:bg-white/25'
-                          } ${showSuccess ? 'bg-green-400 border-green-300 text-white' : ''}`}
+                          } ${showSuccess ? 'bg-primary border-primary text-white' : ''}`}
                           style={{
                             caretColor: 'transparent'
                           }}
@@ -729,7 +729,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                         initial={{ scale: 0, rotate: -180 }}
                         animate={{ scale: [0, 1.2, 1], rotate: 0 }}
                         transition={{ duration: 0.6, times: [0, 0.6, 1] }}
-                        className="w-20 h-20 sm:w-28 sm:h-28 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-2xl shadow-green-500/50"
+                        className="w-20 h-20 sm:w-28 sm:h-28 rounded-full bg-primary flex items-center justify-center shadow-2xl shadow-primary/40"
                       >
                         <motion.div
                           initial={{ scale: 0 }}
@@ -770,7 +770,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   whileTap={{ scale: 0.98 }}
                   className={`w-full py-3 sm:py-4 px-5 sm:px-6 rounded-xl sm:rounded-2xl font-bold flex items-center justify-center gap-2 sm:gap-3 shadow-xl transition-all duration-300 disabled:cursor-not-allowed text-sm sm:text-base ${
                     showSuccess 
-                      ? 'bg-gradient-to-r from-green-400 to-emerald-500 text-white shadow-green-500/30' 
+                      ? 'bg-primary text-white shadow-primary/30' 
                       : otp.length === 4
                         ? 'bg-white text-[#153659] hover:shadow-2xl hover:shadow-white/30'
                         : 'bg-white/50 text-[#153659]/70'
@@ -859,9 +859,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 transition={{ type: "spring", stiffness: 400, damping: 35 }}
                 className="text-center space-y-4 sm:space-y-6"
               >
-                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-green-500/20 flex items-center justify-center">
-                  <Check size={32} className="text-green-400 sm:hidden" />
-                  <Check size={40} className="text-green-400 hidden sm:block" />
+                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-primary/20 flex items-center justify-center">
+                  <Check size={32} className="text-primary sm:hidden" />
+                  <Check size={40} className="text-primary hidden sm:block" />
                 </div>
                 
                 <div>

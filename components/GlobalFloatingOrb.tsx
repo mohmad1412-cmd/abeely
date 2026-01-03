@@ -50,7 +50,7 @@ const VoiceStatusPanel: React.FC<{
     switch (status.stage) {
       case 'received':
         return {
-          icon: <Check size={20} className="text-green-500" />,
+          icon: <Check size={20} className="text-primary" />,
           title: 'تم استلام الرسالة الصوتية',
           subtitle: 'جاري تحويلها إلى نص...',
           showLoader: true,
@@ -64,7 +64,7 @@ const VoiceStatusPanel: React.FC<{
         };
       case 'done':
         return {
-          icon: <Check size={20} className="text-green-500" />,
+          icon: <Check size={20} className="text-primary" />,
           title: 'تم!',
           subtitle: status.message || 'تم تجهيز طلبك',
           showLoader: false,
@@ -103,7 +103,7 @@ const VoiceStatusPanel: React.FC<{
           <motion.div 
             className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
               status.stage === 'error' ? 'bg-red-100 dark:bg-red-900/30' :
-              status.stage === 'done' ? 'bg-green-100 dark:bg-green-900/30' :
+              status.stage === 'done' ? 'bg-primary/15' :
               'bg-primary/10'
             }`}
             animate={content.showLoader ? { scale: [1, 1.05, 1] } : {}}

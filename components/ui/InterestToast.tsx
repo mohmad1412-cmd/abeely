@@ -111,9 +111,9 @@ export const InterestToast: React.FC<InterestToastProps> = ({
                     scale: [1, 1.2, 1],
                   }}
                   transition={{ duration: 0.6, delay: 0.2 }}
-                  className="p-1.5 rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/20"
+                  className="p-1.5 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10"
                 >
-                  <Sparkles size={16} className="text-amber-500" />
+                  <Sparkles size={16} className="text-primary" />
                 </motion.div>
                 <span className="text-sm font-bold text-primary">طلب جديد يوافق اهتماماتك!</span>
               </div>

@@ -72,8 +72,24 @@ export interface Message {
 
 export interface Category {
   id: string;
-  label: string;
-  emoji: string;
+  label: string;           // العربية (الافتراضي)
+  label_en?: string;       // الإنجليزية
+  label_ur?: string;       // الأوردية
+  icon?: string;           // اسم أيقونة lucide
+  emoji?: string;          // fallback للإيموجي
+  description?: string;
+}
+
+// اللغات المدعومة
+export type SupportedLocale = 'ar' | 'en' | 'ur';
+
+// دالة للحصول على label بناءً على اللغة
+export function getCategoryLabel(category: Category, locale: SupportedLocale = 'ar'): string {
+  switch(locale) {
+    case 'en': return category.label_en || category.label;
+    case 'ur': return category.label_ur || category.label;
+    default: return category.label;
+  }
 }
 
 export interface Notification {

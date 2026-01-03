@@ -1,7 +1,10 @@
 import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Offer, Request } from "../types";
+import { Offer, Request, Category, SupportedLocale, getCategoryLabel } from "../types";
 import { AVAILABLE_CATEGORIES } from "../data";
+import { getCategories, subscribeToCategoriesUpdates, getCurrentLocale } from "../services/categoriesService";
+import { getKnownCategoryColor } from "../utils/categoryColors";
+import { CategoryIcon } from "./ui/CategoryIcon";
 import {
   ArrowRight,
   Bell,
@@ -44,7 +47,6 @@ import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
 import { AnimatePresence, motion } from "framer-motion";
 import { CardsGridSkeleton } from "./ui/LoadingSkeleton";
-import { UnifiedHeader } from "./ui/UnifiedHeader";
 import { UnifiedFilterIsland } from "./ui/UnifiedFilterIsland";
 import CompactListView from "./ui/CompactListView";
 import { CityAutocomplete } from "./ui/CityAutocomplete";
@@ -160,6 +162,45 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   // View mode state - "all" or "interests"
   const [viewMode, setViewMode] = useState<"all" | "interests">("all");
   
+  // Categories from backend
+  const [categories, setCategories] = useState<Category[]>(AVAILABLE_CATEGORIES);
+  
+  // Current locale for category labels
+  const [locale, setLocale] = useState<SupportedLocale>('ar');
+  
+  // Load categories from backend on mount
+  useEffect(() => {
+    const loadCategories = async () => {
+      const backendCategories = await getCategories();
+      if (backendCategories.length > 0) {
+        setCategories(backendCategories);
+      }
+    };
+    loadCategories();
+    setLocale(getCurrentLocale());
+    
+    // Subscribe to category updates
+    const unsubscribe = subscribeToCategoriesUpdates((updatedCategories) => {
+      setCategories(updatedCategories);
+    });
+    
+    // الاستماع لتغييرات اللغة
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'locale' && e.newValue) {
+        const newLocale = e.newValue as SupportedLocale;
+        if (newLocale === 'ar' || newLocale === 'en' || newLocale === 'ur') {
+          setLocale(newLocale);
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      unsubscribe();
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+  
   // Notify parent when viewMode changes for smart notifications
   useEffect(() => {
     onViewModeChange?.(viewMode);
@@ -271,8 +312,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   // Search inputs inside popup
   const [popupCategorySearch, setPopupCategorySearch] = useState("");
   const [popupCitySearch, setPopupCitySearch] = useState("");
-  // Collapsible filter sections
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['category', 'city', 'budget']));
+  // Collapsible filter sections (accordion: only one open at a time)
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const popupCategoryInputRef = useRef<HTMLInputElement>(null);
 
   // Check if any filter is active (must be defined before useEffect that uses it)
@@ -379,26 +420,38 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   const pullStartY = useRef<number>(0);
   const pullCurrentY = useRef<number>(0);
   const pullDistanceRef = useRef<number>(0); // استخدام ref لتجنب stale closure
+  const isPullingActiveRef = useRef<boolean>(false); // ref للحفاظ على حالة السحب بين الـ renders
   const searchPageScrollRef = useRef<HTMLDivElement>(null); // Ref للسكرول في صفحة البحث
-  
+
   // Pull-to-refresh handlers
   useEffect(() => {
     const container = marketplaceScrollRef.current;
     if (!container || !onRefresh) return;
 
-    const PULL_THRESHOLD = 60; // أقل لإحساس أخف وأسرع
-    const MAX_PULL = 90; // أقل لإحساس أنعم
+    const PULL_THRESHOLD = 60;
+    const MAX_PULL = 90;
 
     const handleTouchStart = (e: TouchEvent) => {
-      if (container.scrollTop !== 0) return; // Only allow pull when at top
+      // Allow pull when scrollTop is very close to 0 (within 5px tolerance)
+      if (container.scrollTop > 5) {
+        isPullingActiveRef.current = false;
+        return;
+      }
+      isPullingActiveRef.current = true;
       pullStartY.current = e.touches[0].clientY;
       pullCurrentY.current = pullStartY.current;
       pullDistanceRef.current = 0;
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (container.scrollTop !== 0) {
+      // If pulling not active, ignore
+      if (!isPullingActiveRef.current || pullStartY.current === 0) return;
+      
+      // If scrolled away from top, reset
+      if (container.scrollTop > 5) {
+        isPullingActiveRef.current = false;
         pullDistanceRef.current = 0;
+        pullStartY.current = 0;
         setPullToRefreshState({ isPulling: false, pullDistance: 0, isRefreshing: false });
         return;
       }
@@ -406,10 +459,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       pullCurrentY.current = e.touches[0].clientY;
       const pullDistance = Math.max(0, pullCurrentY.current - pullStartY.current);
       
-      if (pullDistance > 0) {
+      if (pullDistance > 10) { // Threshold to start pull
         e.preventDefault(); // Prevent default scroll
         const limitedPull = Math.min(pullDistance, MAX_PULL);
-        pullDistanceRef.current = limitedPull; // تحديث الـ ref
+        pullDistanceRef.current = limitedPull;
         setPullToRefreshState({
           isPulling: true,
           pullDistance: limitedPull,
@@ -419,7 +472,12 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     };
 
     const handleTouchEnd = () => {
-      const currentPullDistance = pullDistanceRef.current; // استخدام الـ ref بدلاً من state
+      // Always reset on touch end, regardless of pulling state
+      if (!isPullingActiveRef.current) {
+        return;
+      }
+      
+      const currentPullDistance = pullDistanceRef.current;
       
       if (currentPullDistance >= PULL_THRESHOLD && onRefresh) {
         setPullToRefreshState({
@@ -428,42 +486,66 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           isRefreshing: true,
         });
         
-        // Haptic feedback - خفيف
+        // Haptic feedback
         if (navigator.vibrate) {
           navigator.vibrate(25);
         }
         
-        // Call refresh
-        onRefresh();
+        // Call refresh and wait for completion
+        const refreshPromise = onRefresh();
+        const minDisplayTime = new Promise(resolve => setTimeout(resolve, 1200));
         
-        // Keep spinner for at least 1.5s for visual feedback
-        setTimeout(() => {
+        Promise.all([
+          refreshPromise instanceof Promise ? refreshPromise : Promise.resolve(),
+          minDisplayTime
+        ]).finally(() => {
           setPullToRefreshState({
             isPulling: false,
             pullDistance: 0,
             isRefreshing: false,
           });
-        }, 1500);
+        });
       } else {
+        // Reset immediately if threshold not reached
         setPullToRefreshState({
           isPulling: false,
           pullDistance: 0,
           isRefreshing: false,
         });
       }
+      
+      // Always cleanup
+      isPullingActiveRef.current = false;
       pullStartY.current = 0;
       pullCurrentY.current = 0;
       pullDistanceRef.current = 0;
     };
 
+    const handleTouchCancel = () => {
+      // Handle touch cancel (e.g., when scrolling is taken over by browser)
+      isPullingActiveRef.current = false;
+      pullStartY.current = 0;
+      pullCurrentY.current = 0;
+      pullDistanceRef.current = 0;
+      setPullToRefreshState({
+        isPulling: false,
+        pullDistance: 0,
+        isRefreshing: false,
+      });
+    };
+
+    // Add listeners to container for start/move
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
-    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+    // Add end/cancel to document to catch all touch ends
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
+    document.addEventListener('touchcancel', handleTouchCancel, { passive: true });
 
     return () => {
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchmove', handleTouchMove);
-      container.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('touchcancel', handleTouchCancel);
     };
   }, [onRefresh]);
 
@@ -726,7 +808,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     city.toLowerCase().includes(tempCitySearch.toLowerCase())
   );
 
-  const filteredCategories = AVAILABLE_CATEGORIES.filter(cat =>
+  const filteredCategories = categories.filter(cat =>
     cat.label.toLowerCase().includes(tempCatSearch.toLowerCase())
   );
 
@@ -756,16 +838,15 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     setSearchBudgetMax("");
   };
 
-  // Toggle filter section expand/collapse
+  // Toggle filter section expand/collapse (accordion: only one open at a time)
   const toggleSection = (section: string) => {
     setExpandedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(section)) {
-        next.delete(section);
-      } else {
-        next.add(section);
+      // If this section is already open, close it
+      if (prev.has(section)) {
+        return new Set();
       }
-      return next;
+      // Otherwise, close all others and open only this one
+      return new Set([section]);
     });
   };
 
@@ -826,7 +907,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       // Need to compare Arabic labels because req.categories contains labels
       const hasMatch = req.categories?.some(catLabel => 
         searchCategories.some(catId => {
-          const categoryObj = AVAILABLE_CATEGORIES.find(c => c.id === catId);
+          const categoryObj = categories.find(c => c.id === catId);
           const interestLabel = categoryObj?.label || catId;
           return catLabel.toLowerCase().includes(interestLabel.toLowerCase()) ||
                  interestLabel.toLowerCase().includes(catLabel.toLowerCase());
@@ -894,61 +975,28 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   return (
     <div 
       id="marketplace-container"
-      ref={marketplaceScrollRef}
-      className={`h-full overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar ${
-        filteredRequests.length === 0 && !isLoading ? 'overflow-hidden' : 'overflow-y-auto'
-      }`}
+      className="h-full flex flex-col overflow-hidden container mx-auto max-w-6xl relative"
     >
-      {/* Sticky Header Wrapper - Unified with main header */}
+      {/* Sticky Header Wrapper - ثابت في الأعلى */}
       <div 
         ref={headerRef}
-        className="sticky top-0 z-[60] overflow-visible"
+        className="shrink-0 z-[60] overflow-visible relative"
       >
+        {/* طبقة خلفية صلبة للهيدر */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: 'hsl(var(--background))',
+          }}
+        />
         {/* Container for both header and tabs - fixed compact size */}
         <div 
-          className="flex flex-col overflow-visible origin-top"
+          className="flex flex-col overflow-visible origin-top relative z-10 pt-[env(safe-area-inset-top,0px)]"
           style={{
             transform: 'scale(0.92) translateY(4px)',
           }}
         >
-          {/* Main Header Content */}
-          <div className="px-4">
-            <UnifiedHeader
-              mode={mode}
-              toggleMode={toggleMode}
-              isModeSwitching={isModeSwitching}
-              unreadCount={unreadCount}
-              hasUnreadMessages={hasUnreadMessages}
-              user={user}
-              setView={setView}
-              setPreviousView={setPreviousView}
-              titleKey={titleKey}
-              notifications={notifications}
-              onMarkAsRead={onMarkAsRead}
-              onNotificationClick={onNotificationClick}
-              onClearAll={onClearAll}
-              onSignOut={onSignOut}
-              currentView="marketplace"
-              transparent={true}
-              showSearchButton={true}
-              onSearchClick={() => setIsFiltersPopupOpen(true)}
-              hasActiveFilters={hasActiveFilters}
-              activeFiltersCount={searchCategories.length + searchCities.length + (searchBudgetMin || searchBudgetMax ? 1 : 0) + (searchTerm ? 1 : 0)}
-              hideActionButtons={true}
-              onNavigateToProfile={onNavigateToProfile}
-              onNavigateToSettings={onNavigateToSettings}
-              isGuest={isGuest}
-              isDarkMode={isDarkMode}
-              toggleTheme={toggleTheme}
-              onOpenLanguagePopup={onOpenLanguagePopup}
-              title="سوق الطلبات"
-              isScrolled={!isHeaderCompressed}
-              showCreateRequestButton={true}
-              onCreateRequest={onCreateRequest}
-              isActive={isActive}
-            />
-          </div>
-
+          {/* Main Header Content - Removed as per request */}
           {/* Switch Container - Filter button (left) + Tabs/Search (center) + Search button (right) */}
           <UnifiedFilterIsland hasActiveFilters={hasActiveFilters} isActive={isActive}>
             {/* Filter Button - Always visible on the right (RTL) */}
@@ -977,7 +1025,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             </motion.button>
 
             {/* Center Content - Tabs or Search Input */}
-            <div className="flex-1 flex items-center relative min-w-0 overflow-hidden">
+            <div className="flex-1 flex items-center relative min-w-0 overflow-visible">
               <AnimatePresence mode="popLayout" initial={false}>
                 {isSearchInputOpen || searchTerm ? (
                   /* Search Input Mode */
@@ -1048,7 +1096,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     animate={{ x: 0, opacity: 1 }}
                     exit={{ x: -100, opacity: 0 }}
                     transition={{ duration: 0.2, ease: "easeOut" }}
-                    className="flex items-center w-full relative"
+                    className="flex items-center justify-center flex-1 relative min-w-0"
                   >
                     {/* Animated capsule indicator */}
                     {!hasActiveFilters && (
@@ -1069,13 +1117,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         }
                         setViewMode("all");
                       }}
-                      className={`flex-1 py-3 px-4 text-xs font-bold rounded-full transition-colors relative flex flex-col items-center justify-center gap-1 ${
+                      className={`flex-1 py-3 px-5 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
                         viewMode === "all" && !hasActiveFilters
                           ? "text-white"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      <span className="relative z-10">الكل</span>
+                      <span className="relative z-10 text-center">كل الطلبات</span>
                     </button>
                     <button
                       onClick={() => {
@@ -1085,14 +1133,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         }
                         setViewMode("interests");
                       }}
-                      className={`flex-1 py-3 px-4 text-xs font-bold rounded-full transition-colors relative flex flex-col items-center justify-center gap-1 ${
+                      className={`flex-1 py-3 px-5 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
                         viewMode === "interests" && !hasActiveFilters
                           ? "text-white"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      <span className="relative z-10 flex items-center gap-1.5">
-                        اهتماماتي
+                      <span className="relative z-10 flex items-center justify-center gap-1.5">
+                        اهتماماتي فقط
                         {unreadInterestsRequestsCount > 0 && (
                           <span className={`inline-flex items-center justify-center min-w-[1.2rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-all animate-pulse ${
                             viewMode === "interests" && !hasActiveFilters 
@@ -1135,7 +1183,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 {/* التصنيفات - إظهار المختارة أو "كل التصنيفات" */}
                 {searchCategories.length > 0 ? (
                   searchCategories.map(catId => {
-                    const cat = AVAILABLE_CATEGORIES.find(c => c.id === catId);
+                    const cat = categories.find(c => c.id === catId);
                     return cat ? (
                       <motion.div
                         key={catId}
@@ -1217,40 +1265,17 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             </div>
           )}
         </div>
-        
-        {/* ===== TOP FADE OVERLAY ===== */}
-        {/* تدريج إخفائي - الكروت تختفي تدريجياً لما توصل الهيدر */}
-        <div
-          className="absolute left-0 right-0 bottom-0 translate-y-full h-24 pointer-events-none z-[55]"
-          style={{
-            background: `linear-gradient(to bottom, 
-              hsl(var(--background)) 0%, 
-              hsl(var(--background)) 20%,
-              hsl(var(--background) / 0.85) 40%,
-              hsl(var(--background) / 0.5) 65%, 
-              hsl(var(--background) / 0.15) 85%,
-              transparent 100%
-            )`,
-          }}
-        />
       </div>
 
-      {/* ===== FIXED FADE OVERLAY ===== */}
-      {/* تدريج إخفائي ثابت تحت الهيدر - الكروت تختفي تدريجياً لما توصل الأعلى */}
-      <div
-        className="fixed top-[135px] left-0 right-0 h-20 pointer-events-none z-[50]"
-        style={{
-          background: `linear-gradient(to bottom, 
-            hsl(var(--background)) 0%, 
-            hsl(var(--background)) 35%,
-            hsl(var(--background) / 0.7) 55%,
-            hsl(var(--background) / 0.3) 80%, 
-            transparent 100%
-          )`,
-        }}
-      />
+      {/* Scrollable Content Area - السكرول الوحيد هنا */}
+      <div 
+        ref={marketplaceScrollRef}
+        className={`flex-1 overflow-x-hidden relative no-scrollbar ${
+          filteredRequests.length === 0 && !isLoading ? 'overflow-hidden' : 'overflow-y-auto'
+        }`}
+      >
 
-      {/* Pull-to-Refresh Indicator - Emerges from under the header */}
+      {/* Pull-to-Refresh Indicator */}
       <AnimatePresence>
         {(pullToRefreshState.isPulling || pullToRefreshState.isRefreshing) && (
           <motion.div 
@@ -1267,30 +1292,33 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               animate={{ y: 0 }}
               className="flex flex-col items-center py-2"
             >
-              <div className="relative w-12 h-12 flex items-center justify-center">
+              <div className="relative w-10 h-10 flex items-center justify-center">
                 {/* Background Progress Circle - Minimal & Discrete */}
-                <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                <svg 
+                  className="absolute inset-0 w-full h-full transform -rotate-90"
+                  viewBox="0 0 40 40"
+                >
                   <circle
-                    cx="24"
-                    cy="24"
-                    r="20"
+                    cx="20"
+                    cy="20"
+                    r="16"
                     stroke="currentColor"
-                    strokeWidth="1"
+                    strokeWidth="2"
                     fill="transparent"
-                    className="text-primary/5"
+                    className="text-primary/10"
                   />
                   {!pullToRefreshState.isRefreshing && (
                     <motion.circle
-                      cx="24"
-                      cy="24"
-                      r="20"
+                      cx="20"
+                      cy="20"
+                      r="16"
                       stroke="url(#pull-gradient-hero)"
-                      strokeWidth="1.5"
+                      strokeWidth="2.5"
                       fill="transparent"
-                      strokeDasharray={125.6}
-                      strokeDashoffset={125.6 - (Math.min(pullToRefreshState.pullDistance / 60, 1) * 125.6)}
+                      strokeDasharray={100.5}
+                      strokeDashoffset={100.5 - (Math.min(pullToRefreshState.pullDistance / 60, 1) * 100.5)}
                       strokeLinecap="round"
-                      className="opacity-30"
+                      className="opacity-60"
                     />
                   )}
                   <defs>
@@ -1301,14 +1329,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   </defs>
                 </svg>
 
-                {/* Icon Container - Floating & Minimal */}
-                <motion.div 
-                  animate={{ 
-                    scale: pullToRefreshState.pullDistance >= 60 ? 1.1 : 1,
-                    backgroundColor: pullToRefreshState.isRefreshing ? "transparent" : "rgba(255, 255, 255, 0.2)"
-                  }}
-                  className="w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors duration-300"
-                >
+                {/* Icon Container - Centered */}
+                <div className="absolute inset-0 flex items-center justify-center">
                   <AnimatePresence mode="wait">
                     {pullToRefreshState.isRefreshing ? (
                       <motion.div
@@ -1317,12 +1339,12 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         animate={{ opacity: 1, rotate: 360 }}
                         exit={{ opacity: 0 }}
                         transition={{ 
-                          rotate: { duration: 1.2, repeat: Infinity, ease: "linear" },
+                          rotate: { duration: 1, repeat: Infinity, ease: "linear" },
                           opacity: { duration: 0.2 }
                         }}
                         className="text-primary"
                       >
-                        <Loader2 size={22} strokeWidth={2.5} className="opacity-80" />
+                        <Loader2 size={20} strokeWidth={2.5} />
                       </motion.div>
                     ) : (
                       <motion.div
@@ -1330,18 +1352,18 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ 
                           opacity: 1, 
-                          scale: 1,
-                          rotate: (pullToRefreshState.pullDistance / 60) * 360
+                          scale: pullToRefreshState.pullDistance >= 60 ? 1.1 : 1,
+                          rotate: (pullToRefreshState.pullDistance / 60) * 180
                         }}
                         exit={{ opacity: 0, scale: 0.5 }}
-                        transition={{ type: "spring", stiffness: 200, damping: 20 }}
-                        className={pullToRefreshState.pullDistance >= 60 ? "text-primary" : "text-primary/40"}
+                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                        className={pullToRefreshState.pullDistance >= 60 ? "text-primary" : "text-primary/50"}
                       >
-                        <RotateCw size={18} strokeWidth={2.5} />
+                        <RotateCw size={16} strokeWidth={2.5} />
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </motion.div>
+                </div>
               </div>
             </motion.div>
           </motion.div>
@@ -1512,7 +1534,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             ref={popupCategoryInputRef}
                             type="text"
                             placeholder="ابحث عن تصنيف..."
-                            className="w-full pr-9 pl-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary focus:outline-none text-sm"
+                            className="w-full pr-9 pl-3 py-2 rounded-xl border border-border bg-background focus:outline-none focus:border-primary text-sm"
                             value={popupCategorySearch}
                             onChange={(e) => setPopupCategorySearch(e.target.value)}
                           />
@@ -1528,7 +1550,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         
                         {/* Category Chips */}
                         <div className="flex flex-wrap justify-start gap-2 max-h-32 overflow-y-auto no-scrollbar w-full">
-                          {AVAILABLE_CATEGORIES
+                          {categories
                             .filter(cat => cat.label.toLowerCase().includes(popupCategorySearch.toLowerCase()))
                             .map((cat) => (
                               <button
@@ -1544,7 +1566,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                 {cat.label}
                               </button>
                             ))}
-                          {AVAILABLE_CATEGORIES.filter(cat => cat.label.toLowerCase().includes(popupCategorySearch.toLowerCase())).length === 0 && (
+                          {categories.filter(cat => cat.label.toLowerCase().includes(popupCategorySearch.toLowerCase())).length === 0 && (
                             <p className="text-xs text-muted-foreground py-2">لا توجد نتائج</p>
                           )}
                         </div>
@@ -1602,7 +1624,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         <CityAutocomplete
                           value=""
                           onChange={() => {}}
-                          placeholder="ابحث عن مدينة..."
+                          placeholder="ابحث عن مدن، معالم، أو محلات..."
                           multiSelect={true}
                           showAllCitiesOption={true}
                           selectedCities={searchCities}
@@ -1640,10 +1662,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     className="flex items-center justify-between w-full"
                   >
                     <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
-                      <DollarSign size={16} strokeWidth={2.5} className="text-green-600" />
+                      <DollarSign size={16} strokeWidth={2.5} className="text-primary" />
                       الميزانية
                       {(searchBudgetMin || searchBudgetMax) && (
-                        <span className="inline-flex items-center justify-center h-5 rounded-full bg-green-500 text-white px-2 text-[10px] font-bold">
+                        <span className="inline-flex items-center justify-center h-5 rounded-full bg-primary text-white px-2 text-[10px] font-bold">
                           {searchBudgetMin || "0"} - {searchBudgetMax || "∞"}
                         </span>
                       )}
@@ -1671,8 +1693,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             <input
                               type="number"
                               placeholder="من"
-                              className={`w-full px-3 py-2 rounded-xl border bg-background focus:ring-2 focus:ring-primary focus:outline-none text-sm text-center ${
-                                 searchBudgetMin && searchBudgetMax && Number(searchBudgetMin) > Number(searchBudgetMax) ? "border-red-500 focus:ring-red-500" : "border-border"
+                              className={`w-full px-3 py-2 text-sm rounded-xl border bg-background focus:outline-none focus:border-primary text-center ${
+                                 searchBudgetMin && searchBudgetMax && Number(searchBudgetMin) > Number(searchBudgetMax) ? "border-red-500 " : "border-border"
                               }`}
                               value={searchBudgetMin}
                               onChange={(e) => setSearchBudgetMin(e.target.value)}
@@ -1684,8 +1706,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             <input
                               type="number"
                               placeholder="إلى"
-                              className={`w-full px-3 py-2 rounded-xl border bg-background focus:ring-2 focus:ring-primary focus:outline-none text-sm text-center ${
-                                 searchBudgetMin && searchBudgetMax && Number(searchBudgetMin) > Number(searchBudgetMax) ? "border-red-500 focus:ring-red-500" : "border-border"
+                              className={`w-full px-3 py-2 text-sm rounded-xl border bg-background focus:outline-none focus:border-primary text-center ${
+                                 searchBudgetMin && searchBudgetMax && Number(searchBudgetMin) > Number(searchBudgetMax) ? "border-red-500 " : "border-border"
                               }`}
                               value={searchBudgetMax}
                               onChange={(e) => setSearchBudgetMax(e.target.value)}
@@ -1829,7 +1851,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             <span className="text-xs text-muted-foreground italic">لم تحدد تصنيفات بعد</span>
                           ) : (
                             userInterests.map((int) => {
-                              const cat = AVAILABLE_CATEGORIES.find((c) => c.id === int);
+                              const cat = categories.find((c) => c.id === int);
                               return (
                                 <div
                                   key={int}
@@ -1920,7 +1942,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             radarWords.map((word) => (
                               <div
                                 key={word}
-                                className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 px-3 py-1.5 rounded-full text-xs font-bold"
+                                className="flex items-center gap-1.5 bg-accent/15 border border-accent/25 text-accent-foreground px-3 py-1.5 rounded-full text-xs font-bold"
                               >
                                 <Compass size={12} />
                                 {word}
@@ -1957,7 +1979,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     <div className="flex flex-col">
                       <span className="font-bold text-sm">التنبيهات المباشرة</span>
                       <span className="text-[10px] text-muted-foreground">
-                        {notifyOnInterest ? "سنقوم بإشعارك عند وجود فرص جديدة" : "فعل التنبيهات لتصلك الطلبات فوراً"}
+                        {notifyOnInterest ? "إشعارك فوراً بما تهتم به" : "فعل التنبيهات لتصلك الطلبات فوراً"}
                       </span>
                     </div>
                   </div>
@@ -2035,6 +2057,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               {/* Hard Refresh Button - Clears EVERYTHING */}
               <button
                 onClick={async () => {
+                  // هذا الإجراء سيمسح بيانات تسجيل الدخول أيضاً (Supabase auth)
+                  const confirmed = window.confirm(
+                    "تنبيه: هذا الخيار يمسح كل البيانات المحفوظة (بما فيها تسجيل الدخول) وقد يسبب تسجيل خروجك.\n\nهل تريد المتابعة؟"
+                  );
+                  if (!confirmed) return;
                   try {
                     // 1. Unregister ALL Service Workers
                     if ('serviceWorker' in navigator) {
@@ -2241,7 +2268,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             placeholder="ابحث عن تصنيف..."
                             value={tempCatSearch}
                             onChange={(e) => setTempCatSearch(e.target.value)}
-                            className="w-full pr-10 pl-4 py-2.5 rounded-xl border-2 border-border bg-card text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-sm"
+                            className="w-full pr-10 pl-4 py-2 rounded-xl border-2 border-border bg-card text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-all text-sm"
                           />
                         </div>
                         <div className="flex flex-wrap justify-start gap-2 max-h-48 overflow-y-auto no-scrollbar w-full">
@@ -2314,7 +2341,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                 initial={{ scale: 0.8, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}
                                 exit={{ scale: 0.8, opacity: 0 }}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-600 text-sm border border-emerald-500/30"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm border border-primary/30"
                               >
                                 {city === 'عن بعد' ? <Globe size={12} /> : <MapPin size={12} />}
                                 <span>{city}</span>
@@ -2323,7 +2350,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                     if (navigator.vibrate) navigator.vibrate(10);
                                     toggleCity(city);
                                   }}
-                                  className="p-0.5 hover:bg-emerald-500/20 rounded-full transition-colors"
+                                  className="p-0.5 hover:bg-primary/20 rounded-full transition-colors"
                                 >
                                   <X size={12} />
                                 </button>
@@ -2336,7 +2363,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         <CityAutocomplete
                           value=""
                           onChange={() => {}}
-                          placeholder="ابحث عن مدينة..."
+                          placeholder="ابحث عن مدن، معالم، أو محلات..."
                           multiSelect={true}
                           showAllCitiesOption={true}
                           selectedCities={tempCities}
@@ -2382,10 +2409,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     className="flex items-center justify-between w-full"
                   >
                     <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
-                      <Search size={16} strokeWidth={2.5} className="text-amber-500" />
+                      <Search size={16} strokeWidth={2.5} className="text-primary" />
                       رادار الكلمات
                       {tempRadarWords.length > 0 && (
-                        <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-amber-500 text-white px-1.5 text-[10px] font-bold">
+                        <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-primary text-white px-1.5 text-[10px] font-bold">
                           {tempRadarWords.length}
                         </span>
                       )}
@@ -2421,12 +2448,12 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                 addRadarWord();
                               }
                             }}
-                            className="flex-1 min-w-0 px-4 py-2.5 rounded-xl border-2 border-border bg-card text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all text-sm"
+                            className="flex-1 min-w-0 px-3 py-2 rounded-xl border-2 border-border bg-card text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-all text-sm"
                           />
                           <button
                             onClick={addRadarWord}
                             disabled={!newRadarWord.trim()}
-                            className="shrink-0 px-4 py-2.5 rounded-xl bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                            className="shrink-0 px-4 py-2.5 rounded-xl bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                           >
                             <Plus size={16} />
                           </button>
@@ -2436,12 +2463,12 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             {tempRadarWords.map((word) => (
                               <div
                                 key={word}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30 text-sm"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 text-primary border border-primary/30 text-sm"
                               >
                                 <span>{word}</span>
                                 <button
                                   onClick={() => removeRadarWord(word)}
-                                  className="hover:bg-amber-500/20 rounded-full p-0.5 transition-colors"
+                                  className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
                                 >
                                   <X size={14} />
                                 </button>
@@ -2482,13 +2509,6 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
         {/* Content Views - Grid / Text */}
         <div className="relative">
-          {/* تأثير التلاشي التدريجي في الأعلى - الكروت تتلاشى عند الصعود */}
-          <div 
-            className="pointer-events-none absolute top-0 left-0 right-0 h-16 z-20"
-            style={{
-              background: 'linear-gradient(to bottom, hsl(var(--background)) 0%, hsl(var(--background) / 0.8) 40%, transparent 100%)',
-            }}
-          />
           <AnimatePresence mode="wait">
             {displayMode === 'text' ? (
               <motion.div
@@ -2680,34 +2700,32 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   {/* Categories Labels */}
                   {req.categories && req.categories.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
-                      {req.categories.slice(0, 3).map((catLabel, idx) => {
-                        // البحث عن التصنيف للحصول على الإيموجي
-                        const categoryObj = AVAILABLE_CATEGORIES.find(
+                      {req.categories.map((catLabel, idx) => {
+                        // البحث عن التصنيف للحصول على الأيقونة والاسم بناءً على اللغة
+                        // catLabel قد يكون label (عربي) أو id (إنجليزي)
+                        const categoryObj = categories.find(
                           c => c.label === catLabel || c.id === catLabel
                         );
-                        const emoji = categoryObj?.emoji || '📦';
-                        const displayLabel = categoryObj?.label || catLabel;
-                        const isUnspecified = catLabel === 'غير محدد' || catLabel === 'unspecified';
+                        // نعرض الاسم بناءً على اللغة الحالية
+                        const displayLabel = categoryObj ? getCategoryLabel(categoryObj, locale) : catLabel;
+                        const categoryId = categoryObj?.id || catLabel;
                         
                         return (
                           <span
                             key={idx}
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                              isUnspecified 
-                                ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                                : 'bg-primary/10 text-primary'
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                              getKnownCategoryColor(categoryId)
                             }`}
                           >
-                            <span>{isUnspecified ? '❓' : emoji}</span>
-                            <span className="truncate max-w-[80px]">{isUnspecified ? 'غير محدد' : displayLabel}</span>
+                            <CategoryIcon 
+                              icon={categoryObj?.icon} 
+                              emoji={categoryObj?.emoji} 
+                              size={12} 
+                            />
+                            <span className="truncate max-w-[80px]">{displayLabel}</span>
                           </span>
                         );
                       })}
-                      {req.categories.length > 3 && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-muted-foreground">
-                          +{req.categories.length - 3}
-                        </span>
-                      )}
                     </div>
                   )}
                 </div>
@@ -2833,10 +2851,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           animate={{ scale: 1, opacity: 1 }}
                           className={`w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 ${
                             myOffer.status === "accepted"
-                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                              ? "bg-primary/15 text-primary"
                               : myOffer.status === "negotiating"
                               ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
-                              : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                              : "bg-primary/15 text-primary"
                           }`}
                         >
                           {myOffer.status === "accepted"
@@ -2967,7 +2985,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         {filteredRequests.length > 0 && (
           <>
             <div ref={loadMoreTriggerRef} className="h-4 w-full" />
-            <div className="py-10 pb-24 min-h-[200px] flex flex-col justify-start">
+            <div className={`py-10 pb-24 flex flex-col justify-start ${
+              isLoadingMore || (hasMore && filteredRequests.length >= 9) || (!hasMore && currentScrollY > 300)
+                ? 'min-h-[200px]'
+                : ''
+            }`}>
               <AnimatePresence mode="wait">
                 {isLoadingMore ? (
               <motion.div 
@@ -3059,7 +3081,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   اضغط للتحميل اليدوي أو مرر للأسفل
                 </div>
               </motion.div>
-            ) : !hasMore && filteredRequests.length > 0 ? (
+            ) : !hasMore && filteredRequests.length > 0 && currentScrollY > 300 ? (
               <motion.div 
                 key="end-of-content"
                 initial={{ opacity: 0, y: 20 }}
@@ -3132,6 +3154,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           </>
         )}
         </div>
+      </div>
+      {/* نهاية Scrollable Content Area */}
       </div>
     </div>
   );

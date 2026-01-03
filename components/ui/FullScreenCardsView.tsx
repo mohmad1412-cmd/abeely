@@ -16,8 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { formatDistanceToNow } from "date-fns";
-import { ar } from "date-fns/locale";
+import { formatTimeAgo } from "../../utils/timeFormat";
 
 // ========================================
 // 🎯 FULLSCREEN CARDS VIEW
@@ -37,12 +36,7 @@ interface FullScreenCardsViewProps {
 
 // Time ago formatter
 const getTimeAgo = (date: Date | string): string => {
-  try {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return formatDistanceToNow(d, { addSuffix: true, locale: ar });
-  } catch {
-    return "";
-  }
+  return formatTimeAgo(date, true);
 };
 
 // Price formatter
@@ -140,7 +134,7 @@ const SnapCard: React.FC<{
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                className="px-3 py-1.5 rounded-full bg-emerald-500/90 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 shadow-lg"
+                className="px-3 py-1.5 rounded-full bg-primary/90 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1.5 shadow-lg"
               >
                 <CheckCircle size={12} />
                 قدمت عرض

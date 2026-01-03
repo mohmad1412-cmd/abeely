@@ -719,7 +719,7 @@ export const Messages: React.FC<MessagesProps> = ({
                       </p>
                       {isOwn && (
                         msg.is_read ? (
-                          <CheckCheck size={12} className="text-blue-200" />
+                          <CheckCheck size={12} className="text-primary-foreground/60" />
                         ) : (
                           <CheckCheck size={12} className="text-primary-foreground/40" />
                         )
@@ -863,7 +863,7 @@ export const Messages: React.FC<MessagesProps> = ({
               }
             }}
             placeholder="اكتب رسالتك..."
-            className="flex-1 py-3 px-4 rounded-xl bg-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary text-right"
+            className="flex-1 py-3 px-4 rounded-xl bg-secondary border border-border focus:outline-none focus:border-primary text-right"
             dir="rtl"
             disabled={isRecording}
           />

@@ -372,12 +372,70 @@ export async function sendMessage(
 
     if (insertError) throw insertError;
 
+    // Update conversation's last_message_at and last_message_preview
+    // (This is also done by trigger, but we do it here as backup)
+    const messagePreview = content.trim() || (options?.audioUrl ? 'رسالة صوتية' : options?.attachments && options.attachments.length > 0 ? 'مرفق' : 'رسالة');
+    await supabase
+      .from('conversations')
+      .update({
+        last_message_at: insertedMsg.created_at,
+        last_message_preview: messagePreview.substring(0, 100),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', conversationId);
+
     // Fetch sender profile separately
     const { data: senderProfile } = await supabase
       .from('profiles')
       .select('id, display_name, avatar_url')
       .eq('id', user.id)
       .single();
+
+    // Get conversation to find recipient
+    const { data: conversation } = await supabase
+      .from('conversations')
+      .select('participant1_id, participant2_id, request_id, offer_id')
+      .eq('id', conversationId)
+      .single();
+
+    // Send notification to recipient (backup if trigger doesn't work)
+    if (conversation) {
+      const recipientId = conversation.participant1_id === user.id 
+        ? conversation.participant2_id 
+        : conversation.participant1_id;
+      
+      if (recipientId) {
+        try {
+          const senderName = senderProfile?.display_name || 'مستخدم';
+          const notificationMessage = content.trim() 
+            ? content.substring(0, 50) + (content.length > 50 ? '...' : '')
+            : options?.audioUrl 
+              ? 'رسالة صوتية' 
+              : options?.attachments && options.attachments.length > 0 
+                ? 'مرفق' 
+                : 'رسالة جديدة';
+
+          const { error: notifError } = await supabase
+            .from('notifications')
+            .insert({
+              user_id: recipientId,
+              type: 'message',
+              title: 'رسالة جديدة',
+              message: `${senderName}: ${notificationMessage}`,
+              link_to: `/messages/${conversationId}`,
+              related_message_id: insertedMsg.id,
+              related_request_id: conversation.request_id || null,
+              related_offer_id: conversation.offer_id || null,
+            });
+
+          if (notifError) {
+            console.warn('Failed to create notification (trigger should handle it):', notifError);
+          }
+        } catch (notifError) {
+          console.warn('Exception creating notification (trigger should handle it):', notifError);
+        }
+      }
+    }
 
     return {
       ...insertedMsg,

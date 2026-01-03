@@ -39,7 +39,15 @@ export default {
           DEFAULT: "var(--destructive)",
           foreground: "var(--destructive-foreground)",
         },
-        border: "var(--border)",
+        // Unified status colors
+        complete: "var(--status-complete)",
+        pending: "var(--status-pending)",
+        active: "var(--status-active)",
+        border: {
+          DEFAULT: "var(--border)",
+          subtle: "var(--border-subtle)",
+          accent: "var(--border-accent)",
+        },
         input: "var(--input)",
         ring: "var(--ring)",
       },

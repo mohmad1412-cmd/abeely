@@ -20,6 +20,7 @@ import { CreateRequestV2 } from "./components/CreateRequestV2";
 import { GlobalFloatingOrb, VoiceProcessingStatus } from "./components/GlobalFloatingOrb";
 import { InterestToast, useInterestToast } from "./components/ui/InterestToast";
 import { notificationSound } from "./services/notificationSoundService";
+import { OnboardingScreen } from "./components/OnboardingScreen";
 
 
 // Types & Data
@@ -62,6 +63,7 @@ import {
   fetchRequestsPaginated,
   migrateUserDraftRequests,
   subscribeToNewRequests,
+  subscribeToAllNewRequests,
   unarchiveOffer,
   unarchiveRequest,
   updateRequest,
@@ -71,6 +73,9 @@ import {
   getViewedRequestIds,
   subscribeToViewedRequests,
 } from "./services/requestViewsService";
+import {
+  updatePreferencesDirect,
+} from "./services/preferencesService";
 import { checkAIConnection } from "./services/aiService";
 import { supabase } from "./services/supabaseClient";
 import {
@@ -86,7 +91,7 @@ import { parseRoute, updateUrl, routeTypeToViewState, ParsedRoute } from "./serv
 import { App as CapacitorApp } from "@capacitor/app";
 
 // Auth Views
-type AppView = "splash" | "auth" | "main" | "connection-error";
+type AppView = "splash" | "auth" | "onboarding" | "main" | "connection-error";
 
 const App: React.FC = () => {
   // ==========================================
@@ -94,11 +99,21 @@ const App: React.FC = () => {
   // ==========================================
   const [appView, setAppView] = useState<AppView>("splash");
   const [user, setUser] = useState<UserProfile | null>(null);
+  // مهم: داخل useEffect([]) (مثل onAuthStateChange) قد تكون قيمة user قديمة (stale closure)
+  // لذا نحتفظ بآخر user في ref لاستخدامه وقت الأحداث.
+  const userRef = useRef<UserProfile | null>(null);
   const [isGuest, setIsGuest] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isProcessingOAuth, setIsProcessingOAuth] = useState(false);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
+
+  // Keep ref updated with latest user
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   // ==========================================
   // Global State
@@ -110,13 +125,25 @@ const App: React.FC = () => {
   const [titleKey, setTitleKey] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isLanguagePopupOpen, setIsLanguagePopupOpen] = useState(false);
-  const [currentLanguage, setCurrentLanguage] = useState<"ar" | "en" | "ur">(
-    "ar",
-  );
+  const [currentLanguage, setCurrentLanguage] = useState<"ar" | "en" | "ur">(() => {
+    // قراءة اللغة من localStorage عند التحميل
+    const saved = localStorage.getItem('locale');
+    if (saved === 'ar' || saved === 'en' || saved === 'ur') {
+      return saved;
+    }
+    return "ar";
+  });
   const [autoTranslateRequests, setAutoTranslateRequests] = useState(false);
+  
+  // حفظ اللغة في localStorage عند تغييرها
+  useEffect(() => {
+    localStorage.setItem('locale', currentLanguage);
+    // إرسال حدث storage لإعلام المكونات الأخرى بتغير اللغة
+    window.dispatchEvent(new StorageEvent('storage', { key: 'locale', newValue: currentLanguage }));
+  }, [currentLanguage]);
   const [userPreferences, setUserPreferences] = useState<UserPreferences>({
-    interestedCategories: ["tech", "writing"],
-    interestedCities: ["الرياض"],
+    interestedCategories: [],
+    interestedCities: [],
     radarWords: [],
     notifyOnInterest: true,
     roleMode: "requester",
@@ -140,6 +167,7 @@ const App: React.FC = () => {
   const [archivedRequests, setArchivedRequests] = useState<Request[]>([]);
   const [archivedOffers, setArchivedOffers] = useState<Offer[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [marketplaceLoadedOnce, setMarketplaceLoadedOnce] = useState(false); // تم التحميل مرة واحدة على الأقل (حتى لو 0 نتائج)
   const [requestsLoadError, setRequestsLoadError] = useState<string | null>(
     null,
   );
@@ -696,7 +724,6 @@ const App: React.FC = () => {
         setIsGuest(false);
         localStorage.removeItem("abeely_guest_mode");
         setIsProcessingOAuth(false);
-        setAppView("main");
         setAuthLoading(false);
         
         // تنظيف URL
@@ -704,12 +731,28 @@ const App: React.FC = () => {
           window.history.replaceState({}, document.title, window.location.pathname || "/");
         }
         
-        // تحميل الـ profile في الخلفية
-        getCurrentUser().then(profile => {
+        // تحميل الـ profile والتحقق من الـ onboarding
+        getCurrentUser().then(async (profile) => {
           if (profile && isMounted) {
             setUser(profile);
+            
+            // التحقق إذا كان المستخدم جديداً ويحتاج الـ onboarding
+            const needsOnboard = await checkOnboardingStatus(profile.id);
+            if (needsOnboard && isMounted) {
+              console.log("🎯 New user detected, showing onboarding...");
+              setNeedsOnboarding(true);
+              setIsNewUser(true);
+              setAppView("onboarding");
+            } else {
+              setAppView("main");
+            }
+          } else {
+            setAppView("main");
           }
-        }).catch(() => {});
+        }).catch(() => {
+          setAppView("main");
+        });
+        return; // منع setAppView("main") أدناه
       } else if (event === "TOKEN_REFRESHED" && session?.user && isMounted) {
         // تحديث الـ profile فقط - لا تسجيل خروج!
         console.log("🔄 Token refreshed, updating profile...");
@@ -718,8 +761,30 @@ const App: React.FC = () => {
           setUser(profile);
         }
       } else if (event === "SIGNED_OUT" && isMounted) {
-        // فقط عند تسجيل خروج صريح من المستخدم
-        console.log("👋 User signed out");
+        // التحقق إذا كان تسجيل خروج صريح أو بسبب فشل تجديد الـ token
+        console.log("👋 Auth event: SIGNED_OUT");
+        
+        // محاولة استعادة الجلسة إذا كان لدينا user مسجل دخول سابقاً
+        // هذا يمنع تسجيل الخروج بسبب أخطاء مؤقتة في تجديد الـ token
+        if (userRef.current && !sessionStorage.getItem('explicit_signout')) {
+          console.log("🔄 Attempting to recover session...");
+          try {
+            const { data: { session: recoveredSession } } = await supabase.auth.getSession();
+            if (recoveredSession?.user) {
+              console.log("✅ Session recovered successfully");
+              const profile = await getCurrentUser();
+              if (profile && isMounted) {
+                setUser(profile);
+              }
+              return; // لا تسجل خروج
+            }
+          } catch (e) {
+            console.error("Failed to recover session:", e);
+          }
+        }
+        
+        // تسجيل خروج فعلي
+        sessionStorage.removeItem('explicit_signout');
         setUser(null);
         setIsGuest(false);
         setAppView("auth");
@@ -903,6 +968,7 @@ const App: React.FC = () => {
           setAllRequests(firstPage);
           setMarketplacePage(0);
           setMarketplaceHasMore(firstPage.length === MARKETPLACE_PAGE_SIZE);
+          setMarketplaceLoadedOnce(true); // تم التحميل بنجاح
         }
       } catch (error) {
         console.error("Error loading public data:", error);
@@ -992,8 +1058,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (appView !== "main" || view !== "marketplace") return;
     if (loadingRef.current) return;
-    // فقط حمّل البيانات إذا لم يكن هناك طلبات (وليس عند وجود خطأ لتجنب الحلقة)
-    if (allRequests.length === 0) {
+    // فقط حمّل البيانات إذا لم يتم التحميل بنجاح من قبل
+    if (!marketplaceLoadedOnce) {
       const reloadData = async () => {
         loadingRef.current = true;
         try {
@@ -1008,6 +1074,7 @@ const App: React.FC = () => {
               ? firstPage.length < totalCount
               : firstPage.length === MARKETPLACE_PAGE_SIZE;
             setMarketplaceHasMore(more);
+            setMarketplaceLoadedOnce(true); // تم التحميل بنجاح
           }
         } catch (error) {
           console.error("Error reloading marketplace data:", error);
@@ -1021,15 +1088,16 @@ const App: React.FC = () => {
       };
       reloadData();
     }
-  }, [view, appView, allRequests.length]); // إزالة requestsLoadError من dependencies لمنع الحلقة
+  }, [view, appView, marketplaceLoadedOnce]); // إزالة requestsLoadError من dependencies لمنع الحلقة
 
   // ==========================================
   // Auto-Retry: Check Connection & Reload Data
   // ==========================================
   useEffect(() => {
-    // Only run when in main view, loading, and no data yet
+    // Only run when in main view and data hasn't been loaded successfully yet
     if (appView !== "main") return;
-    if (!isLoadingData && allRequests.length > 0) return;
+    // إذا تم التحميل مرة واحدة بنجاح (حتى لو 0 نتائج)، لا نحتاج Auto-Retry
+    if (marketplaceLoadedOnce) return;
     if (loadingRef.current) return;
 
     let retryCount = 0;
@@ -1058,13 +1126,14 @@ const App: React.FC = () => {
           try {
             const { data: firstPage, count: totalCount } =
               await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
-            if (Array.isArray(firstPage) && firstPage.length > 0) {
+            if (Array.isArray(firstPage)) {
               setAllRequests(firstPage);
               setMarketplacePage(0);
               const more = typeof totalCount === "number"
                 ? firstPage.length < totalCount
                 : firstPage.length === MARKETPLACE_PAGE_SIZE;
               setMarketplaceHasMore(more);
+              setMarketplaceLoadedOnce(true); // تم التحميل بنجاح (حتى لو 0 نتائج)
               console.log("[Auto-Retry] Data loaded successfully!");
             }
           } catch (loadError) {
@@ -1093,26 +1162,26 @@ const App: React.FC = () => {
     return () => {
       clearInterval(intervalId);
     };
-  }, [appView, isLoadingData, allRequests.length]);
+  }, [appView, marketplaceLoadedOnce]);
 
   // ==========================================
   // Loading Timeout: Show friendly error after 10s
   // ==========================================
   useEffect(() => {
     if (appView !== "main") return;
-    if (allRequests.length > 0) return;
+    if (marketplaceLoadedOnce) return; // تم التحميل بنجاح، لا نحتاج timeout
     if (!isLoadingData) return;
     if (requestsLoadError) return;
 
     const timeoutId = setTimeout(() => {
-      if (isLoadingData && allRequests.length === 0) {
+      if (isLoadingData && !marketplaceLoadedOnce) {
         setRequestsLoadError("قد يكون هناك مشكلة مؤقتة في الاتصال");
         setIsLoadingData(false);
       }
     }, 10000);
 
     return () => clearTimeout(timeoutId);
-  }, [appView, isLoadingData, allRequests.length, requestsLoadError]);
+  }, [appView, isLoadingData, marketplaceLoadedOnce, requestsLoadError]);
 
   // ==========================================
   // Load Notifications from Supabase
@@ -1322,6 +1391,42 @@ const App: React.FC = () => {
     currentMarketplaceViewMode,
     showToast,
   ]);
+
+  // ==========================================
+  // Subscribe to All New Requests (for "All" view)
+  // ==========================================
+  useEffect(() => {
+    if (appView !== "main") return;
+
+    // Subscribe to all new public requests
+    const unsubscribe = subscribeToAllNewRequests(
+      async (newRequest) => {
+        // Add new request to all requests list (only if not exists)
+        setAllRequests((prev) => {
+          const exists = prev.some((r) => r.id === newRequest.id);
+          if (exists) return prev;
+          // Add to the beginning of the list (newest first)
+          return [newRequest, ...prev];
+        });
+
+        // Mark as new for animation
+        setNewRequestIds((prev) => new Set([...prev, newRequest.id]));
+        
+        // Clear new request animation after 5 seconds
+        setTimeout(() => {
+          setNewRequestIds((prev) => {
+            const next = new Set(prev);
+            next.delete(newRequest.id);
+            return next;
+          });
+        }, 5000);
+      },
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [appView]);
 
   // ==========================================
   // Navigation Helpers
@@ -1573,6 +1678,7 @@ const App: React.FC = () => {
         ? firstPage.length < totalCount
         : firstPage.length === MARKETPLACE_PAGE_SIZE;
       setMarketplaceHasMore(more);
+      setMarketplaceLoadedOnce(true); // تم التحميل بنجاح
 
       if (user?.id) {
         const myReqs = await fetchMyRequests(user.id);
@@ -1657,6 +1763,8 @@ const App: React.FC = () => {
   // Sign Out Handler
   // ==========================================
   const handleSignOut = async () => {
+    // تعليم أن هذا تسجيل خروج صريح من المستخدم (وليس بسبب فشل تجديد الـ token)
+    sessionStorage.setItem('explicit_signout', 'true');
     await authSignOut();
     setUser(null);
     setIsGuest(false);
@@ -1678,6 +1786,143 @@ const App: React.FC = () => {
     setIsGuest(false);
     localStorage.removeItem("abeely_guest_mode");
     setAppView("auth");
+  };
+
+  // ==========================================
+  // Onboarding Complete Handler
+  // ==========================================
+  const handleOnboardingComplete = async (preferences: {
+    name: string;
+    categories: string[];
+    cities: string[];
+    notificationsEnabled: boolean;
+  }) => {
+    try {
+      // تحديث التفضيلات المحلية
+      setUserPreferences(prev => ({
+        ...prev,
+        interestedCategories: preferences.categories,
+        interestedCities: preferences.cities,
+        notifyOnInterest: preferences.notificationsEnabled,
+      }));
+
+      // حفظ في قاعدة البيانات إذا كان المستخدم مسجلاً
+      if (user?.id) {
+        // تحديث الاسم والتفضيلات
+        await updatePreferencesDirect(user.id, {
+          interestedCategories: preferences.categories,
+          interestedCities: preferences.cities,
+          notifyOnInterest: preferences.notificationsEnabled,
+        });
+
+        // تحديث الاسم في profile
+        await supabase
+          .from('profiles')
+          .update({ 
+            display_name: preferences.name
+          })
+          .eq('id', user.id);
+
+        // محاولة تحديث has_onboarded (تجاهل الخطأ إذا العمود غير موجود)
+        try {
+          await supabase
+            .from('profiles')
+            .update({ has_onboarded: true })
+            .eq('id', user.id);
+        } catch (e) {
+          console.log('Could not update has_onboarded column (might not exist)');
+        }
+      }
+
+      // حفظ علامة في localStorage بناءً على userId (للاحتياط)
+      if (user?.id) {
+        localStorage.setItem(`abeely_onboarded_${user.id}`, 'true');
+      }
+
+      // إعادة جلب الـ profile مع التحديثات
+      const updatedProfile = await getCurrentUser();
+      if (updatedProfile) {
+        setUser(updatedProfile);
+      }
+
+      // الانتقال للتطبيق الرئيسي
+      setNeedsOnboarding(false);
+      setIsNewUser(false);
+      setAppView("main");
+    } catch (error) {
+      console.error('Error completing onboarding:', error);
+      // الانتقال للتطبيق الرئيسي حتى لو فشل الحفظ
+      setNeedsOnboarding(false);
+      setAppView("main");
+    }
+  };
+
+  // ==========================================
+  // Check if user needs onboarding
+  // ==========================================
+  const checkOnboardingStatus = async (userId: string): Promise<boolean> => {
+    try {
+      // التحقق من localStorage بناءً على userId المحدد (ليس عام)
+      const userOnboardedKey = `abeely_onboarded_${userId}`;
+      const localOnboarded = localStorage.getItem(userOnboardedKey);
+      if (localOnboarded === 'true') {
+        return false; // لا يحتاج onboarding
+      }
+
+      // التحقق من قاعدة البيانات - بدون has_onboarded لتجنب الأخطاء إذا العمود غير موجود
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('interested_categories, interested_cities, created_at, display_name')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error checking onboarding status:', error);
+        // في حالة الخطأ، نعرض الـ onboarding إذا كان المستخدم جديداً
+        // بدلاً من إخفائها
+        console.log("🎯 Error fetching profile, showing onboarding to be safe...");
+        return true;
+      }
+
+      // إذا لديه اهتمامات محددة مسبقاً وعنده اسم، يعتبر أنه أكمل الـ onboarding
+      if (
+        data?.display_name &&
+        ((data?.interested_categories && data.interested_categories.length > 0) ||
+        (data?.interested_cities && data.interested_cities.length > 0))
+      ) {
+        localStorage.setItem(userOnboardedKey, 'true');
+        // محاولة تحديث قاعدة البيانات (تجاهل الخطأ إذا العمود غير موجود)
+        try {
+          await supabase.from('profiles').update({ has_onboarded: true }).eq('id', userId);
+        } catch (e) {
+          console.log('Could not update has_onboarded column (might not exist)');
+        }
+        return false;
+      }
+
+      // إذا تم إنشاء الحساب قبل أكثر من أسبوع، لا نعرض الـ onboarding (للحسابات القديمة جداً)
+      if (data?.created_at) {
+        const createdAt = new Date(data.created_at);
+        const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        if (createdAt < oneWeekAgo) {
+          localStorage.setItem(userOnboardedKey, 'true');
+          try {
+            await supabase.from('profiles').update({ has_onboarded: true }).eq('id', userId);
+          } catch (e) {
+            console.log('Could not update has_onboarded column (might not exist)');
+          }
+          return false;
+        }
+      }
+
+      // المستخدم جديد ويحتاج الـ onboarding
+      console.log("🎯 User needs onboarding:", { userId, data });
+      return true;
+    } catch (error) {
+      console.error('Error in checkOnboardingStatus:', error);
+      // في حالة الخطأ العام، نعرض الـ onboarding للمستخدمين الجدد
+      return true;
+    }
   };
 
   // ==========================================
@@ -1745,8 +1990,16 @@ const App: React.FC = () => {
                   console.log("isEditing:", isEditing);
                   console.log("editRequestId:", editRequestId);
                   console.log("userId:", user?.id);
+                  
+                  // Get current user (in case user just logged in via guest verification)
+                  let currentUserId = user?.id;
+                  if (!currentUserId) {
+                    const currentUser = await getCurrentUser();
+                    currentUserId = currentUser?.id || null;
+                  }
+                  
                   // إنشاء طلب جديد
-                  const createdRequest = await createRequestFromChat(user?.id || null, draftData);
+                  const createdRequest = await createRequestFromChat(currentUserId || null, draftData);
                   console.log("Request created successfully:", createdRequest);
                   resultId = createdRequest?.id || null;
                 }
@@ -1889,16 +2142,13 @@ const App: React.FC = () => {
           : allRequests;
         return (
           <div className="h-full flex flex-col overflow-hidden relative">
-            {/* MyRequests - always mounted, visibility controlled by CSS */}
+            {/* MyRequests - always mounted */}
             <div 
               className={`absolute inset-0 ${
                 activeBottomTab === "my-requests" 
-                  ? "z-10 pointer-events-auto visible" 
-                  : "z-0 pointer-events-none invisible"
+                  ? "z-10 pointer-events-auto" 
+                  : "z-0 pointer-events-none hidden"
               }`}
-              style={{ 
-                willChange: 'visibility',
-              }}
             >
               <MyRequests
                 requests={myRequests}
@@ -1952,21 +2202,17 @@ const App: React.FC = () => {
                 }}
                 userId={user?.id}
                 viewedRequestIds={viewedRequestIds}
-                onCreateRequest={() => handleNavigate("create-request")}
                 isActive={activeBottomTab === "my-requests"}
               />
             </div>
 
-            {/* MyOffers - always mounted, visibility controlled by CSS */}
+            {/* MyOffers - always mounted */}
             <div 
               className={`absolute inset-0 ${
                 activeBottomTab === "my-offers" 
-                  ? "z-10 pointer-events-auto visible" 
-                  : "z-0 pointer-events-none invisible"
+                  ? "z-10 pointer-events-auto" 
+                  : "z-0 pointer-events-none hidden"
               }`}
-              style={{ 
-                willChange: 'visibility',
-              }}
             >
               <MyOffers
                 offers={myOffers}
@@ -2024,21 +2270,17 @@ const App: React.FC = () => {
                 }}
                 userId={user?.id}
                 viewedRequestIds={viewedRequestIds}
-                onCreateRequest={() => handleNavigate("create-request")}
                 isActive={activeBottomTab === "my-offers"}
               />
             </div>
 
-            {/* Marketplace - always mounted, visibility controlled by CSS */}
+            {/* Marketplace - always mounted */}
             <div 
               className={`absolute inset-0 ${
                 activeBottomTab === "marketplace" 
-                  ? "z-10 pointer-events-auto visible" 
-                  : "z-0 pointer-events-none invisible"
+                  ? "z-10 pointer-events-auto" 
+                  : "z-0 pointer-events-none hidden"
               }`}
-              style={{ 
-                willChange: 'visibility',
-              }}
             >
               {allRequests && Array.isArray(allRequests)
                 ? (
@@ -2051,18 +2293,30 @@ const App: React.FC = () => {
                     userId={user?.id}
                     onSelectRequest={handleSelectRequest}
                     userInterests={userInterests}
-                    onUpdateInterests={(interests) => {
+                    onUpdateInterests={async (interests) => {
                       setUserPreferences((prev) => ({
                         ...prev,
                         interestedCategories: interests,
                       }));
+                      // حفظ في قاعدة البيانات
+                      if (user?.id) {
+                        await updatePreferencesDirect(user.id, {
+                          interestedCategories: interests,
+                        });
+                      }
                     }}
                     interestedCities={userPreferences.interestedCities}
-                    onUpdateCities={(cities) => {
+                    onUpdateCities={async (cities) => {
                       setUserPreferences((prev) => ({
                         ...prev,
                         interestedCities: cities,
                       }));
+                      // حفظ في قاعدة البيانات
+                      if (user?.id) {
+                        await updatePreferencesDirect(user.id, {
+                          interestedCities: cities,
+                        });
+                      }
                     }}
                     hasMore={marketplaceHasMore}
                     isLoadingMore={marketplaceIsLoadingMore}
@@ -2101,7 +2355,6 @@ const App: React.FC = () => {
                     isDarkMode={isDarkMode}
                     toggleTheme={() => setIsDarkMode(!isDarkMode)}
                     onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
-                    onCreateRequest={() => handleNavigate("create-request")}
                     isActive={activeBottomTab === "marketplace"}
                     onViewModeChange={setCurrentMarketplaceViewMode}
                     newRequestIds={newRequestIds}
@@ -2122,6 +2375,22 @@ const App: React.FC = () => {
             <BottomNavigation
               activeTab={activeBottomTab}
               onTabChange={setActiveBottomTab}
+              onCreateRequest={() => handleNavigate("create-request")}
+              user={user}
+              isGuest={isGuest}
+              onSignOut={isGuest ? handleGoToLogin : handleSignOut}
+              onNavigateToProfile={() => {
+                setPreviousView(view);
+                setView("profile");
+              }}
+              onNavigateToSettings={() => {
+                setPreviousView(view);
+                setView("settings");
+              }}
+              isDarkMode={isDarkMode}
+              toggleTheme={() => setIsDarkMode(!isDarkMode)}
+              onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
+              needsProfileSetup={!isGuest && (!user?.display_name || needsOnboarding)}
             />
           </div>
         );
@@ -2279,8 +2548,19 @@ const App: React.FC = () => {
               isDarkMode={isDarkMode}
               toggleTheme={() => setIsDarkMode(!isDarkMode)}
               userPreferences={userPreferences}
-              onUpdatePreferences={(prefs) => {
+              onUpdatePreferences={async (prefs) => {
                 setUserPreferences(prefs);
+                // حفظ في قاعدة البيانات
+                if (user?.id) {
+                  await updatePreferencesDirect(user.id, {
+                    interestedCategories: prefs.interestedCategories,
+                    interestedCities: prefs.interestedCities,
+                    notifyOnInterest: prefs.notifyOnInterest,
+                    radarWords: prefs.radarWords,
+                    roleMode: prefs.roleMode,
+                    showNameToApprovedProvider: prefs.showNameToApprovedProvider,
+                  });
+                }
               }}
               user={user}
               onUpdateProfile={async (updates) => {
@@ -2484,6 +2764,17 @@ const App: React.FC = () => {
     );
   }
 
+  // Onboarding Screen (للمستخدمين الجدد)
+  if (appView === "onboarding") {
+    return (
+      <OnboardingScreen
+        onComplete={handleOnboardingComplete}
+        isLoading={false}
+        initialName={user?.display_name}
+      />
+    );
+  }
+
   // Auth Screen
   if (appView === "auth") {
     return (
@@ -2496,6 +2787,18 @@ const App: React.FC = () => {
               const profile = await getCurrentUser();
               if (profile) {
                 setUser(profile);
+                
+                // التحقق إذا كان المستخدم جديداً ويحتاج الـ onboarding
+                const needsOnboard = await checkOnboardingStatus(profile.id);
+                if (needsOnboard) {
+                  console.log("🎯 New user detected after auth, showing onboarding...");
+                  setNeedsOnboarding(true);
+                  setIsNewUser(true);
+                  setIsGuest(false);
+                  localStorage.removeItem("abeely_guest_mode");
+                  setAppView("onboarding");
+                  return;
+                }
               }
               setIsGuest(false);
               localStorage.removeItem("abeely_guest_mode");

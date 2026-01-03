@@ -136,7 +136,7 @@ export const TapButton: React.FC<TapButtonProps> = ({
     ghost: 'bg-transparent hover:bg-secondary/60',
     outline: 'bg-transparent border border-border hover:border-primary/50 hover:bg-primary/5',
     danger: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-    success: 'bg-green-600 text-white hover:bg-green-700',
+    success: 'bg-primary text-white hover:bg-primary/90',
     icon: 'bg-transparent hover:bg-secondary/60',
   };
 

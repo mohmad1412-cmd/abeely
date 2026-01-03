@@ -211,7 +211,7 @@ const ClarificationCard: React.FC<{
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="اكتب إجابتك هنا..."
-          className="w-full bg-secondary/50 rounded-2xl p-4 text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 min-h-[100px]"
+          className="w-full bg-secondary/50 rounded-2xl p-4 text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-primary min-h-[100px]"
           dir="auto"
         />
       </div>
@@ -318,7 +318,7 @@ const FinalReviewScreen: React.FC<{
           </div>
           <span className={`px-3 py-1 rounded-full text-sm ${
             review.system_category === 'غير محدد'
-              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+              ? 'bg-accent/15 text-accent-foreground'
               : 'bg-primary/10 text-primary'
           }`}>
             {review.system_category}
@@ -327,14 +327,14 @@ const FinalReviewScreen: React.FC<{
 
         {/* New Category Suggestion */}
         {review.new_category_suggestion && review.new_category_suggestion !== 'لا يوجد' && (
-          <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border-t border-amber-200 dark:border-amber-800">
+          <div className="p-4 bg-accent/10 border-t border-accent/20">
             <div className="flex items-start gap-2">
-              <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+              <AlertCircle size={16} className="text-accent-foreground shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm text-amber-700 dark:text-amber-400">
+                <p className="text-sm text-accent-foreground">
                   تم اقتراح تصنيف جديد: <strong>{review.new_category_suggestion}</strong>
                 </p>
-                <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   سيتم مراجعته من قبل الإدارة
                 </p>
               </div>
@@ -611,7 +611,7 @@ export const CustomerServiceChat: React.FC<CustomerServiceChatProps> = ({
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="اكتب طلبك هنا... (مثال: أبغى سباك يصلح تسريب في الحمام)"
-                  className="w-full bg-secondary/50 rounded-2xl p-4 pr-4 text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 min-h-[120px]"
+                  className="w-full bg-secondary/50 rounded-2xl p-4 pr-4 text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-primary min-h-[120px]"
                   dir="auto"
                 />
               </div>
@@ -734,9 +734,9 @@ export const CustomerServiceChat: React.FC<CustomerServiceChatProps> = ({
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4"
+                className="w-20 h-20 rounded-full bg-primary/15 flex items-center justify-center mb-4"
               >
-                <Check size={40} className="text-green-600" />
+                <Check size={40} className="text-primary" />
               </motion.div>
               <h2 className="text-xl font-bold text-foreground mb-2">تم إرسال طلبك بنجاح!</h2>
               <p className="text-muted-foreground text-center">

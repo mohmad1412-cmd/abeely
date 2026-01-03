@@ -7,6 +7,9 @@ import {
   X, 
   LogOut, 
   LogIn,
+  DoorOpen,
+  Briefcase,
+  User,
   ArrowRight,
   Share2,
   Check,
@@ -20,7 +23,6 @@ import {
   FileEdit,
   Search,
   Filter,
-  User,
   Settings,
   ChevronDown,
   Moon,
@@ -131,6 +133,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   closeIcon = false,
   title,
   isScrolled = true,
+  currentView,
   transparent = false,
   hideModeToggle = false,
   isGuest = false,
@@ -183,6 +186,15 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   const notifRef = useRef<HTMLDivElement>(null);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   const [iconToggle, setIconToggle] = useState(false);
+
+  // Determine guest icon based on section
+  const getGuestIcon = () => {
+    if (title === "سوق الطلبات" || currentView === "marketplace") return Search;
+    if (title === "طلباتي" || currentView === "my-requests") return FileText;
+    if (title === "عروضي" || currentView === "my-offers") return Briefcase;
+    return Search;
+  };
+  const GuestIcon = getGuestIcon();
   
   // Prevent body scroll when dropdown is open
   useEffect(() => {
@@ -292,21 +304,6 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           </motion.button>
         ) : null}
         
-        {backButton && title && (
-          <>
-            {showTitleEditButton && onTitleEdit && (
-              <button
-                onClick={onTitleEdit}
-                className="shrink-0 p-2 rounded-lg hover:bg-emerald-200/50 dark:hover:bg-emerald-800/50 transition-colors"
-              >
-                <FileEdit size={18} className="text-emerald-600" />
-              </button>
-            )}
-            <h1 className="text-sm font-medium text-foreground truncate flex-1 min-w-0">
-              {title}
-            </h1>
-          </>
-        )}
         {!backButton && !hideProfileButton && title && isActive && (
             <>
               {/* Combined container for title and profile - styled like filter tabs */}
@@ -315,7 +312,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                 layoutId="header-title-container"
                 className="flex items-center gap-2 h-10 px-3 pr-1.5 rounded-full bg-card/95 backdrop-blur-xl border border-border shadow-lg min-w-0"
                 initial={false}
-                transition={{ 
+                transition={{  
                   type: "spring", 
                   stiffness: 300, 
                   damping: 35,
@@ -335,15 +332,12 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   whileTap={{ scale: 0.95 }}
                   className={`relative flex items-center justify-center overflow-visible shrink-0 ${
                     isGuest 
-                      ? 'w-auto h-8 px-3 gap-1.5 rounded-full bg-red-500 border border-red-400 shadow-lg shadow-red-500/30' 
+                      ? 'w-8 h-8 rounded-full bg-gradient-to-br from-primary to-teal-600 border border-white/20 shadow-lg shadow-primary/30' 
                       : 'w-7 h-7 rounded-full bg-primary/10 border border-primary/20'
                   }`}
                 >
                   {isGuest ? (
-                    <>
-                      <LogIn size={14} className="text-white" />
-                      <span className="text-xs font-bold text-white">دخول</span>
-                    </>
+                    <GuestIcon size={16} className="text-white" />
                   ) : (
                     <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
                       {user?.avatar_url ? (
@@ -409,13 +403,13 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                           <div className="flex items-center gap-3">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden shrink-0 ${
                               isGuest 
-                                ? 'bg-red-500/15 border border-red-500/30' 
+                                ? 'bg-muted/30 border border-border/50' 
                                 : 'bg-primary/10 border border-primary/20'
                             }`}>
                               {user?.avatar_url ? (
                                 <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
                               ) : isGuest ? (
-                                <LogIn size={18} className="text-red-500" />
+                                <User size={20} className="text-muted-foreground/50" />
                               ) : (
                                 <span className="text-sm font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
                               )}
@@ -470,16 +464,16 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                               }}
                               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
                                 isDarkMode 
-                                  ? 'bg-primary/10 text-primary' 
-                                  : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                                  ? 'bg-white/10 text-white hover:bg-white/20' 
+                                  : 'bg-gray-900/20 text-gray-900 hover:bg-gray-900/30'
                               }`}
                             >
                               {isDarkMode ? (
-                                <Moon size={16} className="text-primary" />
-                              ) : (
                                 <Sun size={16} />
+                              ) : (
+                                <Moon size={16} />
                               )}
-                              <span className="text-xs">{isDarkMode ? 'ليلي' : 'نهاري'}</span>
+                              <span className="text-xs">{isDarkMode ? 'نهاري' : 'ليلي'}</span>
                             </button>
                             
                             {/* Language Toggle */}
@@ -553,15 +547,12 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                 whileTap={{ scale: 0.95 }}
                 className={`relative flex items-center justify-center overflow-visible shrink-0 shadow-lg hover:shadow-xl transition-shadow ${
                   isGuest 
-                    ? 'h-9 px-3 gap-1.5 rounded-full bg-red-500 border border-red-400' 
+                    ? 'w-9 h-9 rounded-full bg-gradient-to-br from-primary to-teal-600 border border-white/20' 
                     : 'w-9 h-9 rounded-full bg-card/80 backdrop-blur-sm border border-white/20'
                 }`}
               >
                 {isGuest ? (
-                  <>
-                    <LogIn size={16} className="text-white" />
-                    <span className="text-xs font-bold text-white">دخول</span>
-                  </>
+                  <GuestIcon size={18} className="text-white" />
                 ) : (
                   <>
                     <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
@@ -622,13 +613,13 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden shrink-0 ${
                             isGuest 
-                              ? 'bg-red-500/15 border border-red-500/30' 
+                              ? 'bg-muted/30 border border-border/50' 
                               : 'bg-primary/10 border border-primary/20'
                           }`}>
                             {user?.avatar_url ? (
                               <img src={user.avatar_url} alt={user?.display_name || "User"} className="w-full h-full object-cover" />
                             ) : isGuest ? (
-                              <LogIn size={18} className="text-red-500" />
+                              <User size={20} className="text-muted-foreground/50" />
                             ) : (
                               <span className="text-sm font-bold text-primary">{user?.display_name?.charAt(0) || "م"}</span>
                             )}
@@ -680,16 +671,16 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                             }}
                             className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
                               isDarkMode 
-                                ? 'bg-primary/10 text-primary' 
-                                : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                                ? 'bg-white/10 text-white hover:bg-white/20' 
+                                : 'bg-gray-900/20 text-gray-900 hover:bg-gray-900/30'
                             }`}
                           >
                             {isDarkMode ? (
-                              <Moon size={16} className="text-primary" />
-                            ) : (
                               <Sun size={16} />
+                            ) : (
+                              <Moon size={16} />
                             )}
-                            <span className="text-xs">{isDarkMode ? 'ليلي' : 'نهاري'}</span>
+                            <span className="text-xs">{isDarkMode ? 'نهاري' : 'ليلي'}</span>
                           </button>
                           
                           <button
@@ -748,9 +739,22 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
               exit={{ opacity: 0, y: -5 }}
               className="px-4 h-10 flex items-center gap-2 rounded-full bg-card/95 backdrop-blur-xl border border-border shadow-lg min-w-0 flex-1"
             >
-              <span className="font-bold text-sm text-foreground truncate block flex-1">
+              <span className={`font-bold text-sm text-foreground truncate block flex-1 ${
+                title === "إنشاء طلب جديد" || title === "تعديل الطلب" || title === "جاري كتابة العنوان..." 
+                  ? "text-left" 
+                  : "text-right"
+              }`}>
                 {title}
               </span>
+              {/* Title edit button */}
+              {showTitleEditButton && onTitleEdit && (
+                <button
+                  onClick={onTitleEdit}
+                  className="shrink-0 p-1.5 rounded-lg hover:bg-primary/10 transition-colors"
+                >
+                  <FileEdit size={18} className="text-primary" />
+                </button>
+              )}
               {/* Three-dot menu in scrolled title */}
               {showThreeDotsMenu && threeDotsMenuItems.length > 0 && (
                 <DropdownMenu
@@ -779,7 +783,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           className="create-request-btn relative flex items-center gap-2 h-10 px-4 rounded-full group active:scale-95 overflow-hidden bg-card/95 backdrop-blur-xl shadow-lg hover:bg-card"
-          transition={{ 
+          transition={{  
             type: "spring", 
             stiffness: 300, 
             damping: 35,
@@ -806,7 +810,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
             whileTap={{ scale: 0.95 }}
             className={`flex items-center justify-center h-11 w-11 rounded-xl transition-all duration-300 active:scale-95 group ${
               isLinkCopied 
-                ? "bg-green-500/20 border border-green-500/40 text-green-500" 
+                ? "bg-primary/20 border border-primary/40 text-primary" 
                 : "bg-card border border-border hover:text-primary hover:border-primary/30"
             }`}
             title={isLinkCopied ? "تم نسخ الرابط!" : "مشاركة الرابط"}
@@ -820,7 +824,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                   exit={{ scale: 0, rotate: 180 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <Check size={18} strokeWidth={2.5} className="text-green-500" />
+                  <Check size={18} strokeWidth={2.5} className="text-primary" />
                 </motion.div>
               ) : (
                 <motion.div
@@ -946,13 +950,13 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                     // وضع الإنشاء - celebration كامل
                     <>
                       <motion.div
-                        className="absolute inset-0 rounded-full border-2 border-emerald-400 pointer-events-none"
+                        className="absolute inset-0 rounded-full border-2 border-primary pointer-events-none"
                         initial={{ scale: 1, opacity: 0.8 }}
                         animate={{ scale: 2, opacity: 0 }}
                         transition={{ duration: 0.6, ease: "easeOut" }}
                       />
                       <motion.div
-                        className="absolute inset-0 rounded-full border-2 border-emerald-400 pointer-events-none"
+                        className="absolute inset-0 rounded-full border-2 border-primary pointer-events-none"
                         initial={{ scale: 1, opacity: 0.6 }}
                         animate={{ scale: 1.7, opacity: 0 }}
                         transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
@@ -1115,7 +1119,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                       transition={{ duration: 0.6, delay: 0.2 }}
                     />
                     <motion.div
-                      className="absolute -bottom-2 -left-2 w-2 h-2 bg-emerald-300 rounded-full pointer-events-none"
+                      className="absolute -bottom-2 -left-2 w-2 h-2 bg-primary rounded-full pointer-events-none"
                       initial={{ scale: 0, opacity: 1 }}
                       animate={{ scale: [0, 1.5, 0], opacity: [1, 0.8, 0] }}
                       transition={{ duration: 0.5, delay: 0.3 }}

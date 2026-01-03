@@ -1067,6 +1067,54 @@ export function subscribeToNewRequests(
 }
 
 /**
+ * Subscribe to all new public requests (for "All" view)
+ */
+export function subscribeToAllNewRequests(
+  callback: (newRequest: Request) => void
+): () => void {
+  const channel = supabase
+    .channel('all-new-requests')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'requests',
+        filter: 'is_public=eq.true',
+      },
+      async (payload) => {
+        const newRequest = payload.new as any;
+        
+        // Only process active requests
+        if (newRequest.status !== 'active') return;
+
+        // Fetch full request with categories
+        const { data, error } = await supabase
+          .from("requests")
+          .select(`
+            *,
+            request_categories (
+              category_id,
+              categories (id, label)
+            )
+          `)
+          .eq("id", newRequest.id)
+          .single();
+
+        if (!error && data) {
+          const transformedRequest = transformRequest(data);
+          callback(transformedRequest);
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+/**
  * تحديث طلب موجود
  * يتحقق من أن المستخدم هو صاحب الطلب قبل التحديث
  */
@@ -1330,19 +1378,36 @@ export async function startNegotiation(
 
     // 5. إرسال إشعار للعارض
     try {
-      await supabase
+      // Get requester name for notification
+      const { data: requesterProfile } = await supabase
+        .from('profiles')
+        .select('display_name')
+        .eq('id', userId)
+        .single();
+
+      const requesterName = requesterProfile?.display_name || 'صاحب الطلب';
+      
+      const { error: notifError } = await supabase
         .from('notifications')
         .insert({
           user_id: offer.provider_id,
           type: 'status',
           title: '🤝 بدأ التفاوض على عرضك!',
-          message: `صاحب الطلب "${request.title}" يريد التفاوض معك على عرضك`,
+          message: `${requesterName} يريد التفاوض معك على عرضك في طلب "${request.title}"`,
           link_to: `/request/${requestId}`,
           related_request_id: requestId,
           related_offer_id: offerId
         });
+
+      if (notifError) {
+        console.error('خطأ في إرسال الإشعار عند بدء التفاوض:', notifError);
+        // لا نعيد false لأن التفاوض نجح، فقط الإشعار فشل
+      } else {
+        console.log('✅ تم إرسال إشعار بدء التفاوض بنجاح');
+      }
     } catch (notifErr) {
-      console.warn('تحذير: فشل في إرسال الإشعار:', notifErr);
+      console.error('خطأ غير متوقع في إرسال الإشعار:', notifErr);
+      // لا نعيد false لأن التفاوض نجح، فقط الإشعار فشل
     }
 
     console.log('✅ تم بدء التفاوض بنجاح');

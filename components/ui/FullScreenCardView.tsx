@@ -18,8 +18,9 @@ import {
   Send
 } from "lucide-react";
 import { Request, Offer } from "../../types";
-import { format, formatDistanceToNow } from "date-fns";
-import { ar } from "date-fns/locale";
+import { format } from "date-fns";
+import { formatTimeAgo } from "../../utils/timeFormat";
+import { AVAILABLE_CATEGORIES } from "../../data";
 
 interface FullScreenCardViewProps {
   requests: Request[];
@@ -46,11 +47,13 @@ const RequestCard: React.FC<{
   
   // Format time ago
   const timeAgo = request.createdAt 
-    ? formatDistanceToNow(new Date(request.createdAt), { addSuffix: true, locale: ar })
+    ? formatTimeAgo(request.createdAt, true)
     : "";
 
-  // Get first category
-  const firstCategory = request.categories?.[0] || "";
+  // Get first category - convert id to label if needed
+  const firstCategoryRaw = request.categories?.[0] || "";
+  const categoryObj = AVAILABLE_CATEGORIES.find(c => c.label === firstCategoryRaw || c.id === firstCategoryRaw);
+  const firstCategory = categoryObj?.label || firstCategoryRaw;
   
   // Status badge
   const hasOffer = !!myOffer;
@@ -105,8 +108,8 @@ const RequestCard: React.FC<{
                 animate={{ scale: 1 }}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium ${
                   offerAccepted 
-                    ? "bg-emerald-500/90 text-white" 
-                    : "bg-amber-500/90 text-white"
+                    ? "bg-primary/90 text-white" 
+                    : "bg-accent text-accent-foreground"
                 }`}
               >
                 {offerAccepted ? "✓ معتمد" : "⏳ بانتظار"}

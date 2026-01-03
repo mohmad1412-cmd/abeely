@@ -42,7 +42,7 @@ interface CityAutocompleteProps {
 export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   value,
   onChange,
-  placeholder = "ابحث عن مدينة، شارع، معلم، أو محل",
+  placeholder = "ابحث عن مدن، معالم، أو محلات...",
   label,
   className = "",
   showRemoteOption = true,
@@ -71,6 +71,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   const [mapCenter, setMapCenter] = useState({ lat: 24.7136, lng: 46.6753 }); // الرياض كموقع افتراضي
   const [selectedMapLocation, setSelectedMapLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isLoadingMapLocation, setIsLoadingMapLocation] = useState(false);
+  const [isValid, setIsValid] = useState(false); // حالة للتحقق من صحة الإدخال
   const mapRef = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
   
@@ -117,7 +118,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
 
   // البحث مع debounce
   const handleSearch = useCallback(async (query: string) => {
-    if (!query || query.trim().length < 2) {
+    if (!query || query.trim().length < 1) {
       // إذا لم يكتب المستخدم شيء، نعرض قائمة فارغة
       setResults([]);
       return;
@@ -149,8 +150,11 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
         // تحويل الإحداثيات إلى عنوان
         const locationResult = await reverseGeocode(coords.lat, coords.lng);
         if (locationResult) {
-          setSearchQuery(locationResult.name);
-          onChange(locationResult.name, locationResult);
+          // استخدام اسم العرض الكامل الذي يحتوي على الشارع، الحي، المدينة
+          // reverseGeocode الآن ترجع name مع العنوان الكامل
+          const displayName = locationResult.name;
+          setSearchQuery(displayName);
+          onChange(displayName, locationResult);
           setIsOpen(false);
         } else {
           // إذا فشل التحويل، استخدم الإحداثيات مباشرة
@@ -205,9 +209,10 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   // اختيار مدينة
   const handleSelectCity = (city: CityResult) => {
     // بناء اسم العرض الذكي
-    // إذا كان مدينة معروفة (العنوان الإضافي هو المملكة فقط) → نستخدم الاسم فقط
-    // إذا كان قرية/حي/محل → نضيف المدينة التابعة لها
+    // إذا كان مدينة معروفة (العنوان الإضافي هو المملكة فقط) → نستخدم الاسم + السعودية
+    // إذا كان قرية/حي/محل → نضيف المدينة التابعة لها + السعودية
     let displayName = city.name;
+    let hasParentCity = false;
     
     // استخراج المدينة من العنوان الكامل
     if (city.fullAddress && city.fullAddress !== city.name) {
@@ -235,9 +240,20 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
       if (cleanedParts.length > 0) {
         // آخر جزء هو المدينة الرئيسية
         const mainCity = cleanedParts[cleanedParts.length - 1];
-        displayName = `${city.name}، ${mainCity}`;
+        // فقط إذا كانت المدينة الرئيسية مختلفة عن اسم المكان
+        if (mainCity.toLowerCase() !== city.name.toLowerCase()) {
+          displayName = `${city.name}، ${mainCity}`;
+          hasParentCity = true;
+        }
       }
     }
+    
+    // إضافة "السعودية" للمدن الكبيرة التي ليس لها مدينة أم
+    if (!hasParentCity) {
+      displayName = `${city.name}، السعودية`;
+    }
+    
+    setIsValid(true); // تم اختيار قيمة صحيحة
     
     if (multiSelect && onSelectCity) {
       onSelectCity(displayName);
@@ -253,6 +269,8 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   // اختيار "عن بعد"
   const handleSelectRemote = () => {
     const remoteName = 'عن بعد';
+    setIsValid(true); // تم اختيار قيمة صحيحة
+    
     if (multiSelect && onSelectCity) {
       onSelectCity(remoteName);
       setSearchQuery('');
@@ -319,9 +337,15 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   const handleClear = () => {
     setSearchQuery('');
     onChange('');
+    setIsValid(false); // إعادة تعيين حالة الصحة
     inputRef.current?.focus();
     handleSearch('');
   };
+  
+  // تحديث حالة الصحة عند تغيير القيمة
+  useEffect(() => {
+    setIsValid(value.trim().length > 0);
+  }, [value]);
 
   return (
     <div ref={containerRef} className={`relative w-full ${className}`}>
@@ -341,13 +365,13 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-600 text-sm border border-emerald-500/30"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm border border-primary/30"
             >
               <MapPin size={12} />
               <span>{city}</span>
               <button
                 onClick={() => onRemoveCity?.(city)}
-                className="p-0.5 hover:bg-emerald-500/20 rounded-full transition-colors"
+                className="p-0.5 hover:bg-primary/20 rounded-full transition-colors"
               >
                 <X size={12} />
               </button>
@@ -357,12 +381,48 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
       )}
 
       {/* Input Field */}
-      <div className="relative w-full">
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+      <div className="relative w-full rounded-xl overflow-visible">
+        {/* Ripple effect on focus - موجة خفيفة واضحة */}
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              className="absolute inset-0 pointer-events-none"
+              style={{ zIndex: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              {/* موجة خلفية خفيفة */}
+              <motion.div
+                className="absolute inset-0 bg-primary/8 rounded-xl"
+                initial={{ scale: 0.98, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 1.02, opacity: 0 }}
+                transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+              />
+              {/* موجة متوسطة */}
+              <motion.div
+                className="absolute inset-0 bg-primary/12 rounded-xl"
+                initial={{ scale: 0.96, opacity: 0 }}
+                animate={{ scale: 1.02, opacity: [0, 0.4, 0] }}
+                transition={{ duration: 0.5, ease: "easeOut", times: [0, 0.4, 1] }}
+              />
+              {/* موجة خارجية خفيفة */}
+              <motion.div
+                className="absolute inset-0 bg-primary/6 rounded-xl"
+                initial={{ scale: 0.94, opacity: 0 }}
+                animate={{ scale: 1.05, opacity: [0, 0.2, 0] }}
+                transition={{ duration: 0.7, ease: "easeOut", times: [0, 0.3, 1] }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" style={{ zIndex: 20 }}>
           {isLoading ? (
-            <Loader2 size={18} className="animate-spin text-emerald-500" />
+            <Loader2 size={16} className="animate-spin text-primary" />
           ) : (
-            <MapPin size={18} className={isOpen ? 'text-emerald-500' : ''} />
+            <MapPin size={16} className={isOpen ? 'text-primary' : ''} />
           )}
         </div>
         
@@ -376,12 +436,15 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
           placeholder={placeholder}
           disabled={disabled}
           autoFocus={autoFocus}
+          style={{ position: 'relative', zIndex: 10 }}
           className={`
-            w-full pr-10 pl-10 py-3 rounded-xl border-2 bg-card
+            w-full pr-10 pl-10 py-2 rounded-xl border-2 bg-card
             text-foreground placeholder:text-muted-foreground/60 text-right
             focus:outline-none transition-all duration-200
             ${isOpen 
-              ? 'border-emerald-500 ring-2 ring-emerald-500/20' 
+              ? 'border-primary' 
+              : isValid && value.trim().length > 0
+              ? 'border-primary/60'
               : 'border-border'
             }
             ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
@@ -389,14 +452,14 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
         />
 
         {/* Clear / Dropdown toggle button */}
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1" style={{ zIndex: 20 }}>
           {searchQuery && !disabled && (
             <button
               type="button"
               onClick={handleClear}
-              className="p-1 hover:bg-secondary rounded-full transition-colors text-muted-foreground hover:text-foreground"
+              className="p-0.5 hover:bg-secondary rounded-full transition-colors text-muted-foreground hover:text-foreground"
             >
-              <X size={16} />
+              <X size={14} />
             </button>
           )}
           <button
@@ -408,12 +471,12 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                 setIsOpen(!isOpen);
               }
             }}
-            className="p-1 hover:bg-secondary rounded-full transition-colors cursor-pointer"
+            className="p-0.5 hover:bg-secondary rounded-full transition-colors cursor-pointer"
             disabled={disabled}
           >
             <ChevronDown 
-              size={16} 
-              className={`transition-transform duration-200 ${isOpen ? 'rotate-180 text-emerald-500' : 'text-muted-foreground'}`}
+              size={14} 
+              className={`transition-transform duration-200 ${isOpen ? 'rotate-180 text-primary' : 'text-muted-foreground'}`}
             />
           </button>
         </div>
@@ -440,7 +503,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
               width: dropdownPosition.width,
               zIndex: 10000,
             }}
-            className="py-2 rounded-xl border border-emerald-500/30 bg-card shadow-2xl max-h-64 overflow-y-auto pointer-events-auto"
+            className="py-2 rounded-xl border border-primary/30 bg-card shadow-2xl max-h-64 overflow-y-auto pointer-events-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Quick Actions: GPS & Remote */}
@@ -457,7 +520,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                     disabled={isGettingLocation}
                     className={`
                       flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg
-                      bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 transition-colors cursor-pointer
+                      bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer
                       ${isGettingLocation ? 'opacity-50 cursor-wait' : ''}
                     `}
                   >
@@ -482,8 +545,8 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                     className={`
                       flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer
                       ${selectedCities.includes('عن بعد') 
-                        ? 'bg-blue-500 text-white' 
-                        : 'bg-blue-500/10 text-blue-600 hover:bg-blue-500/20'
+                        ? 'bg-primary text-white' 
+                        : 'bg-primary/10 text-primary hover:bg-primary/20'
                       }
                     `}
                   >
@@ -513,7 +576,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                 }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-right transition-colors cursor-pointer hover:bg-secondary/50 text-foreground border-b border-border"
               >
-                <Map size={18} className="text-emerald-600" />
+                <Map size={18} className="text-primary" />
                 <div className="flex-1">
                   <span className="font-medium">اختر من الخريطة</span>
                   <span className="text-xs text-muted-foreground block">حدد موقعك على الخريطة</span>
@@ -541,16 +604,16 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                 className={`
                   w-full flex items-center gap-3 px-4 py-2.5 text-right transition-colors cursor-pointer
                   hover:bg-secondary/50
-                  ${(selectedCities.includes('كل المدن') || value === 'كل المدن') ? 'text-emerald-600 bg-emerald-500/5' : 'text-foreground'}
+                  ${(selectedCities.includes('كل المدن') || value === 'كل المدن') ? 'text-primary bg-primary/5' : 'text-foreground'}
                 `}
               >
-                <MapPin size={18} className={(selectedCities.includes('كل المدن') || value === 'كل المدن') ? 'text-emerald-600' : 'text-muted-foreground'} />
+                <MapPin size={18} className={(selectedCities.includes('كل المدن') || value === 'كل المدن') ? 'text-primary' : 'text-muted-foreground'} />
                 <div className="flex-1 min-w-0">
                   <span className="font-medium">كل المدن</span>
                   <span className="text-xs text-muted-foreground block">المملكة العربية السعودية</span>
                 </div>
                 {(selectedCities.includes('كل المدن') || value === 'كل المدن') && (
-                  <Check size={16} className="text-emerald-600 shrink-0" />
+                  <Check size={16} className="text-primary shrink-0" />
                 )}
               </button>
             )}
@@ -572,17 +635,17 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                     }}
                     className={`
                       w-full flex items-center gap-3 px-4 py-2.5 text-right transition-colors cursor-pointer
-                      ${highlightedIndex === actualIndex ? 'bg-emerald-500/10' : 'hover:bg-secondary/50'}
-                      ${isSelected ? 'text-emerald-600' : 'text-foreground'}
+                      ${highlightedIndex === actualIndex ? 'bg-primary/10' : 'hover:bg-secondary/50'}
+                      ${isSelected ? 'text-primary' : 'text-foreground'}
                     `}
                   >
-                    <MapPin size={18} className={isSelected ? 'text-emerald-600' : 'text-muted-foreground'} />
+                    <MapPin size={18} className={isSelected ? 'text-primary' : 'text-muted-foreground'} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium truncate">{city.name}</span>
                         {/* عرض نوع المكان */}
                         {city.placeTypeArabic && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 shrink-0">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
                             {city.placeTypeArabic}
                           </span>
                         )}
@@ -599,14 +662,14 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                       )}
                     </div>
                     {isSelected && (
-                      <Check size={16} className="text-emerald-600 shrink-0" />
+                      <Check size={16} className="text-primary shrink-0" />
                     )}
                   </button>
                 );
               })
             ) : (
-              // نعرض رسالة "لا توجد نتائج" فقط إذا كان المستخدم قد بحث بالفعل (اكتب حرفين على الأقل)
-              searchQuery.trim().length >= 2 && (
+              // نعرض رسالة "لا توجد نتائج" فقط إذا كان المستخدم قد بحث بالفعل (اكتب حرف واحد على الأقل)
+              searchQuery.trim().length >= 1 && (
                 <div className="px-4 py-6 text-center text-muted-foreground">
                   {isLoading ? (
                     <div className="flex items-center justify-center gap-2">
@@ -724,14 +787,14 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
 
               {/* Center crosshair indicator */}
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                <div className="w-4 h-4 border-2 border-emerald-500 rounded-full bg-white/80 shadow-lg" />
+                <div className="w-4 h-4 border-2 border-primary rounded-full bg-white/80 shadow-lg" />
               </div>
 
               {/* Loading overlay */}
               {isLoadingMapLocation && (
                 <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                   <div className="bg-white rounded-xl px-4 py-3 flex items-center gap-2 shadow-lg">
-                    <Loader2 className="animate-spin text-emerald-500" size={20} />
+                    <Loader2 className="animate-spin text-primary" size={20} />
                     <span className="text-sm font-medium">جاري تحديد العنوان...</span>
                   </div>
                 </div>
@@ -750,30 +813,9 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                   try {
                     const result = await reverseGeocode(selectedMapLocation.lat, selectedMapLocation.lng);
                     if (result) {
-                      // بناء اسم العرض بنفس منطق handleSelectCity
-                      let displayName = result.name;
-                      if (result.fullAddress && result.fullAddress !== result.name) {
-                        const addressParts = result.fullAddress
-                          .split(/[،,]/)
-                          .map(p => p.trim())
-                          .filter(p => p && p !== result.name);
-                        
-                        const cleanedParts = addressParts
-                          .map(p => p
-                            .replace(/المملكة العربية السعودية/g, '')
-                            .replace(/السعودية/g, '')
-                            .replace(/Saudi Arabia/gi, '')
-                            .replace(/Saudi/gi, '')
-                            .trim()
-                          )
-                          .filter(p => p.length > 0);
-                        
-                        if (cleanedParts.length > 0) {
-                          const mainCity = cleanedParts[cleanedParts.length - 1];
-                          displayName = `${result.name}، ${mainCity}`;
-                        }
-                      }
-                      
+                      // استخدام اسم العرض الكامل الذي يحتوي على الشارع، الحي، المدينة
+                      // reverseGeocode الآن ترجع name مع العنوان الكامل
+                      const displayName = result.name;
                       setSearchQuery(displayName);
                       onChange(displayName, result);
                     }
@@ -790,7 +832,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                     mapRef.current = null;
                   }
                 }}
-                className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-3 bg-primary hover:bg-primary/90 text-white rounded-xl font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 <MapPin size={18} />
                 <span>تأكيد الموقع</span>

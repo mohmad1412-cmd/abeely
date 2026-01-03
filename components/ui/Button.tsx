@@ -136,8 +136,8 @@ export const Button: React.FC<ButtonProps> = ({
       transition-all duration-300
     `,
     success: `
-      bg-green-600 text-white
-      hover:bg-green-700 hover:shadow-md hover:-translate-y-0.5
+      bg-primary text-white
+      hover:bg-primary/90 hover:shadow-md hover:-translate-y-0.5
       shadow-sm
     `,
   };
