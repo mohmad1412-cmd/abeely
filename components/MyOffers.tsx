@@ -9,6 +9,7 @@ import {
   MessageCircle,
   ArrowUpDown,
   Clock,
+  Search,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -231,11 +232,32 @@ export const MyOffers: React.FC<MyOffersProps> = ({
       <div className="px-4 pb-24">
         <div key={offerFilter} className="grid grid-cols-1 gap-6 min-h-[100px] pt-2">
           {filteredOffers.length === 0 && (
-            <div className="text-center py-8">
-              <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-brand flex items-center justify-center">
-                <span className="text-xl font-black text-white">أ</span>
+            <div className="flex flex-col items-center justify-center py-20 text-center min-h-[50vh]">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-secondary mb-4">
+                {offerFilter === "all" ? (
+                  <Briefcase className="text-muted-foreground" size={24} />
+                ) : (
+                  <Search className="text-muted-foreground" size={24} />
+                )}
               </div>
-              <p className="text-sm text-muted-foreground">لا توجد عروض</p>
+              <h3 className="text-lg font-bold text-foreground mb-2">
+                {offerFilter === "all" 
+                  ? "لا توجد عروض" 
+                  : offerFilter === "pending"
+                  ? "لا توجد عروض قيد الانتظار"
+                  : offerFilter === "accepted"
+                  ? "لا توجد عروض مقبولة"
+                  : "لا توجد عروض مكتملة"}
+              </h3>
+              <p className="text-muted-foreground max-w-xs mx-auto leading-relaxed">
+                {offerFilter === "all"
+                  ? "لم تقم بتقديم أي عروض بعد. تصفح الطلبات المتاحة وقدم عروضك للعملاء."
+                  : offerFilter === "pending"
+                  ? "لا توجد عروض قيد الانتظار حالياً. العروض التي تنتظر قبول صاحب الطلب ستظهر هنا."
+                  : offerFilter === "accepted"
+                  ? "لا توجد عروض مقبولة بعد. عندما يقبل عميل أحد عروضك، سيظهر هنا ويمكنك البدء بالتواصل."
+                  : "لا توجد عروض مكتملة أو مؤرشفة. العروض المكتملة أو المؤرشفة ستظهر هنا."}
+              </p>
             </div>
           )}
           {filteredOffers.map((offer, index) => {

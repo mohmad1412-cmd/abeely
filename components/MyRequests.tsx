@@ -12,6 +12,8 @@ import {
   ArrowUpDown,
   Clock,
   User,
+  Search,
+  Plus,
 } from "lucide-react";
 import { FaHandPointUp } from "react-icons/fa";
 import { format } from "date-fns";
@@ -226,11 +228,41 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
       <div className="px-4 pb-24">
         <div key={reqFilter} className="grid grid-cols-1 gap-6 min-h-[100px] pt-2">
           {filteredRequests.length === 0 && (
-            <div className="text-center py-8">
-              <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-brand flex items-center justify-center">
-                <span className="text-xl font-black text-white">أ</span>
+            <div className="flex flex-col items-center justify-center py-20 text-center min-h-[50vh]">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-secondary mb-4">
+                {reqFilter === "all" ? (
+                  <FileText className="text-muted-foreground" size={24} />
+                ) : (
+                  <Search className="text-muted-foreground" size={24} />
+                )}
               </div>
-              <p className="text-sm text-muted-foreground">لا توجد طلبات</p>
+              <h3 className="text-lg font-bold text-foreground mb-2">
+                {reqFilter === "all" 
+                  ? "لا توجد طلبات" 
+                  : reqFilter === "active"
+                  ? "لا توجد طلبات نشطة"
+                  : reqFilter === "approved"
+                  ? "لا توجد طلبات معتمدة"
+                  : "لا توجد طلبات مكتملة"}
+              </h3>
+              <p className="text-muted-foreground max-w-xs mx-auto leading-relaxed">
+                {reqFilter === "all"
+                  ? "لم تقم بإنشاء أي طلبات بعد. ابدأ بإنشاء طلبك الأول لتجد مزودي الخدمات المناسبين."
+                  : reqFilter === "active"
+                  ? "لا توجد طلبات نشطة حالياً. يمكنك إنشاء طلب جديد أو التحقق من الطلبات الأخرى."
+                  : reqFilter === "approved"
+                  ? "لا توجد طلبات معتمدة بعد. عندما تقبل عرضاً من مزود خدمة، سيظهر هنا."
+                  : "لا توجد طلبات مكتملة أو مؤرشفة. الطلبات المكتملة أو المؤرشفة ستظهر هنا."}
+              </p>
+              {reqFilter === "all" && onCreateRequest && (
+                <button
+                  onClick={onCreateRequest}
+                  className="mt-6 px-4 py-2 rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-colors flex items-center gap-2"
+                >
+                  <Plus size={18} />
+                  إنشاء طلب جديد
+                </button>
+              )}
             </div>
           )}
           {filteredRequests.map((req, index) => {

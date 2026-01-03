@@ -2146,7 +2146,7 @@ const App: React.FC = () => {
             <div 
               className={`absolute inset-0 ${
                 activeBottomTab === "my-requests" 
-                  ? "z-10 pointer-events-auto" 
+                  ? "z-[10] pointer-events-auto" 
                   : "z-0 pointer-events-none hidden"
               }`}
             >
@@ -2210,7 +2210,7 @@ const App: React.FC = () => {
             <div 
               className={`absolute inset-0 ${
                 activeBottomTab === "my-offers" 
-                  ? "z-10 pointer-events-auto" 
+                  ? "z-[10] pointer-events-auto" 
                   : "z-0 pointer-events-none hidden"
               }`}
             >
