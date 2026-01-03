@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   DollarSign,
@@ -54,9 +54,62 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
 
   const [isShaking, setIsShaking] = useState(false);
 
+  // Save form data to localStorage before requiring login
+  const saveFormDataForGuest = () => {
+    const formData = {
+      price: price.trim(),
+      duration: duration.trim(),
+      location: location.trim(),
+      title: title.trim(),
+      description: description.trim(),
+      requestTitle: requestTitle,
+      requestLocation: requestLocation,
+      timestamp: Date.now(),
+    };
+    localStorage.setItem('abeely_pending_offer_form', JSON.stringify(formData));
+  };
+
+  // Restore form data from localStorage
+  const restoreFormDataFromGuest = () => {
+    const savedData = localStorage.getItem('abeely_pending_offer_form');
+    if (!savedData) return false;
+
+    try {
+      const formData = JSON.parse(savedData);
+      
+      // Only restore if it's for the same request
+      if (formData.requestTitle === requestTitle) {
+        if (formData.price) setPrice(formData.price);
+        if (formData.duration) setDuration(formData.duration);
+        if (formData.location) setLocation(formData.location);
+        if (formData.title) setTitle(formData.title);
+        if (formData.description) setDescription(formData.description);
+        
+        // Clear saved data after restoring
+        localStorage.removeItem('abeely_pending_offer_form');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error restoring offer form data:', error);
+      localStorage.removeItem('abeely_pending_offer_form');
+      return false;
+    }
+  };
+
+  // Check for saved form data on mount
+  useEffect(() => {
+    if (!isGuest && isExpanded) {
+      restoreFormDataFromGuest();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGuest, isExpanded, requestTitle]);
+
   // Validate and submit
   const handleSubmit = async () => {
     if (isGuest) {
+      // Save form data before requiring login
+      saveFormDataForGuest();
       onLoginRequired?.();
       return;
     }
@@ -83,6 +136,9 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
     if (success) {
       setShowSuccess(true);
       if (navigator.vibrate) navigator.vibrate(100);
+      
+      // Clear saved form data after successful submission
+      localStorage.removeItem('abeely_pending_offer_form');
       
       setTimeout(() => {
         setShowSuccess(false);

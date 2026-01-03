@@ -289,7 +289,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           </motion.button>
         ) : onGoToMarketplace ? (
           <motion.button
-            className="md:hidden relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group shrink-0"
+            className="relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group shrink-0"
             onClick={() => {
               if (navigator.vibrate) navigator.vibrate(12);
               onGoToMarketplace?.();

@@ -26,8 +26,5 @@ WHERE has_onboarded = FALSE
 
 -- تحديث المستخدمين الذين تم إنشاؤهم قبل أكثر من يوم واحد ليعتبروا قد أكملوا الـ onboarding
 -- (لتجنب إظهار الـ onboarding للمستخدمين القدامى)
-UPDATE profiles 
-SET has_onboarded = TRUE 
-WHERE has_onboarded = FALSE 
-  AND created_at < NOW() - INTERVAL '1 day';
+-- تم إلغاء التعيين التلقائي بناءً على العمر فقط لتجنب تخطي المستخدمين الذين لم يحددوا اهتماماتهم فعلياً.
 

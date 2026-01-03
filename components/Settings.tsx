@@ -3,7 +3,7 @@ import { Moon, Sun, ArrowLeftRight, ArrowRight, Bell, MapPin, User, Languages, C
 import { motion, AnimatePresence } from 'framer-motion';
 import { AVAILABLE_CATEGORIES } from '../data';
 import { UserPreferences } from '../types';
-import { UserProfile } from '../services/authService';
+import { UserProfile, sendOTP, verifyOTP } from '../services/authService';
 import { UnifiedHeader } from './ui/UnifiedHeader';
 
 interface SettingsProps {
@@ -78,6 +78,14 @@ export const Settings: React.FC<SettingsProps> = ({
   const [editedName, setEditedName] = useState(user?.display_name || "");
   const [editedEmail, setEditedEmail] = useState(user?.email || "");
   const [editedPhone, setEditedPhone] = useState(user?.phone || "");
+  
+  // Phone verification states
+  const [phoneVerificationStep, setPhoneVerificationStep] = useState<'none' | 'phone' | 'otp'>('none');
+  const [phoneOTP, setPhoneOTP] = useState('');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [isSendingOTP, setIsSendingOTP] = useState(false);
+  const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
+  const [tempPhone, setTempPhone] = useState('');
   
   // Initialize edited values when user changes
   React.useEffect(() => {
@@ -164,6 +172,80 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const removeRadarWord = (word: string) => {
     setTempRadarWords(tempRadarWords.filter(w => w !== word));
+  };
+
+  // ترجمة رسائل الخطأ من Supabase للعربية
+  const translateAuthError = (error: string): string => {
+    const errorMap: Record<string, string> = {
+      'Token has expired or is invalid': 'انتهت صلاحية رمز التحقق. يرجى طلب رمز جديد.',
+      'Invalid OTP': 'رمز التحقق غير صحيح',
+      'OTP expired': 'انتهت صلاحية رمز التحقق',
+      'Phone number is invalid': 'رقم الجوال غير صحيح',
+      'Rate limit exceeded': 'تم تجاوز الحد المسموح. انتظر قليلاً ثم حاول مرة أخرى.',
+      'For security purposes, you can only request this after': 'لأسباب أمنية، يمكنك طلب رمز جديد بعد',
+    };
+    
+    for (const [key, value] of Object.entries(errorMap)) {
+      if (error.toLowerCase().includes(key.toLowerCase())) {
+        return value;
+      }
+    }
+    
+    return error;
+  };
+
+  const handleSendPhoneOTP = async () => {
+    if (!tempPhone.trim()) {
+      setPhoneError('الرجاء إدخال رقم الجوال');
+      return;
+    }
+
+    setIsSendingOTP(true);
+    setPhoneError(null);
+    
+    try {
+      const result = await sendOTP(tempPhone.trim());
+      if (result.success) {
+        setPhoneVerificationStep('otp');
+      } else {
+        setPhoneError(translateAuthError(result.error || 'حدث خطأ أثناء إرسال رمز التحقق'));
+      }
+    } catch (err: any) {
+      setPhoneError(translateAuthError(err.message || 'حدث خطأ أثناء إرسال رمز التحقق'));
+    } finally {
+      setIsSendingOTP(false);
+    }
+  };
+
+  const handleVerifyPhoneOTP = async () => {
+    if (!phoneOTP.trim()) {
+      setPhoneError('الرجاء إدخال رمز التحقق');
+      return;
+    }
+
+    setIsVerifyingOTP(true);
+    setPhoneError(null);
+    
+    try {
+      const result = await verifyOTP(tempPhone.trim(), phoneOTP.trim());
+      if (result.success) {
+        // Update profile with new phone
+        if (onUpdateProfile) {
+          await onUpdateProfile({ phone: tempPhone.trim() });
+        }
+        setEditedPhone(tempPhone.trim());
+        setPhoneVerificationStep('none');
+        setIsEditingPhone(false);
+        setPhoneOTP('');
+        setTempPhone('');
+      } else {
+        setPhoneError(translateAuthError(result.error || 'رمز التحقق غير صحيح'));
+      }
+    } catch (err: any) {
+      setPhoneError(translateAuthError(err.message || 'رمز التحقق غير صحيح'));
+    } finally {
+      setIsVerifyingOTP(false);
+    }
   };
 
   return (
@@ -319,26 +401,35 @@ export const Settings: React.FC<SettingsProps> = ({
                           className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-left"
                           dir="ltr"
                           autoFocus
+                          disabled={phoneVerificationStep !== 'none'}
                         />
-                        <button
-                          onClick={() => {
-                            // TODO: Save phone
-                            setIsEditingPhone(false);
-                          }}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          حفظ
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditedPhone(user?.phone || "");
-                            setIsEditingPhone(false);
-                          }}
-                          className="text-xs text-muted-foreground hover:underline"
-                        >
-                          إلغاء
-                        </button>
-             </div>
+                        {phoneVerificationStep === 'none' ? (
+                          <>
+                            <button
+                              onClick={() => {
+                                setTempPhone(editedPhone.trim());
+                                setPhoneVerificationStep('phone');
+                                setPhoneError(null);
+                              }}
+                              disabled={!editedPhone.trim() || editedPhone.trim() === user?.phone}
+                              className="text-xs text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              حفظ
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditedPhone(user?.phone || "");
+                                setIsEditingPhone(false);
+                                setPhoneVerificationStep('none');
+                                setPhoneError(null);
+                              }}
+                              className="text-xs text-muted-foreground hover:underline"
+                            >
+                              إلغاء
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
                     ) : (
                       <p className="text-xs text-muted-foreground" dir="ltr">
                         {user?.phone || "غير محدد"}
@@ -347,7 +438,11 @@ export const Settings: React.FC<SettingsProps> = ({
                   </div>
                   {!isEditingPhone && (
                     <button 
-                      onClick={() => setIsEditingPhone(true)}
+                      onClick={() => {
+                        setIsEditingPhone(true);
+                        setEditedPhone(user?.phone || "");
+                        setPhoneVerificationStep('none');
+                      }}
                       className="text-xs text-primary hover:underline shrink-0 mr-2"
                     >
                       تعديل
@@ -868,6 +963,115 @@ export const Settings: React.FC<SettingsProps> = ({
                 >
                   حفظ
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Phone Verification Modal */}
+      <AnimatePresence>
+        {phoneVerificationStep !== 'none' && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-card rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 border-b border-border">
+                <h3 className="text-lg font-bold">التحقق من رقم الجوال</h3>
+                <button
+                  onClick={() => {
+                    setPhoneVerificationStep('none');
+                    setPhoneOTP('');
+                    setPhoneError(null);
+                    setTempPhone('');
+                  }}
+                  className="p-2 hover:bg-secondary rounded-lg transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-4 space-y-4">
+                {phoneVerificationStep === 'phone' ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      سيتم إرسال رمز التحقق إلى الرقم: <span className="font-medium text-foreground">{tempPhone}</span>
+                    </p>
+                    {phoneError && (
+                      <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
+                        {phoneError}
+                      </div>
+                    )}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => {
+                          setPhoneVerificationStep('none');
+                          setPhoneError(null);
+                          setTempPhone('');
+                        }}
+                        className="flex-1 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors font-medium"
+                      >
+                        إلغاء
+                      </button>
+                      <button
+                        onClick={handleSendPhoneOTP}
+                        disabled={isSendingOTP}
+                        className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isSendingOTP ? 'جاري الإرسال...' : 'إرسال الرمز'}
+                      </button>
+                    </div>
+                  </>
+                ) : phoneVerificationStep === 'otp' ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      أدخل رمز التحقق المرسل إلى: <span className="font-medium text-foreground">{tempPhone}</span>
+                    </p>
+                    <input
+                      type="text"
+                      value={phoneOTP}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                        setPhoneOTP(value);
+                        setPhoneError(null);
+                      }}
+                      className="w-full h-12 px-4 text-center text-2xl font-bold rounded-lg border-2 border-border bg-background focus:border-primary focus:outline-none"
+                      placeholder="000000"
+                      dir="ltr"
+                      autoFocus
+                      maxLength={6}
+                    />
+                    {phoneError && (
+                      <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
+                        {phoneError}
+                      </div>
+                    )}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => {
+                          setPhoneVerificationStep('phone');
+                          setPhoneOTP('');
+                          setPhoneError(null);
+                        }}
+                        className="flex-1 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors font-medium"
+                      >
+                        الرجوع
+                      </button>
+                      <button
+                        onClick={handleVerifyPhoneOTP}
+                        disabled={isVerifyingOTP || phoneOTP.length < 4}
+                        className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isVerifyingOTP ? 'جاري التحقق...' : 'تحقق'}
+                      </button>
+                    </div>
+                  </>
+                ) : null}
               </div>
             </motion.div>
           </div>

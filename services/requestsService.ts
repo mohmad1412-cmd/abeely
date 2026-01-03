@@ -1,7 +1,7 @@
 import { supabase } from "./supabaseClient";
 import { AIDraft, classifyAndDraft } from "./aiService";
 import { Request, Offer } from "../types";
-import { getCategoryIdsByLabels, UNSPECIFIED_CATEGORY } from "./categoriesService";
+import { getCategoryIdsByLabels, OTHER_CATEGORY } from "./categoriesService";
 
 type RequestInsert = {
   author_id?: string;
@@ -28,8 +28,8 @@ const linkCategoriesByLabels = async (requestId: string, labels: string[] = []) 
     const categoryIds = await getCategoryIdsByLabels(labels);
     
     if (categoryIds.length === 0) {
-      // إذا لم يكن هناك تصنيفات، نضيف "غير محدد"
-      categoryIds.push('unspecified');
+      // إذا لم يكن هناك تصنيفات، نضيف "أخرى"
+      categoryIds.push('other');
     }
     
     // ربط التصنيفات بالطلب
@@ -49,13 +49,13 @@ const linkCategoriesByLabels = async (requestId: string, labels: string[] = []) 
     return categoryIds;
   } catch (err) {
     console.error("Error in linkCategoriesByLabels:", err);
-    // في حالة الخطأ، نحاول إضافة "غير محدد" على الأقل
+    // في حالة الخطأ، نحاول إضافة "أخرى" على الأقل
     try {
       await supabase
         .from("request_categories")
-        .upsert([{ request_id: requestId, category_id: 'unspecified' }], { onConflict: "request_id,category_id" });
+        .upsert([{ request_id: requestId, category_id: 'other' }], { onConflict: "request_id,category_id" });
     } catch (_) {}
-    return ['unspecified'];
+    return ['other'];
   }
 };
 
@@ -76,8 +76,8 @@ const upsertCategories = async (labels: string[] = []) => {
 
 const linkCategories = async (requestId: string, categoryIds: string[]) => {
   if (!categoryIds.length) {
-    // إذا لم يكن هناك تصنيفات، نضيف "غير محدد"
-    categoryIds = ['unspecified'];
+    // إذا لم يكن هناك تصنيفات، نضيف "أخرى"
+    categoryIds = ['other'];
   }
   const links = categoryIds.map((id) => ({
     request_id: requestId,
@@ -94,10 +94,14 @@ const linkCategories = async (requestId: string, categoryIds: string[]) => {
  * Now accepts the draft data directly from the UI to avoid redundant AI calls.
  */
 export async function createRequestFromChat(
-  userId: string | null,
+  userId: string,
   draftData: AIDraft,
   overrides?: Partial<RequestInsert>,
 ) {
+  if (!userId) {
+    throw new Error("User ID is required to create a request");
+  }
+
   const payload: RequestInsert = {
     title: (draftData.title || draftData.summary || "طلب جديد").slice(0, 120),
     description: draftData.description || draftData.summary || "",
@@ -113,9 +117,7 @@ export async function createRequestFromChat(
     seriousness: 2, // Default
   };
 
-  if (userId) {
-    payload.author_id = userId;
-  }
+  payload.author_id = userId;
 
   if (overrides) {
     Object.assign(payload, overrides);
@@ -150,9 +152,9 @@ export async function createRequestFromChat(
         "Failed to link categories, but request was created:",
         catErr,
       );
-      // نحاول إضافة "غير محدد" على الأقل
+      // نحاول إضافة "أخرى" على الأقل
       try {
-        await linkCategories(data.id, ['unspecified']);
+        await linkCategories(data.id, ['other']);
       } catch (_) {}
     }
 
@@ -211,9 +213,9 @@ export async function createRequestFromChat(
         console.log("✅ Categories linked");
       } catch (catErr) {
         console.warn("Failed to link categories in fallback:", catErr);
-        // نحاول إضافة "غير محدد" على الأقل
+        // نحاول إضافة "أخرى" على الأقل
         try {
-          await linkCategories(insertedData.id, ['unspecified']);
+          await linkCategories(insertedData.id, ['other']);
         } catch (_) {}
       }
 
@@ -814,7 +816,7 @@ export async function unarchiveOffer(offerId: string, userId: string): Promise<b
       // Fallback to direct update if function doesn't exist
       const { error: updateError } = await supabase
         .from('offers')
-        .update({ status: 'rejected' })
+        .update({ status: 'pending' })
         .eq('id', offerId)
         .eq('provider_id', userId)
         .eq('status', 'archived');
@@ -861,6 +863,7 @@ export async function fetchArchivedRequests(userId: string): Promise<Request[]> 
     description: req.description,
     author: req.author_id || "مستخدم",
     createdAt: new Date(req.created_at),
+    updatedAt: req.updated_at ? new Date(req.updated_at) : undefined,
     status: req.status,
     isPublic: req.is_public,
     budgetType: req.budget_type || "negotiable",
@@ -953,9 +956,13 @@ async function matchesUserInterests(
   interestedCategories: string[],
   interestedCities: string[]
 ): Promise<boolean> {
-  // If no interests specified, match all
-  if (interestedCategories.length === 0 && interestedCities.length === 0) {
-    return true;
+  // Filter out "كل المدن" from cities check - it doesn't count as an interest
+  const actualCities = interestedCities.filter(city => city !== 'كل المدن');
+  
+  // If no interests specified (no categories and no actual cities), don't match
+  // "كل المدن" alone doesn't count as having interests
+  if (interestedCategories.length === 0 && actualCities.length === 0) {
+    return false;
   }
 
   try {
@@ -992,10 +999,10 @@ async function matchesUserInterests(
 
     // Check city match
     // إذا تم اختيار "كل المدن" أو لم يتم اختيار أي مدينة، نتخطى الفلترة
-    if (interestedCities.length > 0 && !interestedCities.includes('كل المدن') && request.location) {
+    if (actualCities.length > 0 && request.location) {
       const requestCity = request.location.split('،').pop()?.trim() || request.location;
-      const hasMatchingCity = interestedCities.some(city =>
-        city !== 'كل المدن' && (requestCity.includes(city) || city.includes(requestCity))
+      const hasMatchingCity = actualCities.some(city =>
+        requestCity.includes(city) || city.includes(requestCity)
       );
       if (!hasMatchingCity) return false;
     }
@@ -1115,6 +1122,72 @@ export function subscribeToAllNewRequests(
 }
 
 /**
+ * إخفاء الطلب من السوق (is_public = false)
+ */
+export async function hideRequest(requestId: string, userId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('requests')
+      .update({ is_public: false })
+      .eq('id', requestId)
+      .eq('author_id', userId);
+
+    if (error) {
+      console.error("Error hiding request:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Error hiding request:", err);
+    return false;
+  }
+}
+
+/**
+ * إظهار الطلب مجدداً (is_public = true)
+ */
+export async function unhideRequest(requestId: string, userId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('requests')
+      .update({ is_public: true })
+      .eq('id', requestId)
+      .eq('author_id', userId);
+
+    if (error) {
+      console.error("Error unhiding request:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Error unhiding request:", err);
+    return false;
+  }
+}
+
+/**
+ * تحديث توقيت الطلب لرفعه (يحدّث updated_at)
+ */
+export async function bumpRequest(requestId: string, userId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('requests')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', requestId)
+      .eq('author_id', userId);
+
+    if (error) {
+      console.error("Error bumping request:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Error bumping request:", err);
+    return false;
+  }
+}
+
+/**
  * تحديث طلب موجود
  * يتحقق من أن المستخدم هو صاحب الطلب قبل التحديث
  */
@@ -1190,14 +1263,14 @@ export async function updateRequest(
       // إضافة التصنيفات الجديدة (أو "غير محدد" إذا لم يكن هناك تصنيفات)
       const categories = draftData.categories && draftData.categories.length > 0 
         ? draftData.categories 
-        : []; // سيتم إضافة "غير محدد" تلقائياً في linkCategoriesByLabels
+        : []; // سيتم إضافة "أخرى" تلقائياً في linkCategoriesByLabels
       await linkCategoriesByLabels(requestId, categories);
-      console.log("Categories updated:", categories.length > 0 ? categories : ['غير محدد (افتراضي)']);
+      console.log("Categories updated:", categories.length > 0 ? categories : ['أخرى (افتراضي)']);
     } catch (catErr) {
       console.warn('Failed to update categories:', catErr);
-      // نحاول إضافة "غير محدد" على الأقل
+      // نحاول إضافة "أخرى" على الأقل
       try {
-        await linkCategories(requestId, ['unspecified']);
+        await linkCategories(requestId, ['other']);
       } catch (_) {}
     }
 

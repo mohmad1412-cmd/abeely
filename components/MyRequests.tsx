@@ -14,6 +14,10 @@ import {
   User,
   Search,
   Plus,
+  MoreVertical,
+  Eye,
+  EyeOff,
+  RefreshCw,
 } from "lucide-react";
 import { FaHandPointUp } from "react-icons/fa";
 import { format } from "date-fns";
@@ -31,6 +35,9 @@ interface MyRequestsProps {
   onSelectRequest: (req: Request) => void;
   onArchiveRequest?: (requestId: string) => void;
   onUnarchiveRequest?: (requestId: string) => void;
+  onHideRequest?: (requestId: string) => void;
+  onUnhideRequest?: (requestId: string) => void;
+  onBumpRequest?: (requestId: string) => void;
   onOpenChat?: (requestId: string, offer: Offer) => void;
   userId?: string;
   viewedRequestIds?: Set<string>;
@@ -56,6 +63,9 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   onSelectRequest,
   onArchiveRequest,
   onUnarchiveRequest,
+  onHideRequest,
+  onUnhideRequest,
+  onBumpRequest,
   onOpenChat,
   userId,
   viewedRequestIds = new Set(),
@@ -79,6 +89,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   const [reqFilter, setReqFilter] = useState<RequestFilter>("active");
   const [sortOrder, setSortOrder] = useState<SortOrder>("createdAt");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   
   // Scroll Listener for header compression - same logic as Marketplace
   useEffect(() => {
@@ -271,6 +282,12 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
             const pendingOffers = requestOffers.filter(o => o.status === 'pending' || o.status === 'negotiating');
             const requestNumber = req.requestNumber || req.id.slice(-4).toUpperCase();
             const statusConfig = getStatusConfig(req);
+            const isHidden = req.isPublic === false;
+            const lastUpdated = req.updatedAt ? new Date(req.updatedAt) : new Date(req.createdAt);
+            const sixHoursMs = 6 * 60 * 60 * 1000;
+            const elapsedSinceUpdate = Date.now() - lastUpdated.getTime();
+            const canBump = elapsedSinceUpdate >= sixHoursMs;
+            const bumpHoursLeft = Math.max(0, Math.ceil((sixHoursMs - elapsedSinceUpdate) / (60 * 60 * 1000)));
 
             return (
               <motion.div
@@ -292,33 +309,81 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                   <span className="font-bold text-base truncate text-primary max-w-[70%]">
                     {req.title}
                   </span>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 relative">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusConfig.color}`}>
                       {statusConfig.text}
                     </span>
-                    {onArchiveRequest && req.status !== 'archived' && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onArchiveRequest(req.id);
-                        }}
-                        className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground"
-                        title="أرشفة الطلب"
-                      >
-                        <Archive size={14} />
-                      </button>
+                    {isHidden && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                        مخفي
+                      </span>
                     )}
-                    {onUnarchiveRequest && req.status === 'archived' && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onUnarchiveRequest(req.id);
-                        }}
-                        className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground"
-                        title="إلغاء الأرشفة"
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenMenuId(openMenuId === req.id ? null : req.id);
+                      }}
+                      className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground"
+                      title="خيارات الطلب"
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                    {openMenuId === req.id && (
+                      <div
+                        className="absolute left-0 top-7 w-48 bg-card border border-border rounded-lg shadow-lg z-20 text-sm overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <ArchiveRestore size={14} />
-                      </button>
+                        <button
+                          className="w-full text-right px-3 py-2 hover:bg-secondary flex items-center gap-2"
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            if (isHidden) {
+                              onUnhideRequest && onUnhideRequest(req.id);
+                            } else {
+                              onHideRequest && onHideRequest(req.id);
+                            }
+                          }}
+                        >
+                          {isHidden ? <Eye size={14} /> : <EyeOff size={14} />}
+                          <span>{isHidden ? "إظهار في السوق" : "إخفاء من السوق"}</span>
+                        </button>
+                        {onArchiveRequest && req.status !== 'archived' && (
+                          <button
+                            className="w-full text-right px-3 py-2 hover:bg-secondary flex items-center gap-2"
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              onArchiveRequest(req.id);
+                            }}
+                          >
+                            <Archive size={14} />
+                            <span>أرشفة الطلب</span>
+                          </button>
+                        )}
+                        {onUnarchiveRequest && req.status === 'archived' && (
+                          <button
+                            className="w-full text-right px-3 py-2 hover:bg-secondary flex items-center gap-2"
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              onUnarchiveRequest(req.id);
+                            }}
+                          >
+                            <ArchiveRestore size={14} />
+                            <span>إلغاء الأرشفة</span>
+                          </button>
+                        )}
+                        <button
+                          disabled={!canBump || req.status === 'archived'}
+                          className={`w-full text-right px-3 py-2 flex items-center gap-2 ${canBump && req.status !== 'archived' ? "hover:bg-secondary" : "opacity-50 cursor-not-allowed"}`}
+                          onClick={() => {
+                            if (!canBump || req.status === 'archived') return;
+                            setOpenMenuId(null);
+                            onBumpRequest && onBumpRequest(req.id);
+                          }}
+                        >
+                          <RefreshCw size={14} />
+                          <span>{canBump ? "تحديث ورفع الطلب" : `متاح بعد ${bumpHoursLeft} س`}</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -335,6 +400,12 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                     <span className="flex items-center gap-1">
                       <Calendar size={14} />
                       {format(new Date(req.createdAt), "dd MMM", { locale: ar })}
+                    </span>
+                  )}
+                  {req.updatedAt && req.updatedAt !== req.createdAt && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-foreground">
+                      <Clock size={12} />
+                      محدث بتاريخ {format(new Date(req.updatedAt), "dd MMM", { locale: ar })}
                     </span>
                   )}
                   {req.categories && req.categories.length > 0 && (
@@ -441,4 +512,3 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
     </div>
   );
 };
-

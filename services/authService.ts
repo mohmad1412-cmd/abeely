@@ -22,6 +22,7 @@ export interface UserProfile {
   email: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  bio?: string | null;
   role: 'user' | 'provider' | 'admin';
   is_guest: boolean;
   rating: number;

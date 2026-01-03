@@ -331,7 +331,7 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
       {/* End of List */}
       {!hasMore && requests.length > 0 && (
         <div className="py-6 text-center text-sm text-muted-foreground">
-          نهاية القائمة
+          تم عرض جميع الطلبات
         </div>
       )}
     </div>

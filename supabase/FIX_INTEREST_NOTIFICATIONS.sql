@@ -31,9 +31,8 @@ BEGIN
   SELECT 
     r.title,
     COALESCE(p.display_name, 'مستخدم'),
-    r.location,
-    r.location_city
-  INTO request_title, request_author_name, request_city, request_city
+    COALESCE(r.location_city, r.location)
+  INTO request_title, request_author_name, request_city
   FROM requests r
   LEFT JOIN profiles p ON p.id = r.author_id
   WHERE r.id = NEW.id;

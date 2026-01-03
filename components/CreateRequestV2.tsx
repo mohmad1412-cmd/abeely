@@ -37,15 +37,16 @@ import { UnifiedHeader } from "./ui/UnifiedHeader";
 import { Request } from "../types";
 import Anthropic from "@anthropic-ai/sdk";
 import {
-  processCustomerRequest,
   FinalReview,
   ClarificationPage,
   CustomerServiceResponse,
 } from "../services/customerServiceAI";
+import { generateDraftWithCta } from "../services/aiService";
 import { VoiceProcessingStatus } from "./GlobalFloatingOrb";
 import { CityAutocomplete } from "./ui/CityAutocomplete";
 import { CityResult } from "../services/placesService";
 import { verifyGuestPhone, confirmGuestPhone, getCurrentUser } from "../services/authService";
+import { supabase } from "../services/supabaseClient";
 
 // ============================================
 // Submit Button with Shake Effect
@@ -984,6 +985,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
+  const [descriptionHeight, setDescriptionHeight] = useState(100);
+  const [isDescriptionResizing, setIsDescriptionResizing] = useState(false);
+  const descriptionResizeStartY = useRef(0);
+  const descriptionResizeStartHeight = useRef(0);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -1045,10 +1050,15 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // Show additional fields only when AI suggests them
   const [showAdditionalFields, setShowAdditionalFields] = useState(false);
   
+  // Suggested category (when AI suggests "أخرى" or no category)
+  const [suggestedCategory, setSuggestedCategory] = useState<string>("");
+  
   // ==========================================
   // Optional Fields (Budget, Delivery, Attachments)
   // ==========================================
   const [isAttachmentsExpanded, setIsAttachmentsExpanded] = useState(false);
+  const [isBudgetExpanded, setIsBudgetExpanded] = useState(false);
+  const [isDeliveryExpanded, setIsDeliveryExpanded] = useState(false);
   
   // Budget fields (from - to)
   const [budgetMin, setBudgetMin] = useState("");
@@ -1224,6 +1234,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const [isAIConnected, setIsAIConnected] = useState<boolean | null>(null); // null = لم يتم الفحص بعد
   const [showManualTitle, setShowManualTitle] = useState(false);
   const [titleShake, setTitleShake] = useState(false);
+  const [isTitleUnclear, setIsTitleUnclear] = useState(false);
 
   // Check AI connection on mount - نفترض دائماً أن AI متصل (سواء Edge Function أو مباشر)
   // العنوان سيتم توليده تلقائياً من الوصف إذا لم يكن موجوداً
@@ -1237,9 +1248,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // حالة إنشاء العنوان بالذكاء الاصطناعي (يجب تعريفها قبل canSubmit)
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
   
-  // Check if can submit - يظهر الزر بعد تعبئة الوصف والمدينة فقط + لا يكون في وضع التوليد
+  // Check if can submit - يظهر الزر بعد تعبئة الوصف والمدينة فقط + لا يكون في وضع التوليد + العنوان واضح
   const needsManualTitle = !title.trim();
-  const canSubmit = !!(description.trim() && location.trim() && !isGeneratingTitle);
+  const canSubmit = !!(description.trim() && location.trim() && !isGeneratingTitle && !isTitleUnclear && title.trim());
   
   // Submit states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1254,7 +1265,130 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const [isSendingOTP, setIsSendingOTP] = useState(false);
   const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
   const [guestError, setGuestError] = useState<string | null>(null);
+
+  // Save form data to localStorage before requiring login
+  const saveFormDataForGuest = useCallback(() => {
+    const formData = {
+      title: title.trim(),
+      description: description.trim(),
+      location: location.trim(),
+      budgetMin: budgetMin.trim(),
+      budgetMax: budgetMax.trim(),
+      deliveryValue: deliveryValue.trim(),
+      customDeliveryValue: customDeliveryValue.trim(),
+      additionalFields: additionalFields.map(f => ({
+        id: f.id,
+        name: f.name,
+        value: f.value,
+        enabled: f.enabled,
+      })),
+      selectedImageUrls: selectedImageUrls,
+      attachedFiles: attachedFiles.map((file, index) => ({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        // Note: We can't store File objects directly, so we'll store metadata
+        // The actual files will need to be re-uploaded after login
+      })),
+      timestamp: Date.now(),
+    };
+    localStorage.setItem('abeely_pending_request_form', JSON.stringify(formData));
+  }, [title, description, location, budgetMin, budgetMax, deliveryValue, customDeliveryValue, additionalFields, selectedImageUrls, attachedFiles]);
+
+  // Restore form data from localStorage
+  const restoreFormDataFromGuest = useCallback(() => {
+    const savedData = localStorage.getItem('abeely_pending_request_form');
+    if (!savedData) return false;
+
+    try {
+      const formData = JSON.parse(savedData);
+      
+      // Restore basic fields
+      if (formData.title) setTitle(formData.title);
+      if (formData.description) setDescription(formData.description);
+      if (formData.location) setLocation(formData.location);
+      if (formData.budgetMin) setBudgetMin(formData.budgetMin);
+      if (formData.budgetMax) setBudgetMax(formData.budgetMax);
+      if (formData.deliveryValue) setDeliveryValue(formData.deliveryValue);
+      if (formData.customDeliveryValue) setCustomDeliveryValue(formData.customDeliveryValue);
+      
+      // Restore additional fields
+      if (formData.additionalFields && Array.isArray(formData.additionalFields)) {
+        setAdditionalFields(formData.additionalFields.map((f: any) => ({
+          ...f,
+          icon: f.id === 'budget' ? <DollarSign size={16} /> : 
+                f.id === 'deliveryTime' ? <Clock size={16} /> : 
+                f.id === 'category' ? <Tag size={16} /> : 
+                <FileText size={16} />,
+        })));
+      }
+      
+      // Restore selected images
+      if (formData.selectedImageUrls && Array.isArray(formData.selectedImageUrls)) {
+        setSelectedImageUrls(formData.selectedImageUrls);
+      }
+      
+      // Clear saved data after restoring
+      localStorage.removeItem('abeely_pending_request_form');
+      return true;
+    } catch (error) {
+      console.error('Error restoring form data:', error);
+      localStorage.removeItem('abeely_pending_request_form');
+      return false;
+    }
+  }, []);
+
+  // Check for saved form data on mount
+  useEffect(() => {
+    if (!isGuest && restoreFormDataFromGuest()) {
+      // Show a notification that data was restored
+      console.log('تم استعادة بيانات النموذج المحفوظة');
+    }
+  }, [isGuest, restoreFormDataFromGuest]);
   
+  // Handle description textarea resize
+  const handleDescriptionResizeStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDescriptionResizing(true);
+    descriptionResizeStartY.current = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    descriptionResizeStartHeight.current = descriptionHeight;
+    
+    // Disable body scroll during resize
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+    
+    const handleMove = (moveEvent: MouseEvent | TouchEvent) => {
+      // Prevent scroll during resize
+      if (moveEvent.cancelable) {
+        moveEvent.preventDefault();
+      }
+      moveEvent.stopPropagation();
+      
+      const currentY = 'touches' in moveEvent ? moveEvent.touches[0].clientY : moveEvent.clientY;
+      const diff = currentY - descriptionResizeStartY.current;
+      const newHeight = Math.max(100, Math.min(400, descriptionResizeStartHeight.current + diff));
+      setDescriptionHeight(newHeight);
+    };
+    
+    const handleEnd = () => {
+      setIsDescriptionResizing(false);
+      // Re-enable body scroll
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
+      
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleEnd);
+      document.removeEventListener('touchmove', handleMove);
+      document.removeEventListener('touchend', handleEnd);
+    };
+    
+    document.addEventListener('mousemove', handleMove, { passive: false });
+    document.addEventListener('mouseup', handleEnd);
+    document.addEventListener('touchmove', handleMove, { passive: false });
+    document.addEventListener('touchend', handleEnd);
+  };
+
   // ترجمة رسائل الخطأ من Supabase للعربية
   const translateAuthError = (error: string): string => {
     const errorMap: Record<string, string> = {
@@ -1411,36 +1545,143 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       // استخراج عنوان ذكي من الوصف
       const desc = description.trim();
       
-      // محاولة استخدام AI للعنوان والتصنيف
-      const response = await processCustomerRequest(desc);
+      // محاولة استخدام AI للعنوان والتصنيف (استخدام ai-chat بدلاً من customer-service-ai)
+      const draft = await generateDraftWithCta(desc);
       
-      if (response.success && response.data?.final_review) {
-        const review = response.data.final_review;
+      if (draft && !draft.isClarification) {
+        // دالة للتحقق من وضوح النص
+        const isTextUnclear = (text: string): boolean => {
+          if (!text || text.trim().length < 5) return true;
+          
+          const textLower = text.toLowerCase();
+          const unclearKeywords = [
+            'غير واضح', 'غير مفهوم', 'unclear', 'not clear', 
+            'غير محدد', 'غير معروف', '؟؟؟', '???',
+            'غير متأكد', 'لا أعرف', 'لا أدري'
+          ];
+          
+          // التحقق من وجود كلمات غير واضحة
+          if (unclearKeywords.some(keyword => textLower.includes(keyword))) return true;
+          
+          // التحقق من وجود تكرارات غريبة (مثل "علغغلاللغ")
+          const hasRepeatedChars = /(.)\1{3,}/.test(text);
+          if (hasRepeatedChars) return true;
+          
+          // التحقق من وجود أحرف عربية/إنجليزية صحيحة (على الأقل 50% من النص)
+          const arabicChars = /[\u0600-\u06FF]/g;
+          const englishChars = /[a-zA-Z]/g;
+          const arabicCount = (text.match(arabicChars) || []).length;
+          const englishCount = (text.match(englishChars) || []).length;
+          const validCharsRatio = (arabicCount + englishCount) / text.length;
+          
+          // إذا كان أقل من 50% من النص أحرف صحيحة، يعتبر غير واضح
+          if (validCharsRatio < 0.5 && text.length > 10) return true;
+          
+          // التحقق من وجود مسافات كافية (نص طويل بدون مسافات يعتبر غير واضح)
+          if (text.length > 15 && !text.includes(' ') && !text.includes('،') && !text.includes(',')) {
+            return true;
+          }
+          
+          return false;
+        };
         
         // تعيين العنوان
-        if (review.title) {
-          setTitle(review.title);
-          setShowTitle(true);
+        if (draft.title) {
+          // التحقق من وضوح العنوان
+          const isUnclear = isTextUnclear(draft.title);
+          
+          if (isUnclear) {
+            setIsTitleUnclear(true);
+            setTitle(draft.title);
+            setShowManualTitle(true);
+            setTitleShake(true);
+            // إيقاف الاهتزاز بعد 1 ثانية
+            setTimeout(() => setTitleShake(false), 1000);
+            // إظهار قسم "اقترح تصنيفاً" عند عدم وضوح العنوان
+            setShowAdditionalFields(true);
+            setSuggestedCategory("");
+          } else {
+            setIsTitleUnclear(false);
+            setTitle(draft.title);
+            setShowTitle(true);
+          }
         } else {
           // Fallback: استخراج العنوان من أول جملة
           const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
           const generatedTitle = firstSentence.length > 50 
             ? firstSentence.slice(0, 47) + "..." 
             : firstSentence;
-          setTitle(generatedTitle);
-          setShowTitle(true);
+          
+          // دالة للتحقق من وضوح النص
+          const isTextUnclear = (text: string): boolean => {
+            if (!text || text.trim().length < 5) return true;
+            
+            const textLower = text.toLowerCase();
+            const unclearKeywords = [
+              'غير واضح', 'غير مفهوم', 'unclear', 'not clear', 
+              'غير محدد', 'غير معروف', '؟؟؟', '???',
+              'غير متأكد', 'لا أعرف', 'لا أدري'
+            ];
+            
+            if (unclearKeywords.some(keyword => textLower.includes(keyword))) return true;
+            
+            const hasRepeatedChars = /(.)\1{3,}/.test(text);
+            if (hasRepeatedChars) return true;
+            
+            const arabicChars = /[\u0600-\u06FF]/g;
+            const englishChars = /[a-zA-Z]/g;
+            const arabicCount = (text.match(arabicChars) || []).length;
+            const englishCount = (text.match(englishChars) || []).length;
+            const validCharsRatio = (arabicCount + englishCount) / text.length;
+            
+            if (validCharsRatio < 0.5 && text.length > 10) return true;
+            
+            if (text.length > 15 && !text.includes(' ') && !text.includes('،') && !text.includes(',')) {
+              return true;
+            }
+            
+            return false;
+          };
+          
+          // التحقق من وضوح العنوان
+          const isUnclear = isTextUnclear(generatedTitle);
+          
+          if (isUnclear) {
+            setIsTitleUnclear(true);
+            setTitle(generatedTitle);
+            setShowManualTitle(true);
+            setTitleShake(true);
+            setTimeout(() => setTitleShake(false), 1000);
+            // إظهار قسم "اقترح تصنيفاً" عند عدم وضوح العنوان
+            setShowAdditionalFields(true);
+            setSuggestedCategory("");
+          } else {
+            setIsTitleUnclear(false);
+            setTitle(generatedTitle);
+            setShowTitle(true);
+          }
         }
         
-        // تعيين التصنيف إذا كان متوفراً
-        if (review.system_category && review.system_category !== 'غير محدد') {
-          setAdditionalFields((prev) =>
-            prev.map((f) =>
-              f.id === "category"
-                ? { ...f, enabled: true, value: review.system_category }
-                : f
-            )
-          );
+        // تعيين التصنيف إذا كان متوفراً (أول تصنيف من القائمة)
+        if (draft.categories && draft.categories.length > 0) {
+          if (draft.categories[0] === 'أخرى' || draft.categories[0] === 'other') {
+            // إذا كان التصنيف "أخرى"، نعرض رسالة ونطلب اقتراح تصنيف
+            setShowAdditionalFields(true);
+            setSuggestedCategory("");
+          } else {
+            setAdditionalFields((prev) =>
+              prev.map((f) =>
+                f.id === "category"
+                  ? { ...f, enabled: true, value: draft.categories![0] }
+                  : f
+              )
+            );
+            setShowAdditionalFields(true);
+          }
+        } else {
+          // إذا لم يقترح AI تصنيفاً، نعرض رسالة "أخرى"
           setShowAdditionalFields(true);
+          setSuggestedCategory("");
         }
       } else {
         // Fallback: استخراج العنوان محلياً
@@ -1448,8 +1689,55 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         const generatedTitle = firstSentence.length > 50 
           ? firstSentence.slice(0, 47) + "..." 
           : firstSentence;
-        setTitle(generatedTitle);
-        setShowTitle(true);
+        
+        // دالة للتحقق من وضوح النص
+        const isTextUnclear = (text: string): boolean => {
+          if (!text || text.trim().length < 5) return true;
+          
+          const textLower = text.toLowerCase();
+          const unclearKeywords = [
+            'غير واضح', 'غير مفهوم', 'unclear', 'not clear', 
+            'غير محدد', 'غير معروف', '؟؟؟', '???',
+            'غير متأكد', 'لا أعرف', 'لا أدري'
+          ];
+          
+          if (unclearKeywords.some(keyword => textLower.includes(keyword))) return true;
+          
+          const hasRepeatedChars = /(.)\1{3,}/.test(text);
+          if (hasRepeatedChars) return true;
+          
+          const arabicChars = /[\u0600-\u06FF]/g;
+          const englishChars = /[a-zA-Z]/g;
+          const arabicCount = (text.match(arabicChars) || []).length;
+          const englishCount = (text.match(englishChars) || []).length;
+          const validCharsRatio = (arabicCount + englishCount) / text.length;
+          
+          if (validCharsRatio < 0.5 && text.length > 10) return true;
+          
+          if (text.length > 15 && !text.includes(' ') && !text.includes('،') && !text.includes(',')) {
+            return true;
+          }
+          
+          return false;
+        };
+        
+        // التحقق من وضوح العنوان
+        const isUnclear = isTextUnclear(generatedTitle);
+        
+        if (isUnclear) {
+          setIsTitleUnclear(true);
+          setTitle(generatedTitle);
+          setShowManualTitle(true);
+          setTitleShake(true);
+          setTimeout(() => setTitleShake(false), 1000);
+          // إظهار قسم "اقترح تصنيفاً" عند عدم وضوح العنوان
+          setShowAdditionalFields(true);
+          setSuggestedCategory("");
+        } else {
+          setIsTitleUnclear(false);
+          setTitle(generatedTitle);
+          setShowTitle(true);
+        }
       }
     } catch (error) {
       console.error("Error generating title:", error);
@@ -1459,8 +1747,55 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       const generatedTitle = firstSentence.length > 50 
         ? firstSentence.slice(0, 47) + "..." 
         : firstSentence;
-      setTitle(generatedTitle);
-      setShowTitle(true);
+      
+      // دالة للتحقق من وضوح النص
+      const isTextUnclear = (text: string): boolean => {
+        if (!text || text.trim().length < 5) return true;
+        
+        const textLower = text.toLowerCase();
+        const unclearKeywords = [
+          'غير واضح', 'غير مفهوم', 'unclear', 'not clear', 
+          'غير محدد', 'غير معروف', '؟؟؟', '???',
+          'غير متأكد', 'لا أعرف', 'لا أدري'
+        ];
+        
+        if (unclearKeywords.some(keyword => textLower.includes(keyword))) return true;
+        
+        const hasRepeatedChars = /(.)\1{3,}/.test(text);
+        if (hasRepeatedChars) return true;
+        
+        const arabicChars = /[\u0600-\u06FF]/g;
+        const englishChars = /[a-zA-Z]/g;
+        const arabicCount = (text.match(arabicChars) || []).length;
+        const englishCount = (text.match(englishChars) || []).length;
+        const validCharsRatio = (arabicCount + englishCount) / text.length;
+        
+        if (validCharsRatio < 0.5 && text.length > 10) return true;
+        
+        if (text.length > 15 && !text.includes(' ') && !text.includes('،') && !text.includes(',')) {
+          return true;
+        }
+        
+        return false;
+      };
+      
+      // التحقق من وضوح العنوان
+      const isUnclear = isTextUnclear(generatedTitle);
+      
+      if (isUnclear) {
+        setIsTitleUnclear(true);
+        setTitle(generatedTitle);
+        setShowManualTitle(true);
+        setTitleShake(true);
+        setTimeout(() => setTitleShake(false), 1000);
+        // إظهار قسم "اقترح تصنيفاً" عند عدم وضوح العنوان
+        setShowAdditionalFields(true);
+        setSuggestedCategory("");
+      } else {
+        setIsTitleUnclear(false);
+        setTitle(generatedTitle);
+        setShowTitle(true);
+      }
     } finally {
       setIsGeneratingTitle(false);
     }
@@ -1495,60 +1830,57 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         updateVoiceStatus({ stage: 'processing', message: 'جاري تحليل طلبك...' });
       }, 1000);
       
-      const response = await processCustomerRequest(
-        undefined,
-        audioBlob,
-        Object.keys(clarificationAnswers).length > 0 ? clarificationAnswers : undefined
+      // استخدام ai-chat بدلاً من customer-service-ai (ملاحظة: ai-chat لا يدعم الصوت مباشرة، سيتم تجاهل audioBlob)
+      const draft = await generateDraftWithCta(
+        description || "طلب صوتي",
+        undefined, // لا دعم للصور هنا
+        audioBlob || undefined
       );
 
-      if (response.success && response.data) {
-        const data = response.data;
-        setLanguageDetected(data.language_detected);
-        
+      if (draft) {
         // Update title from AI response
-        if (data.final_review?.title) {
-          setTitle(data.final_review.title);
+        if (draft.title) {
+          setTitle(draft.title);
           setShowTitle(true);
           addGlow("title");
         }
         
-        // Update description with reformulated request if available
-        if (data.final_review?.reformulated_request) {
-          setDescription(data.final_review.reformulated_request);
+        // Update description
+        if (draft.description) {
+          setDescription(draft.description);
           addGlow("description");
         }
         
         // Update location if available
-        if (data.final_review?.location) {
-          setLocation(data.final_review.location);
+        if (draft.location) {
+          setLocation(draft.location);
           addGlow("location");
         }
 
-        if (data.clarification_needed && data.clarification_pages.length > 0) {
-          updateVoiceStatus({ stage: 'done', message: 'يرجى الإجابة على بعض الأسئلة' });
-          
-          const pages: ClarificationPage[] = data.clarification_pages.map((page, index) => {
-            const match = page.match(/(?:Page|صفحة)\s*(\d+)\/(\d+):\s*(.+)/i);
-            return {
-              pageNumber: match ? parseInt(match[1]) : index + 1,
-              totalPages: match ? parseInt(match[2]) : data.total_pages,
-              question: match ? match[3].trim() : page,
-            };
-          });
-          
-          setClarificationPages(pages);
+        if (draft.isClarification) {
+          updateVoiceStatus({ stage: 'done', message: 'يرجى توضيح طلبك أكثر' });
+          // ai-chat لا يدعم صفحات توضيحية متعددة، فقط سؤال واحد
+          setClarificationPages([]);
           setCurrentClarificationPage(0);
           setShowFinalReview(false);
         } else {
           updateVoiceStatus({ stage: 'done', message: 'تم تجهيز طلبك!' });
-          setFinalReview(data.final_review);
+          // تحويل draft إلى final_review format للتوافق
+          setFinalReview({
+            title: draft.title || "",
+            reformulated_request: draft.description || "",
+            system_category: draft.categories?.[0] || "أخرى",
+            new_category_suggestion: "لا يوجد",
+            location: draft.location || "",
+            ui_action: "show_confirmation_screen"
+          });
           setShowFinalReview(true);
           setClarificationPages([]);
         }
         
         hasAutoTriggeredRef.current = true;
       } else {
-        updateVoiceStatus({ stage: 'error', message: response.error || 'فشل معالجة الطلب' });
+        updateVoiceStatus({ stage: 'error', message: 'فشل معالجة الطلب' });
       }
     } catch (error) {
       console.error("Voice processing error:", error);
@@ -1586,41 +1918,79 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     setIsAiLoading(true);
 
     try {
-      // Use Customer Service AI (supports Whisper API)
-      const response = await processCustomerRequest(
-        userMessage || undefined,
-        audioBlob || undefined,
-        Object.keys(clarificationAnswers).length > 0 ? clarificationAnswers : undefined
+      // استخدام ai-chat بدلاً من customer-service-ai
+      const draft = await generateDraftWithCta(
+        userMessage || "طلب صوتي",
+        undefined, // لا دعم للصور هنا
+        audioBlob || undefined
       );
 
-      if (!response.success || !response.data) {
-        throw new Error(response.error || 'فشل معالجة الطلب');
+      if (!draft) {
+        throw new Error('فشل معالجة الطلب');
       }
 
-      const data = response.data;
-      setLanguageDetected(data.language_detected);
-
       // Check if clarification is needed
-      if (data.clarification_needed && data.clarification_pages.length > 0) {
-        // Parse clarification pages
-        const pages: ClarificationPage[] = data.clarification_pages.map((page, index) => {
-          const match = page.match(/(?:Page|صفحة)\s*(\d+)\/(\d+):\s*(.+)/i);
-          return {
-            pageNumber: match ? parseInt(match[1]) : index + 1,
-            totalPages: match ? parseInt(match[2]) : data.total_pages,
-            question: match ? match[3].trim() : page,
-          };
-        });
-        
-        setClarificationPages(pages);
+      if (draft.isClarification) {
+        // ai-chat لا يدعم صفحات توضيحية متعددة، فقط رسالة توضيحية واحدة
+        setClarificationPages([]);
         setCurrentClarificationPage(0);
         setShowFinalReview(false);
-        // Don't set showFinalReview here - wait for all clarifications
+        // إضافة رسالة للمستخدم
+        setAiMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            text: draft.aiResponse || "يرجى توضيح طلبك أكثر",
+            timestamp: new Date(),
+          },
+        ]);
       } else {
         // No clarification needed - show final review screen
-        setFinalReview(data.final_review);
+        setFinalReview({
+          title: draft.title || "",
+          reformulated_request: draft.description || "",
+          system_category: draft.categories?.[0] || "أخرى",
+          new_category_suggestion: "لا يوجد",
+          location: draft.location || "",
+          ui_action: "show_confirmation_screen"
+        });
         setShowFinalReview(true);
         setClarificationPages([]);
+        
+        // Update form fields
+        if (draft.title) {
+          setTitle(draft.title);
+          setShowTitle(true);
+          addGlow("title");
+        }
+        if (draft.description) {
+          setDescription(draft.description);
+          addGlow("description");
+        }
+        if (draft.location) {
+          setLocation(draft.location);
+          addGlow("location");
+        }
+        if (draft.categories && draft.categories.length > 0) {
+          if (draft.categories[0] === 'أخرى' || draft.categories[0] === 'other') {
+            // إذا كان التصنيف "أخرى"، نعرض رسالة ونطلب اقتراح تصنيف
+            setShowAdditionalFields(true);
+            setSuggestedCategory("");
+          } else {
+            setAdditionalFields((prev) =>
+              prev.map((f) =>
+                f.id === "category"
+                  ? { ...f, enabled: true, value: draft.categories![0] }
+                  : f
+              )
+            );
+            setShowAdditionalFields(true);
+          }
+        } else {
+          // إذا لم يقترح AI تصنيفاً، نعرض رسالة "أخرى"
+          setShowAdditionalFields(true);
+          setSuggestedCategory("");
+        }
       }
     } catch (error) {
       console.error("Error processing message:", error);
@@ -1659,7 +2029,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     }
 
     // Category
-    if (review.system_category && review.system_category !== 'غير محدد') {
+    if (review.system_category && review.system_category !== 'غير محدد' && review.system_category !== 'أخرى' && review.system_category !== 'other') {
       setAdditionalFields((prev) =>
         prev.map((f) =>
           f.id === "category"
@@ -1669,6 +2039,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       );
       setTimeout(() => addGlow("category"), 400);
       setShowAdditionalFields(true);
+    } else if (!review.system_category || review.system_category === 'أخرى' || review.system_category === 'other') {
+      // إذا كان التصنيف "أخرى" أو غير محدد، نعرض رسالة
+      setShowAdditionalFields(true);
+      setSuggestedCategory("");
     }
 
     // Show success message
@@ -1718,18 +2092,26 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       setIsAiLoading(true);
       try {
         const userMessage = aiInput.trim() || description || "رسالة صوتية";
-        const response = await processCustomerRequest(
-          userMessage,
-          undefined,
-          clarificationAnswers
-        );
+        const draft = await generateDraftWithCta(userMessage);
 
-        if (response.success && response.data) {
-          setFinalReview(response.data.final_review);
+        if (draft && !draft.isClarification) {
+          setFinalReview({
+            title: draft.title || "",
+            reformulated_request: draft.description || "",
+            system_category: draft.categories?.[0] || "أخرى",
+            new_category_suggestion: "لا يوجد",
+            location: draft.location || "",
+            ui_action: "show_confirmation_screen"
+          });
           setShowFinalReview(true);
           setClarificationPages([]);
           setCurrentClarificationPage(0);
           setClarificationAnswers({});
+          
+          // Update form fields
+          if (draft.title) setTitle(draft.title);
+          if (draft.description) setDescription(draft.description);
+          if (draft.location) setLocation(draft.location);
         }
       } catch (error) {
         console.error("Error reprocessing with answers:", error);
@@ -1810,9 +2192,14 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       location: location.trim(),
       budgetMin: finalBudgetMin,
       budgetMax: finalBudgetMax,
-      categories: additionalFields.find((f) => f.id === "category" && f.enabled)
-        ? [additionalFields.find((f) => f.id === "category")!.value] // value is label, getCategoryIdsByLabels will convert it
-        : undefined,
+      categories: (() => {
+        const categoryField = additionalFields.find((f) => f.id === "category" && f.enabled);
+        // إذا كان التصنيف "أخرى" أو غير موجود، نستخدم undefined (سيتم تصنيفه في "أخرى" تلقائياً)
+        if (!categoryField || categoryField.value === 'أخرى' || categoryField.value === 'other') {
+          return undefined; // سيتم تصنيفه في "أخرى" تلقائياً
+        }
+        return [categoryField.value]; // value is label, getCategoryIdsByLabels will convert it
+      })(),
       deliveryTimeFrom: finalDeliveryTime || undefined,
     };
 
@@ -1825,6 +2212,31 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     // تمرير معلومات التعديل إذا كنا في وضع التعديل
     // Note: onPublish will use user?.id from App.tsx, but we ensure we have currentUserId here
     const result = await onPublish(request, isEditing, editingRequestId || undefined);
+    
+    // حفظ اقتراح التصنيف إذا كان موجوداً
+    if (result && suggestedCategory.trim()) {
+      try {
+        const categoryField = additionalFields.find(f => f.id === "category" && f.enabled);
+        const isOtherCategory = !categoryField || categoryField.value === 'أخرى' || categoryField.value === 'other';
+        
+        if (isOtherCategory) {
+          await supabase
+            .from('pending_categories')
+            .insert({
+              suggested_label: suggestedCategory.trim(),
+              suggested_emoji: '📦',
+              suggested_description: `اقتراح تصنيف من المستخدم للطلب: ${finalTitle}`,
+              suggested_by_ai: false,
+              request_id: result,
+              status: 'pending'
+            });
+          console.log('✅ Category suggestion saved:', suggestedCategory.trim());
+        }
+      } catch (error) {
+        console.warn('Failed to save category suggestion:', error);
+        // لا نوقف العملية إذا فشل حفظ الاقتراح
+      }
+    }
     
     // تحديث حالة الحفظ
     if (result) {
@@ -2149,6 +2561,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                     setTimeout(async () => {
                       // Check if user is guest - require phone verification and terms acceptance
                       if (isGuest && !editingRequestId) {
+                        // Save form data before requiring login
+                        saveFormDataForGuest();
                         setShowFinalReview(false);
                         setFinalReview(null);
                         setGuestVerificationStep('phone');
@@ -2223,8 +2637,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               </motion.div>
             )}
 
-            {/* حقل العنوان اليدوي - يظهر إذا AI غير متصل أو لم يُنشأ عنوان */}
-            {!title.trim() && !isGeneratingTitle && showManualTitle && (
+            {/* حقل العنوان اليدوي - يظهر إذا AI غير متصل أو لم يُنشأ عنوان أو العنوان غير واضح */}
+            {((!title.trim() && !isGeneratingTitle && showManualTitle) || isTitleUnclear) && (
               <motion.div
                 key="manual-title"
                 initial={{ opacity: 0, height: 0, marginBottom: 0 }}
@@ -2243,11 +2657,20 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               >
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-2">
-                    <FileText size={16} className="text-accent" />
-                    <span className="text-xs font-medium text-accent-foreground">
+                    <FileText size={16} className={isTitleUnclear ? "text-red-500" : "text-accent"} />
+                    <span className={`text-xs font-medium ${isTitleUnclear ? "text-red-500" : "text-accent-foreground"}`}>
                       عنوان الطلب (مطلوب)
                     </span>
-                    {isAIConnected === false && (
+                    {isTitleUnclear && (
+                      <motion.span
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-500"
+                      >
+                        عنوان غير واضح
+                      </motion.span>
+                    )}
+                    {isAIConnected === false && !isTitleUnclear && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/15 text-accent-foreground">
                         AI غير متصل
                       </span>
@@ -2256,17 +2679,76 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   <input
                     type="text"
                     value={title}
-                    onChange={(e) => setTitle(e.target.value)}
+                    onChange={(e) => {
+                      setTitle(e.target.value);
+                      // دالة للتحقق من وضوح النص
+                      const isTextUnclear = (text: string): boolean => {
+                        if (!text || text.trim().length < 5) return true;
+                        
+                        const textLower = text.toLowerCase();
+                        const unclearKeywords = [
+                          'غير واضح', 'غير مفهوم', 'unclear', 'not clear', 
+                          'غير محدد', 'غير معروف', '؟؟؟', '???',
+                          'غير متأكد', 'لا أعرف', 'لا أدري'
+                        ];
+                        
+                        if (unclearKeywords.some(keyword => textLower.includes(keyword))) return true;
+                        
+                        const hasRepeatedChars = /(.)\1{3,}/.test(text);
+                        if (hasRepeatedChars) return true;
+                        
+                        const arabicChars = /[\u0600-\u06FF]/g;
+                        const englishChars = /[a-zA-Z]/g;
+                        const arabicCount = (text.match(arabicChars) || []).length;
+                        const englishCount = (text.match(englishChars) || []).length;
+                        const validCharsRatio = (arabicCount + englishCount) / text.length;
+                        
+                        if (validCharsRatio < 0.5 && text.length > 10) return true;
+                        
+                        if (text.length > 15 && !text.includes(' ') && !text.includes('،') && !text.includes(',')) {
+                          return true;
+                        }
+                        
+                        return false;
+                      };
+                      
+                      // إذا بدأ المستخدم بالكتابة، تحقق من الوضوح
+                      if (isTitleUnclear && e.target.value.trim().length > 5) {
+                        const stillUnclear = isTextUnclear(e.target.value);
+                        if (!stillUnclear) {
+                          setIsTitleUnclear(false);
+                        }
+                      } else if (!isTitleUnclear && e.target.value.trim().length > 5) {
+                        // التحقق من أن العنوان لا يصبح غير واضح عند التعديل
+                        const becomesUnclear = isTextUnclear(e.target.value);
+                        if (becomesUnclear) {
+                          setIsTitleUnclear(true);
+                          setShowAdditionalFields(true);
+                          setSuggestedCategory("");
+                        }
+                      }
+                    }}
                     placeholder="اكتب عنواناً واضحاً لطلبك..."
                     className={`w-full px-3 py-2 text-sm rounded-xl border-2 transition-all duration-300 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none ${
-                      titleShake 
-                        ? "border-red-400 ring-2 ring-red-200 dark:ring-red-900/50" 
+                      isTitleUnclear || titleShake
+                        ? "border-red-500 ring-2 ring-red-200 dark:ring-red-900/50 text-red-500" 
                         : needsManualTitle
                           ? "border-accent/50 focus:border-primary "
                           : "border-border focus:border-primary "
                     }`}
+                    autoFocus={isTitleUnclear}
                   />
-                  {!title.trim() && needsManualTitle && (
+                  {isTitleUnclear && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-xs text-red-500 mt-1.5 flex items-center gap-1 font-medium"
+                    >
+                      <span>⚠️</span>
+                      <span>العنوان غير واضح. يرجى تعديل العنوان يدوياً قبل الإرسال</span>
+                    </motion.p>
+                  )}
+                  {!title.trim() && needsManualTitle && !isTitleUnclear && (
                     <motion.p
                       initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -2343,7 +2825,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             </div>
 
             {/* Description Textarea */}
-            <div className="px-4 pb-4">
+            <div className="px-4 pb-4 relative">
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -2362,9 +2844,36 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   }
                 }}
                 placeholder="صف طلبك بالتفصيل..."
+                style={{ height: descriptionHeight }}
                 className="w-full min-h-[100px] bg-transparent text-foreground resize-none focus:outline-none placeholder:text-muted-foreground/50 text-right"
                 dir="rtl"
               />
+              
+              {/* Resize Handle */}
+              <motion.div
+                onMouseDown={handleDescriptionResizeStart}
+                onTouchStart={handleDescriptionResizeStart}
+                className={`absolute bottom-0 left-0 right-0 h-6 flex items-center justify-center cursor-ns-resize select-none rounded-b-2xl transition-colors ${isDescriptionResizing ? 'bg-primary/10' : 'hover:bg-primary/5'}`}
+                style={{ touchAction: 'none' }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <motion.div 
+                  className="flex flex-col gap-0.5 pointer-events-none"
+                  animate={isDescriptionResizing ? { scale: 1.2, gap: '3px' } : { scale: 1, gap: '2px' }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                >
+                  <motion.div 
+                    className="h-0.5 rounded-full bg-primary"
+                    animate={isDescriptionResizing ? { width: 48 } : { width: 40 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  />
+                  <motion.div 
+                    className="h-0.5 rounded-full bg-primary"
+                    animate={isDescriptionResizing ? { width: 48 } : { width: 40 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  />
+                </motion.div>
+              </motion.div>
             </div>
 
             {/* Divider */}
@@ -2410,99 +2919,171 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               </div>
             </div>
 
-            {/* Budget Field - From/To on its own row */}
-            <div className="px-4 py-3 border-t border-border/50">
-              <div className="flex items-center gap-2 mb-2">
-                <span className={budgetMin || budgetMax ? "text-primary" : "text-muted-foreground"}>
-                  <DollarSign size={16} />
-                </span>
-                <span className={`text-xs font-medium ${budgetMin || budgetMax ? "text-primary" : "text-muted-foreground"}`}>
-                  الميزانية
-                  {(budgetMin || budgetMax) && (
-                    <Check size={12} className="inline mr-1" />
-                  )}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 relative">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={budgetMin}
-                    onChange={(e) => setBudgetMin(e.target.value.replace(/[^\d]/g, ''))}
-                    placeholder="من"
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:border-primary  text-center"
-                    dir="rtl"
-                  />
-                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">ر.س</span>
+            {/* Budget Field - Collapsible */}
+            <div className="px-4 border-t border-border/50">
+              {/* Label - Clickable to expand/collapse */}
+              <button
+                type="button"
+                onClick={() => setIsBudgetExpanded(!isBudgetExpanded)}
+                className="w-full flex items-center justify-between gap-2 pt-3 pb-2"
+              >
+                <div className="flex items-center gap-2">
+                  <span className={budgetMin || budgetMax ? "text-primary" : "text-muted-foreground"}>
+                    <DollarSign size={18} />
+                  </span>
+                  <span className={`text-sm font-medium ${budgetMin || budgetMax ? "text-primary" : "text-muted-foreground"}`}>
+                    الميزانية
+                    {(budgetMin || budgetMax) && (
+                      <motion.span
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="inline-flex items-center justify-center mr-1"
+                      >
+                        <Check size={14} className="text-primary" />
+                      </motion.span>
+                    )}
+                  </span>
                 </div>
-                <span className="text-muted-foreground text-sm">-</span>
-                <div className="flex-1 relative">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={budgetMax}
-                    onChange={(e) => setBudgetMax(e.target.value.replace(/[^\d]/g, ''))}
-                    placeholder="إلى"
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:border-primary  text-center"
-                    dir="rtl"
-                  />
-                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">ر.س</span>
-                </div>
-              </div>
+                <motion.span
+                  animate={{ rotate: isBudgetExpanded ? 180 : 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="text-muted-foreground"
+                >
+                  <ChevronDown size={16} />
+                </motion.span>
+              </button>
+
+              {/* Collapsible Budget Area */}
+              <AnimatePresence>
+                {isBudgetExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pt-2 pb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 relative">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={budgetMin}
+                            onChange={(e) => setBudgetMin(e.target.value.replace(/[^\d]/g, ''))}
+                            placeholder="من"
+                            className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:border-primary  text-center"
+                            dir="rtl"
+                          />
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">ر.س</span>
+                        </div>
+                        <span className="text-muted-foreground text-sm">-</span>
+                        <div className="flex-1 relative">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={budgetMax}
+                            onChange={(e) => setBudgetMax(e.target.value.replace(/[^\d]/g, ''))}
+                            placeholder="إلى"
+                            className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:border-primary  text-center"
+                            dir="rtl"
+                          />
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">ر.س</span>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Delivery Time Field - Presets + Custom on its own row */}
-            <div className="px-4 py-3 border-t border-border/50">
-              <div className="flex items-center gap-2 mb-2">
-                <span className={deliveryValue || customDeliveryValue ? "text-primary" : "text-muted-foreground"}>
-                  <Clock size={16} />
-                </span>
-                <span className={`text-xs font-medium ${deliveryValue || customDeliveryValue ? "text-primary" : "text-muted-foreground"}`}>
-                  مدة التنفيذ
-                  {(deliveryValue || customDeliveryValue) && (
-                    <Check size={12} className="inline mr-1" />
-                  )}
-                </span>
-              </div>
-              {/* Preset Options */}
-              <div className="flex flex-wrap gap-2 mb-2">
-                {deliveryPresets.map((preset) => (
-                  <button
-                    key={preset.value}
-                    type="button"
-                    onClick={() => {
-                      if (deliveryValue === preset.value) {
-                        setDeliveryValue("");
-                      } else {
-                        setDeliveryValue(preset.value);
-                        setCustomDeliveryValue("");
-                      }
-                    }}
-                    className={`px-3 py-1.5 text-xs rounded-full border transition-all ${
-                      deliveryValue === preset.value
-                        ? "bg-primary text-white border-primary"
-                        : "bg-background border-border hover:border-primary/50 text-muted-foreground hover:text-foreground"
-                    }`}
+            {/* Delivery Time Field - Collapsible */}
+            <div className="px-4 border-t border-border/50">
+              {/* Label - Clickable to expand/collapse */}
+              <button
+                type="button"
+                onClick={() => setIsDeliveryExpanded(!isDeliveryExpanded)}
+                className="w-full flex items-center justify-between gap-2 pt-3 pb-2"
+              >
+                <div className="flex items-center gap-2">
+                  <span className={deliveryValue || customDeliveryValue ? "text-primary" : "text-muted-foreground"}>
+                    <Clock size={18} />
+                  </span>
+                  <span className={`text-sm font-medium ${deliveryValue || customDeliveryValue ? "text-primary" : "text-muted-foreground"}`}>
+                    مدة التنفيذ
+                    {(deliveryValue || customDeliveryValue) && (
+                      <motion.span
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="inline-flex items-center justify-center mr-1"
+                      >
+                        <Check size={14} className="text-primary" />
+                      </motion.span>
+                    )}
+                  </span>
+                </div>
+                <motion.span
+                  animate={{ rotate: isDeliveryExpanded ? 180 : 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="text-muted-foreground"
+                >
+                  <ChevronDown size={16} />
+                </motion.span>
+              </button>
+
+              {/* Collapsible Delivery Area */}
+              <AnimatePresence>
+                {isDeliveryExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
                   >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-              {/* Custom Input */}
-              <input
-                type="text"
-                value={customDeliveryValue}
-                onChange={(e) => {
-                  setCustomDeliveryValue(e.target.value);
-                  if (e.target.value) {
-                    setDeliveryValue("");
-                  }
-                }}
-                placeholder="أو اكتب مدة مخصصة..."
-                className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:border-primary "
-                dir="rtl"
-              />
+                    <div className="pt-2 pb-3">
+                      {/* Preset Options */}
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {deliveryPresets.map((preset) => (
+                          <button
+                            key={preset.value}
+                            type="button"
+                            onClick={() => {
+                              if (deliveryValue === preset.value) {
+                                setDeliveryValue("");
+                              } else {
+                                setDeliveryValue(preset.value);
+                                setCustomDeliveryValue("");
+                              }
+                            }}
+                            className={`px-3 py-1.5 text-xs rounded-full border transition-all ${
+                              deliveryValue === preset.value
+                                ? "bg-primary text-white border-primary"
+                                : "bg-background border-border hover:border-primary/50 text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Custom Input */}
+                      <input
+                        type="text"
+                        value={customDeliveryValue}
+                        onChange={(e) => {
+                          setCustomDeliveryValue(e.target.value);
+                          if (e.target.value) {
+                            setDeliveryValue("");
+                          }
+                        }}
+                        placeholder="أو اكتب مدة مخصصة..."
+                        className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:border-primary "
+                        dir="rtl"
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Attachments Section - Collapsible */}
@@ -2836,23 +3417,76 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               exit={{ opacity: 0, y: -20 }}
             >
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-sm font-medium text-muted-foreground">تفاصيل إضافية</span>
+                <span className="text-sm font-medium text-muted-foreground">اقترح تصنيفاً</span>
                 <div className="flex-1 h-px bg-border" />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <AnimatePresence mode="popLayout">
-                  {additionalFields.filter(f => f.enabled).map((field) => (
-                    <AdditionalFieldCard
-                      key={field.id}
-                      field={field}
-                      onRemove={removeField}
-                      onValueChange={updateFieldValue}
-                      isGlowing={glowingFields.has(field.id)}
-                    />
-                  ))}
-                </AnimatePresence>
-              </div>
+              {/* Check if category is "أخرى" or not set */}
+              {(() => {
+                const categoryField = additionalFields.find(f => f.id === "category" && f.enabled);
+                const isOtherCategory = categoryField?.value === 'أخرى' || categoryField?.value === 'other' || !categoryField;
+                
+                if (isOtherCategory) {
+                  return (
+                    <div className="space-y-3">
+                      <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                        <p className="text-sm text-foreground mb-3">
+                          سيتم تصنيف هذا الطلب في <span className="font-semibold text-primary">(أخرى)</span>
+                        </p>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium text-muted-foreground block">
+                            اقترح تصنيفاً جديداً (اختياري)
+                          </label>
+                          <input
+                            type="text"
+                            value={suggestedCategory}
+                            onChange={(e) => setSuggestedCategory(e.target.value)}
+                            placeholder="مثال: تصميم شعارات، برمجة تطبيقات..."
+                            className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            سيتم مراجعة اقتراحك وإضافته للتصنيفات المتاحة بعد الموافقة
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Show other enabled fields (budget, delivery) */}
+                      {additionalFields.filter(f => f.enabled && f.id !== "category").length > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                          <AnimatePresence mode="popLayout">
+                            {additionalFields.filter(f => f.enabled && f.id !== "category").map((field) => (
+                              <AdditionalFieldCard
+                                key={field.id}
+                                field={field}
+                                onRemove={removeField}
+                                onValueChange={updateFieldValue}
+                                isGlowing={glowingFields.has(field.id)}
+                              />
+                            ))}
+                          </AnimatePresence>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                
+                // Show all enabled fields including category
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <AnimatePresence mode="popLayout">
+                      {additionalFields.filter(f => f.enabled).map((field) => (
+                        <AdditionalFieldCard
+                          key={field.id}
+                          field={field}
+                          onRemove={removeField}
+                          onValueChange={updateFieldValue}
+                          isGlowing={glowingFields.has(field.id)}
+                        />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                );
+              })()}
             </motion.div>
           )}
         </AnimatePresence>
@@ -2868,7 +3502,11 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           submitSuccess={submitSuccess}
           isGuest={isGuest}
           editingRequestId={editingRequestId}
-          onGuestVerification={() => setGuestVerificationStep('phone')}
+          onGuestVerification={() => {
+            // Save form data before requiring login
+            saveFormDataForGuest();
+            setGuestVerificationStep('phone');
+          }}
           onSubmit={async () => {
             if (navigator.vibrate) navigator.vibrate(15);
             setIsSubmitting(true);
@@ -3257,6 +3895,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       setTermsAccepted(false);
                       setGuestPhone("");
                       setGuestOTP("");
+                      
+                      // Clear saved form data since we're proceeding with publish
+                      localStorage.removeItem('abeely_pending_request_form');
                       
                       // Proceed with publishing
                       if (navigator.vibrate) navigator.vibrate(15);

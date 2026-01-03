@@ -67,6 +67,9 @@ import {
   unarchiveOffer,
   unarchiveRequest,
   updateRequest,
+  hideRequest,
+  unhideRequest,
+  bumpRequest,
 } from "./services/requestsService";
 import {
   getUnreadInterestsCount,
@@ -75,6 +78,7 @@ import {
 } from "./services/requestViewsService";
 import {
   updatePreferencesDirect,
+  getPreferencesDirect,
 } from "./services/preferencesService";
 import { checkAIConnection } from "./services/aiService";
 import { supabase } from "./services/supabaseClient";
@@ -122,6 +126,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<ViewState>("marketplace");
   const [previousView, setPreviousView] = useState<ViewState | null>(null);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomNavTab>("marketplace");
+  const [initialConversationId, setInitialConversationId] = useState<string | null>(null);
   const [titleKey, setTitleKey] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isLanguagePopupOpen, setIsLanguagePopupOpen] = useState(false);
@@ -223,7 +228,6 @@ const App: React.FC = () => {
   // ==========================================
   // AI Orb State (Global - used by GlobalFloatingOrb)
   // ==========================================
-  const [aiOrbPosition, setAiOrbPosition] = useState({ x: 20, y: 500 });
   const [aiInput, setAiInput] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiMessages, setAiMessages] = useState<{id: string; text: string; timestamp: Date}[]>([
@@ -446,22 +450,9 @@ const App: React.FC = () => {
 
     const handleDeepLink = (url: string) => {
       try {
-        // تحليل URL وتحويله لـ route
-        const urlObj = new URL(url);
-        // استخدم pathname للتحليل
-        const originalPath = window.location.pathname;
-        // تغيير pathname مؤقتاً للتحليل
-        Object.defineProperty(window.location, 'pathname', {
-          value: urlObj.pathname,
-          configurable: true
-        });
-        const route = parseRoute();
-        // إعادة pathname الأصلي
-        Object.defineProperty(window.location, 'pathname', {
-          value: originalPath,
-          configurable: true
-        });
-        
+        // تحليل URL وتحويله لـ route بدون تعديل window.location
+        const route = parseRoute(url);
+
         handleRouteNavigation(route);
       } catch (err) {
         console.error("Error parsing deep link:", err);
@@ -999,8 +990,30 @@ const App: React.FC = () => {
       setMyOffers([]);
       setArchivedRequests([]);
       setArchivedOffers([]);
+      setUserPreferences({
+        interestedCategories: [],
+        interestedCities: [],
+        radarWords: [],
+        notifyOnInterest: true,
+        roleMode: "requester",
+        showNameToApprovedProvider: true,
+      });
       return;
     }
+
+    // Load preferences from backend to populate interests filters
+    const loadPreferences = async () => {
+      try {
+        const prefs = await getPreferencesDirect(user.id);
+        if (prefs) {
+          setUserPreferences(prefs);
+        }
+      } catch (error) {
+        console.error("Error loading user preferences:", error);
+      }
+    };
+
+    loadPreferences();
 
     const loadUserData = async () => {
       try {
@@ -1103,9 +1116,12 @@ const App: React.FC = () => {
     let retryCount = 0;
     const maxRetries = 60; // Max 5 minutes (60 * 5s)
 
+    let intervalId: any;
+
     const checkAndReload = async () => {
       if (retryCount >= maxRetries) {
         console.log("[Auto-Retry] Max retries reached, stopping auto-check");
+        clearInterval(intervalId);
         return;
       }
 
@@ -1134,6 +1150,7 @@ const App: React.FC = () => {
                 : firstPage.length === MARKETPLACE_PAGE_SIZE;
               setMarketplaceHasMore(more);
               setMarketplaceLoadedOnce(true); // تم التحميل بنجاح (حتى لو 0 نتائج)
+              clearInterval(intervalId);
               console.log("[Auto-Retry] Data loaded successfully!");
             }
           } catch (loadError) {
@@ -1154,7 +1171,7 @@ const App: React.FC = () => {
     };
 
     // Start checking every 5 seconds
-    const intervalId = setInterval(checkAndReload, 5000);
+    intervalId = setInterval(checkAndReload, 5000);
 
     // Also check immediately
     checkAndReload();
@@ -1255,10 +1272,14 @@ const App: React.FC = () => {
       try {
         const activeCategories = userPreferences.interestedCategories;
         const activeCities = userPreferences.interestedCities;
+        const radarWords = userPreferences.radarWords || [];
 
         // Filter all requests by interests
+        // "كل المدن" لا تعتبر اهتمامات - يجب أن يكون هناك تصنيفات محددة أو كلمات رادار
+        const actualCities = activeCities.filter(city => city !== 'كل المدن');
         const hasInterests = activeCategories.length > 0 ||
-          activeCities.length > 0;
+          radarWords.length > 0 ||
+          actualCities.length > 0;
 
         if (hasInterests) {
           const filtered = allRequests.filter((req) => {
@@ -1272,26 +1293,65 @@ const App: React.FC = () => {
                   const interestLabels = [interestId];
                   if (categoryObj) interestLabels.push(categoryObj.label);
 
-                  return interestLabels.some((label) =>
-                    catLabel.toLowerCase().includes(label.toLowerCase()) ||
-                    label.toLowerCase().includes(catLabel.toLowerCase())
-                  );
+                  return interestLabels.some((label) => {
+                    const labelLower = label.toLowerCase();
+                    const catLabelLower = catLabel.toLowerCase();
+                    return catLabelLower.includes(labelLower) ||
+                           labelLower.includes(catLabelLower) ||
+                           catLabelLower === labelLower;
+                  });
                 });
               });
 
             // Check city match
-            // إذا تم اختيار "كل المدن" أو لم يتم اختيار أي مدينة، نتخطى الفلترة
-            const cityMatch = activeCities.length === 0 ||
-              activeCities.includes('كل المدن') ||
-              (req.location &&
-                activeCities.some((city) =>
-                  city !== 'كل المدن' && (
-                    req.location.toLowerCase().includes(city.toLowerCase()) ||
-                    city.toLowerCase().includes(req.location.toLowerCase())
-                  )
-                ));
+            // إذا لم يتم اختيار مدن فعلية (أي تم اختيار "كل المدن" فقط)، نتخطى الفلترة بالمدن
+            let cityMatch = true;
+            if (actualCities.length > 0) {
+              if (!req.location) {
+                cityMatch = false;
+              } else {
+                cityMatch = actualCities.some((city) => {
+                  // استخراج اسم المدينة من السلسلة (إذا كانت تحتوي على فاصلة)
+                  const cityName = city.split('،')[0].trim().toLowerCase();
+                  const requestLocation = req.location.toLowerCase();
+                  
+                  // استخراج اسم المدينة من موقع الطلب (إذا كان يحتوي على فاصلة)
+                  const requestCityName = requestLocation.split('،')[0].trim();
+                  
+                  // المطابقة المرنة: البحث في أي جزء من السلسلة
+                  return requestCityName.includes(cityName) ||
+                         cityName.includes(requestCityName) ||
+                         requestLocation.includes(cityName) ||
+                         cityName.includes(requestLocation);
+                });
+              }
+            }
 
-            return catMatch && cityMatch;
+            // Check radar words match (if any radar words specified)
+            const radarMatch = radarWords.length === 0 ||
+              radarWords.some((word) => {
+                const searchText = `${req.title} ${req.description || ''}`.toLowerCase();
+                return searchText.includes(word.toLowerCase());
+              });
+
+            const matches = catMatch && cityMatch && radarMatch;
+            
+            // Debug logging (يمكن حذفه لاحقاً)
+            if (!matches && (activeCategories.length > 0 || actualCities.length > 0 || radarWords.length > 0)) {
+              console.log('Request did not match interests:', {
+                title: req.title,
+                categories: req.categories,
+                location: req.location,
+                catMatch,
+                cityMatch,
+                radarMatch,
+                activeCategories,
+                actualCities,
+                radarWords
+              });
+            }
+            
+            return matches;
           });
 
           setInterestsRequests(filtered);
@@ -1314,6 +1374,7 @@ const App: React.FC = () => {
     allRequests,
     userPreferences.interestedCategories,
     userPreferences.interestedCities,
+    userPreferences.radarWords,
   ]);
 
   // ==========================================
@@ -1323,8 +1384,13 @@ const App: React.FC = () => {
     if (appView !== "main") return;
 
     // Only subscribe if user has interests configured
+    // "كل المدن" لا تعتبر اهتمامات - يجب أن يكون هناك تصنيفات محددة أو كلمات رادار
+    const activeCities = userPreferences.interestedCities || [];
+    const radarWords = userPreferences.radarWords || [];
+    const actualCities = activeCities.filter(city => city !== 'كل المدن');
     const hasInterests = userPreferences.interestedCategories.length > 0 ||
-      userPreferences.interestedCities.length > 0;
+      radarWords.length > 0 ||
+      actualCities.length > 0;
 
     if (!hasInterests) {
       setInterestsRequests([]);
@@ -1386,6 +1452,7 @@ const App: React.FC = () => {
     appView,
     userPreferences.interestedCategories,
     userPreferences.interestedCities,
+    userPreferences.radarWords,
     userPreferences.notifyOnInterest,
     view,
     currentMarketplaceViewMode,
@@ -1760,6 +1827,49 @@ const App: React.FC = () => {
   };
 
   // ==========================================
+  // Hide / Unhide / Bump Request
+  // ==========================================
+  const handleHideRequest = async (requestId: string) => {
+    if (!user?.id) return;
+    try {
+      const success = await hideRequest(requestId, user.id);
+      if (success) {
+        setMyRequests(prev => prev.map(r => r.id === requestId ? { ...r, isPublic: false } : r));
+        setAllRequests(prev => prev.map(r => r.id === requestId ? { ...r, isPublic: false } : r));
+      }
+    } catch (error) {
+      console.error("Error hiding request:", error);
+    }
+  };
+
+  const handleUnhideRequest = async (requestId: string) => {
+    if (!user?.id) return;
+    try {
+      const success = await unhideRequest(requestId, user.id);
+      if (success) {
+        setMyRequests(prev => prev.map(r => r.id === requestId ? { ...r, isPublic: true } : r));
+        setAllRequests(prev => prev.map(r => r.id === requestId ? { ...r, isPublic: true } : r));
+      }
+    } catch (error) {
+      console.error("Error unhiding request:", error);
+    }
+  };
+
+  const handleBumpRequest = async (requestId: string) => {
+    if (!user?.id) return;
+    try {
+      const success = await bumpRequest(requestId, user.id);
+      if (success) {
+        const now = new Date();
+        setMyRequests(prev => prev.map(r => r.id === requestId ? { ...r, updatedAt: now } : r));
+        setAllRequests(prev => prev.map(r => r.id === requestId ? { ...r, updatedAt: now } : r));
+      }
+    } catch (error) {
+      console.error("Error bumping request:", error);
+    }
+  };
+
+  // ==========================================
   // Sign Out Handler
   // ==========================================
   const handleSignOut = async () => {
@@ -1946,6 +2056,19 @@ const App: React.FC = () => {
               try {
                 console.log(isEditing ? "Updating request:" : "Publishing request:", request);
 
+                // تأكد من وجود مستخدم مسجل قبل الإرسال
+                let currentUserId = user?.id;
+                if (!currentUserId) {
+                  const currentUser = await getCurrentUser();
+                  currentUserId = currentUser?.id || null;
+                }
+                if (!currentUserId) {
+                  alert("يجب تسجيل الدخول لإرسال الطلب وحفظه ضمن طلباتك.");
+                  setIsGuest(false);
+                  setAppView("auth");
+                  return null;
+                }
+
                 // التحقق من البيانات الأساسية
                 if (!request.description || !request.location) {
                   console.error("Missing required fields:", { 
@@ -1971,13 +2094,13 @@ const App: React.FC = () => {
                 let resultId: string | null = null;
                 
                 // إذا كان تعديل، استخدم updateRequest
-                if (isEditing && editRequestId && user?.id) {
+                if (isEditing && editRequestId && currentUserId) {
                   console.log("=== UPDATE MODE ===");
                   console.log("isEditing:", isEditing);
                   console.log("editRequestId:", editRequestId);
-                  console.log("userId:", user?.id);
+                  console.log("userId:", currentUserId);
                   console.log("draftData:", draftData);
-                  const updatedRequest = await updateRequest(editRequestId, user.id, draftData);
+                  const updatedRequest = await updateRequest(editRequestId, currentUserId, draftData);
                   if (updatedRequest) {
                     console.log("Request updated successfully:", updatedRequest);
                     resultId = updatedRequest.id;
@@ -1989,17 +2112,10 @@ const App: React.FC = () => {
                   console.log("=== CREATE MODE ===");
                   console.log("isEditing:", isEditing);
                   console.log("editRequestId:", editRequestId);
-                  console.log("userId:", user?.id);
-                  
-                  // Get current user (in case user just logged in via guest verification)
-                  let currentUserId = user?.id;
-                  if (!currentUserId) {
-                    const currentUser = await getCurrentUser();
-                    currentUserId = currentUser?.id || null;
-                  }
+                  console.log("userId:", currentUserId);
                   
                   // إنشاء طلب جديد
-                  const createdRequest = await createRequestFromChat(currentUserId || null, draftData);
+                  const createdRequest = await createRequestFromChat(currentUserId, draftData);
                   console.log("Request created successfully:", createdRequest);
                   resultId = createdRequest?.id || null;
                 }
@@ -2193,6 +2309,9 @@ const App: React.FC = () => {
                     console.error("Error unarchiving request:", error);
                   }
                 }}
+                onHideRequest={(requestId) => handleHideRequest(requestId)}
+                onUnhideRequest={(requestId) => handleUnhideRequest(requestId)}
+                onBumpRequest={(requestId) => handleBumpRequest(requestId)}
                 onOpenChat={(requestId, offer) => {
                   const req = [...myRequests, ...archivedRequests].find(r => r.id === requestId);
                   if (req) {
@@ -2420,6 +2539,8 @@ const App: React.FC = () => {
                 scrollToOfferSection={scrollToOfferSection}
                 navigatedFromSidebar={navigatedFromSidebar}
                 highlightOfferId={highlightOfferId}
+                autoTranslateRequests={autoTranslateRequests}
+                currentLanguage={currentLanguage}
                 onNavigateToMessages={async (
                   conversationId,
                   userId,
@@ -2443,7 +2564,8 @@ const App: React.FC = () => {
                       );
                       if (conv) {
                         setPreviousView(view);
-                        setView("messages");
+                        setInitialConversationId(conv.id);
+                        setView("conversation");
                       }
                     }
                   } else {
@@ -2567,8 +2689,12 @@ const App: React.FC = () => {
                 if (user?.id) {
                   const { updateProfile } = await import('./services/authService');
                   const result = await updateProfile(user.id, updates);
-                  if (result.success && result.data) {
-                    setUser(result.data);
+                  if (result.success) {
+                    // إعادة جلب المستخدم لضمان تحديث جميع الحقول
+                    const fresh = await getCurrentUser();
+                    if (fresh) {
+                      setUser(fresh);
+                    }
                   }
                 }
               }}
@@ -2627,8 +2753,11 @@ const App: React.FC = () => {
                 if (user?.id) {
                   const { updateProfile } = await import('./services/authService');
                   const result = await updateProfile(user.id, updates);
-                  if (result.success && result.data) {
-                    setUser(result.data);
+                  if (result.success) {
+                    const fresh = await getCurrentUser();
+                    if (fresh) {
+                      setUser(fresh);
+                    }
                   }
                 }
               }}
@@ -2663,14 +2792,17 @@ const App: React.FC = () => {
               mode === "requests" ? "create-request" : "marketplace",
             );
           }
+          setInitialConversationId(null);
         };
         return (
           <SwipeBackWrapper onBack={handleMessagesBack} className="h-full flex flex-col overflow-hidden relative">
             <Messages
               onBack={handleMessagesBack}
               onSelectConversation={(conversationId) => {
+                setInitialConversationId(conversationId);
                 setView("conversation");
               }}
+              initialConversationId={initialConversationId || undefined}
               // Header integration props
               mode={mode}
               toggleMode={toggleMode}
@@ -2698,14 +2830,18 @@ const App: React.FC = () => {
           </SwipeBackWrapper>
         );
       case "conversation":
-        const handleConversationBack = () => setView("messages");
+        const handleConversationBack = () => {
+          setView("messages");
+          setInitialConversationId(null);
+        };
         return (
-          <SwipeBackWrapper onBack={handleConversationBack} className="h-full flex flex-col overflow-hidden">
-            <Messages
-              onBack={handleConversationBack}
-              onSelectConversation={(conversationId) => {
-                // Already in conversation view
-              }}
+      <SwipeBackWrapper onBack={handleConversationBack} className="h-full flex flex-col overflow-hidden">
+        <Messages
+          onBack={handleConversationBack}
+          onSelectConversation={(conversationId) => {
+            // Already in conversation view
+          }}
+          initialConversationId={initialConversationId || undefined}
               // Header integration props
               mode={mode}
               toggleMode={toggleMode}
@@ -2802,11 +2938,32 @@ const App: React.FC = () => {
               }
               setIsGuest(false);
               localStorage.removeItem("abeely_guest_mode");
-              setView("marketplace");
-              setMode("offers");
-              setSelectedRequest(null);
-              setPreviousView(null);
-              setAppView("main");
+              
+              // Check for saved form data and navigate accordingly
+              const savedRequestForm = localStorage.getItem('abeely_pending_request_form');
+              const savedOfferForm = localStorage.getItem('abeely_pending_offer_form');
+              
+              if (savedRequestForm) {
+                // Navigate to create request page - data will be restored automatically
+                setView("create-request");
+                setPreviousView("marketplace");
+                setAppView("main");
+              } else if (savedOfferForm) {
+                // For offers, we need to find the request first
+                // The data will be restored when QuickOfferForm is opened
+                setView("marketplace");
+                setMode("offers");
+                setSelectedRequest(null);
+                setPreviousView(null);
+                setAppView("main");
+              } else {
+                // Normal navigation
+                setView("marketplace");
+                setMode("offers");
+                setSelectedRequest(null);
+                setPreviousView(null);
+                setAppView("main");
+              }
               return;
             }
           } catch (err) {

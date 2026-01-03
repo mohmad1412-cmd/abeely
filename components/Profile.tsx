@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Review } from '../types';
 import { Badge } from './ui/Badge';
-import { Calendar, Briefcase, Award, CheckCircle, Clock, DollarSign, Edit2, X, Check, Camera } from 'lucide-react';
+import { Calendar, Edit2, X, Check, Camera, User } from 'lucide-react';
 import { UnifiedHeader } from './ui/UnifiedHeader';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -58,17 +58,19 @@ export const Profile: React.FC<ProfileProps> = ({
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [displayName, setDisplayName] = useState(user?.display_name || '');
-  const [bio, setBio] = useState(profileRole === 'provider' 
-    ? 'مهتم ببناء الحلول الرقمية المبتكرة. لدي خبرة واسعة في إدارة المشاريع التقنية والتعامل مع فرق العمل عن بعد. أسعى دائماً للجودة والاحترافية في العمل.'
-    : 'أبحث دائماً عن محترفين لتنفيذ مشاريعي التقنية بدقة وجودة عالية. أقدر الالتزام بالوقت والتواصل الفعال.');
-  const [avatarUrl, setAvatarUrl] = useState('https://picsum.photos/200/200');
+  const [bio, setBio] = useState((user as any)?.bio || '');
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync displayName with user.display_name when user changes
+  // Sync displayName and bio with user data when user changes
   useEffect(() => {
     setDisplayName(user?.display_name || '');
-  }, [user?.display_name]);
+    setBio((user as any)?.bio || '');
+    setAvatarUrl(user?.avatar_url || '');
+  }, [user]);
 
   const handleSaveName = async () => {
     if (onUpdateProfile && displayName.trim()) {
@@ -77,8 +79,10 @@ export const Profile: React.FC<ProfileProps> = ({
     setIsEditingName(false);
   };
 
-  const handleSaveBio = () => {
-    // هنا يمكن إضافة حفظ التعريف في قاعدة البيانات
+  const handleSaveBio = async () => {
+    if (onUpdateProfile && bio.trim()) {
+      await onUpdateProfile({ bio: bio.trim() });
+    }
     setIsEditingBio(false);
   };
 
@@ -89,6 +93,8 @@ export const Profile: React.FC<ProfileProps> = ({
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // حفظ الملف للرفع لاحقاً
+      setSelectedAvatarFile(file);
       // معاينة الصورة
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -98,20 +104,40 @@ export const Profile: React.FC<ProfileProps> = ({
     }
   };
 
-  const handleSaveAvatar = () => {
-    if (avatarPreview) {
-      // هنا يمكن إضافة رفع الصورة إلى قاعدة البيانات/التخزين
-      setAvatarUrl(avatarPreview);
-      setAvatarPreview(null);
-      // إعادة تعيين input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+  const handleSaveAvatar = async () => {
+    if (avatarPreview && selectedAvatarFile && onUpdateProfile && user?.id) {
+      setIsUploadingAvatar(true);
+      try {
+        // رفع الصورة إلى Supabase Storage
+        const { uploadAvatar } = await import('../services/storageService');
+        const uploadedUrl = await uploadAvatar(selectedAvatarFile, user.id, avatarUrl);
+        
+        if (uploadedUrl) {
+          // حفظ URL في قاعدة البيانات
+          await onUpdateProfile({ avatar_url: uploadedUrl });
+          
+          // تحديث الـ state المحلي بعد الحفظ الناجح
+          setAvatarUrl(uploadedUrl);
+          setAvatarPreview(null);
+          setSelectedAvatarFile(null);
+          // إعادة تعيين input
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+        } else {
+          console.error('فشل رفع الصورة');
+        }
+      } catch (error) {
+        console.error('خطأ في حفظ الصورة:', error);
+      } finally {
+        setIsUploadingAvatar(false);
       }
     }
   };
 
   const handleCancelAvatar = () => {
     setAvatarPreview(null);
+    setSelectedAvatarFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -152,11 +178,17 @@ export const Profile: React.FC<ProfileProps> = ({
             
             <div className="relative w-24 h-24 md:w-32 md:h-32 shrink-0 z-10 group">
               <div className="w-full h-full rounded-full bg-secondary overflow-hidden border-4 border-background shadow-md">
-                <img 
-                  src={avatarPreview || avatarUrl} 
-                  alt="User" 
-                  className="w-full h-full object-cover" 
-                />
+                {avatarPreview || avatarUrl ? (
+                  <img 
+                    src={avatarPreview || avatarUrl} 
+                    alt="User" 
+                    className="w-full h-full object-cover" 
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/10">
+                    <User size={avatarUrl ? 40 : 32} className="text-primary/40" />
+                  </div>
+                )}
               </div>
               <input
                 ref={fileInputRef}
@@ -171,16 +203,22 @@ export const Profile: React.FC<ProfileProps> = ({
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
                     onClick={handleSaveAvatar}
-                    className="p-2 rounded-full bg-primary text-white hover:bg-primary/90 transition-colors"
+                    disabled={isUploadingAvatar}
+                    className="p-2 rounded-full bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="حفظ"
                   >
-                    <Check size={18} />
+                    {isUploadingAvatar ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <Check size={18} />
+                    )}
                   </motion.button>
                   <motion.button
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
                     onClick={handleCancelAvatar}
-                    className="p-2 rounded-full bg-secondary text-foreground hover:bg-secondary/80 transition-colors"
+                    disabled={isUploadingAvatar}
+                    className="p-2 rounded-full bg-secondary text-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="إلغاء"
                   >
                     <X size={18} />
@@ -191,7 +229,7 @@ export const Profile: React.FC<ProfileProps> = ({
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={handleAvatarClick}
-                  className="absolute bottom-0 right-0 p-2 rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 transition-colors opacity-0 group-hover:opacity-100"
+                  className="absolute bottom-0 right-0 p-2 rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 transition-colors"
                   title="تعديل الصورة"
                 >
                   <Camera size={16} />
@@ -288,10 +326,14 @@ export const Profile: React.FC<ProfileProps> = ({
                     )}
                   </div>
                   
-                  <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
-                    <Badge variant="outline"><Calendar size={12} className="ml-1"/> عضو منذ 2023</Badge>
-                    {profileRole === 'provider' && <Badge variant="success"><CheckCircle size={12} className="ml-1"/> هوية موثقة</Badge>}
-                  </div>
+                  {user?.created_at && (
+                    <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
+                      <Badge variant="outline">
+                        <Calendar size={12} className="ml-1"/>
+                        عضو منذ {new Date(user.created_at).getFullYear()}
+                      </Badge>
+                    </div>
+                  )}
                 </div>
               </div>
               
@@ -334,9 +376,7 @@ export const Profile: React.FC<ProfileProps> = ({
                         whileTap={{ scale: 0.95 }}
                         onClick={() => {
                           setIsEditingBio(false);
-                          setBio(profileRole === 'provider' 
-                            ? 'مهتم ببناء الحلول الرقمية المبتكرة. لدي خبرة واسعة في إدارة المشاريع التقنية والتعامل مع فرق العمل عن بعد. أسعى دائماً للجودة والاحترافية في العمل.'
-                            : 'أبحث دائماً عن محترفين لتنفيذ مشاريعي التقنية بدقة وجودة عالية. أقدر الالتزام بالوقت والتواصل الفعال.');
+                          setBio((user as any)?.bio || '');
                         }}
                         className="px-4 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors text-sm font-medium flex items-center gap-2"
                       >
@@ -376,30 +416,6 @@ export const Profile: React.FC<ProfileProps> = ({
                   )
                 )}
               </div>
-            </div>
-          </div>
-
-          {/* Stats Grid - Changes based on Role */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-card p-4 rounded-xl border border-border text-center hover:border-primary/50 transition-colors">
-              <Briefcase className="mx-auto mb-2 text-primary" />
-              <div className="font-bold text-xl">{profileRole === 'provider' ? '15' : '8'}</div>
-              <div className="text-xs text-muted-foreground">{profileRole === 'provider' ? 'مشاريع منفذة' : 'طلبات مكتملة'}</div>
-            </div>
-            <div className="bg-card p-4 rounded-xl border border-border text-center hover:border-primary/50 transition-colors">
-              <Award className="mx-auto mb-2 text-yellow-500" />
-              <div className="font-bold text-xl">98%</div>
-              <div className="text-xs text-muted-foreground">{profileRole === 'provider' ? 'نسبة إكمال' : 'معدل التوظيف'}</div>
-            </div>
-            <div className="bg-card p-4 rounded-xl border border-border text-center hover:border-primary/50 transition-colors">
-              <Clock className="mx-auto mb-2 text-primary" />
-              <div className="font-bold text-xl">سريع</div>
-              <div className="text-xs text-muted-foreground">{profileRole === 'provider' ? 'سرعة الرد' : 'سرعة الدفع'}</div>
-            </div>
-            <div className="bg-card p-4 rounded-xl border border-border text-center hover:border-primary/50 transition-colors">
-              <DollarSign className="mx-auto mb-2 text-primary" />
-              <div className="font-bold text-xl">50k+</div>
-              <div className="text-xs text-muted-foreground">قيمة التعاملات</div>
             </div>
           </div>
 

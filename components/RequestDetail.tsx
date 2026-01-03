@@ -1768,11 +1768,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                   size="sm"
                                   className="bg-primary/15 text-primary hover:bg-primary/25 border-transparent h-10 text-sm font-bold shadow-sm"
                                   onClick={async () => {
-                                    // Get provider user ID from offer (assuming it's stored)
-                                    // For now, we'll need to fetch it or pass it through props
-                                    if (onNavigateToMessages) {
-                                      onNavigateToMessages(undefined, undefined, request.id, offer.id);
-                                    }
+                                    const targetUserId = offer.providerId || request.author;
+                                    onNavigateToMessages?.(undefined, targetUserId, request.id, offer.id);
                                   }}
                                 >
                                   <MessageSquare size={18} className="ml-2" />

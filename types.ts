@@ -4,6 +4,7 @@ export interface Request {
   description: string;
   author: string;
   createdAt: Date;
+  updatedAt?: Date;
   status: 'active' | 'assigned' | 'completed' | 'archived';
   messages: Message[];
   offers: Offer[];

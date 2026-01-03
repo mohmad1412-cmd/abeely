@@ -187,8 +187,8 @@ export async function getOrCreateConversation(
       .from('conversations')
       .select('*')
       .or(`and(participant1_id.eq.${user.id},participant2_id.eq.${otherUserId}),and(participant1_id.eq.${otherUserId},participant2_id.eq.${user.id})`)
-      .eq('request_id', requestId || null)
-      .eq('offer_id', offerId || null)
+      .is('request_id', requestId ?? null)
+      .is('offer_id', offerId ?? null)
       .single();
 
     if (existing) {
@@ -339,6 +339,17 @@ export async function sendMessage(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
+    // Verify user is a participant in the conversation
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('participant1_id, participant2_id')
+      .eq('id', conversationId)
+      .single();
+    if (!conv || (conv.participant1_id !== user.id && conv.participant2_id !== user.id)) {
+      console.warn('User not allowed to send in this conversation');
+      return null;
+    }
+
     // Determine message type
     let messageType: Message['message_type'] = 'text';
     if (options?.audioUrl) {
@@ -454,6 +465,17 @@ export async function markMessagesAsRead(conversationId: string): Promise<boolea
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
+
+    // Verify user belongs to conversation
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('participant1_id, participant2_id')
+      .eq('id', conversationId)
+      .single();
+    if (!conv || (conv.participant1_id !== user.id && conv.participant2_id !== user.id)) {
+      console.warn('User not allowed to mark messages in this conversation');
+      return false;
+    }
 
     const { error } = await supabase
       .from('messages')
@@ -916,4 +938,3 @@ export function subscribeToUnreadCount(
     supabase.removeChannel(channel);
   };
 }
-

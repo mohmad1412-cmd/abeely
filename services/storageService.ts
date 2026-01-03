@@ -7,6 +7,7 @@ import { supabase } from "./supabaseClient";
 // Bucket names
 const OFFER_ATTACHMENTS_BUCKET = "offer-attachments";
 const REQUEST_ATTACHMENTS_BUCKET = "request-attachments";
+const AVATARS_BUCKET = "avatars";
 
 /**
  * Generates a unique file name for storage
@@ -176,6 +177,59 @@ export const validateFile = (file: File): { valid: boolean; error?: string } => 
   }
 
   return { valid: true };
+};
+
+/**
+ * Uploads user avatar image
+ * Deletes old avatar if exists
+ */
+export const uploadAvatar = async (
+  file: File,
+  userId: string,
+  oldAvatarUrl?: string | null
+): Promise<string | null> => {
+  try {
+    // Validate file
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      console.error('Avatar validation failed:', validation.error);
+      return null;
+    }
+
+    // Only allow images for avatars
+    if (!isImageFile(file)) {
+      console.error('Avatar must be an image');
+      return null;
+    }
+
+    // Delete old avatar if exists
+    if (oldAvatarUrl) {
+      try {
+        // Extract path from URL (remove domain and bucket prefix)
+        const urlParts = oldAvatarUrl.split('/');
+        const pathIndex = urlParts.findIndex(part => part === AVATARS_BUCKET);
+        if (pathIndex !== -1 && pathIndex < urlParts.length - 1) {
+          const oldPath = urlParts.slice(pathIndex + 1).join('/');
+          await deleteFile(AVATARS_BUCKET, oldPath);
+        }
+      } catch (err) {
+        console.warn('Failed to delete old avatar:', err);
+        // Continue anyway
+      }
+    }
+
+    // Upload new avatar
+    const result = await uploadFile(file, AVATARS_BUCKET, userId);
+    
+    if (result) {
+      return result.url;
+    }
+
+    return null;
+  } catch (err) {
+    console.error('Avatar upload failed:', err);
+    return null;
+  }
 };
 
 

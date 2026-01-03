@@ -279,7 +279,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                         </div>
                       ) : (
                         // لمسجل الدخول - صورة الملف الشخصي
-                        <div className="w-8 h-8 rounded-full bg-primary/10 border-2 border-primary/30 overflow-hidden flex items-center justify-center">
+                        <div className="relative w-8 h-8 rounded-full bg-primary/10 border-2 border-primary/30 overflow-hidden flex items-center justify-center">
                           {user?.avatar_url ? (
                             <img 
                               src={user.avatar_url} 
@@ -290,6 +290,14 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                             <span className="text-xs font-bold text-primary">
                               {user?.display_name?.charAt(0) || "م"}
                             </span>
+                          )}
+                          {/* نقطة إشعار حمراء على الأيقونة نفسها */}
+                          {needsProfileSetup && (
+                            <motion.div 
+                              className="absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-card shadow-md"
+                              animate={{ scale: [1, 1.2, 1] }}
+                              transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                            />
                           )}
                         </div>
                       )}
@@ -302,14 +310,6 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                         >
                           <ChevronUp size={10} strokeWidth={2.5} className="text-muted-foreground" />
                         </motion.div>
-                      )}
-                      {/* نقطة إشعار حمراء عندما يحتاج المستخدم لإكمال ملفه */}
-                      {!isGuest && needsProfileSetup && (
-                        <motion.div 
-                          className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-card shadow-md"
-                          animate={{ scale: [1, 1.2, 1] }}
-                          transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-                        />
                       )}
                     </motion.div>
 

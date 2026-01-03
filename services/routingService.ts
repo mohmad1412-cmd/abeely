@@ -141,9 +141,10 @@ export function getRoutePath(type: RouteType, params?: RouteParams): string {
 /**
  * تحليل الرابط الحالي واستخراج المعلومات
  */
-export function parseRoute(): ParsedRoute {
-  const path = window.location.pathname;
-  const hash = window.location.hash;
+export function parseRoute(customUrl?: string): ParsedRoute {
+  const url = customUrl ? new URL(customUrl, window.location.origin) : window.location;
+  const path = url.pathname;
+  const hash = url.hash || '';
   
   // تحليل المسار - /request/:id
   if (path.startsWith('/request/')) {
