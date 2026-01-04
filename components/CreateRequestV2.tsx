@@ -2901,7 +2901,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                     return next;
                   });
                   // عند الانتقال عن حقل الوصف، أعد توليد العنوان والتصنيفات
-                  if (description.trim().length >= 3) {
+                  // فقط إذا لم يعدّل المستخدم العنوان يدوياً
+                  if (description.trim().length >= 3 && !userEditedTitle) {
                     generateTitleFromDescription(true); // force regenerate
                   }
                 }}
@@ -3745,14 +3746,22 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   <span className="text-muted-foreground font-medium shrink-0">+966</span>
                   <input
                     type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={guestPhone}
                     onChange={(e) => {
-                      setGuestPhone(e.target.value);
-                      setGuestError(null);
+                      // السماح بـ 0 في البداية أو بدون
+                      const value = e.target.value.replace(/\D/g, '');
+                      // يقبل حتى 10 أرقام (مع 0) أو 9 (بدون 0)
+                      if (value.length <= 10) {
+                        setGuestPhone(value);
+                        setGuestError(null);
+                      }
                     }}
-                    placeholder="5XXXXXXXX"
+                    placeholder="0501234567"
                     className="flex-1 h-full bg-transparent text-base outline-none text-left"
                     dir="ltr"
+                    maxLength={10}
                     autoFocus
                   />
                 </div>

@@ -2631,14 +2631,22 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     <span className="text-muted-foreground font-medium shrink-0">+966</span>
                     <input
                       type="tel"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={guestOfferPhone}
                       onChange={(e) => {
-                        setGuestOfferPhone(e.target.value);
-                        setGuestOfferError(null);
+                        // السماح بـ 0 في البداية أو بدون
+                        const value = e.target.value.replace(/\D/g, '');
+                        // يقبل حتى 10 أرقام (مع 0) أو 9 (بدون 0)
+                        if (value.length <= 10) {
+                          setGuestOfferPhone(value);
+                          setGuestOfferError(null);
+                        }
                       }}
-                      placeholder="5XXXXXXXX"
+                      placeholder="0501234567"
                       className="flex-1 h-full bg-transparent text-base outline-none text-left"
                       dir="ltr"
+                      maxLength={10}
                       autoFocus
                     />
                   </div>

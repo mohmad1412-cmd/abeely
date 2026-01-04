@@ -1957,6 +1957,9 @@ const App: React.FC = () => {
     try {
       const userOnboardedKey = `abeely_onboarded_${userId}`;
 
+      // أولاً: تحقق من localStorage للتسريع (لكن لا نعتمد عليه فقط)
+      const localOnboarded = localStorage.getItem(userOnboardedKey);
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('interested_categories, interested_cities, display_name, has_onboarded')
@@ -1969,32 +1972,63 @@ const App: React.FC = () => {
         return true;
       }
 
+      // إذا لم يكن هناك بيانات للمستخدم، يحتاج onboarding
+      if (!data) {
+        console.log("🎯 No profile data found, showing onboarding...");
+        return true;
+      }
+
       const hasName = !!data?.display_name?.trim();
       const hasInterests = Array.isArray(data?.interested_categories) && data.interested_categories.length > 0;
       const hasCities = Array.isArray(data?.interested_cities) && data.interested_cities.length > 0;
       const alreadyOnboarded = data?.has_onboarded === true;
 
-      if ((hasName && (hasInterests || hasCities)) || alreadyOnboarded) {
+      // إذا كان المستخدم قد أكمل onboarding مسبقاً (في قاعدة البيانات)، لا نحتاج لإظهاره مرة أخرى
+      if (alreadyOnboarded) {
         localStorage.setItem(userOnboardedKey, 'true');
+        console.log("🎯 User already onboarded (DB flag), skipping onboarding");
+        return false;
+      }
+
+      // إذا كان المستخدم لديه اسم + (اهتمامات أو مدن)، يعتبر أنه أكمل onboarding
+      if (hasName && (hasInterests || hasCities)) {
+        localStorage.setItem(userOnboardedKey, 'true');
+        // تحديث قاعدة البيانات لإشارة has_onboarded
         try {
-          if (!alreadyOnboarded) {
-            await supabase.from('profiles').update({ has_onboarded: true }).eq('id', userId);
-          }
+          await supabase.from('profiles').update({ has_onboarded: true }).eq('id', userId);
         } catch (e) {
           console.log('Could not update has_onboarded column (might not exist)');
         }
+        console.log("🎯 User has completed onboarding data, skipping onboarding");
         return false;
       }
 
-      const localOnboarded = localStorage.getItem(userOnboardedKey);
-      if (localOnboarded === 'true' && (hasName || hasInterests || hasCities)) {
-        return false;
+      // إذا كان في localStorage أنه أكمل onboarding، لكن في قاعدة البيانات لا توجد بيانات كاملة
+      // نتحقق مرة أخرى من البيانات الفعلية
+      if (localOnboarded === 'true') {
+        // إذا كان لديه بيانات كاملة بالفعل، نصدق localStorage
+        if (hasName && (hasInterests || hasCities)) {
+          console.log("🎯 LocalStorage says onboarded and data confirms, skipping onboarding");
+          return false;
+        }
+        // إذا لم تكن البيانات كاملة، نتجاهل localStorage ونعرض onboarding
+        console.log("🎯 LocalStorage says onboarded but data incomplete, showing onboarding");
+        localStorage.removeItem(userOnboardedKey);
       }
 
-      console.log("🎯 User needs onboarding:", { userId, data });
+      // في جميع الحالات الأخرى، يحتاج المستخدم إلى onboarding
+      console.log("🎯 User needs onboarding:", { 
+        userId, 
+        hasName, 
+        hasInterests, 
+        hasCities, 
+        alreadyOnboarded,
+        data 
+      });
       return true;
     } catch (error) {
       console.error('Error in checkOnboardingStatus:', error);
+      // في حالة الخطأ، نعرض onboarding كإجراء احترازي
       return true;
     }
   };

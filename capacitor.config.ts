@@ -21,8 +21,8 @@ const config: CapacitorConfig = {
     // Universal Links configuration
     // ستحتاج إضافة apple-app-site-association في موقعك
   },
-  // فعّل Live Reload دائماً - احذف الشرط إذا أردت تفعيله دائماً
-  ...(liveReload || true  // ← غيّر true إلى false لإيقاف Live Reload
+  // فعّل Live Reload فقط عند الحاجة - للاختبار
+  ...(liveReload  // ← Live Reload يعمل فقط عند تعيين CAPACITOR_LIVE_RELOAD=true
     ? {
         server: {
           // استخدم IP جهازك للجوال، أو 10.0.2.2 للمحاكي
