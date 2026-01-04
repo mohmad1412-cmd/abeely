@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AVAILABLE_CATEGORIES } from '../data';
 import { UserPreferences } from '../types';
 import { UserProfile, sendOTP, verifyOTP } from '../services/authService';
+import { supabase } from '../services/supabaseClient';
 import { UnifiedHeader } from './ui/UnifiedHeader';
 
 interface SettingsProps {
@@ -354,8 +355,27 @@ export const Settings: React.FC<SettingsProps> = ({
                           autoFocus
                         />
                         <button
-                          onClick={() => {
-                            // TODO: Save email
+                          onClick={async () => {
+                            if (onUpdateProfile && editedEmail.trim() && editedEmail !== user?.email) {
+                              try {
+                                // تحديث البريد الإلكتروني في Supabase Auth
+                                const { error: authError } = await supabase.auth.updateUser({
+                                  email: editedEmail.trim()
+                                });
+                                
+                                if (authError) {
+                                  console.error('Error updating email:', authError);
+                                  alert('حدث خطأ أثناء تحديث البريد الإلكتروني: ' + authError.message);
+                                  return;
+                                }
+                                
+                                // تحديث في جدول profiles أيضاً
+                                await onUpdateProfile({ email: editedEmail.trim() });
+                              } catch (err: any) {
+                                console.error('Error updating email:', err);
+                                alert('حدث خطأ أثناء تحديث البريد الإلكتروني');
+                              }
+                            }
                             setIsEditingEmail(false);
                           }}
                           className="text-xs text-primary hover:underline"

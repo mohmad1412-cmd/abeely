@@ -4,6 +4,7 @@ import { Badge } from './ui/Badge';
 import { Calendar, Edit2, X, Check, Camera, User } from 'lucide-react';
 import { UnifiedHeader } from './ui/UnifiedHeader';
 import { motion, AnimatePresence } from 'framer-motion';
+import { uploadAvatar } from '../services/storageService';
 
 interface ProfileProps {
   userReviews: Review[];
@@ -80,8 +81,9 @@ export const Profile: React.FC<ProfileProps> = ({
   };
 
   const handleSaveBio = async () => {
-    if (onUpdateProfile && bio.trim()) {
-      await onUpdateProfile({ bio: bio.trim() });
+    if (onUpdateProfile) {
+      const trimmedBio = bio.trim();
+      await onUpdateProfile({ bio: trimmedBio.length ? trimmedBio : null });
     }
     setIsEditingBio(false);
   };
@@ -109,7 +111,6 @@ export const Profile: React.FC<ProfileProps> = ({
       setIsUploadingAvatar(true);
       try {
         // رفع الصورة إلى Supabase Storage
-        const { uploadAvatar } = await import('../services/storageService');
         const uploadedUrl = await uploadAvatar(selectedAvatarFile, user.id, avatarUrl);
         
         if (uploadedUrl) {

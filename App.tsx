@@ -4,7 +4,6 @@ import { Check, X } from "lucide-react";
 import { UnifiedHeader } from "./components/ui/UnifiedHeader";
 
 // Components
-import { ChatArea } from "./components/ChatArea";
 import { Marketplace } from "./components/Marketplace";
 import { RequestDetail } from "./components/RequestDetail";
 import { BottomNavigation, BottomNavTab } from "./components/BottomNavigation";
@@ -45,6 +44,7 @@ import {
 
 import {
   getTotalUnreadMessagesCount,
+  getOrCreateConversation,
   subscribeToUnreadCount,
 } from "./services/messagesService";
 
@@ -86,6 +86,7 @@ import {
   getCurrentUser,
   onAuthStateChange,
   signOut as authSignOut,
+  updateProfile,
   UserProfile,
 } from "./services/authService";
 import { FullScreenLoading } from "./components/ui/LoadingSkeleton";
@@ -270,10 +271,6 @@ const App: React.FC = () => {
     const saved = localStorage.getItem("abeely_requests_scroll");
     return saved ? parseInt(saved, 10) : 0;
   });
-  const [chatAreaScrollPos, setChatAreaScrollPos] = useState(() => {
-    const saved = localStorage.getItem("abeely_chatarea_scroll");
-    return saved ? parseInt(saved, 10) : 0;
-  });
   const [requestDetailScrollPos, setRequestDetailScrollPos] = useState(() => {
     const saved = localStorage.getItem("abeely_requestdetail_scroll");
     return saved ? parseInt(saved, 10) : 0;
@@ -295,12 +292,6 @@ const App: React.FC = () => {
     );
   }, [requestsModeScrollPos]);
 
-  useEffect(() => {
-    localStorage.setItem(
-      "abeely_chatarea_scroll",
-      chatAreaScrollPos.toString(),
-    );
-  }, [chatAreaScrollPos]);
 
   useEffect(() => {
     localStorage.setItem(
@@ -309,36 +300,7 @@ const App: React.FC = () => {
     );
   }, [requestDetailScrollPos]);
 
-  // ==========================================
-  // State Persistence for ChatArea
-  // ==========================================
-  // Load saved messages from localStorage on mount
-  const [savedChatMessages, setSavedChatMessages] = useState<any[]>(() => {
-    try {
-      const saved = localStorage.getItem("abeely_chat_messages");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Keep only last 50 messages to prevent localStorage overflow
-        return Array.isArray(parsed) ? parsed.slice(-50) : [];
-      }
-    } catch (e) {
-      console.error("Error loading chat messages:", e);
-    }
-    return [];
-  });
 
-  // Save messages to localStorage when they change
-  useEffect(() => {
-    if (savedChatMessages.length > 0) {
-      try {
-        // Keep only last 50 messages
-        const toSave = savedChatMessages.slice(-50);
-        localStorage.setItem("abeely_chat_messages", JSON.stringify(toSave));
-      } catch (e) {
-        console.error("Error saving chat messages:", e);
-      }
-    }
-  }, [savedChatMessages]);
 
   // ==========================================
   // State Persistence for RequestDetail
@@ -752,29 +714,57 @@ const App: React.FC = () => {
           setUser(profile);
         }
       } else if (event === "SIGNED_OUT" && isMounted) {
-        // التحقق إذا كان تسجيل خروج صريح أو بسبب فشل تجديد الـ token
+        // التحقق إذا كان تسجيل خروج صريح من المستخدم
         console.log("👋 Auth event: SIGNED_OUT");
         
-        // محاولة استعادة الجلسة إذا كان لدينا user مسجل دخول سابقاً
-        // هذا يمنع تسجيل الخروج بسبب أخطاء مؤقتة في تجديد الـ token
-        if (userRef.current && !sessionStorage.getItem('explicit_signout')) {
-          console.log("🔄 Attempting to recover session...");
+        // فقط نطبق SIGNED_OUT إذا كان هناك explicit_signout
+        // هذا يمنع تسجيل الخروج بسبب أخطاء مؤقتة في Supabase (مثل refresh token)
+        const isExplicitSignOut = sessionStorage.getItem('explicit_signout');
+        
+        if (!isExplicitSignOut) {
+          // ليس تسجيل خروج صريح - تحقق من وجود session فعلي
+          console.log("🔄 SIGNED_OUT event but no explicit signout, checking session...");
           try {
-            const { data: { session: recoveredSession } } = await supabase.auth.getSession();
-            if (recoveredSession?.user) {
-              console.log("✅ Session recovered successfully");
+            const { data: { session: currentSession } } = await supabase.auth.getSession();
+            if (currentSession?.user) {
+              console.log("✅ Session still exists, ignoring SIGNED_OUT event");
+              // الجلسة ما زالت موجودة - تجاهل الحدث
+              return;
+            }
+          } catch (e) {
+            console.error("Error checking session:", e);
+            // في حالة الخطأ، أيضاً نتجاهل الحدث (آمن أكثر)
+            return;
+          }
+
+          // محاولة تجديد الجلسة إذا لم تكن موجودة
+          try {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+            if (refreshError) {
+              const message = refreshError.message?.toLowerCase() || "";
+              if (message.includes("fetch") || message.includes("network")) {
+                console.warn("🌐 Network issue refreshing session, ignoring SIGNED_OUT");
+                return;
+              }
+              console.error("Error refreshing session:", refreshError);
+            }
+            if (refreshed?.session?.user) {
+              console.log("✅ Session refreshed, ignoring SIGNED_OUT event");
               const profile = await getCurrentUser();
               if (profile && isMounted) {
                 setUser(profile);
               }
-              return; // لا تسجل خروج
+              return;
             }
           } catch (e) {
-            console.error("Failed to recover session:", e);
+            console.error("Error attempting session refresh:", e);
+            return;
           }
         }
         
-        // تسجيل خروج فعلي
+        // تسجيل خروج فعلي (فقط إذا كان explicit أو لا يوجد session)
+        console.log("✅ Applying sign out");
         sessionStorage.removeItem('explicit_signout');
         setUser(null);
         setIsGuest(false);
@@ -1336,21 +1326,6 @@ const App: React.FC = () => {
 
             const matches = catMatch && cityMatch && radarMatch;
             
-            // Debug logging (يمكن حذفه لاحقاً)
-            if (!matches && (activeCategories.length > 0 || actualCities.length > 0 || radarWords.length > 0)) {
-              console.log('Request did not match interests:', {
-                title: req.title,
-                categories: req.categories,
-                location: req.location,
-                catMatch,
-                cityMatch,
-                radarMatch,
-                activeCategories,
-                actualCities,
-                radarWords
-              });
-            }
-            
             return matches;
           });
 
@@ -1652,13 +1627,10 @@ const App: React.FC = () => {
     // Update viewed requests immediately for optimistic UI
     // Backend will be updated by RequestDetail component via markRequestAsViewed
     // تحديث فوري للطلبات المشاهدة (للجميع - مسجلين وزوار)
-    console.log("📖 Opening request:", req.id, "| user:", user?.id, "| isGuest:", isGuest);
-    
     // تحديث viewedRequestIds دائماً (للتحديث الفوري)
     setViewedRequestIds((prev) => {
       const newSet = new Set(prev);
       newSet.add(req.id);
-      console.log("✅ Added to viewedRequestIds:", req.id, "| Total:", newSet.size);
       return newSet;
     });
     
@@ -1713,7 +1685,6 @@ const App: React.FC = () => {
     // إذا كان هناك رابط linkTo
     else if (notification.linkTo) {
       // يمكن معالجة الروابط المختلفة هنا
-      console.log('Navigate to:', notification.linkTo);
     }
   };
 
@@ -1879,6 +1850,7 @@ const App: React.FC = () => {
     setUser(null);
     setIsGuest(false);
     localStorage.removeItem("abeely_guest_mode");
+    localStorage.removeItem("abeely_pending_route");
     // إعادة تعيين الحالة للقيم الافتراضية لمنع بقاء آثار الجلسة السابقة
     setView("marketplace");
     setMode("offers");
@@ -1897,6 +1869,17 @@ const App: React.FC = () => {
     localStorage.removeItem("abeely_guest_mode");
     setAppView("auth");
   };
+
+  // ==========================================
+  // Require Auth Helper (preserve pending route)
+  // ==========================================
+  const requireAuthForCreate = useCallback(() => {
+    localStorage.setItem("abeely_pending_route", "create-request");
+    setIsGuest(false);
+    localStorage.removeItem("abeely_guest_mode");
+    setPreviousView(view);
+    setAppView("auth");
+  }, [view]);
 
   // ==========================================
   // Onboarding Complete Handler
@@ -1972,65 +1955,46 @@ const App: React.FC = () => {
   // ==========================================
   const checkOnboardingStatus = async (userId: string): Promise<boolean> => {
     try {
-      // التحقق من localStorage بناءً على userId المحدد (ليس عام)
       const userOnboardedKey = `abeely_onboarded_${userId}`;
-      const localOnboarded = localStorage.getItem(userOnboardedKey);
-      if (localOnboarded === 'true') {
-        return false; // لا يحتاج onboarding
-      }
 
-      // التحقق من قاعدة البيانات - بدون has_onboarded لتجنب الأخطاء إذا العمود غير موجود
       const { data, error } = await supabase
         .from('profiles')
-        .select('interested_categories, interested_cities, created_at, display_name')
+        .select('interested_categories, interested_cities, display_name, has_onboarded')
         .eq('id', userId)
         .single();
 
       if (error) {
         console.error('Error checking onboarding status:', error);
-        // في حالة الخطأ، نعرض الـ onboarding إذا كان المستخدم جديداً
-        // بدلاً من إخفائها
         console.log("🎯 Error fetching profile, showing onboarding to be safe...");
         return true;
       }
 
-      // إذا لديه اهتمامات محددة مسبقاً وعنده اسم، يعتبر أنه أكمل الـ onboarding
-      if (
-        data?.display_name &&
-        ((data?.interested_categories && data.interested_categories.length > 0) ||
-        (data?.interested_cities && data.interested_cities.length > 0))
-      ) {
+      const hasName = !!data?.display_name?.trim();
+      const hasInterests = Array.isArray(data?.interested_categories) && data.interested_categories.length > 0;
+      const hasCities = Array.isArray(data?.interested_cities) && data.interested_cities.length > 0;
+      const alreadyOnboarded = data?.has_onboarded === true;
+
+      if ((hasName && (hasInterests || hasCities)) || alreadyOnboarded) {
         localStorage.setItem(userOnboardedKey, 'true');
-        // محاولة تحديث قاعدة البيانات (تجاهل الخطأ إذا العمود غير موجود)
         try {
-          await supabase.from('profiles').update({ has_onboarded: true }).eq('id', userId);
+          if (!alreadyOnboarded) {
+            await supabase.from('profiles').update({ has_onboarded: true }).eq('id', userId);
+          }
         } catch (e) {
           console.log('Could not update has_onboarded column (might not exist)');
         }
         return false;
       }
 
-      // إذا تم إنشاء الحساب قبل أكثر من أسبوع، لا نعرض الـ onboarding (للحسابات القديمة جداً)
-      if (data?.created_at) {
-        const createdAt = new Date(data.created_at);
-        const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        if (createdAt < oneWeekAgo) {
-          localStorage.setItem(userOnboardedKey, 'true');
-          try {
-            await supabase.from('profiles').update({ has_onboarded: true }).eq('id', userId);
-          } catch (e) {
-            console.log('Could not update has_onboarded column (might not exist)');
-          }
-          return false;
-        }
+      const localOnboarded = localStorage.getItem(userOnboardedKey);
+      if (localOnboarded === 'true' && (hasName || hasInterests || hasCities)) {
+        return false;
       }
 
-      // المستخدم جديد ويحتاج الـ onboarding
       console.log("🎯 User needs onboarding:", { userId, data });
       return true;
     } catch (error) {
       console.error('Error in checkOnboardingStatus:', error);
-      // في حالة الخطأ العام، نعرض الـ onboarding للمستخدمين الجدد
       return true;
     }
   };
@@ -2052,6 +2016,7 @@ const App: React.FC = () => {
             onGoToMarketplace={() => {
               handleNavigate("marketplace");
             }}
+            onRequireAuth={requireAuthForCreate}
             onPublish={async (request, isEditing, editRequestId): Promise<string | null> => {
               try {
                 console.log(isEditing ? "Updating request:" : "Publishing request:", request);
@@ -2063,9 +2028,7 @@ const App: React.FC = () => {
                   currentUserId = currentUser?.id || null;
                 }
                 if (!currentUserId) {
-                  alert("يجب تسجيل الدخول لإرسال الطلب وحفظه ضمن طلباتك.");
-                  setIsGuest(false);
-                  setAppView("auth");
+                  requireAuthForCreate();
                   return null;
                 }
 
@@ -2089,34 +2052,20 @@ const App: React.FC = () => {
                   deliveryTime: request.deliveryTimeFrom,
                 };
                 
-                console.log("Draft data to be sent:", draftData);
-                
                 let resultId: string | null = null;
                 
                 // إذا كان تعديل، استخدم updateRequest
                 if (isEditing && editRequestId && currentUserId) {
-                  console.log("=== UPDATE MODE ===");
-                  console.log("isEditing:", isEditing);
-                  console.log("editRequestId:", editRequestId);
-                  console.log("userId:", currentUserId);
-                  console.log("draftData:", draftData);
                   const updatedRequest = await updateRequest(editRequestId, currentUserId, draftData);
                   if (updatedRequest) {
-                    console.log("Request updated successfully:", updatedRequest);
                     resultId = updatedRequest.id;
                   } else {
                     console.error("Failed to update request - updateRequest returned null");
                     return null;
                   }
                 } else {
-                  console.log("=== CREATE MODE ===");
-                  console.log("isEditing:", isEditing);
-                  console.log("editRequestId:", editRequestId);
-                  console.log("userId:", currentUserId);
-                  
                   // إنشاء طلب جديد
                   const createdRequest = await createRequestFromChat(currentUserId, draftData);
-                  console.log("Request created successfully:", createdRequest);
                   resultId = createdRequest?.id || null;
                 }
                 
@@ -2547,13 +2496,6 @@ const App: React.FC = () => {
                   requestId,
                   offerId,
                 ) => {
-                  const { getOrCreateConversation } = await import(
-                    "./services/messagesService"
-                  );
-                  const { getCurrentUser } = await import(
-                    "./services/authService"
-                  );
-
                   if (userId && requestId) {
                     const currentUser = await getCurrentUser();
                     if (currentUser) {
@@ -2600,9 +2542,6 @@ const App: React.FC = () => {
                 onArchiveRequest={handleArchiveRequest}
                 onEditRequest={(request) => {
                   // تعيين الطلب للتعديل
-                  console.log("=== EDIT REQUEST TRIGGERED ===");
-                  console.log("Request to edit:", request);
-                  console.log("Request ID:", request.id);
                   setRequestToEdit(request);
                 }}
                 onOfferCreated={async () => {
@@ -2643,8 +2582,6 @@ const App: React.FC = () => {
                 }}
                 onEditOffer={(offer) => {
                   // Navigate to edit offer mode
-                  console.log("=== EDIT OFFER TRIGGERED ===");
-                  console.log("Offer to edit:", offer);
                   // TODO: Implement offer editing UI
                   // For now, show a toast or alert
                   alert("ميزة تعديل العرض قيد التطوير");
@@ -2687,7 +2624,6 @@ const App: React.FC = () => {
               user={user}
               onUpdateProfile={async (updates) => {
                 if (user?.id) {
-                  const { updateProfile } = await import('./services/authService');
                   const result = await updateProfile(user.id, updates);
                   if (result.success) {
                     // إعادة جلب المستخدم لضمان تحديث جميع الحقول
@@ -2751,7 +2687,6 @@ const App: React.FC = () => {
               user={user}
               onUpdateProfile={async (updates) => {
                 if (user?.id) {
-                  const { updateProfile } = await import('./services/authService');
                   const result = await updateProfile(user.id, updates);
                   if (result.success) {
                     const fresh = await getCurrentUser();
@@ -2942,6 +2877,10 @@ const App: React.FC = () => {
               // Check for saved form data and navigate accordingly
               const savedRequestForm = localStorage.getItem('abeely_pending_request_form');
               const savedOfferForm = localStorage.getItem('abeely_pending_offer_form');
+              const pendingRoute = localStorage.getItem('abeely_pending_route');
+              if (pendingRoute) {
+                localStorage.removeItem('abeely_pending_route');
+              }
               
               if (savedRequestForm) {
                 // Navigate to create request page - data will be restored automatically
@@ -2955,6 +2894,12 @@ const App: React.FC = () => {
                 setMode("offers");
                 setSelectedRequest(null);
                 setPreviousView(null);
+                setAppView("main");
+              } else if (pendingRoute === 'create-request') {
+                setView("create-request");
+                setMode("requests");
+                setSelectedRequest(null);
+                setPreviousView("marketplace");
                 setAppView("main");
               } else {
                 // Normal navigation

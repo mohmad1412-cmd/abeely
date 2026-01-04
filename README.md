@@ -85,7 +85,6 @@ npm run preview
 ```
 ├── components/          # مكونات React
 │   ├── ui/             # مكونات واجهة المستخدم الأساسية
-│   ├── ChatArea.tsx    # منطقة المحادثة الذكية
 │   ├── Marketplace.tsx # سوق الطلبات
 │   ├── RequestDetail.tsx # تفاصيل الطلب
 │   ├── Sidebar.tsx     # الشريط الجانبي

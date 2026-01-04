@@ -4,6 +4,7 @@
 
 :root {
   --background: #ffffff;
+  --background-rgb: 255, 255, 255;
   --foreground: #18181b;
   --card: #fafafa;
   --card-foreground: #18181b;
@@ -22,6 +23,7 @@
 
 .dark {
   --background: #09090b;
+  --background-rgb: 9, 9, 11;
   --foreground: #fafafa;
   --card: #18181b;
   --card-foreground: #fafafa;

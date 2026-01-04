@@ -19,6 +19,7 @@ CREATE TABLE profiles (
   phone TEXT,
   email TEXT,
   display_name TEXT,
+  bio TEXT,
   avatar_url TEXT,
   role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'provider', 'admin')),
   is_guest BOOLEAN NOT NULL DEFAULT FALSE,

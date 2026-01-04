@@ -362,6 +362,7 @@ interface CreateRequestV2Props {
   onPublish: (request: Partial<Request>, isEditing?: boolean, requestId?: string) => Promise<string | null>; // Returns request ID on success
   onGoToRequest?: (requestId: string) => void; // Navigate to created request
   onGoToMarketplace?: () => void; // Navigate back to marketplace
+  onRequireAuth?: () => void;
   // Request to edit (if editing existing request)
   requestToEdit?: Request | null;
   onClearRequestToEdit?: () => void; // Clear after editing is done
@@ -927,6 +928,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   onPublish,
   onGoToRequest,
   onGoToMarketplace,
+  onRequireAuth,
   requestToEdit,
   onClearRequestToEdit,
   mode,
@@ -1150,6 +1152,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       const newLocation = requestToEdit.location || "";
       
       setTitle(newTitle);
+      setUserEditedTitle(false);
+      setIsTitleUnclear(false);
+      setShowManualTitle(false);
       setDescription(newDescription);
       setLocation(newLocation);
       
@@ -1236,6 +1241,13 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const [titleShake, setTitleShake] = useState(false);
   const [isTitleUnclear, setIsTitleUnclear] = useState(false);
 
+  useEffect(() => {
+    if (!title.trim()) {
+      setUserEditedTitle(false);
+      setIsTitleUnclear(false);
+    }
+  }, [title]);
+
   // Check AI connection on mount - نفترض دائماً أن AI متصل (سواء Edge Function أو مباشر)
   // العنوان سيتم توليده تلقائياً من الوصف إذا لم يكن موجوداً
   useEffect(() => {
@@ -1304,7 +1316,12 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       const formData = JSON.parse(savedData);
       
       // Restore basic fields
-      if (formData.title) setTitle(formData.title);
+      if (formData.title) {
+        setTitle(formData.title);
+        setUserEditedTitle(true);
+        setIsTitleUnclear(false);
+        hasGeneratedTitleRef.current = true;
+      }
       if (formData.description) setDescription(formData.description);
       if (formData.location) setLocation(formData.location);
       if (formData.budgetMin) setBudgetMin(formData.budgetMin);
@@ -1511,6 +1528,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // حالة تعديل العنوان
   const [isTitleEditable, setIsTitleEditable] = useState(false);
   const hasGeneratedTitleRef = useRef(false);
+  const [userEditedTitle, setUserEditedTitle] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   // Refs for field positions
   const descriptionFieldRef = useRef<HTMLDivElement>(null);
@@ -1533,6 +1552,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const generateTitleFromDescription = useCallback(async (forceRegenerate: boolean = false) => {
     // Skip if already generating
     if (isGeneratingTitle) return;
+    // Respect manual edits - don't override a user-approved title
+    if (userEditedTitle) return;
     // Skip if already generated (unless forcing regeneration)
     if (hasGeneratedTitleRef.current && !forceRegenerate) return;
     // Skip if description is too short
@@ -1600,6 +1621,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             // إظهار قسم "اقترح تصنيفاً" عند عدم وضوح العنوان
             setShowAdditionalFields(true);
             setSuggestedCategory("");
+            // التركيز التلقائي على حقل العنوان بعد تأخير قصير
+            setTimeout(() => {
+              titleInputRef.current?.focus();
+            }, 100);
           } else {
             setIsTitleUnclear(false);
             setTitle(draft.title);
@@ -1608,6 +1633,24 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         } else {
           // Fallback: استخراج العنوان من أول جملة
           const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
+          
+          // إذا كان الوصف فارغاً أو غير واضح تماماً، نعرض حقل العنوان اليدوي مباشرة
+          if (!firstSentence || firstSentence.length < 3) {
+            setIsTitleUnclear(true);
+            setTitle("");
+            setShowManualTitle(true);
+            setTitleShake(true);
+            setTimeout(() => setTitleShake(false), 1000);
+            setShowAdditionalFields(true);
+            setSuggestedCategory("");
+            // التركيز التلقائي على حقل العنوان بعد تأخير قصير
+            setTimeout(() => {
+              titleInputRef.current?.focus();
+            }, 100);
+            setIsGeneratingTitle(false);
+            return;
+          }
+          
           const generatedTitle = firstSentence.length > 50 
             ? firstSentence.slice(0, 47) + "..." 
             : firstSentence;
@@ -1655,6 +1698,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             // إظهار قسم "اقترح تصنيفاً" عند عدم وضوح العنوان
             setShowAdditionalFields(true);
             setSuggestedCategory("");
+            // التركيز التلقائي على حقل العنوان بعد تأخير قصير
+            setTimeout(() => {
+              titleInputRef.current?.focus();
+            }, 100);
           } else {
             setIsTitleUnclear(false);
             setTitle(generatedTitle);
@@ -1686,6 +1733,24 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       } else {
         // Fallback: استخراج العنوان محلياً
         const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
+        
+        // إذا كان الوصف فارغاً أو غير واضح تماماً، نعرض حقل العنوان اليدوي مباشرة
+        if (!firstSentence || firstSentence.length < 3) {
+          setIsTitleUnclear(true);
+          setTitle("");
+          setShowManualTitle(true);
+          setTitleShake(true);
+          setTimeout(() => setTitleShake(false), 1000);
+          setShowAdditionalFields(true);
+          setSuggestedCategory("");
+          // التركيز التلقائي على حقل العنوان بعد تأخير قصير
+          setTimeout(() => {
+            titleInputRef.current?.focus();
+          }, 100);
+          setIsGeneratingTitle(false);
+          return;
+        }
+        
         const generatedTitle = firstSentence.length > 50 
           ? firstSentence.slice(0, 47) + "..." 
           : firstSentence;
@@ -1733,6 +1798,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           // إظهار قسم "اقترح تصنيفاً" عند عدم وضوح العنوان
           setShowAdditionalFields(true);
           setSuggestedCategory("");
+          // التركيز التلقائي على حقل العنوان بعد تأخير قصير
+          setTimeout(() => {
+            titleInputRef.current?.focus();
+          }, 100);
         } else {
           setIsTitleUnclear(false);
           setTitle(generatedTitle);
@@ -1744,6 +1813,24 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       // Fallback: استخراج العنوان محلياً
       const desc = description.trim();
       const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
+      
+      // إذا كان الوصف فارغاً أو غير واضح تماماً، نعرض حقل العنوان اليدوي مباشرة
+      if (!firstSentence || firstSentence.length < 3) {
+        setIsTitleUnclear(true);
+        setTitle("");
+        setShowManualTitle(true);
+        setTitleShake(true);
+        setTimeout(() => setTitleShake(false), 1000);
+        setShowAdditionalFields(true);
+        setSuggestedCategory("");
+        // التركيز التلقائي على حقل العنوان بعد تأخير قصير
+        setTimeout(() => {
+          titleInputRef.current?.focus();
+        }, 100);
+        setIsGeneratingTitle(false);
+        return;
+      }
+      
       const generatedTitle = firstSentence.length > 50 
         ? firstSentence.slice(0, 47) + "..." 
         : firstSentence;
@@ -1791,6 +1878,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         // إظهار قسم "اقترح تصنيفاً" عند عدم وضوح العنوان
         setShowAdditionalFields(true);
         setSuggestedCategory("");
+        // التركيز التلقائي على حقل العنوان بعد تأخير قصير
+        setTimeout(() => {
+          titleInputRef.current?.focus();
+        }, 100);
       } else {
         setIsTitleUnclear(false);
         setTitle(generatedTitle);
@@ -1799,7 +1890,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     } finally {
       setIsGeneratingTitle(false);
     }
-  }, [description, isGeneratingTitle]);
+  }, [description, isGeneratingTitle, userEditedTitle]);
 
   // إعادة تعيين حالة التوليد إذا تم مسح الوصف
   useEffect(() => {
@@ -1807,6 +1898,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       hasGeneratedTitleRef.current = false;
       setShowTitle(false);
       setTitle('');
+      setUserEditedTitle(false);
+      setIsTitleUnclear(false);
     }
   }, [description]);
 
@@ -2142,6 +2235,12 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     if (!currentUserId) {
       const currentUser = await getCurrentUser();
       currentUserId = currentUser?.id || null;
+    }
+
+    if (!currentUserId) {
+      saveFormDataForGuest();
+      onRequireAuth?.();
+      return null;
     }
     
     // Extract budget values - use direct state values first, then additionalFields
@@ -2621,7 +2720,12 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                     <input
                       type="text"
                       value={title}
-                      onChange={(e) => setTitle(e.target.value)}
+                      onChange={(e) => {
+                      setTitle(e.target.value);
+                      setUserEditedTitle(true);
+                      setIsTitleUnclear(false);
+                      setShowManualTitle(false);
+                    }}
                       placeholder="اكتب عنواناً واضحاً لطلبك..."
                       className="flex-1 px-3 py-2 text-sm rounded-xl border-2 border-primary/50 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary  w-full max-w-full"
                       autoFocus
@@ -2677,56 +2781,14 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                     )}
                   </div>
                   <input
+                    ref={titleInputRef}
                     type="text"
                     value={title}
                     onChange={(e) => {
                       setTitle(e.target.value);
-                      // دالة للتحقق من وضوح النص
-                      const isTextUnclear = (text: string): boolean => {
-                        if (!text || text.trim().length < 5) return true;
-                        
-                        const textLower = text.toLowerCase();
-                        const unclearKeywords = [
-                          'غير واضح', 'غير مفهوم', 'unclear', 'not clear', 
-                          'غير محدد', 'غير معروف', '؟؟؟', '???',
-                          'غير متأكد', 'لا أعرف', 'لا أدري'
-                        ];
-                        
-                        if (unclearKeywords.some(keyword => textLower.includes(keyword))) return true;
-                        
-                        const hasRepeatedChars = /(.)\1{3,}/.test(text);
-                        if (hasRepeatedChars) return true;
-                        
-                        const arabicChars = /[\u0600-\u06FF]/g;
-                        const englishChars = /[a-zA-Z]/g;
-                        const arabicCount = (text.match(arabicChars) || []).length;
-                        const englishCount = (text.match(englishChars) || []).length;
-                        const validCharsRatio = (arabicCount + englishCount) / text.length;
-                        
-                        if (validCharsRatio < 0.5 && text.length > 10) return true;
-                        
-                        if (text.length > 15 && !text.includes(' ') && !text.includes('،') && !text.includes(',')) {
-                          return true;
-                        }
-                        
-                        return false;
-                      };
-                      
-                      // إذا بدأ المستخدم بالكتابة، تحقق من الوضوح
-                      if (isTitleUnclear && e.target.value.trim().length > 5) {
-                        const stillUnclear = isTextUnclear(e.target.value);
-                        if (!stillUnclear) {
-                          setIsTitleUnclear(false);
-                        }
-                      } else if (!isTitleUnclear && e.target.value.trim().length > 5) {
-                        // التحقق من أن العنوان لا يصبح غير واضح عند التعديل
-                        const becomesUnclear = isTextUnclear(e.target.value);
-                        if (becomesUnclear) {
-                          setIsTitleUnclear(true);
-                          setShowAdditionalFields(true);
-                          setSuggestedCategory("");
-                        }
-                      }
+                      setUserEditedTitle(true);
+                      setIsTitleUnclear(false);
+                      setShowManualTitle(false);
                     }}
                     placeholder="اكتب عنواناً واضحاً لطلبك..."
                     className={`w-full px-3 py-2 text-sm rounded-xl border-2 transition-all duration-300 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none ${
@@ -3431,7 +3493,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                     <div className="space-y-3">
                       <div className="p-4 rounded-xl bg-muted/50 border border-border">
                         <p className="text-sm text-foreground mb-3">
-                          سيتم تصنيف هذا الطلب في <span className="font-semibold text-primary">(أخرى)</span>
+                          �� ���� ����� ����� ���. ����� ������� ������ (�������).
                         </p>
                         <div className="space-y-2">
                           <label className="text-xs font-medium text-muted-foreground block">
@@ -3954,4 +4016,3 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
 };
 
 export default CreateRequestV2;
-

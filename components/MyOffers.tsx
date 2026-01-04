@@ -203,12 +203,19 @@ export const MyOffers: React.FC<MyOffersProps> = ({
             top: '-50px',
             height: 'calc(100% + 100px)',
             background: `linear-gradient(to bottom,
-              hsl(var(--background)) 0%,
-              hsl(var(--background)) 60%,
-              hsl(var(--background) / 0.8) 75%,
-              hsl(var(--background) / 0) 100%
+              rgba(var(--background-rgb), 1) 0%,
+              rgba(var(--background-rgb), 1) 60%,
+              rgba(var(--background-rgb), 0.8) 75%,
+              rgba(var(--background-rgb), 0) 100%
             )`,
             zIndex: -1,
+          }}
+        />
+        {/* Gradient separator between filters and cards */}
+        <div
+          className="absolute left-0 right-0 bottom-0 h-16 pointer-events-none"
+          style={{
+            background: 'linear-gradient(to bottom, rgba(var(--background-rgb), 0), rgba(var(--background-rgb), 0.6), rgba(var(--background-rgb), 1))',
           }}
         />
         {/* Container for header and filter island - fixed compact size */}
@@ -433,4 +440,3 @@ export const MyOffers: React.FC<MyOffersProps> = ({
     </div>
   );
 };
-

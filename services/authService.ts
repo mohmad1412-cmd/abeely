@@ -294,7 +294,6 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
 export async function signOut() {
   await supabase.auth.signOut();
   localStorage.removeItem('abeely_guest_mode');
-  window.location.href = '/';
 }
 
 export function onAuthStateChange(callback: (event: string, session: any) => void) {

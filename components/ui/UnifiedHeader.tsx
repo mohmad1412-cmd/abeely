@@ -750,9 +750,10 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
               {showTitleEditButton && onTitleEdit && (
                 <button
                   onClick={onTitleEdit}
-                  className="shrink-0 p-1.5 rounded-lg hover:bg-primary/10 transition-colors"
+                  className="shrink-0 flex items-center gap-1.5 px-1.5 py-1.5 rounded-lg hover:bg-primary/10 transition-colors"
                 >
                   <FileEdit size={18} className="text-primary" />
+                  <span className="text-xs text-primary font-medium">تعديل</span>
                 </button>
               )}
               {/* Three-dot menu in scrolled title */}
@@ -1268,7 +1269,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           <div 
             className="absolute inset-x-0 top-0 h-32 pointer-events-none z-0"
             style={{
-              background: 'linear-gradient(to bottom, hsl(var(--background)) 0%, hsl(var(--background) / 0.95) 25%, hsl(var(--background) / 0.7) 50%, hsl(var(--background) / 0.3) 75%, transparent 100%)'
+              background: 'linear-gradient(to bottom, rgba(var(--background-rgb), 1) 0%, rgba(var(--background-rgb), 0.95) 25%, rgba(var(--background-rgb), 0.7) 50%, rgba(var(--background-rgb), 0.35) 75%, rgba(var(--background-rgb), 0.12) 100%)'
             }}
           />
         )}
@@ -1287,4 +1288,3 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
     </>
   );
 };
-

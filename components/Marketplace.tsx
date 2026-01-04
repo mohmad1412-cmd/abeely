@@ -986,7 +986,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            background: 'hsl(var(--background))',
+            background: 'rgba(var(--background-rgb), 1)',
+          }}
+        />
+        {/* Gradient separator between filters and cards */}
+        <div
+          className="absolute left-0 right-0 bottom-0 h-16 pointer-events-none"
+          style={{
+            background: 'linear-gradient(to bottom, rgba(var(--background-rgb), 0), rgba(var(--background-rgb), 0.6), rgba(var(--background-rgb), 1))',
           }}
         />
         {/* Container for both header and tabs - fixed compact size */}
