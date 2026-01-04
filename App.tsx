@@ -208,6 +208,7 @@ const App: React.FC = () => {
   // ==========================================
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [requestToEdit, setRequestToEdit] = useState<Request | null>(null); // الطلب المراد تعديله
+  const [offerToEdit, setOfferToEdit] = useState<{ offer: Offer; request: Request } | null>(null); // العرض المراد تعديله مع الطلب المرتبط
   const [scrollToOfferSection, setScrollToOfferSection] = useState(false);
   const [navigatedFromSidebar, setNavigatedFromSidebar] = useState(false); // لتتبع مصدر التنقل
   const [highlightOfferId, setHighlightOfferId] = useState<string | null>(null); // لتمييز العرض عند النقر على إشعار
@@ -2504,19 +2505,26 @@ const App: React.FC = () => {
         } : null;
         const handleRequestDetailBack = () => {
           setSelectedRequest(null);
+          setOfferToEdit(null);
           setScrollToOfferSection(false);
           setNavigatedFromSidebar(false);
           // الرجوع دائماً للماركت بليس
           setView("marketplace");
           // Marketplace will restore scroll position via savedScrollPosition prop
         };
+        
+        // إذا كان هناك عرض للتعديل والطلب المحدد يطابقه، نستخدم العرض المحدد
+        const offerForEdit = offerToEdit && offerToEdit.request.id === enrichedRequest.id 
+          ? offerToEdit.offer 
+          : getMyOfferOnRequest(enrichedRequest.id);
+        
         return enrichedRequest
           ? (
             <SwipeBackWrapper onBack={handleRequestDetailBack} className="h-full flex flex-col overflow-hidden">
               <RequestDetail
                 request={enrichedRequest}
                 mode={mode}
-                myOffer={getMyOfferOnRequest(enrichedRequest.id)}
+                myOffer={offerForEdit}
                 onBack={handleRequestDetailBack}
                 isGuest={isGuest}
                 scrollToOfferSection={scrollToOfferSection}
@@ -2549,7 +2557,20 @@ const App: React.FC = () => {
                     setView("messages");
                   }
                 }}
-                savedOfferForm={savedOfferForms[selectedRequest.id]}
+                savedOfferForm={
+                  // إذا كان هناك عرض للتعديل والطلب المحدد يطابقه، نملأ النموذج بقيم العرض
+                  offerToEdit && offerToEdit.request.id === enrichedRequest.id
+                    ? {
+                        price: offerToEdit.offer.price || '',
+                        duration: offerToEdit.offer.duration || '',
+                        city: offerToEdit.offer.city || '',
+                        title: offerToEdit.offer.title || '',
+                        description: offerToEdit.offer.description || '',
+                        attachments: offerToEdit.offer.attachments || [],
+                        guestVerificationStep: 'none' as const,
+                      }
+                    : savedOfferForms[selectedRequest.id]
+                }
                 onOfferFormChange={(form) => {
                   setSavedOfferForms((prev) => ({
                     ...prev,
@@ -2616,9 +2637,19 @@ const App: React.FC = () => {
                 }}
                 onEditOffer={(offer) => {
                   // Navigate to edit offer mode
-                  // TODO: Implement offer editing UI
-                  // For now, show a toast or alert
-                  alert("ميزة تعديل العرض قيد التطوير");
+                  // البحث عن الطلب المرتبط بهذا العرض
+                  const relatedRequest = allRequests.find(r => r.id === offer.requestId);
+                  if (relatedRequest) {
+                    // تحديد العرض والطلب المراد تعديلهما
+                    setOfferToEdit({ offer, request: relatedRequest });
+                    // فتح صفحة تفاصيل الطلب مع تمييز العرض للتعديل
+                    setSelectedRequest(relatedRequest);
+                    setScrollToOfferSection(true);
+                    // سيتم فتح RequestDetail تلقائياً عند تغيير selectedRequest
+                  } else {
+                    console.error("Request not found for offer:", offer);
+                    alert("حدث خطأ: لم يتم العثور على الطلب المرتبط بالعرض");
+                  }
                 }}
               />
             </SwipeBackWrapper>

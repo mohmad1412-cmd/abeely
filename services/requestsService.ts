@@ -702,6 +702,70 @@ export async function migrateUserDraftRequests(userId: string): Promise<number> 
 }
 
 /**
+ * Updates an existing offer
+ */
+export interface UpdateOfferInput {
+  offerId: string;
+  providerId: string;
+  title?: string;
+  description?: string;
+  price?: string;
+  deliveryTime?: string;
+  location?: string;
+  isNegotiable?: boolean;
+  images?: string[]; // URLs of uploaded images
+}
+
+export async function updateOffer(input: UpdateOfferInput): Promise<boolean> {
+  console.log("=== updateOffer called ===");
+  console.log("Input:", {
+    offerId: input.offerId,
+    providerId: input.providerId,
+    title: input.title,
+    price: input.price,
+    hasImages: input.images?.length || 0
+  });
+  
+  const updateData: any = {
+    updated_at: new Date().toISOString(),
+  };
+  
+  if (input.title !== undefined) updateData.title = input.title;
+  if (input.description !== undefined) updateData.description = input.description || "";
+  if (input.price !== undefined) updateData.price = input.price;
+  if (input.deliveryTime !== undefined) updateData.delivery_time = input.deliveryTime;
+  if (input.location !== undefined) updateData.location = input.location;
+  if (input.isNegotiable !== undefined) updateData.is_negotiable = input.isNegotiable;
+  if (input.images !== undefined) updateData.images = input.images || [];
+  
+  try {
+    console.log("Update payload:", updateData);
+    
+    const { error } = await supabase
+      .from("offers")
+      .update(updateData)
+      .eq("id", input.offerId)
+      .eq("provider_id", input.providerId); // Security: only the owner can update
+
+    if (error) {
+      console.error("❌ Update offer error:", {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+      throw error;
+    }
+
+    console.log("✅ Offer updated successfully");
+    return true;
+  } catch (err: any) {
+    console.error("❌ Error updating offer:", err);
+    throw err;
+  }
+}
+
+/**
  * Archive a request
  */
 export async function archiveRequest(requestId: string, userId: string): Promise<boolean> {
