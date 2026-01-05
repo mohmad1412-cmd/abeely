@@ -10,7 +10,11 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ||
                           Deno.env.get("VITE_ANTHROPIC_API_KEY") || "";
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") || 
                        Deno.env.get("VITE_OPENAI_API_KEY") || "";
-const MODEL = "claude-sonnet-4-20250514";
+const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
+const OPENAI_MODEL = "gpt-4o";
+
+// Counter for round-robin selection
+let requestCounter = 0;
 
 // Supabase client
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
@@ -30,8 +34,6 @@ interface Category {
 interface CustomerServiceRequest {
   // Input
   text?: string;
-  audioBase64?: string; // Base64 encoded audio for Whisper
-  audioMimeType?: string; // e.g., "audio/webm", "audio/mp3"
   sessionId?: string;
   previousAnswers?: Record<string, string>; // Answers to clarification questions
 }
@@ -132,55 +134,121 @@ function findCategoryByLabel(categories: Category[], label: string): Category | 
 }
 
 // ============================================
-// Whisper API - Speech to Text
+// Unified AI Provider (Anthropic or OpenAI)
 // ============================================
-async function transcribeAudio(audioBase64: string, mimeType: string = "audio/webm"): Promise<string> {
-  if (!OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY not configured for Whisper");
-  }
-
-  // Convert base64 to binary
-  const binaryString = atob(audioBase64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
-  // Determine file extension from MIME type
-  const extensions: Record<string, string> = {
-    "audio/webm": "webm",
-    "audio/mp3": "mp3",
-    "audio/mpeg": "mp3",
-    "audio/wav": "wav",
-    "audio/ogg": "ogg",
-    "audio/m4a": "m4a",
-  };
-  const ext = extensions[mimeType] || "webm";
-
-  // Create FormData with the audio file
-  const formData = new FormData();
-  const blob = new Blob([bytes], { type: mimeType });
-  formData.append("file", blob, `audio.${ext}`);
-  formData.append("model", "whisper-1");
-  formData.append("language", "ar"); // Default to Arabic, Whisper auto-detects if needed
-  formData.append("response_format", "json");
-
-  const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+async function callAnthropic(systemPrompt: string, messages: any[]): Promise<string> {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
     },
-    body: formData,
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: messages,
+    }),
   });
 
   if (!response.ok) {
     const error = await response.json();
-    console.error("Whisper API Error:", error);
-    throw new Error(error?.error?.message || "Whisper transcription failed");
+    console.error("Anthropic API Error:", error);
+    throw new Error(error?.error?.message || "Anthropic API call failed");
   }
 
   const result = await response.json();
-  return result.text || "";
+  return result.content?.[0]?.text || "";
+}
+
+async function callOpenAI(systemPrompt: string, messages: any[]): Promise<string> {
+  // Convert messages to OpenAI format (include system in messages array)
+  const openAIMessages: any[] = [
+    { role: "system", content: systemPrompt },
+    ...messages.map(msg => ({
+      role: msg.role === "assistant" ? "assistant" : "user",
+      content: msg.content
+    }))
+  ];
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      messages: openAIMessages,
+      max_tokens: 4096,
+      temperature: 0.7,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    console.error("OpenAI API Error:", error);
+    throw new Error(error?.error?.message || "OpenAI API call failed");
+  }
+
+  const result = await response.json();
+  return result.choices?.[0]?.message?.content || "";
+}
+
+async function callAIUnified(systemPrompt: string, messages: any[]): Promise<{ text: string; provider: string; model: string }> {
+  // Round-robin: alternate between providers
+  requestCounter++;
+  const hasAnthropic = !!ANTHROPIC_API_KEY;
+  const hasOpenAI = !!OPENAI_API_KEY;
+  
+  if (!hasAnthropic && !hasOpenAI) {
+    throw new Error("No AI provider configured. Please set ANTHROPIC_API_KEY or OPENAI_API_KEY");
+  }
+  
+  let targetProvider: "anthropic" | "openai";
+  if (!hasAnthropic) {
+    targetProvider = "openai";
+  } else if (!hasOpenAI) {
+    targetProvider = "anthropic";
+  } else {
+    // Both available - use round-robin
+    targetProvider = (requestCounter % 2 === 0) ? "openai" : "anthropic";
+  }
+
+  // Try the target provider, fallback to the other if it fails
+  try {
+    if (targetProvider === "anthropic") {
+      const text = await callAnthropic(systemPrompt, messages);
+      return { text, provider: "anthropic", model: ANTHROPIC_MODEL };
+    } else {
+      const text = await callOpenAI(systemPrompt, messages);
+      return { text, provider: "openai", model: OPENAI_MODEL };
+    }
+  } catch (error) {
+    console.warn(`⚠️ ${targetProvider} failed, trying fallback...`, error);
+    
+    // Fallback to the other provider
+    const fallbackProvider = targetProvider === "anthropic" ? "openai" : "anthropic";
+    
+    if (fallbackProvider === "anthropic" && ANTHROPIC_API_KEY) {
+      try {
+        const text = await callAnthropic(systemPrompt, messages);
+        return { text, provider: "anthropic", model: ANTHROPIC_MODEL };
+      } catch (fallbackError) {
+        throw new Error(`Both providers failed. Last error: ${fallbackError.message}`);
+      }
+    } else if (fallbackProvider === "openai" && OPENAI_API_KEY) {
+      try {
+        const text = await callOpenAI(systemPrompt, messages);
+        return { text, provider: "openai", model: OPENAI_MODEL };
+      } catch (fallbackError) {
+        throw new Error(`Both providers failed. Last error: ${fallbackError.message}`);
+      }
+    }
+    
+    throw error;
+  }
 }
 
 // ============================================
@@ -222,7 +290,7 @@ You are the Operational Brain of Abeely (أبيلي), a smart mediator marketpla
 ## User Journey Logic
 
 ### 1. Background Synthesis
-You may receive one or multiple inputs (text, voice transcription, or follow-up answers). Synthesize them into a single coherent intent.
+You may receive one or multiple inputs (text or follow-up answers). Synthesize them into a single coherent intent.
 
 ### 2. Clarity Assessment
 - **If the request is clear:** Set \`clarification_needed\` to \`false\` and proceed directly to \`final_review\`
@@ -290,13 +358,9 @@ You MUST output ONLY valid JSON in this exact format:
 }
 
 // ============================================
-// Call Claude API
+// Call AI (Anthropic or OpenAI)
 // ============================================
-async function callClaude(systemPrompt: string, userMessage: string, previousContext?: string): Promise<AIResponse> {
-  if (!ANTHROPIC_API_KEY) {
-    throw new Error("ANTHROPIC_API_KEY not configured");
-  }
-
+async function callAI(systemPrompt: string, userMessage: string, previousContext?: string): Promise<AIResponse> {
   const messages: any[] = [];
   
   // Add previous context if exists
@@ -317,33 +381,13 @@ async function callClaude(systemPrompt: string, userMessage: string, previousCon
     content: userMessage
   });
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: messages,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    console.error("Claude API Error:", error);
-    throw new Error(error?.error?.message || "Claude API call failed");
-  }
-
-  const result = await response.json();
-  const textContent = result.content?.[0]?.text;
+  const { text: textContent, provider, model } = await callAIUnified(systemPrompt, messages);
 
   if (!textContent) {
-    throw new Error("No response from Claude");
+    throw new Error(`No response from ${provider}`);
   }
+
+  console.log(`✅ ${provider} (${model}) response received`);
 
   // Parse JSON from response
   try {
@@ -354,7 +398,7 @@ async function callClaude(systemPrompt: string, userMessage: string, previousCon
     const jsonStr = jsonMatch ? jsonMatch[1] : textContent;
     return JSON.parse(jsonStr.trim());
   } catch (e) {
-    console.error("Failed to parse Claude response:", textContent);
+    console.error(`Failed to parse ${provider} response:`, textContent);
     throw new Error("Failed to parse AI response as JSON");
   }
 }
@@ -414,34 +458,15 @@ Deno.serve(async (req) => {
       return res({ error: "Valid JSON body is required" }, 400);
     }
 
-    const { text, audioBase64, audioMimeType, previousAnswers } = body;
+    const { text, previousAnswers } = body;
 
     // ============================================
-    // Step 1: Get user input (text or transcribe audio)
+    // Step 1: Get user input (text only)
     // ============================================
-    let userInput = text || "";
-
-    if (audioBase64) {
-      console.log("🎤 Transcribing audio with Whisper...");
-      try {
-        const transcription = await transcribeAudio(audioBase64, audioMimeType || "audio/webm");
-        console.log("✅ Transcription:", transcription);
-        
-        // Combine with text if both provided
-        userInput = userInput 
-          ? `${userInput}\n\n[Voice Note]: ${transcription}`
-          : transcription;
-      } catch (err) {
-        console.error("❌ Whisper error:", err);
-        return res({ 
-          error: "فشل تحويل التسجيل الصوتي. الرجاء المحاولة مرة أخرى.",
-          details: String(err)
-        }, 500);
-      }
-    }
+    const userInput = text || "";
 
     if (!userInput.trim()) {
-      return res({ error: "يرجى إدخال نص أو تسجيل صوتي" }, 400);
+      return res({ error: "يرجى إدخال نص" }, 400);
     }
 
     // ============================================
@@ -464,12 +489,11 @@ Deno.serve(async (req) => {
     }
 
     // ============================================
-    // Step 4: Build prompt and call Claude
+    // Step 4: Build prompt and call AI
     // ============================================
-    console.log("🤖 Calling Claude API...");
+    console.log("🤖 Calling AI API (Anthropic or OpenAI)...");
     const systemPrompt = buildSystemPrompt(categoriesFormatted);
-    const aiResponse = await callClaude(systemPrompt, userInput, previousContext);
-    console.log("✅ Claude response received");
+    const aiResponse = await callAI(systemPrompt, userInput, previousContext);
 
     // ============================================
     // Step 5: Map category label to UUID
@@ -526,9 +550,7 @@ Deno.serve(async (req) => {
         label: categoryLabel,
       },
       meta: {
-        model: MODEL,
         categories_count: categories.length,
-        has_audio: !!audioBase64,
         timestamp: new Date().toISOString(),
       }
     });

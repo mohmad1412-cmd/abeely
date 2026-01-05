@@ -325,22 +325,6 @@ const FinalReviewScreen: React.FC<{
           </span>
         </div>
 
-        {/* New Category Suggestion */}
-        {review.new_category_suggestion && review.new_category_suggestion !== 'لا يوجد' && (
-          <div className="p-4 bg-accent/10 border-t border-accent/20">
-            <div className="flex items-start gap-2">
-              <AlertCircle size={16} className="text-accent-foreground shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm text-accent-foreground">
-                  تم اقتراح تصنيف جديد: <strong>{review.new_category_suggestion}</strong>
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  سيتم مراجعته من قبل الإدارة
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Language Detected */}
         {languageDetected && (

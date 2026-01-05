@@ -99,17 +99,33 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
       
       const style: React.CSSProperties = {};
       
-      // Calculate horizontal position - prevent overflow on right side
-      const spaceOnRight = viewportWidth - rect.left;
-      if (spaceOnRight < dropdownWidth + margin) {
-        // Not enough space on right, align to right edge with margin
-        style.right = margin;
-        style.left = 'auto';
-      } else {
-        // Enough space, use left positioning
-        style.left = 0;
-        style.right = 'auto';
+      // Get parent container (the relative container)
+      const parentContainer = buttonElement.offsetParent as HTMLElement;
+      const parentRect = parentContainer?.getBoundingClientRect() || { left: 0, width: 0 };
+      
+      // Calculate button center relative to parent
+      const buttonCenterX = rect.left + (rect.width / 2);
+      const relativeLeft = buttonCenterX - parentRect.left;
+      
+      // Calculate dropdown position to center it under button
+      let leftPos = relativeLeft - (dropdownWidth / 2);
+      
+      // Ensure dropdown doesn't overflow viewport
+      const absoluteLeft = buttonCenterX - (dropdownWidth / 2);
+      const maxLeft = viewportWidth - dropdownWidth - margin;
+      const minLeft = margin;
+      
+      if (absoluteLeft > maxLeft) {
+        // Align to right edge
+        leftPos = (viewportWidth - margin - dropdownWidth) - parentRect.left;
+      } else if (absoluteLeft < minLeft) {
+        // Align to left edge
+        leftPos = margin - parentRect.left;
       }
+      
+      // Use left positioning
+      style.left = leftPos;
+      style.right = 'auto';
       
       // Calculate vertical position - prevent overflow on bottom
       const spaceBelow = viewportHeight - rect.bottom;

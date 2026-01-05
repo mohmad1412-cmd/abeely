@@ -3,11 +3,17 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 // ============================================
-// Configuration - Now using Claude instead of Gemini
+// Configuration - Using Anthropic Claude and OpenAI GPT (round-robin)
 // ============================================
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") || 
                           Deno.env.get("VITE_ANTHROPIC_API_KEY") || "";
-const MODEL = "claude-sonnet-4-20250514";
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") || 
+                       Deno.env.get("VITE_OPENAI_API_KEY") || "";
+const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
+const OPENAI_MODEL = "gpt-4o";
+
+// Counter for round-robin selection
+let requestCounter = 0;
 
 // Supabase client للتحقق من التصنيفات
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
@@ -129,6 +135,9 @@ function findMatchingCategories(text: string): string[] {
   const matches: { id: string; label: string; score: number }[] = [];
   
   for (const cat of FIXED_CATEGORIES) {
+    // تخطي "أخرى" من الاقتراحات
+    if (cat.id === 'other') continue;
+    
     let score = 0;
     for (const keyword of cat.keywords) {
       if (lowerText.includes(keyword.toLowerCase())) {
@@ -143,55 +152,81 @@ function findMatchingCategories(text: string): string[] {
   // ترتيب حسب الأكثر تطابقاً
   matches.sort((a, b) => b.score - a.score);
   
-  // إرجاع أفضل 3 تصنيفات
-  return matches.slice(0, 3).map(m => m.label);
+  // إرجاع أفضل 5 تصنيفات (بدلاً من 3) لتشجيع اختيار تصنيفات متعددة
+  return matches.slice(0, 5).map(m => m.label);
 }
 
-// دالة للتحقق مما إذا كان التصنيف موجوداً
+// دالة للتحقق مما إذا كان التصنيف موجوداً (مطابقة مرنة)
 function isKnownCategory(label: string): boolean {
-  const lowerLabel = label.toLowerCase();
-  return FIXED_CATEGORIES.some(cat => 
-    cat.label.toLowerCase() === lowerLabel ||
-    cat.label.toLowerCase().includes(lowerLabel) ||
-    lowerLabel.includes(cat.label.toLowerCase())
-  );
+  if (!label) return false;
+  const lowerLabel = label.toLowerCase().trim();
+  
+  // إزالة علامات الترقيم والمسافات الزائدة
+  const normalizedLabel = lowerLabel.replace(/[؟?؟،,.\s]+/g, ' ').trim();
+  
+  return FIXED_CATEGORIES.some(cat => {
+    const catLabel = cat.label.toLowerCase().trim();
+    const normalizedCatLabel = catLabel.replace(/[؟?؟،,.\s]+/g, ' ').trim();
+    
+    // مطابقة دقيقة
+    if (normalizedLabel === normalizedCatLabel) return true;
+    
+    // مطابقة جزئية (يحتوي على)
+    if (normalizedLabel.includes(normalizedCatLabel) || normalizedCatLabel.includes(normalizedLabel)) return true;
+    
+    // مطابقة كلمات (إذا تطابقت 70% من الكلمات)
+    const labelWords = normalizedLabel.split(/\s+/).filter(w => w.length > 2);
+    const catWords = normalizedCatLabel.split(/\s+/).filter(w => w.length > 2);
+    
+    if (labelWords.length > 0 && catWords.length > 0) {
+      const matchingWords = labelWords.filter(w => catWords.some(cw => cw.includes(w) || w.includes(cw)));
+      const matchRatio = matchingWords.length / Math.max(labelWords.length, catWords.length);
+      if (matchRatio >= 0.7) return true;
+    }
+    
+    return false;
+  });
 }
 
-// دالة لاقتراح تصنيف جديد في قاعدة البيانات
-async function suggestNewCategory(label: string, _requestId?: string): Promise<void> {
-  try {
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.warn("Supabase not configured, skipping category suggestion");
-      return;
+// دالة لإيجاد أفضل تصنيف مطابق (حتى لو لم يكن مطابقاً تماماً)
+function findBestMatchingCategory(label: string): { id: string; label: string } | null {
+  if (!label) return null;
+  const lowerLabel = label.toLowerCase().trim();
+  const normalizedLabel = lowerLabel.replace(/[؟?؟،,.\s]+/g, ' ').trim();
+  
+  let bestMatch: { id: string; label: string; score: number } | null = null;
+  
+  for (const cat of FIXED_CATEGORIES) {
+    const catLabel = cat.label.toLowerCase().trim();
+    const normalizedCatLabel = catLabel.replace(/[؟?؟،,.\s]+/g, ' ').trim();
+    let score = 0;
+    
+    // مطابقة دقيقة = 100 نقطة
+    if (normalizedLabel === normalizedCatLabel) {
+      return { id: cat.id, label: cat.label };
     }
     
-    // التحقق من عدم وجود اقتراح مشابه
-    const { data: existing } = await supabase
-      .from('pending_categories')
-      .select('id')
-      .ilike('suggested_label', `%${label}%`)
-      .eq('status', 'pending')
-      .limit(1);
-    
-    if (existing && existing.length > 0) {
-      console.log(`Category suggestion "${label}" already exists`);
-      return;
+    // مطابقة جزئية = 50 نقطة
+    if (normalizedLabel.includes(normalizedCatLabel) || normalizedCatLabel.includes(normalizedLabel)) {
+      score = 50;
     }
     
-    // إضافة الاقتراح
-    await supabase
-      .from('pending_categories')
-      .insert({
-        suggested_label: label,
-        suggested_emoji: '📦',
-        suggested_by_ai: true,
-        status: 'pending'
-      });
+    // مطابقة كلمات = 30 نقطة لكل كلمة متطابقة
+    const labelWords = normalizedLabel.split(/\s+/).filter(w => w.length > 2);
+    const catWords = normalizedCatLabel.split(/\s+/).filter(w => w.length > 2);
     
-    console.log(`New category suggested: "${label}"`);
-  } catch (err) {
-    console.error("Error suggesting category:", err);
+    if (labelWords.length > 0 && catWords.length > 0) {
+      const matchingWords = labelWords.filter(w => catWords.some(cw => cw.includes(w) || w.includes(cw)));
+      score += matchingWords.length * 30;
+    }
+    
+    if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+      bestMatch = { id: cat.id, label: cat.label, score };
+    }
   }
+  
+  // إرجاع أفضل تطابق إذا كان النقاط >= 30
+  return bestMatch && bestMatch.score >= 30 ? { id: bestMatch.id, label: bestMatch.label } : null;
 }
 
 function res(data: unknown, status = 200) {
@@ -208,9 +243,9 @@ function res(data: unknown, status = 200) {
 }
 
 // ============================================
-// Call Claude API
+// Unified AI Provider (Anthropic or OpenAI)
 // ============================================
-async function callClaude(systemPrompt: string, messages: any[]): Promise<string> {
+async function callAnthropic(systemPrompt: string, messages: any[]): Promise<string> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -219,7 +254,7 @@ async function callClaude(systemPrompt: string, messages: any[]): Promise<string
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: ANTHROPIC_MODEL,
       max_tokens: 4096,
       system: systemPrompt,
       messages: messages,
@@ -228,12 +263,101 @@ async function callClaude(systemPrompt: string, messages: any[]): Promise<string
 
   if (!response.ok) {
     const error = await response.json();
-    console.error("Claude API Error:", error);
-    throw new Error(error?.error?.message || "Claude API call failed");
+    console.error("Anthropic API Error:", error);
+    throw new Error(error?.error?.message || "Anthropic API call failed");
   }
 
   const result = await response.json();
   return result.content?.[0]?.text || "";
+}
+
+async function callOpenAI(systemPrompt: string, messages: any[]): Promise<string> {
+  // Convert messages to OpenAI format (include system in messages array)
+  const openAIMessages: any[] = [
+    { role: "system", content: systemPrompt },
+    ...messages.map(msg => ({
+      role: msg.role === "assistant" ? "assistant" : "user",
+      content: msg.content
+    }))
+  ];
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      messages: openAIMessages,
+      max_tokens: 4096,
+      temperature: 0.7,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    console.error("OpenAI API Error:", error);
+    throw new Error(error?.error?.message || "OpenAI API call failed");
+  }
+
+  const result = await response.json();
+  return result.choices?.[0]?.message?.content || "";
+}
+
+async function callAI(systemPrompt: string, messages: any[]): Promise<{ text: string; provider: string; model: string }> {
+  // Round-robin: alternate between providers
+  requestCounter++;
+  const hasAnthropic = !!ANTHROPIC_API_KEY;
+  const hasOpenAI = !!OPENAI_API_KEY;
+  
+  if (!hasAnthropic && !hasOpenAI) {
+    throw new Error("No AI provider configured. Please set ANTHROPIC_API_KEY or OPENAI_API_KEY");
+  }
+  
+  let targetProvider: "anthropic" | "openai";
+  if (!hasAnthropic) {
+    targetProvider = "openai";
+  } else if (!hasOpenAI) {
+    targetProvider = "anthropic";
+  } else {
+    // Both available - use round-robin
+    targetProvider = (requestCounter % 2 === 0) ? "openai" : "anthropic";
+  }
+
+  // Try the target provider, fallback to the other if it fails
+  try {
+    if (targetProvider === "anthropic") {
+      const text = await callAnthropic(systemPrompt, messages);
+      return { text, provider: "anthropic", model: ANTHROPIC_MODEL };
+    } else {
+      const text = await callOpenAI(systemPrompt, messages);
+      return { text, provider: "openai", model: OPENAI_MODEL };
+    }
+  } catch (error) {
+    console.warn(`⚠️ ${targetProvider} failed, trying fallback...`, error);
+    
+    // Fallback to the other provider
+    const fallbackProvider = targetProvider === "anthropic" ? "openai" : "anthropic";
+    
+    if (fallbackProvider === "anthropic" && ANTHROPIC_API_KEY) {
+      try {
+        const text = await callAnthropic(systemPrompt, messages);
+        return { text, provider: "anthropic", model: ANTHROPIC_MODEL };
+      } catch (fallbackError) {
+        throw new Error(`Both providers failed. Last error: ${fallbackError.message}`);
+      }
+    } else if (fallbackProvider === "openai" && OPENAI_API_KEY) {
+      try {
+        const text = await callOpenAI(systemPrompt, messages);
+        return { text, provider: "openai", model: OPENAI_MODEL };
+      } catch (fallbackError) {
+        throw new Error(`Both providers failed. Last error: ${fallbackError.message}`);
+      }
+    }
+    
+    throw error;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -256,13 +380,13 @@ Deno.serve(async (req) => {
     // استخدام chatHistory إذا كان متوفراً، وإلا history (للتوافق مع الكود القديم)
     const conversationHistory = chatHistory.length > 0 ? chatHistory : history;
 
-    if (!ANTHROPIC_API_KEY) {
-      console.error("❌ ANTHROPIC_API_KEY is missing!");
+    if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY) {
+      console.error("❌ No AI provider configured!");
       console.error("Available env vars:", Object.keys(Deno.env.toObject()).filter(k => !k.includes("SECRET")));
       return res({ 
-        error: "ANTHROPIC_API_KEY غير مهيأ في Supabase Edge Functions",
-        solution: "يرجى إضافة ANTHROPIC_API_KEY في: Supabase Dashboard → Settings → Edge Functions → Add new secret",
-        command: "supabase secrets set ANTHROPIC_API_KEY=sk-ant-xxxxx"
+        error: "لا يوجد مفتاح API للذكاء الاصطناعي مهيأ في Supabase Edge Functions",
+        solution: "يرجى إضافة ANTHROPIC_API_KEY أو OPENAI_API_KEY في: Supabase Dashboard → Settings → Edge Functions → Add new secret",
+        command: "supabase secrets set ANTHROPIC_API_KEY=sk-ant-xxxxx\nor\nsupabase secrets set OPENAI_API_KEY=sk-xxxxx"
       }, 500);
     }
 
@@ -277,172 +401,79 @@ Deno.serve(async (req) => {
       
       systemInstruction = `
 أنت مساعد ذكي متخصص في منصة "أبيلي" - منصة سعودية لربط طالبي الخدمات بمقدميها.
-مهمتك: تحليل النص الذي يكتبه المستخدم وإنشاء عنوان مناسب وتصنيفات للطلب.
 
-═══════════════════════════════════════════════════════════════
-🎯 مهمتك الأساسية:
-═══════════════════════════════════════════════════════════════
+مهمتك الأساسية فقط:
 1. **إنشاء عنوان** من النص المدخل (لا تنسخ النص حرفياً!)
 2. **تصنيف الطلب** من قائمة التصنيفات المتاحة
 
 ═══════════════════════════════════════════════════════════════
-🎯 تعليمات إنشاء العنوان (مهم جداً - اتبعها بدقة):
+🎯 تعليمات إنشاء العنوان:
 ═══════════════════════════════════════════════════════════════
 
-**العنوان يجب أن يكون مختصراً وواضحاً ومباشراً - لا تنسخ النص المدخل حرفياً!**
+⚠️ **قاعدة ذهبية**: استخدم فقط ما هو موجود في النص - لا تفترض معلومات غير موجودة!
 
-⚠️ **قاعدة ذهبية مهمة جداً**: 
-**ما يكتبه المستخدم في الوصف هو دائماً طلب مباشر لما يريده - لا تفترض أشياء غير موجودة في النص!**
+📝 أمثلة:
+- النص: "جيب لكزس 2005" → العنوان: "مطلوب جيب لكزس 2005"
+- النص: "تصميم شعار" → العنوان: "مطلوب تصميم شعار"
+- النص: "صيانة مكيف" → العنوان: "مطلوب صيانة مكيف"
 
-📝 أمثلة على إنشاء عناوين جيدة:
-
-❌ خطأ: افتراض معلومات غير موجودة في النص
-- النص المدخل: "جيب لكزس 2005"
-- العنوان الخطأ: "قطع غيار جيب لكزس" (افترض قطع غيار رغم عدم وجودها في النص!)
-
-✅ صحيح: استخدام ما هو موجود في النص فقط
-- النص المدخل: "جيب لكزس 2005"
-- العنوان الصحيح: "مطلوب جيب لكزس 2005" أو "أبغى جيب لكزس 2005"
-
-❌ خطأ: افتراض معلومات غير موجودة
-- النص المدخل: "سيارة لكزس 2005"
-- العنوان الخطأ: "قطع غيار لكزس 2005" (افترض قطع غيار رغم عدم وجودها!)
-
-✅ صحيح: استخدام ما هو موجود في النص
-- النص المدخل: "سيارة لكزس 2005"
-- العنوان الصحيح: "مطلوب سيارة لكزس 2005" أو "أبغى سيارة لكزس 2005"
-
-❌ خطأ: نسخ النص حرفياً
-- النص المدخل: "تصميم شعار لشركة تقنية"
-- العنوان الخطأ: "تصميم شعار لشركة تقنية" (نسخ حرفي)
-
-✅ صحيح: تحويل لصيغة طلب واضحة
-- النص المدخل: "تصميم شعار لشركة تقنية"
-- العنوان الصحيح: "مطلوب تصميم شعار لشركة تقنية"
-
-❌ خطأ: افتراض معلومات غير موجودة
-- النص المدخل: "صيانة مكيف"
-- العنوان الخطأ: "صيانة مكيف سبليت في الرياض" (أضفت سبليت والرياض رغم عدم وجودهما!)
-
-✅ صحيح: استخدام ما هو موجود فقط
-- النص المدخل: "صيانة مكيف"
-- العنوان الصحيح: "مطلوب صيانة مكيف" أو "أبغى فني تكييف"
-
-🎯 قواعد إنشاء العنوان:
-1. **ابدأ بكلمة طلبية**: "مطلوب" أو "أبغى" أو "ابحث عن" أو "أحتاج"
-2. **استخدم فقط ما هو موجود في النص**: لا تفترض معلومات غير موجودة (مثل: قطع غيار، سبليت، مدينة معينة)
-3. **لا تنسخ النص المدخل حرفياً**: حوّل النص لعنوان مختصر وواضح يبدأ بكلمة طلبية
-4. **ركز على العناصر الأساسية**: ما المطلوب؟ (مثال: جيب لكزس، تصميم شعار، صيانة مكيف)
-5. **أضف التفاصيل المهمة فقط إذا كانت موجودة في النص**: الموديل، النوع، المدينة (فقط إذا ذكرها المستخدم)
-6. **اجعل العنوان مختصراً**: 5-10 كلمات كحد أقصى
-7. **استخدم صيغة طلب واضحة**: "مطلوب [الشيء المطلوب] [تفاصيل مهمة إذا كانت موجودة]"
-
-⚠️ ممنوع تماماً:
-- ❌ افتراض معلومات غير موجودة في النص (مثل: قطع غيار، سبليت، مدينة معينة)
-- ❌ نسخ النص المدخل حرفياً في العنوان
-- ❌ استخدام نفس النص في العنوان والوصف
-- ❌ جعل العنوان طويلاً جداً (أكثر من 15 كلمة)
-- ❌ إضافة كلمة "خدمة" في بداية العنوان
-- ❌ إضافة كلمات مثل "قطع غيار" إذا لم يذكرها المستخدم صراحة
+🎯 قواعد:
+1. ابدأ بـ "مطلوب" أو "أبغى" أو "ابحث عن"
+2. لا تنسخ النص حرفياً - حوّله لعنوان مختصر
+3. لا تفترض معلومات غير موجودة (قطع غيار، سبليت، مدينة، إلخ)
+4. العنوان مختصر: 5-10 كلمات كحد أقصى
 
 ═══════════════════════════════════════════════════════════════
-
-═══════════════════════════════════════════════════════════════
-⚠️ تعليمات التصنيف (مهم جداً - اتبعها بدقة):
+📋 التصنيفات المتاحة (اختر منها حصرياً):
 ═══════════════════════════════════════════════════════════════
 
-📋 التصنيفات المتاحة (70+ تصنيف - اختر منها حصرياً):
-
-🔧 تقنية:
-- "تطوير برمجيات" | "تطوير مواقع" | "تطبيقات جوال" | "دعم تقني" | "تحليل بيانات" | "خدمات ذكاء اصطناعي"
-
-🎨 تصميم:
-- "تصميم جرافيك" | "تصميم واجهات" | "شعارات وهوية" | "تصميم داخلي" | "تصميم معماري"
-
-✍️ محتوى:
-- "كتابة محتوى" | "كتابة إعلانية" | "ترجمة" | "تعليق صوتي" | "تدقيق لغوي"
-
-📈 تسويق:
-- "تسويق رقمي" | "سوشيال ميديا" | "تحسين محركات البحث" | "إعلانات"
-
-💼 خدمات مهنية:
-- "خدمات قانونية" | "محاسبة" | "استشارات" | "موارد بشرية"
-
-📚 تعليم:
-- "دروس خصوصية" | "دورات أونلاين" | "تعليم لغات" | "تدريب مهارات"
-
-🏥 صحة:
-- "استشارات طبية" | "تغذية" | "لياقة بدنية" | "صحة نفسية"
-
-🔧 صيانة ومنزل:
-- "سباكة" | "كهرباء" | "تكييف" | "إصلاحات منزلية" | "صيانة أجهزة" | "دهانات" | "نجارة"
-
-🚚 نقل:
-- "نقل عفش" | "شحن" | "توصيل"
-
-🚗 سيارات:
-- "صيانة سيارات" | "غسيل سيارات" | "تأجير سيارات" | "خدمات سائق"
-
-🎉 مناسبات:
-- "تنظيم مناسبات" | "تموين" | "تصوير" | "تصوير فيديو" | "ترفيه" | "زهور وتزيين"
-
-💅 جمال وعناية:
-- "تصفيف شعر" | "مكياج" | "سبا ومساج" | "أظافر"
-
-🧹 تنظيف:
-- "تنظيف منازل" | "تنظيف مكاتب" | "غسيل وكي" | "مكافحة حشرات"
-
-🍽️ طعام:
-- "طبخ منزلي" | "حلويات ومخبوزات" | "تموين طعام"
-
-🏘️ عقارات:
-- "عقارات" | "إدارة عقارات"
-
-🐱 حيوانات:
-- "رعاية حيوانات" | "تجميل حيوانات"
-
-🛡️ أمن:
-- "خدمات أمنية" | "كاميرات مراقبة"
-
-📦 أخرى:
-- "أخرى" (إذا لم يناسب أي تصنيف آخر)
+🔧 تقنية: "تطوير برمجيات" | "تطوير مواقع" | "تطبيقات جوال" | "دعم تقني" | "تحليل بيانات" | "خدمات ذكاء اصطناعي"
+🎨 تصميم: "تصميم جرافيك" | "تصميم واجهات" | "شعارات وهوية" | "تصميم داخلي" | "تصميم معماري"
+✍️ محتوى: "كتابة محتوى" | "كتابة إعلانية" | "ترجمة" | "تعليق صوتي" | "تدقيق لغوي"
+📈 تسويق: "تسويق رقمي" | "سوشيال ميديا" | "تحسين محركات البحث" | "إعلانات"
+💼 خدمات مهنية: "خدمات قانونية" | "محاسبة" | "استشارات" | "موارد بشرية"
+📚 تعليم: "دروس خصوصية" | "دورات أونلاين" | "تعليم لغات" | "تدريب مهارات"
+🏥 صحة: "استشارات طبية" | "تغذية" | "لياقة بدنية" | "صحة نفسية"
+🔧 صيانة ومنزل: "سباكة" | "كهرباء" | "تكييف" | "إصلاحات منزلية" | "صيانة أجهزة" | "دهانات" | "نجارة"
+🚚 نقل: "نقل عفش" | "شحن" | "توصيل"
+🚗 سيارات: "صيانة سيارات" | "غسيل سيارات" | "تأجير سيارات" | "خدمات سائق"
+🎉 مناسبات: "تنظيم مناسبات" | "تموين" | "تصوير" | "تصوير فيديو" | "ترفيه" | "زهور وتزيين"
+💅 جمال وعناية: "تصفيف شعر" | "مكياج" | "سبا ومساج" | "أظافر"
+🧹 تنظيف: "تنظيف منازل" | "تنظيف مكاتب" | "غسيل وكي" | "مكافحة حشرات"
+🍽️ طعام: "طبخ منزلي" | "حلويات ومخبوزات" | "تموين طعام"
+🏘️ عقارات: "عقارات" | "إدارة عقارات"
+🐱 حيوانات: "رعاية حيوانات" | "تجميل حيوانات"
+🛡️ أمن: "خدمات أمنية" | "كاميرات مراقبة"
+📦 أخرى: "أخرى" (إذا لم يناسب أي تصنيف)
 
 ${categoriesHint}
 
-🚨 قواعد صارمة للتصنيف:
-1. اختر فقط من القائمة أعلاه - لا تختلق تصنيفات جديدة أبداً
-2. **مهم جداً**: إذا كان الطلب يناسب أكثر من تصنيف متقارب، اختر أكبر عدد ممكن من التصنيفات المتقاربة (2-5 تصنيفات إذا كانت متقاربة ومناسبة)
-3. **مهم جداً**: إذا كان هناك تصنيف واضح ومناسب من القائمة (مثل "صيانة سيارات" لطلب متعلق بسيارة)، استخدمه مباشرة في حقل "categories" - لا تطلب تصنيفات مقترحة!
-4. **استخدم "uncertainCategories" و "suggestedCategory" فقط في حالات نادرة جداً**:
-   - فقط إذا كان الطلب غامضاً جداً ولا يناسب أي تصنيف من القائمة
-   - فقط إذا كان الطلب يناسب تصنيفات مختلفة تماماً (مثل: هل هو "تصميم جرافيك" أم "تطوير برمجيات"؟)
-5. **لا تطلب تصنيفات مقترحة إذا كان هناك تصنيف مناسب من القائمة** - استخدم التصنيف المناسب مباشرة!
-6. لا تستخدم "غير محدد" - استخدم "أخرى" بدلاً منها
-7. التصنيفات يجب أن تكون بالنص العربي الدقيق كما في القائمة - بدون علامات استفهام أو نصوص غريبة
-8. **تنظيف التصنيفات**: تأكد من إزالة أي علامات استفهام (؟) أو رموز غريبة من التصنيفات
+🚨 قواعد التصنيف (مهم جداً):
+1. **اختر فقط من القائمة أعلاه** - لا تختلق تصنيفات جديدة أبداً
+2. **اختر تصنيفات متعددة** - إذا كان الطلب يناسب أكثر من تصنيف، اختر 2-5 تصنيفات (مثلاً: "صيانة سيارات" + "قطع غيار" أو "تصميم جرافيك" + "شعارات وهوية")
+3. **استخدم "أخرى" فقط كحل أخير** - إذا لم يناسب الطلب أي تصنيف من القائمة أعلاه
+4. **التصنيفات يجب أن تكون بالنص العربي الدقيق** - استخدم نفس النص كما في القائمة (مثلاً: "صيانة سيارات" وليس "صيانة السيارة")
+5. **لا تكتفي بتصنيف واحد** - حاول إيجاد جميع التصنيفات المناسبة للطلب
 
 ═══════════════════════════════════════════════════════════════
 
 أجب بـ JSON فقط بهذا التنسيق (بدون أي نص آخر):
 {
-  "title": "عنوان الطلب - ⚠️ مهم: لا تنسخ النص المدخل حرفياً! حوّله لعنوان مختصر يبدأ بـ 'مطلوب' أو 'أبغى' أو 'ابحث عن'",
-  "description": "وصف مفصل للطلب - يمكن أن يكون أطول وأكثر تفصيلاً من العنوان",
-  "categories": ["فئة1", "فئة2", ...],
-  "uncertainCategories": ["فئة مشكوك فيها1", "فئة مشكوك فيها2", ...],
-  "suggestedCategory": "تصنيف مقترح (فقط عند الشك)",
-  "budgetMin": "الحد الأدنى (اختياري)",
-  "budgetMax": "الحد الأقصى (اختياري)",
-  "deliveryTime": "مدة التنفيذ (اختياري)",
-  "location": "الموقع (اختياري)"
+  "title": "عنوان مختصر يبدأ بـ 'مطلوب' أو 'أبغى' - لا تنسخ النص المدخل حرفياً!",
+  "categories": ["فئة1", "فئة2", "فئة3", ...]
 }
 
 ملاحظات مهمة:
-- **"title"**: ⚠️ مهم جداً - لا تنسخ النص المدخل حرفياً! العنوان يجب أن يكون مختصراً (5-10 كلمات) ويبدأ بكلمة طلبية (مطلوب/أبغى/ابحث عن). مثال: إذا كان النص "سيارة لكزس 2005 صدام"، العنوان يجب أن يكون "مطلوب صدام لكزس موديل 2005" وليس "سيارة لكزس 2005 صدام"
-- **"description"**: يمكن أن يكون أطول وأكثر تفصيلاً من العنوان - يمكن أن يحتوي على نفس المعلومات ولكن بشكل أكثر تفصيلاً
-- "categories": التصنيفات المؤكدة (أو "أخرى" عند الشك)
-- "uncertainCategories": التصنيفات المشكوك فيها (فقط عند الشك)
-- "suggestedCategory": تصنيف مقترح (فقط عند الشك، لا تذكر "أخرى")
-}`;
+- **"title"**: عنوان مختصر (5-10 كلمات) يبدأ بكلمة طلبية - لا تنسخ النص المدخل حرفياً!
+- **"categories"**: قائمة التصنيفات (2-5 تصنيفات في معظم الحالات) من القائمة أعلاه
+  ⚠️ **مهم جداً**: اختر تصنيفات متعددة! لا تكتفي بتصنيف واحد إلا إذا كان الطلب بسيط جداً
+  أمثلة:
+  - "صيانة جيب لكزس" → ["صيانة سيارات", "قطع غيار"]
+  - "تصميم شعار لشركة" → ["تصميم جرافيك", "شعارات وهوية"]
+  - "موقع إلكتروني مع تطبيق" → ["تطوير مواقع", "تطبيقات جوال"]
+  - "تنظيف مكتب" → ["تنظيف مكاتب"] (تصنيف واحد كافٍ)
+- لا تستخرج ميزانية، موقع، أو مدة تنفيذ - هذه الحقول غير مطلوبة
+- لا تعيد صياغة الوصف - فقط العنوان والتصنيفات`;
     } else {
       // Default Chat Mode (original behavior)
       systemInstruction = `أنت مساعد ذكي لمنصة "أبيلي" (منصة طلبات خدمات).
@@ -472,8 +503,9 @@ ${categoriesHint}
       content: prompt
     });
 
-    // استدعاء Claude
-    const rawOutput = await callClaude(systemInstruction, claudeMessages);
+    // استدعاء AI (Anthropic أو OpenAI)
+    const { text: rawOutput, provider, model } = await callAI(systemInstruction, claudeMessages);
+    console.log(`✅ ${provider} (${model}) response received`);
     
     // محاولة استخراج JSON
     let parsed;
@@ -493,126 +525,67 @@ ${categoriesHint}
     // معالجة التصنيفات في وضع draft
     if (mode === "draft") {
       const validCategories: string[] = [];
-      const uncertainCategories: string[] = [];
-      const newCategories: string[] = [];
-      let hasUncertainty = false;
       
       // دالة لتنظيف التصنيف من علامات الاستفهام والنصوص الغريبة
       const cleanCategory = (cat: string): string => {
         if (!cat) return cat;
-        // إزالة علامات الاستفهام والرموز الغريبة
         let cleaned = cat.replace(/[؟?؟]/g, '').trim();
-        // إزالة أي نص بعد علامة استفهام أو رموز غريبة
         cleaned = cleaned.split(/[؟?؟]/)[0].trim();
-        // إزالة مسافات زائدة
         cleaned = cleaned.replace(/\s+/g, ' ').trim();
         return cleaned;
       };
       
-      // معالجة التصنيفات المؤكدة
+      // معالجة التصنيفات فقط
       if (parsed.categories && Array.isArray(parsed.categories)) {
         for (const cat of parsed.categories) {
           const cleanedCat = cleanCategory(cat);
-          if (!cleanedCat) continue; // تخطي التصنيفات الفارغة بعد التنظيف
+          if (!cleanedCat || cleanedCat.toLowerCase() === 'أخرى' || cleanedCat.toLowerCase() === 'other') continue;
           
-          if (isKnownCategory(cleanedCat)) {
+          // محاولة إيجاد أفضل تطابق
+          const bestMatch = findBestMatchingCategory(cleanedCat);
+          
+          if (bestMatch) {
+            // إضافة التصنيف المطابق
+            if (!validCategories.includes(bestMatch.label)) {
+              validCategories.push(bestMatch.label);
+            }
+          } else if (isKnownCategory(cleanedCat)) {
+            // إذا لم نجد تطابقاً جيداً، نتحقق من التصنيفات المعروفة
             const matchedCat = FIXED_CATEGORIES.find(fc => 
               fc.label.toLowerCase() === cleanedCat.toLowerCase() ||
               fc.label.toLowerCase().includes(cleanedCat.toLowerCase()) ||
               cleanedCat.toLowerCase().includes(fc.label.toLowerCase())
             );
-            if (matchedCat) {
+            if (matchedCat && !validCategories.includes(matchedCat.label)) {
               validCategories.push(matchedCat.label);
-            } else {
-              validCategories.push(cleanedCat);
             }
-          } else {
-            newCategories.push(cleanedCat);
           }
+          // إذا لم نجد تطابقاً، نتجاهل التصنيف (لن نضيف تصنيفات غير معروفة)
         }
       }
       
-      // معالجة التصنيفات المشكوك فيها
-      if (parsed.uncertainCategories && Array.isArray(parsed.uncertainCategories)) {
-        hasUncertainty = true;
-        for (const cat of parsed.uncertainCategories) {
-          const cleanedCat = cleanCategory(cat);
-          if (!cleanedCat) continue; // تخطي التصنيفات الفارغة بعد التنظيف
-          
-          if (isKnownCategory(cleanedCat)) {
-            const matchedCat = FIXED_CATEGORIES.find(fc => 
-              fc.label.toLowerCase() === cleanedCat.toLowerCase() ||
-              fc.label.toLowerCase().includes(cleanedCat.toLowerCase()) ||
-              cleanedCat.toLowerCase().includes(fc.label.toLowerCase())
-            );
-            if (matchedCat) {
-              uncertainCategories.push(matchedCat.label);
-            } else {
-              uncertainCategories.push(cleanedCat);
-            }
-          } else {
-            newCategories.push(cleanedCat);
-          }
-        }
-      }
-      
-      // تنظيف suggestedCategory أيضاً
-      if (parsed.suggestedCategory) {
-        parsed.suggestedCategory = cleanCategory(parsed.suggestedCategory);
-      }
-      
-      // إذا كان هناك تصنيفات جديدة، نقترحها
-      if (newCategories.length > 0) {
-        for (const newCat of newCategories) {
-          await suggestNewCategory(newCat);
-        }
-        parsed.suggestedNewCategories = newCategories;
-      }
-      
-      // إذا كان هناك تصنيفات صالحة وواضحة، نستخدمها مباشرة ولا نطلب تصنيفات مقترحة
-      if (validCategories.length > 0 && !hasUncertainty) {
-        // لدينا تصنيفات واضحة ومناسبة - نستخدمها مباشرة
-        parsed.categories = [...new Set(validCategories)]; // إزالة التكرار
-        // لا نضيف uncertainCategories أو suggestedCategory إذا كان هناك تصنيف واضح
-        parsed.uncertainCategories = [];
-        parsed.suggestedCategory = undefined;
-      } else if (hasUncertainty || parsed.suggestedCategory) {
-        // فقط إذا كان هناك شك حقيقي (uncertainCategories موجودة) أو تصنيف مقترح
-        // إضافة التصنيفات المشكوك فيها إلى القائمة النهائية
-        const allCategories = [...validCategories, ...uncertainCategories];
-        
-        // إضافة "أخرى" دائماً عند الشك (حتى لو كانت موجودة)
-        allCategories.push("أخرى");
-        
-        parsed.categories = [...new Set(allCategories)]; // إزالة التكرار
-        parsed.uncertainCategories = [...new Set(uncertainCategories)]; // حفظ التصنيفات المشكوك فيها
+      // إذا لم يكن هناك تصنيفات صحيحة، نضيف "أخرى" فقط كحل أخير
+      if (validCategories.length === 0) {
+        console.log("⚠️ لم يتم العثور على تصنيفات صحيحة، إضافة 'أخرى'");
+        validCategories.push("أخرى");
       } else {
-        // لا يوجد شك ولا تصنيفات صالحة - نستخدم "أخرى"
-        if (validCategories.length === 0) {
-          validCategories.push("أخرى");
-        }
-        parsed.categories = [...new Set(validCategories)]; // إزالة التكرار
-        parsed.uncertainCategories = [];
-        parsed.suggestedCategory = undefined;
+        console.log(`✅ تم العثور على ${validCategories.length} تصنيف(ات): ${validCategories.join(', ')}`);
       }
       
-      // إذا كان هناك تصنيفات جديدة فقط (بدون تصنيفات صالحة)
-      if (newCategories.length > 0 && validCategories.length === 0 && uncertainCategories.length === 0) {
-        if (!parsed.categories.includes("أخرى")) {
-          parsed.categories.push("أخرى");
-        }
-        parsed.categoriesNote = `تم اقتراح تصنيفات جديدة (${newCategories.join('، ')}) وستتم مراجعتها. تم إضافة "أخرى" مؤقتاً.`;
-      }
-    }
-    
-    // إذا لم يكن هناك تصنيفات أصلاً، نضيف "أخرى"
-    if (mode === "draft" && (!parsed.categories || parsed.categories.length === 0)) {
-      parsed.categories = ["أخرى"];
+      parsed.categories = [...new Set(validCategories)]; // إزالة التكرار
+      
+      // إزالة الحقول غير المطلوبة
+      delete parsed.uncertainCategories;
+      delete parsed.suggestedCategory;
+      delete parsed.description;
+      delete parsed.budgetMin;
+      delete parsed.budgetMax;
+      delete parsed.deliveryTime;
+      delete parsed.location;
     }
 
     return res({
       ...parsed,
-      model: MODEL,
       timestamp: new Date().toISOString(),
     });
   } catch (e) {

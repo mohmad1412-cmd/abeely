@@ -17,7 +17,6 @@ export type AIDraft = {
   description?: string;
   categories?: string[];
   uncertainCategories?: string[]; // التصنيفات المشكوك فيها
-  suggestedCategory?: string; // تصنيف مقترح عند الشك
   budgetMin?: string;
   budgetMax?: string;
   deliveryTime?: string;

@@ -45,6 +45,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { format } from "date-fns";
+import { ar } from "date-fns/locale";
 import { formatTimeAgo } from "../utils/timeFormat";
 import { AnimatePresence, motion } from "framer-motion";
 import { AVAILABLE_CATEGORIES } from "../data";
@@ -267,6 +268,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [offerTitle, setOfferTitle] = useState(savedOfferForm?.title || "");
   const [offerDescription, setOfferDescription] = useState(savedOfferForm?.description || "");
   const [isNegotiable, setIsNegotiable] = useState(true);
+  const [isAttachmentsExpanded, setIsAttachmentsExpanded] = useState(false);
   const [offerAttachments, setOfferAttachments] = useState<File[]>([]);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const offerFileInputRef = useRef<HTMLInputElement>(null);
@@ -2189,7 +2191,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       showOfferPulse ? "border-primary animate-soft-pulse" : "border-border"
                     }`}
                   >
-                    <div className="flex justify-between items-center mb-6">
+                    <div className="flex flex-col gap-4 mb-6">
                       <motion.h3 
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -2200,8 +2202,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       </motion.h3>
                       
                       {/* Negotiable Toggle - Moved here */}
-                      <label className="flex items-center gap-2 cursor-pointer group select-none px-3 py-1.5 rounded-lg hover:bg-secondary/50 transition-colors border border-border">
-                        <div className="relative flex items-center">
+                      <label className="flex items-start gap-2 cursor-pointer group select-none px-3 py-2 rounded-lg hover:bg-secondary/50 transition-colors border border-border">
+                        <div className="relative flex items-center mt-0.5">
                           <input
                             type="checkbox"
                             className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-gray-300 bg-white checked:border-primary checked:bg-primary transition-all"
@@ -2213,9 +2215,17 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                             className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100 pointer-events-none"
                           />
                         </div>
-                        <span className="text-xs font-bold text-foreground">
-                          قابل للتفاوض
-                        </span>
+                        <div className="flex flex-col gap-0.5 flex-1">
+                          <span className="text-xs font-bold text-foreground">
+                            قابل للتفاوض
+                          </span>
+                          <span className="text-[10px] text-muted-foreground/70 leading-tight">
+                            {isNegotiable 
+                              ? "سيتمكن من التواصل معك قبل قبول عرضك"
+                              : "لن يتم التواصل معك قبل قبول عرضك"
+                            }
+                          </span>
+                        </div>
                       </label>
                     </div>
 
@@ -2417,22 +2427,61 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       </motion.div>
                     </div>
 
-                    {/* Attachments Section */}
-                    <div className="mb-6">
-                      <h4 className="text-sm font-bold mb-3 flex items-center gap-2">
-                        <Paperclip size={22} /> المرفقات وصور توضيحية
-                        {offerAttachments.length > 0 && (
-                          <span className="text-xs text-muted-foreground mr-auto">
-                            {offerAttachments.length} ملف
+                    {/* Attachments Section - Collapsible */}
+                    <div className="mb-4 border-t border-border/50">
+                      {/* Label - Clickable to expand/collapse */}
+                      <button
+                        type="button"
+                        onClick={() => setIsAttachmentsExpanded(!isAttachmentsExpanded)}
+                        className="w-full flex items-center justify-between gap-2 pt-3 pb-2 hover:bg-secondary/30 rounded-lg px-2 -mx-2 transition-colors group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`transition-colors ${offerAttachments.length > 0 ? "text-primary" : "text-muted-foreground group-hover:text-primary/70"}`}>
+                            <Paperclip size={18} />
                           </span>
-                        )}
-                      </h4>
+                          <span className={`text-sm font-medium transition-colors ${offerAttachments.length > 0 ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`}>
+                            المرفقات وصور توضيحية
+                            {offerAttachments.length > 0 && (
+                              <motion.span
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="inline-flex items-center justify-center mr-1"
+                              >
+                                <Check size={14} className="text-primary" />
+                              </motion.span>
+                            )}
+                          </span>
+                          {offerAttachments.length > 0 && (
+                            <span className="text-xs text-muted-foreground bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                              {offerAttachments.length} ملف
+                            </span>
+                          )}
+                        </div>
+                        <motion.span
+                          animate={{ rotate: isAttachmentsExpanded ? 180 : 0 }}
+                          transition={{ duration: 0.2, ease: "easeInOut" }}
+                          className={`transition-colors ${offerAttachments.length > 0 ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`}
+                        >
+                          <ChevronDown size={16} />
+                        </motion.span>
+                      </button>
 
-                      <div className={`border-2 border-dashed rounded-xl p-4 transition-colors ${
-                        offerAttachments.length > 0 
-                          ? 'border-primary/50 bg-primary/5' 
-                          : 'border-border bg-secondary/20'
-                      }`}>
+                      {/* Collapsible Attachment Area */}
+                      <AnimatePresence>
+                        {isAttachmentsExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="pt-2 pb-3">
+                              <div className={`border-2 border-dashed rounded-xl p-4 transition-colors ${
+                                offerAttachments.length > 0 
+                                  ? 'border-primary/50 bg-primary/5' 
+                                  : 'border-border bg-secondary/20'
+                              }`}>
                         {/* Uploaded Files Preview */}
                         {offerAttachments.length > 0 && (
                           <div className="flex gap-2 flex-wrap mb-3">
@@ -2522,7 +2571,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                             e.target.value = "";
                           }}
                         />
-                      </div>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
 
                   </div>
@@ -2627,7 +2680,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   <p className="text-sm text-muted-foreground text-right">
                     لتقديم عرض، نحتاج للتحقق من رقم جوالك. سيتم إرسال رمز تحقق على رقمك.
                   </p>
-                  <div className={`relative flex items-center gap-2 border-2 rounded-lg bg-background px-4 h-12 focus-within:border-primary transition-all ${guestOfferError ? 'border-red-500' : 'border-border'}`}>
+                  <div className={`relative flex items-center gap-2 border-2 rounded-lg bg-background px-4 h-12 focus-within:border-primary transition-all min-w-0 overflow-hidden ${guestOfferError ? 'border-red-500' : 'border-border'}`}>
                     <span className="text-muted-foreground font-medium shrink-0">+966</span>
                     <input
                       type="tel"
@@ -2644,7 +2697,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         }
                       }}
                       placeholder="0501234567"
-                      className="flex-1 h-full bg-transparent text-base outline-none text-left"
+                      className="flex-1 h-full bg-transparent text-base outline-none text-left min-w-0"
                       dir="ltr"
                       maxLength={10}
                       autoFocus
@@ -2783,17 +2836,70 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           if (navigator.vibrate) {
                             navigator.vibrate([30, 50, 30]);
                           }
+                          
+                          // بعد التحقق الناجح، تحقق من حالة Onboarding
+                          const userProfile = await getCurrentUser();
+                          if (!userProfile?.id) {
+                            setGuestOfferError("فشل تسجيل الدخول. حاول مرة أخرى.");
+                            return;
+                          }
+                          
+                          // التحقق من حالة Onboarding
+                          const userOnboardedKey = `abeely_onboarded_${userProfile.id}`;
+                          const localOnboarded = localStorage.getItem(userOnboardedKey) === 'true';
+                          const hasName = !!userProfile.display_name?.trim();
+                          
+                          // التحقق من قاعدة البيانات إذا لم يكن هناك علامة محلية
+                          let needsOnboarding = !localOnboarded || !hasName;
+                          if (!localOnboarded) {
+                            try {
+                              const { data: profileData } = await supabase
+                                .from('profiles')
+                                .select('interested_categories, interested_cities, display_name, has_onboarded')
+                                .eq('id', userProfile.id)
+                                .single();
+                              
+                              const hasInterests = Array.isArray(profileData?.interested_categories) && profileData.interested_categories.length > 0;
+                              const hasCities = Array.isArray(profileData?.interested_cities) && profileData.interested_cities.length > 0;
+                              const hasProfileName = !!profileData?.display_name?.trim();
+                              const alreadyOnboarded = profileData?.has_onboarded === true;
+                              
+                              needsOnboarding = !(alreadyOnboarded || (hasProfileName && (hasInterests || hasCities)));
+                            } catch (err) {
+                              console.error('Error checking onboarding status:', err);
+                              // في حالة الخطأ، نعتبر أن المستخدم يحتاج onboarding إذا لم يكن هناك اسم
+                              needsOnboarding = !hasName;
+                            }
+                          }
+                          
+                          if (needsOnboarding) {
+                            // المستخدم يحتاج إلى Onboarding - احفظ البيانات وانتقل إلى Onboarding
+                            // Save offer form data
+                            if (onOfferFormChange) {
+                              onOfferFormChange({
+                                price: offerPrice,
+                                duration: offerDuration,
+                                city: offerCity,
+                                title: offerTitle,
+                                description: offerDescription,
+                                attachments: offerAttachments,
+                                guestVerificationStep: guestOfferVerificationStep,
+                                guestPhone: guestOfferPhone,
+                                guestOTP: guestOfferOTP,
+                              });
+                            }
+                            localStorage.setItem('abeely_requires_onboarding', 'true');
+                            localStorage.setItem('abeely_pending_action', 'submit_offer');
+                            // إعادة تحميل الصفحة للانتقال إلى OnboardingScreen
+                            window.location.reload();
+                            return;
+                          }
+                          
                           setGuestOfferVerificationStep('none');
                           setGuestOfferError(null);
                           
                           // Submit offer after successful verification
                           try {
-                            // Get the now-logged-in user and ensure profile exists
-                            const userProfile = await getCurrentUser();
-                            if (!userProfile?.id) {
-                              setGuestOfferError("فشل تسجيل الدخول. حاول مرة أخرى.");
-                              return;
-                            }
                             
                             const userId = userProfile.id;
                             

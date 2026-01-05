@@ -938,3 +938,75 @@ export function subscribeToUnreadCount(
     supabase.removeChannel(channel);
   };
 }
+
+/**
+ * Get unread messages count for user's requests
+ * Counts messages in conversations linked to user's requests
+ */
+export async function getUnreadMessagesForMyRequests(userRequestIds: string[]): Promise<number> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !userRequestIds || userRequestIds.length === 0) return 0;
+
+    // Get conversations linked to user's requests
+    const { data: conversations, error: convError } = await supabase
+      .from('conversations')
+      .select('id')
+      .in('request_id', userRequestIds)
+      .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`);
+
+    if (convError || !conversations || conversations.length === 0) return 0;
+
+    const conversationIds = conversations.map(c => c.id);
+
+    // Count unread messages in these conversations
+    const { count, error: countError } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .in('conversation_id', conversationIds)
+      .eq('is_read', false)
+      .neq('sender_id', user.id);
+
+    if (countError) return 0;
+    return count || 0;
+  } catch (error) {
+    console.error('Error getting unread messages for my requests:', error);
+    return 0;
+  }
+}
+
+/**
+ * Get unread messages count for user's offers
+ * Counts messages in conversations linked to user's offers
+ */
+export async function getUnreadMessagesForMyOffers(userOfferIds: string[]): Promise<number> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !userOfferIds || userOfferIds.length === 0) return 0;
+
+    // Get conversations linked to user's offers
+    const { data: conversations, error: convError } = await supabase
+      .from('conversations')
+      .select('id')
+      .in('offer_id', userOfferIds)
+      .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`);
+
+    if (convError || !conversations || conversations.length === 0) return 0;
+
+    const conversationIds = conversations.map(c => c.id);
+
+    // Count unread messages in these conversations
+    const { count, error: countError } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .in('conversation_id', conversationIds)
+      .eq('is_read', false)
+      .neq('sender_id', user.id);
+
+    if (countError) return 0;
+    return count || 0;
+  } catch (error) {
+    console.error('Error getting unread messages for my offers:', error);
+    return 0;
+  }
+}

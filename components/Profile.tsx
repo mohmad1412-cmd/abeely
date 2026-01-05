@@ -75,9 +75,18 @@ export const Profile: React.FC<ProfileProps> = ({
 
   const handleSaveName = async () => {
     if (onUpdateProfile && displayName.trim()) {
-      await onUpdateProfile({ display_name: displayName.trim() });
+      try {
+        await onUpdateProfile({ display_name: displayName.trim() });
+        // انتظر قليلاً للتأكد من تحديث user state
+        await new Promise(resolve => setTimeout(resolve, 100));
+        setIsEditingName(false);
+      } catch (error) {
+        console.error('خطأ في حفظ الاسم:', error);
+        alert('حدث خطأ أثناء حفظ الاسم. يرجى المحاولة مرة أخرى.');
+      }
+    } else {
+      setIsEditingName(false);
     }
-    setIsEditingName(false);
   };
 
   const handleSaveBio = async () => {

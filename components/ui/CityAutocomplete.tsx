@@ -37,6 +37,7 @@ interface CityAutocompleteProps {
   onOpenMap?: () => void; // callback عند الضغط على زر الخريطة
   hideChips?: boolean; // إخفاء الشرائح المختارة (عند عرضها في مكان آخر)
   dropdownDirection?: 'down' | 'up'; // اتجاه القائمة المنسدلة
+  onOpenChange?: (isOpen: boolean) => void; // callback عند تغيير حالة الفتح/الإغلاق
 }
 
 export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
@@ -59,6 +60,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   onOpenMap,
   hideChips = false,
   dropdownDirection = 'down',
+  onOpenChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState(value);
@@ -72,8 +74,8 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   const [selectedMapLocation, setSelectedMapLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isLoadingMapLocation, setIsLoadingMapLocation] = useState(false);
   const [isValid, setIsValid] = useState(false); // حالة للتحقق من صحة الإدخال
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markerRef = useRef<google.maps.Marker | null>(null);
+  const mapRef = useRef<any>(null); // google.maps.Map
+  const markerRef = useRef<any>(null); // AdvancedMarkerElement
   
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -84,9 +86,39 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   const updateDropdownPosition = useCallback(() => {
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
+      const viewport = window.visualViewport || { height: window.innerHeight };
+      const viewportHeight = viewport.height;
+      const keyboardHeight = window.innerHeight - viewportHeight;
+      
+      // حساب المسافة من الأسفل (في viewport)
+      const spaceBelow = viewportHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      
+      // إذا كانت المسافة من الأسفل أقل من 200px أو لوحة المفاتيح مفتوحة، نضع dropdown للأعلى
+      const shouldPositionUp = spaceBelow < 200 || keyboardHeight > 50;
+      
+      // حساب الموضع
+      let top = 0;
+      let bottom = 0;
+      
+      if (shouldPositionUp) {
+        // للأعلى: نضع dropdown فوق الحقل مباشرة
+        // إذا كانت لوحة المفاتيح مفتوحة، نجعله ملاصقاً لأعلى لوحة المفاتيح
+        if (keyboardHeight > 50) {
+          bottom = keyboardHeight + 8;
+        } else {
+          bottom = viewportHeight - rect.top + 8;
+        }
+        top = 0; // علامة أننا نستخدم bottom
+      } else {
+        // للأسفل: نضع dropdown تحت الحقل
+        top = rect.bottom + 8;
+        bottom = 0; // علامة أننا نستخدم top
+      }
+      
       setDropdownPosition({
-        top: rect.bottom + 8, // للأسفل
-        bottom: window.innerHeight - rect.top + 8, // للأعلى
+        top,
+        bottom,
         left: rect.left,
         width: rect.width,
       });
@@ -99,9 +131,19 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
       updateDropdownPosition();
       window.addEventListener('scroll', updateDropdownPosition, true);
       window.addEventListener('resize', updateDropdownPosition);
+      // مراقبة تغييرات visualViewport (لوحة المفاتيح)
+      const viewport = window.visualViewport;
+      if (viewport) {
+        viewport.addEventListener('resize', updateDropdownPosition);
+        viewport.addEventListener('scroll', updateDropdownPosition);
+      }
       return () => {
         window.removeEventListener('scroll', updateDropdownPosition, true);
         window.removeEventListener('resize', updateDropdownPosition);
+        if (viewport) {
+          viewport.removeEventListener('resize', updateDropdownPosition);
+          viewport.removeEventListener('scroll', updateDropdownPosition);
+        }
       };
     }
   }, [isOpen, updateDropdownPosition]);
@@ -205,6 +247,11 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
     setSearchQuery('');
     setHighlightedIndex(-1);
   };
+
+  // إبلاغ الـ parent عن تغيير حالة الفتح/الإغلاق
+  useEffect(() => {
+    onOpenChange?.(isOpen);
+  }, [isOpen, onOpenChange]);
 
   // اختيار مدينة
   const handleSelectCity = (city: CityResult) => {
@@ -348,7 +395,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   }, [value]);
 
   return (
-    <div ref={containerRef} className={`relative w-full ${className}`}>
+    <div ref={containerRef} className={`relative w-full max-w-full min-w-0 ${className}`}>
       {/* Label */}
       {label && (
         <label className="block text-sm font-medium text-muted-foreground mb-2 text-right">
@@ -381,7 +428,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
       )}
 
       {/* Input Field */}
-      <div className="relative w-full rounded-xl overflow-visible">
+      <div className="relative w-full max-w-full min-w-0 rounded-xl overflow-visible">
         {/* Ripple effect on focus - موجة خفيفة واضحة */}
         <AnimatePresence>
           {isOpen && (
@@ -420,9 +467,9 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
         
         <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" style={{ zIndex: 20 }}>
           {isLoading ? (
-            <Loader2 size={16} className="animate-spin text-primary" />
+            <Loader2 size={14} className="animate-spin text-primary" />
           ) : (
-            <MapPin size={16} className={isOpen ? 'text-primary' : ''} />
+            <MapPin size={14} className={isOpen ? 'text-primary' : ''} />
           )}
         </div>
         
@@ -438,28 +485,28 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
           autoFocus={autoFocus}
           style={{ position: 'relative', zIndex: 10 }}
           className={`
-            w-full pr-10 pl-10 py-2 rounded-xl border-2 bg-card
+            w-full max-w-full min-w-0 pl-3 pr-9 py-2 text-sm rounded-xl border border-border bg-background
             text-foreground placeholder:text-muted-foreground/60 text-right
-            focus:outline-none transition-all duration-200
+            focus:outline-none focus:border-primary transition-all duration-200
             ${isOpen 
               ? 'border-primary' 
               : isValid && value.trim().length > 0
               ? 'border-primary/60'
-              : 'border-border'
+              : ''
             }
             ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
           `}
         />
 
         {/* Clear / Dropdown toggle button */}
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1" style={{ zIndex: 20 }}>
+        <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center gap-1" style={{ zIndex: 20 }}>
           {searchQuery && !disabled && (
             <button
               type="button"
               onClick={handleClear}
               className="p-0.5 hover:bg-secondary rounded-full transition-colors text-muted-foreground hover:text-foreground"
             >
-              <X size={14} />
+              <X size={12} />
             </button>
           )}
           <button
@@ -475,7 +522,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
             disabled={disabled}
           >
             <ChevronDown 
-              size={14} 
+              size={12} 
               className={`transition-transform duration-200 ${isOpen ? 'rotate-180 text-primary' : 'text-muted-foreground'}`}
             />
           </button>
@@ -495,20 +542,31 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
             transition={{ duration: 0.15 }}
             style={{
               position: 'fixed',
-              ...(dropdownDirection === 'up' 
+              ...(dropdownPosition.top === 0 || dropdownDirection === 'up' 
                 ? { bottom: dropdownPosition.bottom }
                 : { top: dropdownPosition.top }
               ),
               left: dropdownPosition.left,
               width: dropdownPosition.width,
               zIndex: 10000,
+              maxHeight: (() => {
+                const viewport = window.visualViewport || { height: window.innerHeight };
+                if (dropdownPosition.top === 0) {
+                  // للأعلى: المسافة من bottom إلى أعلى viewport
+                  return `${dropdownPosition.bottom - 16}px`;
+                } else {
+                  // للأسفل: المسافة من top إلى أسفل viewport
+                  return `${viewport.height - dropdownPosition.top - 16}px`;
+                }
+              })(),
             }}
             className="py-2 rounded-xl border border-primary/30 bg-card shadow-2xl max-h-64 overflow-y-auto pointer-events-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Quick Actions: GPS & Remote */}
-            {(showGPSOption || showRemoteOption) && (
-              <div className="flex gap-2 px-3 py-2 border-b border-border">
+            {/* إخفاء عندما توجد نتائج بحث */}
+            {(showGPSOption || showRemoteOption) && results.length === 0 && (
+              <div className="flex gap-2 px-3 py-1.5 border-b border-border">
                 {showGPSOption && (
                   <button
                     type="button"
@@ -519,17 +577,17 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                     }}
                     disabled={isGettingLocation}
                     className={`
-                      flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg
+                      flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg
                       bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer
                       ${isGettingLocation ? 'opacity-50 cursor-wait' : ''}
                     `}
                   >
                     {isGettingLocation ? (
-                      <Loader2 size={16} className="animate-spin" />
+                      <Loader2 size={14} className="animate-spin" />
                     ) : (
-                      <Navigation size={16} />
+                      <Navigation size={14} />
                     )}
-                    <span className="text-sm font-medium">
+                    <span className="text-xs font-medium">
                       {isGettingLocation ? 'جاري...' : 'موقعي'}
                     </span>
                   </button>
@@ -543,22 +601,23 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                       handleSelectRemote();
                     }}
                     className={`
-                      flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer
+                      flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg transition-colors cursor-pointer
                       ${selectedCities.includes('عن بعد') 
                         ? 'bg-primary text-white' 
                         : 'bg-primary/10 text-primary hover:bg-primary/20'
                       }
                     `}
                   >
-                    <Globe size={16} />
-                    <span className="text-sm font-medium">عن بعد</span>
+                    <Globe size={14} />
+                    <span className="text-xs font-medium">عن بعد</span>
                   </button>
                 )}
               </div>
             )}
             
             {/* Map Option */}
-            {showMapOption && (
+            {/* إخفاء عندما توجد نتائج بحث */}
+            {showMapOption && results.length === 0 && (
               <button
                 type="button"
                 onClick={(e) => {
@@ -574,18 +633,19 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                   }
                   setShowMapModal(true);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-right transition-colors cursor-pointer hover:bg-secondary/50 text-foreground border-b border-border"
+                className="w-full flex items-center gap-2 px-3 py-2 text-right transition-colors cursor-pointer hover:bg-secondary/50 text-foreground border-b border-border"
               >
-                <Map size={18} className="text-primary" />
+                <Map size={16} className="text-primary" />
                 <div className="flex-1">
-                  <span className="font-medium">اختر من الخريطة</span>
+                  <span className="text-sm font-medium">اختر من الخريطة</span>
                   <span className="text-xs text-muted-foreground block">حدد موقعك على الخريطة</span>
                 </div>
               </button>
             )}
 
             {/* All Cities Option - First in list */}
-            {(multiSelect || showAllCitiesOption) && (
+            {/* يعرض فقط عندما لا يوجد بحث (قبل البحث) أو عندما لا توجد نتائج */}
+            {(multiSelect || showAllCitiesOption) && (searchQuery.trim().length === 0 || (results.length === 0 && searchQuery.trim().length > 0 && !isLoading)) && (
               <button
                 type="button"
                 onClick={(e) => {
@@ -602,18 +662,18 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                   setIsOpen(false);
                 }}
                 className={`
-                  w-full flex items-center gap-3 px-4 py-2.5 text-right transition-colors cursor-pointer
+                  w-full flex items-center gap-2 px-3 py-2 text-right transition-colors cursor-pointer
                   hover:bg-secondary/50
                   ${(selectedCities.includes('كل المدن') || value === 'كل المدن') ? 'text-primary bg-primary/5' : 'text-foreground'}
                 `}
               >
-                <MapPin size={18} className={(selectedCities.includes('كل المدن') || value === 'كل المدن') ? 'text-primary' : 'text-muted-foreground'} />
+                <MapPin size={16} className={(selectedCities.includes('كل المدن') || value === 'كل المدن') ? 'text-primary' : 'text-muted-foreground'} />
                 <div className="flex-1 min-w-0">
-                  <span className="font-medium">كل المدن</span>
+                  <span className="text-sm font-medium">كل المدن</span>
                   <span className="text-xs text-muted-foreground block">المملكة العربية السعودية</span>
                 </div>
                 {(selectedCities.includes('كل المدن') || value === 'كل المدن') && (
-                  <Check size={16} className="text-primary shrink-0" />
+                  <Check size={14} className="text-primary shrink-0" />
                 )}
               </button>
             )}
@@ -634,18 +694,18 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                       handleSelectCity(city);
                     }}
                     className={`
-                      w-full flex items-center gap-3 px-4 py-2.5 text-right transition-colors cursor-pointer
+                      w-full flex items-center gap-2 px-3 py-2 text-right transition-colors cursor-pointer
                       ${highlightedIndex === actualIndex ? 'bg-primary/10' : 'hover:bg-secondary/50'}
                       ${isSelected ? 'text-primary' : 'text-foreground'}
                     `}
                   >
-                    <MapPin size={18} className={isSelected ? 'text-primary' : 'text-muted-foreground'} />
+                    <MapPin size={16} className={isSelected ? 'text-primary' : 'text-muted-foreground'} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium truncate">{city.name}</span>
+                        <span className="text-sm font-medium truncate">{city.name}</span>
                         {/* عرض نوع المكان */}
                         {city.placeTypeArabic && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                          <span className="text-[10px] px-1 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
                             {city.placeTypeArabic}
                           </span>
                         )}
@@ -662,14 +722,14 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                       )}
                     </div>
                     {isSelected && (
-                      <Check size={16} className="text-primary shrink-0" />
+                      <Check size={14} className="text-primary shrink-0" />
                     )}
                   </button>
                 );
               })
             ) : (
-              // نعرض رسالة "لا توجد نتائج" فقط إذا كان المستخدم قد بحث بالفعل (اكتب حرف واحد على الأقل)
-              searchQuery.trim().length >= 1 && (
+              // نعرض رسالة "لا توجد نتائج" فقط إذا كان المستخدم قد بحث بالفعل ولم يعرض خيار "كل المدن"
+              searchQuery.trim().length >= 1 && !((multiSelect || showAllCitiesOption) && (searchQuery.trim().length === 0 || (results.length === 0 && searchQuery.trim().length > 0 && !isLoading))) && (
                 <div className="px-4 py-6 text-center text-muted-foreground">
                   {isLoading ? (
                     <div className="flex items-center justify-center gap-2">
@@ -697,10 +757,10 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                   onChange(searchQuery);
                   setIsOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-right hover:bg-secondary/50 transition-colors border-t border-border cursor-pointer"
+                className="w-full flex items-center gap-2 px-3 py-2 text-right hover:bg-secondary/50 transition-colors border-t border-border cursor-pointer"
               >
-                <Search size={18} className="text-muted-foreground" />
-                <span className="text-muted-foreground">
+                <Search size={16} className="text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">
                   استخدم "<span className="text-foreground font-medium">{searchQuery}</span>"
                 </span>
               </button>
@@ -742,7 +802,10 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
               <div
                 ref={(el) => {
                   if (el && !mapRef.current && window.google?.maps) {
-                    const map = new window.google.maps.Map(el, {
+                    // الحصول على Map ID من المتغيرات البيئية (مطلوب لـ Advanced Markers)
+                    const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || undefined;
+                    
+                    const mapOptions: any = {
                       center: mapCenter,
                       zoom: 12,
                       disableDefaultUI: true,
@@ -751,35 +814,84 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                       streetViewControl: false,
                       fullscreenControl: false,
                       gestureHandling: 'greedy',
-                    });
+                    };
+                    
+                    // إضافة mapId إذا كان متوفراً (مطلوب لـ Advanced Markers)
+                    if (mapId) {
+                      mapOptions.mapId = mapId;
+                    }
+                    
+                    const map = new window.google.maps.Map(el, mapOptions);
                     mapRef.current = map;
 
-                    // Marker
-                    const marker = new window.google.maps.Marker({
-                      position: mapCenter,
-                      map: map,
-                      draggable: true,
-                      animation: window.google.maps.Animation.DROP,
-                    });
-                    markerRef.current = marker;
-                    setSelectedMapLocation(mapCenter);
+                    // استخدام Advanced Marker إذا كان Map ID متوفراً، وإلا نستخدم Marker القديم
+                    const useAdvancedMarker = mapId && window.google?.maps?.marker?.AdvancedMarkerElement;
+                    
+                    if (useAdvancedMarker) {
+                      // Advanced Marker (يتطلب Map ID)
+                      const marker = new window.google.maps.marker.AdvancedMarkerElement({
+                        map: map,
+                        position: mapCenter,
+                        gmpDraggable: true,
+                      });
+                      markerRef.current = marker;
+                      setSelectedMapLocation(mapCenter);
 
-                    // Click on map to move marker
-                    map.addListener('click', (e: google.maps.MapMouseEvent) => {
-                      if (e.latLng) {
-                        const pos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-                        marker.setPosition(pos);
-                        setSelectedMapLocation(pos);
-                      }
-                    });
+                      // Click on map to move marker
+                      map.addListener('click', (e: any) => {
+                        if (e.latLng) {
+                          const pos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                          marker.position = pos;
+                          setSelectedMapLocation(pos);
+                        }
+                      });
 
-                    // Drag marker
-                    marker.addListener('dragend', () => {
-                      const pos = marker.getPosition();
-                      if (pos) {
-                        setSelectedMapLocation({ lat: pos.lat(), lng: pos.lng() });
-                      }
-                    });
+                      // Drag marker
+                      marker.addListener('dragend', () => {
+                        const pos = marker.position;
+                        if (pos) {
+                          let lat: number, lng: number;
+                          if (typeof pos === 'object' && 'lat' in pos && 'lng' in pos) {
+                            lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
+                            lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
+                          } else if (pos && typeof (pos as any).lat === 'function') {
+                            const latLng = pos as any;
+                            lat = latLng.lat();
+                            lng = latLng.lng();
+                          } else {
+                            return;
+                          }
+                          setSelectedMapLocation({ lat, lng });
+                        }
+                      });
+                    } else {
+                      // Marker القديم (fallback - يعمل بدون Map ID)
+                      const marker = new window.google.maps.Marker({
+                        position: mapCenter,
+                        map: map,
+                        draggable: true,
+                        animation: window.google.maps.Animation.DROP,
+                      });
+                      markerRef.current = marker;
+                      setSelectedMapLocation(mapCenter);
+
+                      // Click on map to move marker
+                      map.addListener('click', (e: any) => {
+                        if (e.latLng) {
+                          const pos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                          marker.setPosition(pos);
+                          setSelectedMapLocation(pos);
+                        }
+                      });
+
+                      // Drag marker
+                      marker.addListener('dragend', () => {
+                        const pos = marker.getPosition();
+                        if (pos) {
+                          setSelectedMapLocation({ lat: pos.lat(), lng: pos.lng() });
+                        }
+                      });
+                    }
                   }
                 }}
                 className="w-full h-full"
@@ -826,7 +938,13 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
                     setShowMapModal(false);
                     // تنظيف الخريطة
                     if (markerRef.current) {
-                      markerRef.current.setMap(null);
+                      // AdvancedMarkerElement يستخدم map = null
+                      // Marker القديم يستخدم setMap(null)
+                      if (typeof markerRef.current.setMap === 'function') {
+                        markerRef.current.setMap(null);
+                      } else {
+                        markerRef.current.map = null;
+                      }
                       markerRef.current = null;
                     }
                     mapRef.current = null;

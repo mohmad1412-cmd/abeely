@@ -31,6 +31,7 @@ import {
   Trash2,
   Download,
   AlertCircle,
+  Target,
 } from "lucide-react";
 import { findApproximateImages } from "../services/geminiService";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
@@ -45,7 +46,7 @@ import { generateDraftWithCta } from "../services/aiService";
 import { VoiceProcessingStatus } from "./GlobalFloatingOrb";
 import { CityAutocomplete } from "./ui/CityAutocomplete";
 import { CityResult } from "../services/placesService";
-import { verifyGuestPhone, confirmGuestPhone, getCurrentUser } from "../services/authService";
+import { verifyGuestPhone, confirmGuestPhone, getCurrentUser, isValidSaudiPhone } from "../services/authService";
 import { supabase } from "../services/supabaseClient";
 
 // ============================================
@@ -466,7 +467,7 @@ const SuccessNotification: React.FC<{
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -100, opacity: 0 }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          className="fixed top-0 left-0 right-0 z-[100] p-4"
+          className="fixed top-0 left-0 right-0 md:right-72 z-[100] p-4"
         >
           <div className="max-w-md mx-auto bg-primary text-white rounded-2xl shadow-2xl overflow-hidden">
             <div className="flex items-center gap-3 p-4">
@@ -1052,15 +1053,13 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // Show additional fields only when AI suggests them
   const [showAdditionalFields, setShowAdditionalFields] = useState(false);
   
-  // Suggested category (when AI suggests "أخرى" or no category)
-  const [suggestedCategory, setSuggestedCategory] = useState<string>("");
-  
   // ==========================================
   // Optional Fields (Budget, Delivery, Attachments)
   // ==========================================
   const [isAttachmentsExpanded, setIsAttachmentsExpanded] = useState(false);
   const [isBudgetExpanded, setIsBudgetExpanded] = useState(false);
   const [isDeliveryExpanded, setIsDeliveryExpanded] = useState(false);
+  const [isCityAutocompleteOpen, setIsCityAutocompleteOpen] = useState(false);
   
   // Budget fields (from - to)
   const [budgetMin, setBudgetMin] = useState("");
@@ -1069,6 +1068,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // Delivery time - selected preset or custom value
   const [deliveryValue, setDeliveryValue] = useState("");
   const [customDeliveryValue, setCustomDeliveryValue] = useState("");
+  
+  // Seriousness level (1-5, default: 3)
+  const [seriousness, setSeriousness] = useState<number>(3);
   
   // Delivery time presets
   const deliveryPresets = [
@@ -1175,6 +1177,11 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       if (editBudgetMin) setBudgetMin(editBudgetMin);
       if (editBudgetMax) setBudgetMax(editBudgetMax);
       
+      // تعيين قيمة الجدية
+      if (requestToEdit.seriousness) {
+        setSeriousness(requestToEdit.seriousness);
+      }
+      
       // Check if delivery value is a preset
       const isPreset = ["فوراً", "يوم واحد", "يومين", "أسبوع", "شهر", "غير محدد"].includes(editDeliveryValue);
       if (isPreset) {
@@ -1277,8 +1284,32 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const [isSendingOTP, setIsSendingOTP] = useState(false);
   const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
   const [guestError, setGuestError] = useState<string | null>(null);
+  
+  // Ensure we have an authenticated session (fallback to anonymous if allowed)
+  const ensureGuestSession = useCallback(async (): Promise<string | null> => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) return session.user.id;
+
+      // Anonymous sign-in (must be enabled on Supabase)
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (error) {
+        console.error("Anonymous sign-in error:", error);
+        return null;
+      }
+      const newUserId = data?.user?.id || data?.session?.user?.id || null;
+      return newUserId;
+    } catch (err) {
+      console.error("Anonymous sign-in exception:", err);
+      return null;
+    }
+  }, []);
+  
+  // Auth required alert state
+  const [showAuthAlert, setShowAuthAlert] = useState(false);
 
   // Save form data to localStorage before requiring login
+  // SECURITY: Store draft with user ID to prevent cross-user data leakage
   const saveFormDataForGuest = useCallback(() => {
     const formData = {
       title: title.trim(),
@@ -1303,17 +1334,63 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         // The actual files will need to be re-uploaded after login
       })),
       timestamp: Date.now(),
+      // SECURITY: Include user ID if available to prevent cross-user data leakage
+      userId: user?.id || null,
     };
-    localStorage.setItem('abeely_pending_request_form', JSON.stringify(formData));
-  }, [title, description, location, budgetMin, budgetMax, deliveryValue, customDeliveryValue, additionalFields, selectedImageUrls, attachedFiles]);
+    
+    // SECURITY: Use user-specific key if user is logged in, otherwise use generic key
+    // This prevents drafts from one user appearing for another user
+    const storageKey = user?.id 
+      ? `abeely_pending_request_form_${user.id}`
+      : 'abeely_pending_request_form';
+    
+    localStorage.setItem(storageKey, JSON.stringify(formData));
+    
+    // Clean up old generic key if user is logged in (migration)
+    if (user?.id) {
+      localStorage.removeItem('abeely_pending_request_form');
+    }
+  }, [title, description, location, budgetMin, budgetMax, deliveryValue, customDeliveryValue, additionalFields, selectedImageUrls, attachedFiles, user?.id]);
 
   // Restore form data from localStorage
+  // SECURITY: Only restore drafts that belong to the current user
   const restoreFormDataFromGuest = useCallback(() => {
-    const savedData = localStorage.getItem('abeely_pending_request_form');
-    if (!savedData) return false;
+    // SECURITY: Try user-specific key first, then generic key (for backward compatibility)
+    const userSpecificKey = user?.id ? `abeely_pending_request_form_${user.id}` : null;
+    const genericKey = 'abeely_pending_request_form';
+    
+    let savedData: string | null = null;
+    let storageKey: string | null = null;
+    
+    // Try user-specific key first
+    if (userSpecificKey) {
+      savedData = localStorage.getItem(userSpecificKey);
+      if (savedData) {
+        storageKey = userSpecificKey;
+      }
+    }
+    
+    // Fallback to generic key if no user-specific data found
+    if (!savedData) {
+      savedData = localStorage.getItem(genericKey);
+      if (savedData) {
+        storageKey = genericKey;
+      }
+    }
+    
+    if (!savedData || !storageKey) return false;
 
     try {
       const formData = JSON.parse(savedData);
+      
+      // SECURITY: Verify that the draft belongs to the current user
+      // If user is logged in and draft has a userId, they must match
+      if (user?.id && formData.userId && formData.userId !== user.id) {
+        console.warn('Security: Draft belongs to different user, ignoring');
+        // Clean up the draft that doesn't belong to this user
+        localStorage.removeItem(storageKey);
+        return false;
+      }
       
       // Restore basic fields
       if (formData.title) {
@@ -1346,14 +1423,23 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       }
       
       // Clear saved data after restoring
-      localStorage.removeItem('abeely_pending_request_form');
+      localStorage.removeItem(storageKey);
+      
+      // If we restored from generic key and user is logged in, migrate to user-specific key
+      if (storageKey === genericKey && user?.id) {
+        // Data already restored, just clean up generic key
+        localStorage.removeItem(genericKey);
+      }
+      
       return true;
     } catch (error) {
       console.error('Error restoring form data:', error);
-      localStorage.removeItem('abeely_pending_request_form');
+      if (storageKey) {
+        localStorage.removeItem(storageKey);
+      }
       return false;
     }
-  }, []);
+  }, [user?.id]);
 
   // Check for saved form data on mount
   useEffect(() => {
@@ -1618,9 +1704,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             setTitleShake(true);
             // إيقاف الاهتزاز بعد 1 ثانية
             setTimeout(() => setTitleShake(false), 1000);
-            // إظهار قسم "اقترح تصنيفاً" عند عدم وضوح العنوان
             setShowAdditionalFields(true);
-            setSuggestedCategory("");
             // التركيز التلقائي على حقل العنوان بعد تأخير قصير
             setTimeout(() => {
               titleInputRef.current?.focus();
@@ -1642,7 +1726,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             setTitleShake(true);
             setTimeout(() => setTitleShake(false), 1000);
             setShowAdditionalFields(true);
-            setSuggestedCategory("");
             // التركيز التلقائي على حقل العنوان بعد تأخير قصير
             setTimeout(() => {
               titleInputRef.current?.focus();
@@ -1695,9 +1778,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             setShowManualTitle(true);
             setTitleShake(true);
             setTimeout(() => setTitleShake(false), 1000);
-            // إظهار قسم "اقترح تصنيفاً" عند عدم وضوح العنوان
             setShowAdditionalFields(true);
-            setSuggestedCategory("");
             // التركيز التلقائي على حقل العنوان بعد تأخير قصير
             setTimeout(() => {
               titleInputRef.current?.focus();
@@ -1712,9 +1793,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         // تعيين التصنيف إذا كان متوفراً (أول تصنيف من القائمة)
         if (draft.categories && draft.categories.length > 0) {
           if (draft.categories[0] === 'أخرى' || draft.categories[0] === 'other') {
-            // إذا كان التصنيف "أخرى"، نعرض رسالة ونطلب اقتراح تصنيف
             setShowAdditionalFields(true);
-            setSuggestedCategory("");
           } else {
             setAdditionalFields((prev) =>
               prev.map((f) =>
@@ -1726,9 +1805,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             setShowAdditionalFields(true);
           }
         } else {
-          // إذا لم يقترح AI تصنيفاً، نعرض رسالة "أخرى"
           setShowAdditionalFields(true);
-          setSuggestedCategory("");
         }
       } else {
         // Fallback: استخراج العنوان محلياً
@@ -1742,7 +1819,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           setTitleShake(true);
           setTimeout(() => setTitleShake(false), 1000);
           setShowAdditionalFields(true);
-          setSuggestedCategory("");
           // التركيز التلقائي على حقل العنوان بعد تأخير قصير
           setTimeout(() => {
             titleInputRef.current?.focus();
@@ -1797,7 +1873,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           setTimeout(() => setTitleShake(false), 1000);
           // إظهار قسم "اقترح تصنيفاً" عند عدم وضوح العنوان
           setShowAdditionalFields(true);
-          setSuggestedCategory("");
           // التركيز التلقائي على حقل العنوان بعد تأخير قصير
           setTimeout(() => {
             titleInputRef.current?.focus();
@@ -1822,7 +1897,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         setTitleShake(true);
         setTimeout(() => setTitleShake(false), 1000);
         setShowAdditionalFields(true);
-        setSuggestedCategory("");
         // التركيز التلقائي على حقل العنوان بعد تأخير قصير
         setTimeout(() => {
           titleInputRef.current?.focus();
@@ -1877,7 +1951,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         setTimeout(() => setTitleShake(false), 1000);
         // إظهار قسم "اقترح تصنيفاً" عند عدم وضوح العنوان
         setShowAdditionalFields(true);
-        setSuggestedCategory("");
         // التركيز التلقائي على حقل العنوان بعد تأخير قصير
         setTimeout(() => {
           titleInputRef.current?.focus();
@@ -2066,9 +2139,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         }
         if (draft.categories && draft.categories.length > 0) {
           if (draft.categories[0] === 'أخرى' || draft.categories[0] === 'other') {
-            // إذا كان التصنيف "أخرى"، نعرض رسالة ونطلب اقتراح تصنيف
             setShowAdditionalFields(true);
-            setSuggestedCategory("");
           } else {
             setAdditionalFields((prev) =>
               prev.map((f) =>
@@ -2080,9 +2151,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             setShowAdditionalFields(true);
           }
         } else {
-          // إذا لم يقترح AI تصنيفاً، نعرض رسالة "أخرى"
           setShowAdditionalFields(true);
-          setSuggestedCategory("");
         }
       }
     } catch (error) {
@@ -2133,9 +2202,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       setTimeout(() => addGlow("category"), 400);
       setShowAdditionalFields(true);
     } else if (!review.system_category || review.system_category === 'أخرى' || review.system_category === 'other') {
-      // إذا كان التصنيف "أخرى" أو غير محدد، نعرض رسالة
       setShowAdditionalFields(true);
-      setSuggestedCategory("");
     }
 
     // Show success message
@@ -2231,16 +2298,76 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // Handle publish (internal function - called after guest verification if needed)
   const handlePublishInternal = async (): Promise<string | null> => {
     // Get current user (in case user just logged in via guest verification)
+    // Try multiple times with delay to ensure auth state is updated after login
     let currentUserId = user?.id;
     if (!currentUserId) {
+      // Wait a bit for auth state to update after login
+      await new Promise(resolve => setTimeout(resolve, 200));
+      const currentUser = await getCurrentUser();
+      currentUserId = currentUser?.id || null;
+    }
+    
+    // If still no user, try one more time after another delay
+    if (!currentUserId) {
+      await new Promise(resolve => setTimeout(resolve, 300));
       const currentUser = await getCurrentUser();
       currentUserId = currentUser?.id || null;
     }
 
+    // Final safety: refresh session once to avoid false logouts during submit
     if (!currentUserId) {
-      saveFormDataForGuest();
-      onRequireAuth?.();
-      return null;
+      try {
+        const { data: refreshed, error } = await supabase.auth.refreshSession();
+        if (error) {
+          console.warn("Refresh session before publish failed:", error.message);
+        }
+        currentUserId = refreshed?.session?.user?.id || null;
+      } catch (refreshErr) {
+        console.warn("Refresh session threw:", refreshErr);
+      }
+    }
+
+    // Try anonymous session (useful for dev test numbers 0555/0000)
+    if (!currentUserId) {
+      const anonId = await ensureGuestSession();
+      if (anonId) {
+        currentUserId = anonId;
+      }
+    }
+
+    // Only require auth if we're absolutely sure there's no user
+    // Check for test phone numbers - allow them to proceed
+    if (!currentUserId) {
+      // التحقق من الأرقام الوهمية - محاولة الحصول على user ID من session
+      const testPhone = localStorage.getItem('dev_test_phone');
+      let testUserId = localStorage.getItem('dev_test_user_id');
+      
+      // محاولة الحصول على user ID من Supabase session
+      if (!testUserId) {
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session?.user?.id) {
+            testUserId = sessionData.session.user.id;
+            localStorage.setItem('dev_test_user_id', testUserId);
+            console.log('🔧 DEV MODE: Found user ID from session:', testUserId);
+          }
+        } catch (err) {
+          console.warn('🔧 DEV MODE: Could not get session:', err);
+        }
+      }
+      
+      if (testPhone && testUserId) {
+        // للأرقام الوهمية، نستخدم user ID من Supabase
+        console.log('🔧 DEV MODE: Using test user ID for request creation:', testUserId);
+        currentUserId = testUserId;
+      } else {
+        // للأرقام الحقيقية، نطلب تسجيل الدخول
+        console.warn('No user found in handlePublishInternal, saving draft and showing auth alert');
+        saveFormDataForGuest();
+        // Show alert with options instead of forcing redirect
+        setShowAuthAlert(true);
+        return null;
+      }
     }
     
     // Extract budget values - use direct state values first, then additionalFields
@@ -2300,6 +2427,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         return [categoryField.value]; // value is label, getCategoryIdsByLabels will convert it
       })(),
       deliveryTimeFrom: finalDeliveryTime || undefined,
+      seriousness: seriousness,
     };
 
     // تحديد ما إذا كان تعديل أو إنشاء جديد
@@ -2311,31 +2439,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     // تمرير معلومات التعديل إذا كنا في وضع التعديل
     // Note: onPublish will use user?.id from App.tsx, but we ensure we have currentUserId here
     const result = await onPublish(request, isEditing, editingRequestId || undefined);
-    
-    // حفظ اقتراح التصنيف إذا كان موجوداً
-    if (result && suggestedCategory.trim()) {
-      try {
-        const categoryField = additionalFields.find(f => f.id === "category" && f.enabled);
-        const isOtherCategory = !categoryField || categoryField.value === 'أخرى' || categoryField.value === 'other';
-        
-        if (isOtherCategory) {
-          await supabase
-            .from('pending_categories')
-            .insert({
-              suggested_label: suggestedCategory.trim(),
-              suggested_emoji: '📦',
-              suggested_description: `اقتراح تصنيف من المستخدم للطلب: ${finalTitle}`,
-              suggested_by_ai: false,
-              request_id: result,
-              status: 'pending'
-            });
-          console.log('✅ Category suggestion saved:', suggestedCategory.trim());
-        }
-      } catch (error) {
-        console.warn('Failed to save category suggestion:', error);
-        // لا نوقف العملية إذا فشل حفظ الاقتراح
-      }
-    }
     
     // تحديث حالة الحفظ
     if (result) {
@@ -2978,6 +3081,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   showGPSOption={true}
                   showMapOption={true}
                   showAllCitiesOption={true}
+                  onOpenChange={setIsCityAutocompleteOpen}
                 />
               </div>
             </div>
@@ -3466,6 +3570,152 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                 }}
               />
             </div>
+
+            {/* Seriousness Level - مؤشر الجدية */}
+            <div className="px-4 border-t border-border/50 pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-1.5 rounded-lg bg-primary/10">
+                  <Target size={16} className="text-primary" />
+                </div>
+                <div className="flex-1">
+                  <span className="text-sm font-medium text-foreground">مستوى الجدية</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {seriousness === 5 && "عالية جداً (عروض قليلة جداً)"}
+                    {seriousness === 4 && "عالية (عروض قليلة)"}
+                    {seriousness === 3 && "متوسطة (عروض متوسطة)"}
+                    {seriousness === 2 && "منخفضة (عروض كثيرة)"}
+                    {seriousness === 1 && "منخفضة جداً (عروض كثيرة جداً)"}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Elegant Slider */}
+              <div className="relative py-3">
+                {/* Background track */}
+                <div className="absolute top-1/2 left-0 right-0 h-1.5 bg-secondary/60 rounded-full -translate-y-1/2" />
+                
+                {/* Active track with gradient */}
+                <div 
+                  className="absolute top-1/2 left-0 h-1.5 bg-gradient-to-r from-primary to-primary/80 rounded-full -translate-y-1/2 transition-all duration-300 ease-out"
+                  style={{ width: `${((seriousness - 1) / 4) * 100}%` }}
+                />
+                
+                {/* Level dots - positioned at exact percentages to align with thumb */}
+                <div className="absolute top-1/2 left-0 right-0 -translate-y-1/2 pointer-events-none">
+                  {[1, 2, 3, 4, 5].map((level) => {
+                    // Calculate position: 0%, 25%, 50%, 75%, 100%
+                    const position = ((level - 1) / 4) * 100;
+                    return (
+                      <div
+                        key={level}
+                        className="absolute transition-all duration-300"
+                        style={{
+                          left: `calc(${position}% - 6px)`, // 6px = half of 12px (w-3)
+                          transform: `translateY(-50%) ${seriousness >= level ? 'scale(1.25)' : 'scale(1)'}`,
+                        }}
+                      >
+                        <div
+                          className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                            seriousness >= level
+                              ? 'bg-primary shadow-lg shadow-primary/40'
+                              : 'bg-secondary border-2 border-background'
+                          }`}
+                        />
+                        {seriousness === level && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="absolute inset-0 rounded-full bg-primary/20"
+                            style={{ width: '200%', height: '200%', left: '-50%', top: '-50%' }}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Slider input */}
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="1"
+                  value={seriousness}
+                  onChange={(e) => {
+                    const newValue = parseInt(e.target.value);
+                    setSeriousness(newValue);
+                    if (navigator.vibrate) {
+                      navigator.vibrate(10);
+                    }
+                  }}
+                  className="relative w-full h-2 bg-transparent appearance-none cursor-pointer slider-elegant z-10"
+                />
+                
+                {/* Slider styles - thumb aligned with dots */}
+                <style>{`
+                  .slider-elegant {
+                    padding: 0;
+                    margin: 0;
+                  }
+                  .slider-elegant::-webkit-slider-thumb {
+                    appearance: none;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 50%;
+                    background: hsl(var(--primary));
+                    cursor: grab;
+                    border: 3px solid hsl(var(--background));
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 0 0 0 rgba(var(--primary-rgb), 0.4);
+                    transition: all 0.2s ease;
+                    position: relative;
+                    z-index: 20;
+                    margin-top: -9px; /* Center align: (20px thumb - 2px track) / 2 = 9px */
+                  }
+                  .slider-elegant::-webkit-slider-thumb:active {
+                    cursor: grabbing;
+                    transform: scale(1.2);
+                    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2), 0 0 0 4px rgba(var(--primary-rgb), 0.2);
+                  }
+                  .slider-elegant::-webkit-slider-thumb:hover {
+                    transform: scale(1.15);
+                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2), 0 0 0 2px rgba(var(--primary-rgb), 0.3);
+                  }
+                  .slider-elegant::-moz-range-thumb {
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 50%;
+                    background: hsl(var(--primary));
+                    cursor: grab;
+                    border: 3px solid hsl(var(--background));
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+                    transition: all 0.2s ease;
+                  }
+                  .slider-elegant::-moz-range-thumb:active {
+                    cursor: grabbing;
+                    transform: scale(1.2);
+                    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2);
+                  }
+                  .slider-elegant::-moz-range-thumb:hover {
+                    transform: scale(1.15);
+                  }
+                  .slider-elegant::-webkit-slider-runnable-track {
+                    background: transparent;
+                    height: 2px;
+                  }
+                  .slider-elegant::-moz-range-track {
+                    background: transparent;
+                    height: 2px;
+                    border: none;
+                  }
+                `}</style>
+              </div>
+              
+              {/* Labels */}
+              <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/30">
+                <span className="text-[10px] text-muted-foreground font-medium">قليل العروض</span>
+                <span className="text-[10px] text-muted-foreground font-medium">كثير العروض</span>
+              </div>
+            </div>
           </motion.div>
           
         </div>
@@ -3474,89 +3724,32 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         <AnimatePresence>
           {showAdditionalFields && (
             <motion.div 
-              className="mb-6"
+              className="mb-3"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
             >
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-sm font-medium text-muted-foreground">اقترح تصنيفاً</span>
-                <div className="flex-1 h-px bg-border" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <AnimatePresence mode="popLayout">
+                  {additionalFields.filter(f => f.enabled && f.id !== "category").map((field) => (
+                    <AdditionalFieldCard
+                      key={field.id}
+                      field={field}
+                      onRemove={removeField}
+                      onValueChange={updateFieldValue}
+                      isGlowing={glowingFields.has(field.id)}
+                    />
+                  ))}
+                </AnimatePresence>
               </div>
-
-              {/* Check if category is "أخرى" or not set */}
-              {(() => {
-                const categoryField = additionalFields.find(f => f.id === "category" && f.enabled);
-                const isOtherCategory = categoryField?.value === 'أخرى' || categoryField?.value === 'other' || !categoryField;
-                
-                if (isOtherCategory) {
-                  return (
-                    <div className="space-y-3">
-                      <div className="p-4 rounded-xl bg-muted/50 border border-border">
-                        <p className="text-sm text-foreground mb-3">
-                          �� ���� ����� ����� ���. ����� ������� ������ (�������).
-                        </p>
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium text-muted-foreground block">
-                            اقترح تصنيفاً جديداً (اختياري)
-                          </label>
-                          <input
-                            type="text"
-                            value={suggestedCategory}
-                            onChange={(e) => setSuggestedCategory(e.target.value)}
-                            placeholder="مثال: تصميم شعارات، برمجة تطبيقات..."
-                            className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            سيتم مراجعة اقتراحك وإضافته للتصنيفات المتاحة بعد الموافقة
-                          </p>
-                        </div>
-                      </div>
-                      
-                      {/* Show other enabled fields (budget, delivery) */}
-                      {additionalFields.filter(f => f.enabled && f.id !== "category").length > 0 && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                          <AnimatePresence mode="popLayout">
-                            {additionalFields.filter(f => f.enabled && f.id !== "category").map((field) => (
-                              <AdditionalFieldCard
-                                key={field.id}
-                                field={field}
-                                onRemove={removeField}
-                                onValueChange={updateFieldValue}
-                                isGlowing={glowingFields.has(field.id)}
-                              />
-                            ))}
-                          </AnimatePresence>
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-                
-                // Show all enabled fields including category
-                return (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <AnimatePresence mode="popLayout">
-                      {additionalFields.filter(f => f.enabled).map((field) => (
-                        <AdditionalFieldCard
-                          key={field.id}
-                          field={field}
-                          onRemove={removeField}
-                          onValueChange={updateFieldValue}
-                          isGlowing={glowingFields.has(field.id)}
-                        />
-                      ))}
-                    </AnimatePresence>
-                  </div>
-                );
-              })()}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
       {/* زر الإرسال العائم في الأسفل */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4">
+      {!isCityAutocompleteOpen && (
+      <div className="fixed bottom-0 left-0 right-0 md:right-72 z-50 bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4">
         {/* زر أرسل الطلب الآن */}
         <SubmitButtonWithShake
           canSubmit={canSubmit}
@@ -3598,6 +3791,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           onGoToRequest={onGoToRequest}
         />
       </div>
+      )}
 
       {/* Attachment Preview Modal */}
       <AnimatePresence>
@@ -3742,7 +3936,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                 <p className="text-sm text-muted-foreground text-right">
                   لإتمام إنشاء الطلب، نحتاج للتحقق من رقم جوالك. سيتم إرسال رمز تحقق على رقمك.
                 </p>
-                <div className={`relative flex items-center gap-2 border-2 rounded-lg bg-background px-4 h-12 focus-within:border-primary transition-all ${guestError ? 'border-red-500' : 'border-border'}`}>
+                <div className={`relative flex items-center gap-2 border-2 rounded-lg bg-background px-4 h-12 focus-within:border-primary transition-all min-w-0 overflow-hidden ${guestError ? 'border-red-500' : 'border-border'}`}>
                   <span className="text-muted-foreground font-medium shrink-0">+966</span>
                   <input
                     type="tel"
@@ -3753,13 +3947,14 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       // السماح بـ 0 في البداية أو بدون
                       const value = e.target.value.replace(/\D/g, '');
                       // يقبل حتى 10 أرقام (مع 0) أو 9 (بدون 0)
+                      // السماح بالأرقام السعودية (تبدأ بـ 5 أو 05) والأرقام الوهمية (555...)
                       if (value.length <= 10) {
                         setGuestPhone(value);
                         setGuestError(null);
                       }
                     }}
-                    placeholder="0501234567"
-                    className="flex-1 h-full bg-transparent text-base outline-none text-left"
+                    placeholder="0501234567 أو 5555555555"
+                    className="flex-1 h-full bg-transparent text-base outline-none text-left min-w-0"
                     dir="ltr"
                     maxLength={10}
                     autoFocus
@@ -3792,6 +3987,17 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                         setGuestError("يرجى إدخال رقم الجوال");
                         return;
                       }
+                      
+                      // التحقق من صحة الرقم (سعودي أو وهمي)
+                      const cleanPhone = guestPhone.replace(/\D/g, '');
+                      const isTestPhone = cleanPhone.startsWith('0555') || cleanPhone.startsWith('555');
+                      const isValid = isValidSaudiPhone(guestPhone) || isTestPhone;
+                      
+                      if (!isValid) {
+                        setGuestError("يرجى إدخال رقم جوال صحيح (9 أو 10 أرقام)");
+                        return;
+                      }
+                      
                       setIsSendingOTP(true);
                       setGuestError(null);
                       const result = await verifyGuestPhone(guestPhone);
@@ -3804,8 +4010,17 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                         setGuestError(translatedError);
                       }
                     }}
-                    disabled={isSendingOTP}
-                    className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    disabled={isSendingOTP || (() => {
+                      // تعطيل الزر حتى يكون الرقم صحيحاً
+                      if (!guestPhone.trim()) return true;
+                      const cleanPhone = guestPhone.replace(/\D/g, '');
+                      // السماح بالأرقام الوهمية (555...)
+                      const isTestPhone = cleanPhone.startsWith('0555') || cleanPhone.startsWith('555');
+                      // السماح بالأرقام السعودية (9 أو 10 أرقام)
+                      const isValid = isValidSaudiPhone(guestPhone) || isTestPhone;
+                      return !isValid;
+                    })()}
+                    className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSendingOTP ? "جاري الإرسال..." : "إرسال رمز التحقق"}
                   </button>
@@ -3876,6 +4091,58 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       const result = await confirmGuestPhone(guestPhone, guestOTP);
                       setIsVerifyingOTP(false);
                       if (result.success) {
+                        // بعد التحقق الناجح، تأكد من وجود جلسة (مهم لرقم 0555/0000)
+                        let userProfile = await getCurrentUser();
+                        if (!userProfile?.id) {
+                          const anonId = await ensureGuestSession();
+                          if (!anonId) {
+                            setGuestError("فشل في إنشاء جلسة مؤقتة. حاول مرة أخرى أو سجّل دخول.");
+                            return;
+                          }
+                          userProfile = await getCurrentUser();
+                        }
+                        // بعد التحقق الناجح، تحقق من حالة Onboarding
+                        if (userProfile?.id) {
+                          localStorage.setItem('dev_test_user_id', userProfile.id);
+                          // التحقق من حالة Onboarding
+                          const userOnboardedKey = `abeely_onboarded_${userProfile.id}`;
+                          const localOnboarded = localStorage.getItem(userOnboardedKey) === 'true';
+                          const hasName = !!userProfile.display_name?.trim();
+                          
+                          // التحقق من قاعدة البيانات إذا لم يكن هناك علامة محلية
+                          let needsOnboarding = !localOnboarded || !hasName;
+                          if (!localOnboarded) {
+                            try {
+                              const { data: profileData } = await supabase
+                                .from('profiles')
+                                .select('interested_categories, interested_cities, display_name, has_onboarded')
+                                .eq('id', userProfile.id)
+                                .single();
+                              
+                              const hasInterests = Array.isArray(profileData?.interested_categories) && profileData.interested_categories.length > 0;
+                              const hasCities = Array.isArray(profileData?.interested_cities) && profileData.interested_cities.length > 0;
+                              const hasProfileName = !!profileData?.display_name?.trim();
+                              const alreadyOnboarded = profileData?.has_onboarded === true;
+                              
+                              needsOnboarding = !(alreadyOnboarded || (hasProfileName && (hasInterests || hasCities)));
+                            } catch (err) {
+                              console.error('Error checking onboarding status:', err);
+                              // في حالة الخطأ، نعتبر أن المستخدم يحتاج onboarding إذا لم يكن هناك اسم
+                              needsOnboarding = !hasName;
+                            }
+                          }
+                          
+                          if (needsOnboarding) {
+                            // المستخدم يحتاج إلى Onboarding - احفظ البيانات وانتقل إلى Onboarding
+                            saveFormDataForGuest();
+                            localStorage.setItem('abeely_requires_onboarding', 'true');
+                            localStorage.setItem('abeely_pending_action', 'create_request');
+                            // إعادة تحميل الصفحة للانتقال إلى OnboardingScreen
+                            window.location.reload();
+                            return;
+                          }
+                        }
+                        
                         setGuestVerificationStep('terms');
                         setGuestError(null);
                       } else {
@@ -3945,6 +4212,26 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   />
                   <span className="text-sm">أوافق على الشروط والأحكام</span>
                 </label>
+                
+                {/* عرض رسالة الخطأ */}
+                <AnimatePresence>
+                  {guestError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+                    >
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                        <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
+                          {guestError}
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                
                 <div className="flex gap-2">
                   <button
                     onClick={async () => {
@@ -3954,29 +4241,48 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       }
                       setGuestError(null);
                       
-                      // Get the now-logged-in user
-                      const userProfile = await getCurrentUser();
-                      if (!userProfile?.id) {
-                        setGuestError("فشل تسجيل الدخول. حاول مرة أخرى.");
-                        return;
-                      }
-                      
-                      // Close modal and proceed with publishing
-                      setGuestVerificationStep('none');
-                      setTermsAccepted(false);
-                      setGuestPhone("");
-                      setGuestOTP("");
-                      
-                      // Clear saved form data since we're proceeding with publish
-                      localStorage.removeItem('abeely_pending_request_form');
-                      
-                      // Proceed with publishing
+                      // Proceed with publishing (don't close modal yet - wait for success/error)
+                      // Note: handlePublishInternal will check for user itself
                       if (navigator.vibrate) navigator.vibrate(15);
                       setIsSubmitting(true);
                       
                       try {
+                        // Force refresh user before publishing - wait a bit for auth state to update
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        
+                        // التحقق من الأرقام الوهمية - للأرقام الوهمية نسمح بإنشاء الطلب بدون مستخدم
+                        const cleanPhone = guestPhone.replace(/\D/g, '');
+                        const isTestPhone = cleanPhone.startsWith('0555') || cleanPhone.startsWith('555');
+                        
+                        let userProfile = null;
+                        if (!isTestPhone) {
+                          // للأرقام الحقيقية، يجب التحقق من المستخدم
+                          userProfile = await getCurrentUser();
+                          if (!userProfile?.id) {
+                            setGuestError("فشل تسجيل الدخول. حاول مرة أخرى.");
+                            setIsSubmitting(false);
+                            return;
+                          }
+                        } else {
+                          // للأرقام الوهمية، نستخدم رقم وهمي كـ user ID
+                          console.log('🔧 DEV MODE: Using test phone, allowing request creation without real user');
+                        }
+                        
                         const requestId = await handlePublishInternal();
                         if (requestId) {
+                          // Success - now close modal and clear data
+                          setGuestVerificationStep('none');
+                          setTermsAccepted(false);
+                          setGuestPhone("");
+                          setGuestOTP("");
+                          
+                          // Clear saved form data since we're proceeding with publish
+                          // SECURITY: Clear both user-specific and generic keys
+                          if (userProfile?.id) {
+                            localStorage.removeItem(`abeely_pending_request_form_${userProfile.id}`);
+                          }
+                          localStorage.removeItem('abeely_pending_request_form');
+                          
                           setCreatedRequestId(requestId);
                           setSubmitSuccess(true);
                           setShowSuccessNotification(true);
@@ -3988,6 +4294,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                               }
                             }, 2000);
                           }
+                        } else {
+                          setGuestError("فشل في إنشاء الطلب. حاول مرة أخرى.");
                         }
                       } catch (error) {
                         console.error("Error submitting:", error);
@@ -3996,7 +4304,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                         setIsSubmitting(false);
                       }
                     }}
-                    disabled={!termsAccepted}
+                    disabled={!termsAccepted || isSubmitting}
                     className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     موافق وإنشاء الطلب
@@ -4016,6 +4324,59 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             )}
           </motion.div>
         </div>,
+        document.body
+      )}
+
+      {/* Auth Required Alert Modal */}
+      {ReactDOM.createPortal(
+        <AnimatePresence>
+          {showAuthAlert && (
+            <div 
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowAuthAlert(false)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-background rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4"
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <AlertCircle className="w-6 h-6 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-right">تسجيل الدخول مطلوب</h3>
+                    <p className="text-sm text-muted-foreground text-right mt-1">
+                      يجب تسجيل الدخول لإرسال الطلب. تم حفظ بياناتك مؤقتاً.
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowAuthAlert(false);
+                      onRequireAuth?.();
+                    }}
+                    className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors"
+                  >
+                    تسجيل الدخول
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowAuthAlert(false);
+                    }}
+                    className="px-6 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
         document.body
       )}
 

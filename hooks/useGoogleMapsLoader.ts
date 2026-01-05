@@ -54,7 +54,7 @@ const loadGoogleMapsScript = (): Promise<boolean> => {
 
     // إنشاء script جديد
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&language=ar`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,marker&language=ar&loading=async`;
     script.async = true;
     script.defer = true;
 

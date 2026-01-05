@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { hapticService } from '../../services/hapticService';
 
 interface RippleItem {
   id: number;
@@ -63,8 +64,8 @@ export const RippleButton: React.FC<RippleButtonProps> = ({
       setRipples((prev) => [...prev, newRipple]);
 
       // Haptic feedback
-      if (haptic && navigator.vibrate) {
-        navigator.vibrate(8);
+      if (haptic) {
+        hapticService.tap();
       }
 
       // Clean up ripple after animation
@@ -134,6 +135,8 @@ export const RippleButton: React.FC<RippleButtonProps> = ({
 };
 
 export default RippleButton;
+
+
 
 
 

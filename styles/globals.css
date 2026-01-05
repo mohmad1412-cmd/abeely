@@ -1326,6 +1326,101 @@ button, a, input, textarea, select {
     animation-play-state: running;
 }
 
+/* Continuous scrolling text animation for RTL - moves from right to left */
+@keyframes scrollText {
+    0% {
+        transform: translateX(0);
+    }
+    100% {
+        transform: translateX(-100%);
+    }
+}
+
+/* Continuous scrolling animation for placeholder text - RTL */
+/* النص يتحرك من اليمين إلى اليسار (في RTL) ويتكرر بشكل مستمر */
+@keyframes scroll-text-continuous {
+    0% {
+        transform: translateX(0);
+    }
+    100% {
+        transform: translateX(calc(-50% - 1rem));
+    }
+}
+
+.animate-scroll-text-continuous {
+    animation: scroll-text-continuous 10s linear infinite;
+    display: inline-flex;
+    padding-left: 0.5rem;
+    white-space: nowrap;
+}
+
+/* Reverse scrolling animation - من اليسار إلى اليمين */
+@keyframes scroll-text-continuous-reverse {
+    0% {
+        transform: translateX(calc(-50% - 0.75rem));
+    }
+    100% {
+        transform: translateX(0);
+    }
+}
+
+.animate-scroll-text-continuous-reverse {
+    animation: scroll-text-continuous-reverse 8s linear infinite;
+    display: inline-flex;
+    white-space: nowrap;
+}
+
+/* Continuous scrolling animation - يبدأ مرئياً بجوار "في" ثم يتحرك من اليسار إلى اليمين */
+@keyframes scroll-text-continuous-reverse-delayed {
+    0% {
+        transform: translateX(calc(-33.333% - 0.25rem));
+    }
+    100% {
+        transform: translateX(0);
+    }
+}
+
+.animate-scroll-text-continuous-reverse-delayed {
+    animation: scroll-text-continuous-reverse-delayed 9s linear infinite;
+    display: inline-flex;
+    white-space: nowrap;
+    will-change: transform;
+}
+
+/* Continuous marquee animation for long text in cards - من اليسار إلى اليمين ثم يعود */
+@keyframes marquee-continuous {
+    0% {
+        transform: translateX(calc(-50% - 1rem));
+    }
+    100% {
+        transform: translateX(0);
+    }
+}
+
+.animate-marquee-continuous {
+    animation: marquee-continuous 8s linear infinite;
+    display: inline-flex;
+    white-space: nowrap;
+    will-change: transform;
+}
+
+/* Continuous marquee animation for placeholder - تبدأ مرئية بجوار "في" وتتحرك من اليسار إلى اليمين ثم تعود من اليسار */
+@keyframes marquee-placeholder {
+    0%, 10% {
+        transform: translateX(0);
+    }
+    100% {
+        transform: translateX(calc(50% + 0.5rem));
+    }
+}
+
+.animate-marquee-placeholder {
+    animation: marquee-placeholder 10s linear infinite;
+    display: inline-flex;
+    white-space: nowrap;
+    will-change: transform;
+}
+
 /* ========================================
    CONTINUOUS SHIMMER LOOP - For buttons on card hover
    ======================================== */

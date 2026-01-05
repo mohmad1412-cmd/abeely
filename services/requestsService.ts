@@ -114,7 +114,7 @@ export async function createRequestFromChat(
     location: draftData.location,
     delivery_type: "range",
     delivery_from: draftData.deliveryTime,
-    seriousness: 2, // Default
+    seriousness: 3, // Default (medium)
   };
 
   payload.author_id = userId;
@@ -303,6 +303,13 @@ export async function createOffer(input: CreateOfferInput): Promise<{ id: string
       .select("id")
       .single();
 
+    // إذا كان هناك data حتى مع وجود error، يعتبر العرض تم إنشاؤه بنجاح
+    // (بعض الأخطاء في triggers قد تحدث بعد إنشاء العرض)
+    if (data && data.id) {
+      console.log("✅ Offer created successfully (with potential trigger warning):", data);
+      return data;
+    }
+    
     if (error) {
       console.error("❌ Create offer error:", {
         message: error.message,
@@ -311,13 +318,35 @@ export async function createOffer(input: CreateOfferInput): Promise<{ id: string
         hint: error.hint
       });
       
-      // إذا كان الخطأ بسبب trigger (عمود مفقود في notifications)، نحاول بطريقة أخرى
+      // التحقق من وجود العرض رغم الخطأ (في حالة trigger errors)
       const isTriggerError = error.code === "42703" || 
         error.message?.includes("notifications") || 
-        error.message?.includes("related_request_id");
+        error.message?.includes("related_request_id") ||
+        error.code === "PGRST116"; // No rows returned (قد يحدث إذا فشل select بعد insert)
       
       if (isTriggerError) {
-        console.log("⚠️ Trigger error detected, trying RPC fallback...");
+        console.log("⚠️ Trigger error detected, checking if offer was created...");
+        
+        // محاولة العثور على العرض الذي تم إنشاؤه حديثاً (في آخر 5 ثوان)
+        const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
+        const { data: existingOffers } = await supabase
+          .from("offers")
+          .select("id")
+          .eq("request_id", payload.request_id)
+          .eq("provider_id", payload.provider_id)
+          .eq("title", payload.title)
+          .eq("price", payload.price)
+          .gte("created_at", fiveSecondsAgo)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        
+        if (existingOffers && existingOffers.length > 0 && existingOffers[0]?.id) {
+          console.log("✅ Offer was created despite trigger error:", existingOffers[0]);
+          return existingOffers[0];
+        }
+        
+        // إذا لم نجد العرض، نحاول fallback method
+        console.log("⚠️ Offer not found, trying RPC fallback...");
         return await createOfferWithoutTrigger(payload);
       }
       
@@ -546,6 +575,11 @@ export async function fetchMyRequests(userId: string): Promise<Request[]> {
  * Fetch offers for a user
  */
 export async function fetchMyOffers(providerId: string): Promise<Offer[]> {
+  if (!providerId) {
+    console.warn("fetchMyOffers: No providerId provided, returning empty array");
+    return [];
+  }
+
   const { data, error } = await supabase
     .from("offers")
     .select("*")
@@ -554,7 +588,10 @@ export async function fetchMyOffers(providerId: string): Promise<Offer[]> {
 
   if (error) {
     console.error("Error fetching offers:", error);
-    throw error;
+    // بدلاً من رمي الخطأ، نعيد مصفوفة فارغة لتجنب كسر التطبيق
+    // هذا يمنع إعادة التوجيه إلى Onboarding بسبب خطأ في جلب العروض
+    console.warn("Returning empty array due to error to prevent app crash");
+    return [];
   }
 
   return (data || []).map((offer: any) => ({
@@ -611,6 +648,11 @@ export async function fetchOffersForRequest(requestId: string): Promise<Offer[]>
  * Returns a map of requestId -> offers array
  */
 export async function fetchOffersForUserRequests(userId: string): Promise<Map<string, Offer[]>> {
+  if (!userId) {
+    console.warn("fetchOffersForUserRequests: No userId provided, returning empty map");
+    return new Map();
+  }
+
   // First, get all request IDs for this user
   const { data: requests, error: requestsError } = await supabase
     .from("requests")
@@ -619,6 +661,7 @@ export async function fetchOffersForUserRequests(userId: string): Promise<Map<st
 
   if (requestsError) {
     console.error("Error fetching user requests:", requestsError);
+    // بدلاً من رمي الخطأ، نعيد Map فارغ لتجنب كسر التطبيق
     return new Map();
   }
 
@@ -813,7 +856,7 @@ export async function unarchiveRequest(requestId: string, userId: string): Promi
       // Fallback to direct update if function doesn't exist
       const { error: updateError } = await supabase
         .from('requests')
-        .update({ status: 'completed' })
+        .update({ status: 'active' })
         .eq('id', requestId)
         .eq('author_id', userId)
         .eq('status', 'archived');
@@ -942,7 +985,7 @@ export async function fetchArchivedRequests(userId: string): Promise<Request[]> 
     offers: [],
     images: [],
     contactMethod: "both",
-    seriousness: req.seriousness || 2,
+    seriousness: req.seriousness || 3,
   }));
 }
 
@@ -981,9 +1024,26 @@ export async function fetchArchivedOffers(providerId: string): Promise<Offer[]> 
 
 
 /**
+ * Calculate seriousness based on offers count (inverse relationship)
+ * 0 offers = 5 (very high), 1 offer = 4 (high), 2 offers = 3 (medium), 3-4 offers = 2 (low), 5+ offers = 1 (very low)
+ */
+export function calculateSeriousness(offersCount: number): number {
+  if (offersCount === 0) return 5; // عالية جداً
+  if (offersCount === 1) return 4; // عالية
+  if (offersCount === 2) return 3; // متوسطة
+  if (offersCount <= 4) return 2; // منخفضة
+  return 1; // منخفضة جداً
+}
+
+/**
  * Transform Supabase request to app Request format
  */
-function transformRequest(req: any): Request {
+function transformRequest(req: any, offersCount?: number): Request {
+  // Calculate seriousness based on offers count if provided, otherwise use stored value
+  const seriousness = offersCount !== undefined 
+    ? calculateSeriousness(offersCount)
+    : (req.seriousness || 2);
+    
   return {
     id: req.id,
     title: req.title,
@@ -1004,7 +1064,7 @@ function transformRequest(req: any): Request {
     offers: [],
     images: req.images || [],
     contactMethod: "both",
-    seriousness: req.seriousness || 2,
+    seriousness,
     locationCoords: req.location_lat && req.location_lng ? {
       lat: req.location_lat,
       lng: req.location_lng,
@@ -1018,14 +1078,15 @@ function transformRequest(req: any): Request {
 async function matchesUserInterests(
   requestId: string,
   interestedCategories: string[],
-  interestedCities: string[]
+  interestedCities: string[],
+  radarWords: string[] = []
 ): Promise<boolean> {
   // Filter out "كل المدن" from cities check - it doesn't count as an interest
   const actualCities = interestedCities.filter(city => city !== 'كل المدن');
-  
+
   // If no interests specified (no categories and no actual cities), don't match
   // "كل المدن" alone doesn't count as having interests
-  if (interestedCategories.length === 0 && actualCities.length === 0) {
+  if (interestedCategories.length === 0 && actualCities.length === 0 && radarWords.length === 0) {
     return false;
   }
 
@@ -1053,7 +1114,7 @@ async function matchesUserInterests(
     if (interestedCategories.length > 0) {
       const requestCategories = request.categories || [];
       const hasMatchingCategory = requestCategories.some(cat =>
-        interestedCategories.some(interest => 
+        interestedCategories.some(interest =>
           cat.toLowerCase().includes(interest.toLowerCase()) ||
           interest.toLowerCase().includes(cat.toLowerCase())
         )
@@ -1071,6 +1132,13 @@ async function matchesUserInterests(
       if (!hasMatchingCity) return false;
     }
 
+    // Check radar words match (title/description)
+    if (radarWords.length > 0) {
+      const searchText = `${request.title} ${request.description || ''}`.toLowerCase();
+      const hasRadarMatch = radarWords.some(word => searchText.includes(word.toLowerCase()));
+      if (!hasRadarMatch) return false;
+    }
+
     return true;
   } catch (error) {
     console.error("Error checking user interests:", error);
@@ -1084,6 +1152,7 @@ async function matchesUserInterests(
 export function subscribeToNewRequests(
   interestedCategories: string[],
   interestedCities: string[],
+  radarWords: string[],
   callback: (newRequest: Request) => void
 ): () => void {
   const channel = supabase
@@ -1106,7 +1175,8 @@ export function subscribeToNewRequests(
         const matches = await matchesUserInterests(
           newRequest.id,
           interestedCategories,
-          interestedCities
+          interestedCities,
+          radarWords
         );
 
         if (matches) {
@@ -1254,22 +1324,27 @@ export async function bumpRequest(requestId: string, userId: string): Promise<bo
 /**
  * تحديث طلب موجود
  * يتحقق من أن المستخدم هو صاحب الطلب قبل التحديث
+ * شرط التعديل: يجب ألا يتجاوز الطلب 7 أيام من تاريخ الإنشاء
+ * لا يمكن التعديل إذا كان الطلب مكتمل أو تم قبول عرض
+ * إذا كان الطلب مؤرشف، يتم إلغاء الأرشفة تلقائياً
+ * تحديث updated_at (bump): يتم إذا كان الطلب active ولم يتم قبول أي عرض
  */
 export async function updateRequest(
   requestId: string,
   userId: string,
-  draftData: AIDraft
-): Promise<{ id: string } | null> {
+  draftData: AIDraft,
+  seriousness?: number
+): Promise<{ id: string; wasArchived?: boolean } | null> {
   console.log("=== updateRequest called ===");
   console.log("requestId:", requestId);
   console.log("userId:", userId);
   console.log("draftData:", draftData);
   
   try {
-    // 1. التحقق من أن المستخدم هو صاحب الطلب
+    // 1. التحقق من أن المستخدم هو صاحب الطلب وجلب معلومات الطلب الكاملة
     const { data: existingRequest, error: checkError } = await supabase
       .from('requests')
-      .select('author_id')
+      .select('author_id, status, created_at, accepted_offer_id')
       .eq('id', requestId)
       .single();
 
@@ -1288,8 +1363,45 @@ export async function updateRequest(
       return null;
     }
 
-    // 2. تحديث بيانات الطلب
-    const updatePayload = {
+    // 2. التحقق من عدم إمكانية التعديل إذا كان الطلب مكتمل أو تم قبول عرض
+    if (existingRequest.status === 'completed') {
+      console.error('لا يمكن تعديل الطلب: الطلب مكتمل');
+      return null; // منع التعديل تماماً
+    }
+
+    if (existingRequest.accepted_offer_id) {
+      console.error('لا يمكن تعديل الطلب: تم قبول عرض على الطلب');
+      return null; // منع التعديل تماماً
+    }
+
+    // 3. التحقق من شرط الـ 7 أيام للتعديل
+    // لا يمكن تعديل الطلب إذا تجاوز 7 أيام من تاريخ الإنشاء
+    const createdAt = new Date(existingRequest.created_at);
+    const now = new Date();
+    const daysSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+    const MAX_UPDATE_DAYS = 7; // 7 أيام كحد أقصى للتعديل
+
+    if (daysSinceCreation > MAX_UPDATE_DAYS) {
+      console.error(`لا يمكن تعديل الطلب: تجاوز ${MAX_UPDATE_DAYS} أيام من الإنشاء (${daysSinceCreation.toFixed(1)} يوم)`);
+      return null; // منع التعديل تماماً
+    }
+
+    console.log(`وقت التعديل مسموح (${daysSinceCreation.toFixed(1)} يوم من الإنشاء)`);
+
+    // 4. التحقق من حالة الأرشفة - إذا كان مؤرشف، سنقوم بإلغاء الأرشفة
+    const wasArchived = existingRequest.status === 'archived';
+    if (wasArchived) {
+      console.log('الطلب مؤرشف، سيتم إلغاء الأرشفة تلقائياً');
+    }
+
+    // 5. التحقق من شروط تحديث updated_at (bump)
+    // يتم تحديث updated_at إذا:
+    // - الطلب في حالة active (أو كان archived وسيتم إلغاء الأرشفة)
+    // - لم يتم قبول أي عرض بعد
+    const canBump = (existingRequest.status === 'active' || wasArchived) && !existingRequest.accepted_offer_id;
+
+    // 6. تحديث بيانات الطلب
+    const updatePayload: any = {
       title: (draftData.title || draftData.summary || "طلب جديد").slice(0, 120),
       description: draftData.description || draftData.summary || "",
       budget_min: draftData.budgetMin,
@@ -1299,6 +1411,29 @@ export async function updateRequest(
       location: draftData.location,
       delivery_from: draftData.deliveryTime,
     };
+    
+    // إضافة seriousness فقط إذا كانت محددة
+    if (seriousness !== undefined) {
+      updatePayload.seriousness = seriousness;
+    }
+
+    // 7. إذا كان مؤرشف، إلغاء الأرشفة (تحديث status إلى active)
+    if (wasArchived) {
+      updatePayload.status = 'active';
+      updatePayload.is_public = true; // إظهار الطلب في السوق
+      console.log('سيتم إلغاء الأرشفة وتفعيل الطلب');
+    }
+
+    // 8. إذا كانت شروط bump متوفرة، أضف updated_at للتحديث (bump)
+    if (canBump) {
+      updatePayload.updated_at = new Date().toISOString();
+      console.log('سيتم تحديث updated_at لرفع الطلب في القائمة');
+    } else {
+      console.log('لن يتم تحديث updated_at:', {
+        status: existingRequest.status,
+        hasAcceptedOffer: !!existingRequest.accepted_offer_id
+      });
+    }
 
     console.log("Update payload:", updatePayload);
 
@@ -1316,7 +1451,7 @@ export async function updateRequest(
     
     console.log("Request updated successfully!");
 
-    // 3. تحديث التصنيفات - دائماً نحدث التصنيفات عند التعديل
+    // 5. تحديث التصنيفات - دائماً نحدث التصنيفات عند التعديل
     try {
       // حذف التصنيفات القديمة
       await supabase
@@ -1338,7 +1473,7 @@ export async function updateRequest(
       } catch (_) {}
     }
 
-    return { id: requestId };
+    return { id: requestId, wasArchived };
   } catch (error) {
     console.error('خطأ في تحديث الطلب:', error);
     return null;

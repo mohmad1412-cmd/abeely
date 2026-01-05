@@ -306,9 +306,18 @@ export const Settings: React.FC<SettingsProps> = ({
                         <button
                           onClick={async () => {
                             if (onUpdateProfile && editedName.trim()) {
-                              await onUpdateProfile({ display_name: editedName.trim() });
+                              try {
+                                await onUpdateProfile({ display_name: editedName.trim() });
+                                // انتظر قليلاً للتأكد من تحديث user state
+                                await new Promise(resolve => setTimeout(resolve, 100));
+                                setIsEditingName(false);
+                              } catch (error) {
+                                console.error('خطأ في حفظ الاسم:', error);
+                                alert('حدث خطأ أثناء حفظ الاسم. يرجى المحاولة مرة أخرى.');
+                              }
+                            } else {
+                              setIsEditingName(false);
                             }
-                            setIsEditingName(false);
                           }}
                           className="text-xs text-primary hover:underline"
                         >

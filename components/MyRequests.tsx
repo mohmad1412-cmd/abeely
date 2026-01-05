@@ -18,11 +18,14 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
+  X,
+  ChevronDown,
+  CheckCircle,
 } from "lucide-react";
 import { FaHandPointUp } from "react-icons/fa";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
-import { FloatingFilterIsland } from "./ui/FloatingFilterIsland";
+import { UnifiedFilterIsland } from "./ui/UnifiedFilterIsland";
 import { AVAILABLE_CATEGORIES } from "../data";
 
 type RequestFilter = "active" | "approved" | "all" | "completed";
@@ -54,6 +57,9 @@ interface MyRequestsProps {
   onCreateRequest?: () => void;
   // Is this page currently active
   isActive?: boolean;
+  // External filter control
+  defaultFilter?: RequestFilter;
+  onFilterChange?: (filter: RequestFilter) => void;
 }
 
 export const MyRequests: React.FC<MyRequestsProps> = ({
@@ -79,6 +85,8 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   onOpenLanguagePopup,
   onCreateRequest,
   isActive = true,
+  defaultFilter,
+  onFilterChange,
 }) => {
   // Header compression state - for smooth scroll animations
   const [isHeaderCompressed, setIsHeaderCompressed] = useState(false);
@@ -86,11 +94,64 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   const headerRef = useRef<HTMLDivElement>(null);
   
   // Filter & Sort States
-  const [reqFilter, setReqFilter] = useState<RequestFilter>("active");
+  const [reqFilter, setReqFilter] = useState<RequestFilter>(defaultFilter || "active");
   const [sortOrder, setSortOrder] = useState<SortOrder>("createdAt");
+  
+  // Search state
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isSearchInputOpen, setIsSearchInputOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  
+  // تحديث الفلتر عند تغييره من الخارج
+  useEffect(() => {
+    if (defaultFilter !== undefined && defaultFilter !== reqFilter) {
+      setReqFilter(defaultFilter);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultFilter]);
+  
+  // إشعار الوالد عند تغيير الفلتر
+  const handleFilterChange = (newFilter: RequestFilter) => {
+    setReqFilter(newFilter);
+    onFilterChange?.(newFilter);
+  };
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [openFilterDropdownId, setOpenFilterDropdownId] = useState<string | null>(null);
+  const filterDropdownRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   
+  // Close filter dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openFilterDropdownId) {
+        const dropdownRef = filterDropdownRefs.current.get(openFilterDropdownId);
+        if (dropdownRef && !dropdownRef.contains(event.target as Node)) {
+          setOpenFilterDropdownId(null);
+        }
+      }
+    };
+    
+    if (openFilterDropdownId) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [openFilterDropdownId]);
+
+  // Prevent body scroll when dropdown is open
+  useEffect(() => {
+    if (openFilterDropdownId) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
+    };
+  }, [openFilterDropdownId]);
+
   // Scroll Listener for header compression - same logic as Marketplace
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -143,6 +204,14 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
       result = allReqs.filter(req => req.status === "completed" || req.status === "archived");
     }
 
+    // Text search filter
+    if (searchTerm) {
+      result = result.filter(req => 
+        req.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        req.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
     // Sort
     return result.sort((a, b) => {
       if (sortOrder === "updatedAt") {
@@ -155,7 +224,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
         return bDate - aDate;
       }
     });
-  }, [requests, archivedRequests, reqFilter, sortOrder]);
+  }, [requests, archivedRequests, reqFilter, sortOrder, searchTerm]);
 
   // Filter configurations for FloatingFilterIsland
   const filterConfigs = useMemo(() => [
@@ -170,7 +239,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
         { value: "completed", label: "طلباتي المكتملة والمؤرشفة", count: counts.completed },
       ],
       value: reqFilter,
-      onChange: (value: string) => setReqFilter(value as RequestFilter),
+      onChange: (value: string) => handleFilterChange(value as RequestFilter),
       getLabel: () => {
         switch (reqFilter) {
           case "all": return "كل طلباتي";
@@ -232,12 +301,233 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
             transform: 'scale(0.92) translateY(4px)',
           }}
         >
-          {/* Filter Island - inside scaled container */}
-          <FloatingFilterIsland 
-            filters={filterConfigs}
-            scrollContainerRef={scrollContainerRef}
-            isActive={isActive}
-          />
+          {/* Unified Filter Island with Search - inside scaled container */}
+          <div className="px-4 pt-4 bg-transparent relative z-10">
+            <UnifiedFilterIsland 
+              isActive={isActive}
+              isSearchOpen={isSearchInputOpen || !!searchTerm}
+            >
+              {/* Center Content - Filter Dropdown or Search Input */}
+              <div className="flex-1 flex items-center relative min-w-0 overflow-visible">
+                <AnimatePresence mode="popLayout">
+                  {isSearchInputOpen || searchTerm ? (
+                    /* Search Input Mode */
+                    <motion.div
+                      key="search-input"
+                      initial={{ x: 100, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      exit={{ x: 100, opacity: 0 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 400,
+                        damping: 30,
+                      }}
+                      className="flex items-center gap-1.5 flex-1 px-2 min-w-0 overflow-hidden relative"
+                      dir="rtl"
+                    >
+                      {/* Animated Placeholder */}
+                      {!searchTerm && (
+                        <div className="absolute inset-0 flex items-center pointer-events-none pl-20 pr-2 overflow-hidden rtl">
+                          <span className="text-sm font-medium text-muted-foreground whitespace-nowrap flex items-center gap-1 w-full">
+                            <span className="shrink-0">ابحث في</span>
+                            <span className="inline-block" style={{ paddingLeft: '0.25rem' }}>
+                              طلباتك...
+                            </span>
+                          </span>
+                        </div>
+                      )}
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder=""
+                        dir="rtl"
+                        className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-foreground py-2 text-right min-w-0 relative z-10 pl-20"
+                        autoFocus
+                        onBlur={() => {
+                          setTimeout(() => {
+                            if (!searchTerm) {
+                              setIsSearchInputOpen(false);
+                            }
+                          }, 150);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") {
+                            setSearchTerm("");
+                            setIsSearchInputOpen(false);
+                          }
+                        }}
+                      />
+                      {searchTerm && (
+                        <motion.button
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          onClick={() => {
+                            setSearchTerm("");
+                            searchInputRef.current?.focus();
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors shrink-0"
+                        >
+                          <X size={14} strokeWidth={2.5} />
+                        </motion.button>
+                      )}
+                      <motion.button
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.15 }}
+                        onClick={() => {
+                          setSearchTerm("");
+                          setIsSearchInputOpen(false);
+                        }}
+                        className="text-[11px] font-medium text-primary/70 hover:text-primary px-2 py-1 rounded-lg hover:bg-primary/10 transition-colors shrink-0"
+                      >
+                        إلغاء
+                      </motion.button>
+                    </motion.div>
+                  ) : (
+                    /* Filter Dropdown Mode */
+                    <motion.div
+                      key="filter-dropdown"
+                      initial={{ y: 40, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: 40, opacity: 0 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 400,
+                        damping: 30,
+                      }}
+                      className="flex items-center justify-center flex-1 relative min-w-0 gap-1.5"
+                    >
+                      {filterConfigs.map((filter, idx) => (
+                        <React.Fragment key={filter.id}>
+                          {idx > 0 && (
+                            <div className="w-px h-6 bg-border/50" />
+                          )}
+                          <div
+                            ref={(el) => {
+                              if (el) filterDropdownRefs.current.set(filter.id, el);
+                            }}
+                            className="relative"
+                          >
+                            <motion.button
+                              onClick={() => {
+                                if (navigator.vibrate) navigator.vibrate(10);
+                                setOpenFilterDropdownId(openFilterDropdownId === filter.id ? null : filter.id);
+                              }}
+                              whileTap={{ scale: 0.96 }}
+                              className={`inline-flex items-center gap-2 px-3 py-2 rounded-full transition-all whitespace-nowrap ${
+                                openFilterDropdownId === filter.id
+                                  ? "bg-primary/15 text-primary"
+                                  : "hover:bg-secondary/60 text-muted-foreground hover:text-foreground"
+                              }`}
+                            >
+                              <span className="text-primary">{filter.icon}</span>
+                              <span className="text-xs font-bold">
+                                {filter.getLabel()}
+                              </span>
+                              {filter.showCount !== false && filter.options.find(o => o.value === filter.value)?.count !== undefined && (
+                                <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[10px] font-bold bg-primary text-white">
+                                  {filter.options.find(o => o.value === filter.value)?.count}
+                                </span>
+                              )}
+                              <motion.div
+                                animate={{ rotate: openFilterDropdownId === filter.id ? 180 : 0 }}
+                                transition={{ duration: 0.2 }}
+                              >
+                                <ChevronDown size={12} className="text-muted-foreground" />
+                              </motion.div>
+                            </motion.button>
+                          
+                            {/* Dropdown Menu */}
+                            <AnimatePresence>
+                              {openFilterDropdownId === filter.id && (
+                                <>
+                                  {/* Backdrop */}
+                                  <div
+                                    className="fixed inset-0 z-40 touch-none"
+                                    onClick={() => setOpenFilterDropdownId(null)}
+                                    onWheel={(e) => e.preventDefault()}
+                                    onTouchMove={(e) => e.preventDefault()}
+                                  />
+                                  <motion.div
+                                    initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                    transition={{ duration: 0.2, ease: "easeOut" }}
+                                    className="absolute w-64 bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden right-0 mt-2"
+                                    style={{
+                                      maxHeight: 'calc(100vh - 120px)',
+                                      overflowY: 'auto',
+                                    }}
+                                  >
+                                    <div className="p-2 flex flex-col gap-1">
+                                      {filter.options.map((option) => (
+                                        <motion.button
+                                          key={option.value}
+                                          whileTap={{ scale: 0.98 }}
+                                          onClick={() => {
+                                            if (navigator.vibrate) navigator.vibrate(10);
+                                            filter.onChange(option.value);
+                                            setOpenFilterDropdownId(null);
+                                          }}
+                                          className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                                            filter.value === option.value 
+                                              ? "bg-primary/15 text-primary border border-primary/20" 
+                                              : "text-foreground hover:bg-secondary/80 border border-transparent"
+                                          }`}
+                                        >
+                                          <div className="flex items-center gap-2.5 text-right">
+                                            {option.icon && <span className={filter.value === option.value ? "text-primary" : "text-muted-foreground"}>{option.icon}</span>}
+                                            <span className="font-bold">{option.label}</span>
+                                          </div>
+                                          {option.count !== undefined ? (
+                                            <span
+                                              className={`inline-flex items-center justify-center min-w-[1.5rem] h-6 rounded-full px-2 text-[11px] font-bold ${
+                                                filter.value === option.value
+                                                  ? "bg-primary text-white"
+                                                  : "bg-secondary text-muted-foreground"
+                                              }`}
+                                            >
+                                              {option.count}
+                                            </span>
+                                          ) : filter.value === option.value ? (
+                                            <CheckCircle size={16} className="text-primary" />
+                                          ) : null}
+                                        </motion.button>
+                                      ))}
+                                    </div>
+                                  </motion.div>
+                                </>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </React.Fragment>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Search Button - Moves from right to left when clicked */}
+              <button
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(10);
+                  if (!isSearchInputOpen && !searchTerm) {
+                    setIsSearchInputOpen(true);
+                    setTimeout(() => searchInputRef.current?.focus(), 100);
+                  }
+                }}
+                className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-colors shrink-0 bg-transparent active:scale-95 ${
+                  isSearchInputOpen || searchTerm
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-primary"
+                }`}
+              >
+                <Search size={15} strokeWidth={2.5} />
+              </button>
+            </UnifiedFilterIsland>
+          </div>
         </div>
       </div>
 

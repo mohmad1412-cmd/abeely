@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight } from "lucide-react";
+import { hapticService } from "../../services/hapticService";
 
 interface SwipeBackWrapperProps {
   children: React.ReactNode;
@@ -75,7 +76,7 @@ export const SwipeBackWrapper: React.FC<SwipeBackWrapperProps> = ({
       isSwipingRef.current = true;
       setIsActiveSwiping(true);
       // Haptic feedback at start
-      if (navigator.vibrate) navigator.vibrate(8);
+      hapticService.tap();
     }
 
     if (isSwipingRef.current) {
@@ -91,8 +92,8 @@ export const SwipeBackWrapper: React.FC<SwipeBackWrapperProps> = ({
       if (willTriggerNow !== willTrigger) {
         setWillTrigger(willTriggerNow);
         // Haptic feedback when reaching threshold
-        if (willTriggerNow && navigator.vibrate) {
-          navigator.vibrate([15, 30, 15]);
+        if (willTriggerNow) {
+          hapticService.impact();
         }
       }
     }
@@ -103,7 +104,7 @@ export const SwipeBackWrapper: React.FC<SwipeBackWrapperProps> = ({
 
     if (isSwipingRef.current && swipeProgress >= 1) {
       // Trigger back action
-      if (navigator.vibrate) navigator.vibrate(25);
+      hapticService.heavyImpact();
       onBack();
     }
 

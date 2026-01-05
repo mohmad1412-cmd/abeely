@@ -241,9 +241,49 @@ export async function signInWithOAuth(provider: 'google' | 'apple'): Promise<{ s
 
 export async function getCurrentUser(): Promise<UserProfile | null> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    // Try cached user first
+    let user: any = null;
+    try {
+      const { data: { user: fetchedUser }, error } = await supabase.auth.getUser();
+      user = fetchedUser || null;
+      if (error) {
+        console.warn('Supabase getUser warning:', error.message);
+      }
+    } catch (getUserErr) {
+      console.warn('Supabase getUser exception:', getUserErr);
+    }
+
+    // If access token is stale, try to recover the session before giving up
+    if (!user) {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        user = sessionData?.session?.user || null;
+      } catch (sessionErr) {
+        console.warn('Supabase getSession warning:', sessionErr);
+      }
+    }
+
+    // Last resort: explicit refresh (helps avoid surprise logouts mid-action)
+    if (!user) {
+      try {
+        console.log('Refreshing Supabase session because user is missing...');
+        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) {
+          const message = refreshError.message?.toLowerCase?.() || '';
+          if (!message.includes('network')) {
+            console.warn('Supabase refreshSession error:', refreshError);
+          } else {
+            console.warn('Network issue while refreshing session; keeping user state intact');
+          }
+        }
+        user = refreshed?.session?.user || null;
+      } catch (refreshErr) {
+        console.warn('Supabase refreshSession exception:', refreshErr);
+      }
+    }
+
     if (!user) return null;
-    
+
     // حاول جلب الـ profile
     let { data: profile, error } = await supabase
       .from('profiles')
@@ -456,45 +496,84 @@ export async function verifyOTP(phone: string, token: string): Promise<{ success
       console.log('🔧 DEV MODE: Test phone verification');
       
       if (token === TEST_OTP_CODE) {
-        console.log('✅ DEV MODE: Test OTP accepted');
+        console.log('✅ DEV MODE: Test OTP accepted - verifying with Supabase');
         
-        // إنشاء مستخدم وهمي للتطوير عبر signInAnonymously
-        // يجب تفعيل Anonymous Auth في Supabase Dashboard:
-        // Authentication → Settings → Anonymous Sign Ins → Enable
+        // للأرقام الوهمية، نحاول استخدام verifyOtp مع Supabase
+        // Supabase سيقبل OTP 0000 للأرقام المحددة في config.toml [auth.sms.test_otp]
         try {
-          const { data, error } = await supabase.auth.signInAnonymously();
+          const { data, error } = await supabase.auth.verifyOtp({
+            phone: formattedPhone,
+            token: token,
+            type: 'sms'
+          });
           
           if (error) {
-            console.error('❌ Anonymous sign-in error:', error);
-            console.log('💡 تأكد من تفعيل Anonymous Auth في Supabase Dashboard');
-            console.log('   Authentication → Settings → Enable Anonymous Sign Ins');
+            console.log('🔧 DEV MODE: Supabase rejected test phone, trying to create user via signInWithOtp first');
             
-            // Fallback: استخدام guest mode مع تخزين الرقم
+            // محاولة إنشاء المستخدم أولاً عبر signInWithOtp
+            // ثم التحقق من OTP
+            try {
+              const { error: signInError } = await supabase.auth.signInWithOtp({
+                phone: formattedPhone,
+                options: {
+                  shouldCreateUser: true
+                }
+              });
+              
+              if (signInError && !signInError.message.includes('already registered')) {
+                console.warn('🔧 DEV MODE: Could not create test user via signInWithOtp:', signInError);
+              }
+              
+              // محاولة التحقق مرة أخرى
+              const { data: retryData, error: retryError } = await supabase.auth.verifyOtp({
+                phone: formattedPhone,
+                token: token,
+                type: 'sms'
+              });
+              
+              if (retryError) {
+                console.log('🔧 DEV MODE: Supabase still rejected, using fallback - test phone will work but may have limitations');
+                // طريقة بديلة: حفظ في localStorage
+                // لكن يجب أن نستخدم user ID حقيقي من Supabase إذا كان موجوداً
+                localStorage.setItem('dev_test_phone', formattedPhone);
+                localStorage.setItem('abeely_guest_mode', 'true');
+                
+                // محاولة الحصول على أي session موجود
+                const { data: sessionData } = await supabase.auth.getSession();
+                if (sessionData?.session?.user?.id) {
+                  localStorage.setItem('dev_test_user_id', sessionData.session.user.id);
+                  console.log('✅ DEV MODE: Found existing session:', sessionData.session.user.id);
+                  return { success: true };
+                }
+                
+                return { success: true };
+              }
+              
+              if (retryData?.user) {
+                console.log('✅ DEV MODE: Test user session created via Supabase after retry:', retryData.user.id);
+                localStorage.setItem('dev_test_user_id', retryData.user.id);
+                return { success: true };
+              }
+            } catch (retryErr) {
+              console.warn('🔧 DEV MODE: Retry failed, using fallback:', retryErr);
+            }
+            
+            // طريقة بديلة: حفظ في localStorage
             localStorage.setItem('dev_test_phone', formattedPhone);
             localStorage.setItem('abeely_guest_mode', 'true');
             return { success: true };
           }
           
-          if (data.user) {
-            console.log('✅ DEV MODE: Anonymous user created:', data.user.id);
-            
-            // محاولة إنشاء profile للمستخدم
-            await supabase.from('profiles').upsert({
-              id: data.user.id,
-              phone: formattedPhone,
-              display_name: 'مستخدم اختبار',
-              role: 'user',
-              is_guest: false,
-              is_verified: true,
-            }).then(() => console.log('✅ Profile created'))
-              .catch(() => console.log('Profile creation skipped'));
-            
+          if (data?.user) {
+            console.log('✅ DEV MODE: Test user session created via Supabase:', data.user.id);
+            localStorage.setItem('dev_test_user_id', data.user.id);
             return { success: true };
           }
-        } catch (e) {
-          console.error('❌ Dev auth error:', e);
-          // Fallback لـ guest mode
+        } catch (err) {
+          console.warn('🔧 DEV MODE: Test user creation failed, using fallback:', err);
+          localStorage.setItem('dev_test_phone', formattedPhone);
           localStorage.setItem('abeely_guest_mode', 'true');
+          return { success: true };
         }
         
         return { success: true };

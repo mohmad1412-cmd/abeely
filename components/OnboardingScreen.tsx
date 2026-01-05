@@ -26,6 +26,7 @@ interface OnboardingScreenProps {
   }) => void;
   isLoading?: boolean;
   initialName?: string | null;
+  hasExistingName?: boolean; // للمستخدمين الذين لديهم اسم لكن لم يحددوا اهتماماتهم
 }
 
 // قائمة المدن السعودية
@@ -85,7 +86,8 @@ type OnboardingStep = 'welcome' | 'name' | 'categories' | 'cities' | 'notificati
 export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ 
   onComplete,
   isLoading = false,
-  initialName = null
+  initialName = null,
+  hasExistingName = false
 }) => {
   const [step, setStep] = useState<OnboardingStep>('welcome');
   const [userName, setUserName] = useState(initialName || '');
@@ -99,6 +101,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
   const [categorySearch, setCategorySearch] = useState('');
   const [citySearch, setCitySearch] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [skipInterests, setSkipInterests] = useState(false); // خيار تجاوز الاهتمامات
 
   // تحقق من حالة إذن الإشعارات عند التحميل
   useEffect(() => {
@@ -190,6 +193,12 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
         return;
       }
       setNameError('');
+      
+      // إذا اختار تجاوز الاهتمامات، انتقل مباشرة إلى notifications
+      if (skipInterests) {
+        setStep('notifications');
+        return;
+      }
     }
     
     const steps: OnboardingStep[] = ['welcome', 'name', 'categories', 'cities', 'notifications', 'complete'];
@@ -201,6 +210,12 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
 
   // الرجوع للخطوة السابقة
   const prevStep = () => {
+    // إذا كنا في notifications وتم تجاوز الاهتمامات، ارجع إلى name
+    if (step === 'notifications' && skipInterests) {
+      setStep('name');
+      return;
+    }
+    
     const steps: OnboardingStep[] = ['welcome', 'name', 'categories', 'cities', 'notifications', 'complete'];
     const currentIndex = steps.indexOf(step);
     if (currentIndex > 0) {
@@ -235,6 +250,16 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
 
   // حساب نسبة التقدم
   const getProgress = () => {
+    // إذا تم تجاوز الاهتمامات، نحسب التقدم بناءً على الخطوات المتاحة
+    if (skipInterests) {
+      const steps: OnboardingStep[] = ['welcome', 'name', 'notifications', 'complete'];
+      const currentIndex = steps.indexOf(step);
+      // إذا كانت الخطوة الحالية ليست في القائمة (مثل categories أو cities)، نعتبرها كأنها name
+      if (currentIndex === -1) {
+        return ((steps.indexOf('name')) / (steps.length - 1)) * 100;
+      }
+      return ((currentIndex) / (steps.length - 1)) * 100;
+    }
     const steps: OnboardingStep[] = ['welcome', 'name', 'categories', 'cities', 'notifications', 'complete'];
     return ((steps.indexOf(step)) / (steps.length - 1)) * 100;
   };
@@ -304,16 +329,32 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
 
               {/* Title */}
               <h1 className="text-3xl font-bold text-white text-center mb-4">
-                مرحباً بك في أبيلي! 🎉
+                {hasExistingName ? (
+                  <>لم تحدد اهتماماتك</>
+                ) : (
+                  <>مرحباً بك في أبيلي!</>
+                )}
               </h1>
               
               <p className="text-white/70 text-center text-lg mb-2 max-w-xs">
-                خطوة واحدة بسيطة لتجربة أفضل
+                {hasExistingName ? (
+                  <>حدد اهتماماتك وفعل اشعاراتك، عشان ما تفوتك الطلبات</>
+                ) : (
+                  <>خطوة واحدة بسيطة لتجربة أفضل</>
+                )}
               </p>
               
-              <p className="text-white/50 text-center text-sm mb-12 max-w-xs">
-                حدد اهتماماتك وسنرسل لك إشعارات عندما يتم نشر طلبات تناسبك
-              </p>
+              {!hasExistingName && (
+                <p className="text-white/50 text-center text-sm mb-12 max-w-xs">
+                  حدد اهتماماتك وسنرسل لك إشعارات عندما يتم نشر طلبات تناسبك
+                </p>
+              )}
+              
+              {hasExistingName && (
+                <p className="text-white/50 text-center text-sm mb-12 max-w-xs">
+                  سنرسل لك إشعارات عندما يتم نشر طلبات تناسب اهتماماتك
+                </p>
+              )}
 
               {/* Features preview */}
               <div className="w-full max-w-sm space-y-3 mb-12">
@@ -419,8 +460,42 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
                 </p>
               </div>
 
+              {/* Skip Interests Option */}
+              <div className="w-full max-w-sm mt-6">
+                <motion.button
+                  onClick={() => setSkipInterests(!skipInterests)}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className={`w-full py-3 px-4 rounded-xl border-2 transition-all flex items-center justify-center gap-2 ${
+                    skipInterests
+                      ? 'bg-teal-500/20 border-teal-400 text-white'
+                      : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'
+                  }`}
+                >
+                  {skipInterests ? (
+                    <>
+                      <Check size={18} className="text-teal-400" />
+                      <span className="font-medium">سأتأجل إدخال الاهتمامات</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-medium">تأجيل إدخال الاهتمامات</span>
+                    </>
+                  )}
+                </motion.button>
+                {skipInterests && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-white/50 text-xs text-center mt-2"
+                  >
+                    يمكنك إضافة اهتماماتك لاحقاً من الإعدادات
+                  </motion.p>
+                )}
+              </div>
+
               {/* Navigation Buttons */}
-              <div className="flex gap-3 w-full max-w-sm mt-10">
+              <div className="flex gap-3 w-full max-w-sm mt-6">
                 <motion.button
                   onClick={prevStep}
                   whileHover={{ scale: 1.02 }}

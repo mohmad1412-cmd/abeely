@@ -289,7 +289,7 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
       className="relative w-full"
     >
       {/* List Content - بدون سكرول داخلي */}
-      <div className="px-4 pt-2 pb-20 relative z-[1] w-full">
+      <div className="px-4 pt-4 pb-[1px] relative z-[1] w-full">
         {requests.map((request, index) => {
           const isUnread = !viewedRequestIds.has(request.id);
           return (
@@ -325,13 +325,6 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
       {isLoadingMore && (
         <div className="py-4 flex justify-center">
           <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
-
-      {/* End of List */}
-      {!hasMore && requests.length > 0 && (
-        <div className="py-6 text-center text-sm text-muted-foreground">
-          تم عرض جميع الطلبات
         </div>
       )}
     </div>

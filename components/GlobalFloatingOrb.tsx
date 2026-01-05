@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   ArrowRight,
 } from "lucide-react";
+import { hapticService } from "../services/hapticService";
 
 // ============================================
 // Types
@@ -239,22 +240,22 @@ export const GlobalFloatingOrb: React.FC<GlobalFloatingOrbProps> = ({
     };
   }, [mode]);
 
-  // Premium haptic patterns
+  // Premium haptic patterns - using hapticService
   const haptics = {
     // Soft tap - for button press
-    tap: () => navigator.vibrate?.([8]),
+    tap: () => hapticService.tap(),
     // Strong impact - for important actions
-    impact: () => navigator.vibrate?.([15, 30, 25]),
+    impact: () => hapticService.impact(),
     // Recording start - quick pulse
-    recordStart: () => navigator.vibrate?.([5, 20, 15, 20, 10]),
+    recordStart: () => hapticService.recordStart(),
     // Recording stop - satisfying double tap
-    recordStop: () => navigator.vibrate?.([12, 40, 20, 40, 12]),
+    recordStop: () => hapticService.recordStop(),
     // Success - ascending pattern
-    success: () => navigator.vibrate?.([10, 30, 15, 30, 20, 30, 25]),
+    success: () => hapticService.success(),
     // Error - sharp buzz
-    error: () => navigator.vibrate?.([50, 30, 50]),
+    error: () => hapticService.error(),
     // Hold feedback - gentle pulse while holding
-    holdPulse: () => navigator.vibrate?.([3]),
+    holdPulse: () => hapticService.tap(),
   };
 
   // Start recording

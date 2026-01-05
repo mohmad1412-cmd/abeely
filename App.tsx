@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, LayoutGroup } from "framer-motion";
-import { Check, X } from "lucide-react";
+import { Check, X, AlertCircle } from "lucide-react";
 import { UnifiedHeader } from "./components/ui/UnifiedHeader";
 
 // Components
@@ -18,6 +18,7 @@ import { Messages } from "./components/Messages";
 import { CreateRequestV2 } from "./components/CreateRequestV2";
 import { GlobalFloatingOrb, VoiceProcessingStatus } from "./components/GlobalFloatingOrb";
 import { InterestToast, useInterestToast } from "./components/ui/InterestToast";
+import { UnarchiveToast } from "./components/ui/UnarchiveToast";
 import { notificationSound } from "./services/notificationSoundService";
 import { OnboardingScreen } from "./components/OnboardingScreen";
 
@@ -46,6 +47,8 @@ import {
   getTotalUnreadMessagesCount,
   getOrCreateConversation,
   subscribeToUnreadCount,
+  getUnreadMessagesForMyRequests,
+  getUnreadMessagesForMyOffers,
 } from "./services/messagesService";
 
 // Services
@@ -172,6 +175,7 @@ const App: React.FC = () => {
   const [receivedOffersMap, setReceivedOffersMap] = useState<Map<string, Offer[]>>(new Map()); // العروض المستلمة على طلبات المستخدم
   const [archivedRequests, setArchivedRequests] = useState<Request[]>([]);
   const [archivedOffers, setArchivedOffers] = useState<Offer[]>([]);
+  const [myRequestsFilter, setMyRequestsFilter] = useState<"active" | "approved" | "all" | "completed">("active");
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [marketplaceLoadedOnce, setMarketplaceLoadedOnce] = useState(false); // تم التحميل مرة واحدة على الأقل (حتى لو 0 نتائج)
   const [requestsLoadError, setRequestsLoadError] = useState<string | null>(
@@ -184,6 +188,9 @@ const App: React.FC = () => {
     false,
   );
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  const [unreadMessagesForMyRequests, setUnreadMessagesForMyRequests] = useState(0);
+  const [unreadMessagesForMyOffers, setUnreadMessagesForMyOffers] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState<
     {
       supabase: { connected: boolean; error?: string };
@@ -254,9 +261,38 @@ const App: React.FC = () => {
   // Interest Toast for New Matching Requests
   // ==========================================
   const { currentToast, isVisible: isToastVisible, showToast, hideToast } = useInterestToast();
+  const showToastRef = useRef(showToast);
+  
+  // Keep ref updated
+  useEffect(() => {
+    showToastRef.current = showToast;
+  }, [showToast]);
   const [newRequestIds, setNewRequestIds] = useState<Set<string>>(new Set()); // للتتبع الطلبات الجديدة للانيميشن
   // Track current view mode in marketplace (to detect if on interests page)
   const [currentMarketplaceViewMode, setCurrentMarketplaceViewMode] = useState<'all' | 'interests'>('all');
+
+  // ==========================================
+  // Unarchive Toast State
+  // ==========================================
+  const [unarchiveToast, setUnarchiveToast] = useState<{
+    isVisible: boolean;
+    requestId: string | null;
+    willBump: boolean;
+  }>({
+    isVisible: false,
+    requestId: null,
+    willBump: false,
+  });
+
+  // Update Unarchive Notification State (for when editing unarchives a request)
+  // ==========================================
+  const [updateUnarchiveNotification, setUpdateUnarchiveNotification] = useState<{
+    isVisible: boolean;
+    requestId: string | null;
+  }>({
+    isVisible: false,
+    requestId: null,
+  });
 
   // ==========================================
   // Scroll Persistence
@@ -687,23 +723,29 @@ const App: React.FC = () => {
         
         // تحميل الـ profile والتحقق من الـ onboarding
         getCurrentUser().then(async (profile) => {
+          console.log("🔍 Profile loaded:", profile);
           if (profile && isMounted) {
             setUser(profile);
             
             // التحقق إذا كان المستخدم جديداً ويحتاج الـ onboarding
-            const needsOnboard = await checkOnboardingStatus(profile.id);
+            console.log("🔍 Checking if user needs onboarding...");
+            const needsOnboard = await checkOnboardingStatus(profile.id, profile);
+            console.log("🔍 Onboarding check result:", needsOnboard);
             if (needsOnboard && isMounted) {
-              console.log("🎯 New user detected, showing onboarding...");
+              console.log("✅ New user detected, showing onboarding...");
               setNeedsOnboarding(true);
               setIsNewUser(true);
               setAppView("onboarding");
             } else {
+              console.log("⏭️ User does not need onboarding, going to main...");
               setAppView("main");
             }
           } else {
+            console.log("⚠️ No profile found, going to main...");
             setAppView("main");
           }
-        }).catch(() => {
+        }).catch((err) => {
+          console.error("❌ Error loading profile:", err);
           setAppView("main");
         });
         return; // منع setAppView("main") أدناه
@@ -1215,14 +1257,119 @@ const App: React.FC = () => {
 
     // Subscribe to unread messages count
     const unsubscribeMessages = subscribeToUnreadCount(user.id, (count) => {
+      setUnreadMessagesCount(count);
       setHasUnreadMessages(count > 0);
     });
 
     return () => {
       unsubscribe();
       unsubscribeMessages();
+      setUnreadMessagesCount(0);
+      setHasUnreadMessages(false);
     };
   }, [appView, user?.id]);
+
+  // ==========================================
+  // Calculate unread messages for My Requests and My Offers separately
+  // ==========================================
+  useEffect(() => {
+    if (appView !== "main" || !user?.id) {
+      setUnreadMessagesForMyRequests(0);
+      setUnreadMessagesForMyOffers(0);
+      return;
+    }
+
+    const calculateUnreadMessages = async () => {
+      try {
+        // Get request IDs
+        const requestIds = myRequests.map(r => r.id);
+        const requestsCount = requestIds.length > 0 
+          ? await getUnreadMessagesForMyRequests(requestIds)
+          : 0;
+        setUnreadMessagesForMyRequests(requestsCount);
+
+        // Get offer IDs
+        const offerIds = myOffers.map(o => o.id);
+        const offersCount = offerIds.length > 0
+          ? await getUnreadMessagesForMyOffers(offerIds)
+          : 0;
+        setUnreadMessagesForMyOffers(offersCount);
+      } catch (error) {
+        console.error("Error calculating unread messages:", error);
+      }
+    };
+
+    calculateUnreadMessages();
+
+    // Recalculate when myRequests or myOffers change
+    const intervalId = setInterval(calculateUnreadMessages, 5000);
+
+    return () => {
+      clearInterval(intervalId);
+      setUnreadMessagesForMyRequests(0);
+      setUnreadMessagesForMyOffers(0);
+    };
+  }, [appView, user?.id, myRequests, myOffers]);
+
+  // ==========================================
+  // Auto-mark notifications as read when viewing My Requests page with received offers
+  // ==========================================
+  useEffect(() => {
+    if (appView !== "main" || !user?.id || view !== "requests-mode") return;
+    if (receivedOffersMap.size === 0) return;
+
+    // Get all request IDs that have received offers
+    const requestIdsWithOffers = Array.from(receivedOffersMap.keys());
+    
+    // Mark notifications related to these requests as read
+    const markNotificationsAsRead = async () => {
+      const notificationsToMark = notifications.filter(n => 
+        !n.isRead && 
+        n.type === 'offer' && 
+        n.relatedRequest && 
+        requestIdsWithOffers.includes(n.relatedRequest.id)
+      );
+
+      if (notificationsToMark.length > 0) {
+        for (const notif of notificationsToMark) {
+          await markNotificationAsRead(notif.id);
+          setNotifications((prev) =>
+            prev.map((n) => (n.id === notif.id ? { ...n, isRead: true } : n))
+          );
+        }
+      }
+    };
+
+    // Delay slightly to ensure page is fully loaded
+    const timeoutId = setTimeout(markNotificationsAsRead, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [appView, user?.id, view, receivedOffersMap, notifications]);
+
+  // ==========================================
+  // Fetch and refresh received offers when opening My Requests page
+  // ==========================================
+  useEffect(() => {
+    if (appView !== "main" || !user?.id || view !== "requests-mode") return;
+    
+    // جلب العروض المستلمة عند فتح الصفحة
+    const fetchOffers = async () => {
+      try {
+        const offers = await fetchOffersForUserRequests(user.id);
+        setReceivedOffersMap(offers);
+      } catch (error) {
+        console.error("Error fetching received offers:", error);
+      }
+    };
+
+    // جلب فوري
+    fetchOffers();
+
+    // تحديث دوري كل 10 ثواني لضمان ظهور العروض الجديدة
+    const intervalId = setInterval(fetchOffers, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [appView, user?.id, view]);
 
   const loadMoreMarketplaceRequests = async () => {
     if (marketplaceIsLoadingMore || !marketplaceHasMore) return;
@@ -1369,8 +1516,9 @@ const App: React.FC = () => {
       actualCities.length > 0;
 
     if (!hasInterests) {
-      setInterestsRequests([]);
-      setUnreadInterestsCount(0);
+      // Use functional updates to avoid unnecessary re-renders
+      setInterestsRequests(prev => prev.length === 0 ? prev : []);
+      setUnreadInterestsCount(prev => prev === 0 ? prev : 0);
       return;
     }
 
@@ -1378,7 +1526,12 @@ const App: React.FC = () => {
     const unsubscribe = subscribeToNewRequests(
       userPreferences.interestedCategories,
       userPreferences.interestedCities,
+      userPreferences.radarWords || [],
       async (newRequest) => {
+        // Skip notifications for the user's own requests
+        if (user?.id && newRequest.author === user.id) {
+          return;
+        }
         // Add new request to interests list (only if not exists)
         setInterestsRequests((prev) => {
           const exists = prev.some((r) => r.id === newRequest.id);
@@ -1415,7 +1568,7 @@ const App: React.FC = () => {
           } else {
             // User is elsewhere - show full Toast notification
             notificationSound.notify(false); // Full notification sound
-            showToast(newRequest);
+            showToastRef.current(newRequest);
           }
         }
       },
@@ -1426,13 +1579,13 @@ const App: React.FC = () => {
     };
   }, [
     appView,
+    user?.id,
     userPreferences.interestedCategories,
     userPreferences.interestedCities,
     userPreferences.radarWords,
     userPreferences.notifyOnInterest,
     view,
     currentMarketplaceViewMode,
-    showToast,
   ]);
 
   // ==========================================
@@ -1816,6 +1969,31 @@ const App: React.FC = () => {
 
   const handleUnhideRequest = async (requestId: string) => {
     if (!user?.id) return;
+    
+    // البحث عن الطلب في myRequests أو archivedRequests
+    const request = [...myRequests, ...archivedRequests].find(r => r.id === requestId);
+    if (!request) return;
+    
+    // التحقق من أن الطلب مؤرشف
+    const isArchived = request.status === 'archived';
+    
+    if (isArchived) {
+      // التحقق من مدة التحديث (6 ساعات)
+      const lastUpdated = request.updatedAt ? new Date(request.updatedAt) : new Date(request.createdAt);
+      const sixHoursMs = 6 * 60 * 60 * 1000;
+      const elapsedSinceUpdate = Date.now() - lastUpdated.getTime();
+      const willBump = elapsedSinceUpdate >= sixHoursMs;
+      
+      // إظهار التنبيه
+      setUnarchiveToast({
+        isVisible: true,
+        requestId,
+        willBump,
+      });
+      return; // لا نكمل التنفيذ حتى يتم التأكيد
+    }
+    
+    // إذا لم يكن الأرشيف، تنفيذ الإظهار مباشرة
     try {
       const success = await unhideRequest(requestId, user.id);
       if (success) {
@@ -1825,6 +2003,66 @@ const App: React.FC = () => {
     } catch (error) {
       console.error("Error unhiding request:", error);
     }
+  };
+  
+  // دالة لتأكيد إلغاء الأرشفة والإظهار
+  const handleConfirmUnarchive = async () => {
+    if (!unarchiveToast.requestId || !user?.id) return;
+    
+    const requestId = unarchiveToast.requestId;
+    const willBump = unarchiveToast.willBump;
+    
+    try {
+      // إلغاء الأرشفة
+      const unarchiveSuccess = await unarchiveRequest(requestId, user.id);
+      if (!unarchiveSuccess) {
+        console.error("Failed to unarchive request");
+        setUnarchiveToast({ isVisible: false, requestId: null, willBump: false });
+        return;
+      }
+      
+      // إذا كان في مدة التحديث، قم بالتحديث التلقائي (bump)
+      if (willBump) {
+        await bumpRequest(requestId, user.id);
+      }
+      
+      // إظهار الطلب
+      const unhideSuccess = await unhideRequest(requestId, user.id);
+      if (!unhideSuccess) {
+        console.error("Failed to unhide request");
+        setUnarchiveToast({ isVisible: false, requestId: null, willBump: false });
+        return;
+      }
+      
+      // تحديث الواجهة
+      const requestToUnarchive = archivedRequests.find(r => r.id === requestId);
+      if (requestToUnarchive) {
+        setArchivedRequests(prev => prev.filter(r => r.id !== requestId));
+        setMyRequests(prev => {
+          const unarchivedRequest = { 
+            ...requestToUnarchive, 
+            status: 'active' as const,
+            isPublic: true,
+            updatedAt: willBump ? new Date() : requestToUnarchive.updatedAt,
+          };
+          return [...prev, unarchivedRequest];
+        });
+        setAllRequests(prev => prev.map(r => 
+          r.id === requestId ? { ...r, status: 'active' as const, isPublic: true } : r
+        ));
+      }
+      
+      // إخفاء التنبيه
+      setUnarchiveToast({ isVisible: false, requestId: null, willBump: false });
+    } catch (error) {
+      console.error("Error confirming unarchive:", error);
+      setUnarchiveToast({ isVisible: false, requestId: null, willBump: false });
+    }
+  };
+  
+  // دالة لإلغاء التنبيه
+  const handleCancelUnarchive = () => {
+    setUnarchiveToast({ isVisible: false, requestId: null, willBump: false });
   };
 
   const handleBumpRequest = async (requestId: string) => {
@@ -1850,6 +2088,10 @@ const App: React.FC = () => {
     await authSignOut();
     setUser(null);
     setIsGuest(false);
+    setUnreadMessagesCount(0);
+    setHasUnreadMessages(false);
+    setUnreadInterestsCount(0);
+    setNotifications([]);
     localStorage.removeItem("abeely_guest_mode");
     localStorage.removeItem("abeely_pending_route");
     // إعادة تعيين الحالة للقيم الافتراضية لمنع بقاء آثار الجلسة السابقة
@@ -1954,84 +2196,99 @@ const App: React.FC = () => {
   // ==========================================
   // Check if user needs onboarding
   // ==========================================
-  const checkOnboardingStatus = async (userId: string): Promise<boolean> => {
-    try {
-      const userOnboardedKey = `abeely_onboarded_${userId}`;
+  const checkOnboardingStatus = async (userId: string, cachedProfile?: any): Promise<boolean> => {
+    console.log("🔍 checkOnboardingStatus called for user:", userId);
+    console.log("🔍 Cached profile:", cachedProfile);
+    
+    // استخدم بيانات الـ user الحالية إن وجدت لتجنب ضرب Supabase بدون داعٍ
+    let data: any = cachedProfile ?? null;
 
-      // أولاً: تحقق من localStorage للتسريع (لكن لا نعتمد عليه فقط)
-      const localOnboarded = localStorage.getItem(userOnboardedKey);
-      
-      const { data, error } = await supabase
+    // إذا لم يتم تمرير profile جاهز، اجلبه من Supabase
+    if (!data) {
+      console.log("🔍 No cached profile, fetching from database...");
+      const { data: profileData, error } = await supabase
         .from('profiles')
         .select('interested_categories, interested_cities, display_name, has_onboarded')
         .eq('id', userId)
         .single();
 
       if (error) {
-        console.error('Error checking onboarding status:', error);
-        console.log("🎯 Error fetching profile, showing onboarding to be safe...");
-        return true;
-      }
-
-      // إذا لم يكن هناك بيانات للمستخدم، يحتاج onboarding
-      if (!data) {
-        console.log("🎯 No profile data found, showing onboarding...");
-        return true;
-      }
-
-      const hasName = !!data?.display_name?.trim();
-      const hasInterests = Array.isArray(data?.interested_categories) && data.interested_categories.length > 0;
-      const hasCities = Array.isArray(data?.interested_cities) && data.interested_cities.length > 0;
-      const alreadyOnboarded = data?.has_onboarded === true;
-
-      // إذا كان المستخدم قد أكمل onboarding مسبقاً (في قاعدة البيانات)، لا نحتاج لإظهاره مرة أخرى
-      if (alreadyOnboarded) {
-        localStorage.setItem(userOnboardedKey, 'true');
-        console.log("🎯 User already onboarded (DB flag), skipping onboarding");
-        return false;
-      }
-
-      // إذا كان المستخدم لديه اسم + (اهتمامات أو مدن)، يعتبر أنه أكمل onboarding
-      if (hasName && (hasInterests || hasCities)) {
-        localStorage.setItem(userOnboardedKey, 'true');
-        // تحديث قاعدة البيانات لإشارة has_onboarded
-        try {
-          await supabase.from('profiles').update({ has_onboarded: true }).eq('id', userId);
-        } catch (e) {
-          console.log('Could not update has_onboarded column (might not exist)');
-        }
-        console.log("🎯 User has completed onboarding data, skipping onboarding");
-        return false;
-      }
-
-      // إذا كان في localStorage أنه أكمل onboarding، لكن في قاعدة البيانات لا توجد بيانات كاملة
-      // نتحقق مرة أخرى من البيانات الفعلية
-      if (localOnboarded === 'true') {
-        // إذا كان لديه بيانات كاملة بالفعل، نصدق localStorage
-        if (hasName && (hasInterests || hasCities)) {
-          console.log("🎯 LocalStorage says onboarded and data confirms, skipping onboarding");
+        console.error('❌ Error checking onboarding status:', error);
+        // في حالة الخطأ، لا نعرض onboarding تلقائياً
+        // نتحقق من localStorage أولاً - إذا كان المستخدم قد أكمل onboarding مسبقاً، لا نحتاج لإظهاره
+        const userOnboardedKey = `abeely_onboarded_${userId}`;
+        const localOnboarded = localStorage.getItem(userOnboardedKey) === 'true';
+        
+        if (localOnboarded) {
+          console.log("⏭️ User already onboarded (localStorage), skipping onboarding despite error");
           return false;
         }
-        // إذا لم تكن البيانات كاملة، نتجاهل localStorage ونعرض onboarding
-        console.log("🎯 LocalStorage says onboarded but data incomplete, showing onboarding");
-        localStorage.removeItem(userOnboardedKey);
+        
+        // فقط إذا كان المستخدم جديداً تماماً (لا يوجد في localStorage)، نعرض onboarding
+        console.log("⚠️ Error fetching profile and no local onboarding flag, showing onboarding...");
+        return true;
       }
 
-      // في جميع الحالات الأخرى، يحتاج المستخدم إلى onboarding
-      console.log("🎯 User needs onboarding:", { 
-        userId, 
-        hasName, 
-        hasInterests, 
-        hasCities, 
-        alreadyOnboarded,
-        data 
-      });
-      return true;
-    } catch (error) {
-      console.error('Error in checkOnboardingStatus:', error);
-      // في حالة الخطأ، نعرض onboarding كإجراء احترازي
+      data = profileData;
+      console.log("🔍 Profile data from DB:", data);
+    } else {
+      console.log("🔍 Using cached profile data");
+    }
+
+    // إذا لم يكن هناك بيانات للمستخدم، يحتاج onboarding
+    if (!data) {
+      console.log("✅ No profile data found, showing onboarding...");
       return true;
     }
+
+    const hasName = !!data?.display_name?.trim();
+    const hasInterests = Array.isArray(data?.interested_categories) && data.interested_categories.length > 0;
+    const hasCities = Array.isArray(data?.interested_cities) && data.interested_cities.length > 0;
+    const alreadyOnboarded = data?.has_onboarded === true;
+
+    console.log("🔍 Onboarding check details:", {
+      hasName,
+      hasInterests,
+      hasCities,
+      alreadyOnboarded,
+      display_name: data?.display_name,
+      interested_categories: data?.interested_categories,
+      interested_cities: data?.interested_cities
+    });
+
+    // إذا كان المستخدم قد أكمل onboarding مسبقاً (في قاعدة البيانات)، لا نحتاج لإظهاره مرة أخرى
+    // لكن فقط إذا كان لديه اهتمامات أو مدن
+    if (alreadyOnboarded && (hasInterests || hasCities)) {
+      const userOnboardedKey = `abeely_onboarded_${userId}`;
+      localStorage.setItem(userOnboardedKey, 'true');
+      console.log("⏭️ User already onboarded (DB flag) with interests, skipping onboarding");
+      return false;
+    }
+
+    // إذا كان المستخدم لديه اسم + (اهتمامات أو مدن)، لا يحتاج onboarding
+    if (hasName && (hasInterests || hasCities)) {
+      const userOnboardedKey = `abeely_onboarded_${userId}`;
+      localStorage.setItem(userOnboardedKey, 'true');
+      // تحديث قاعدة البيانات لإشارة has_onboarded
+      try {
+        await supabase.from('profiles').update({ has_onboarded: true }).eq('id', userId);
+      } catch (e) {
+        console.log('Could not update has_onboarded column (might not exist)');
+      }
+      console.log("⏭️ User has completed onboarding data, skipping onboarding");
+      return false;
+    }
+
+    // في جميع الحالات الأخرى، يحتاج المستخدم إلى onboarding
+    // (مثلاً: لا يوجد اسم، أو لا توجد اهتمامات أو مدن)
+    console.log("✅ User needs onboarding:", { 
+      userId, 
+      hasName, 
+      hasInterests, 
+      hasCities, 
+      alreadyOnboarded
+    });
+    return true;
   };
 
   // ==========================================
@@ -2057,13 +2314,28 @@ const App: React.FC = () => {
                 console.log(isEditing ? "Updating request:" : "Publishing request:", request);
 
                 // تأكد من وجود مستخدم مسجل قبل الإرسال
+                // Try multiple times with delay to ensure auth state is updated after login
                 let currentUserId = user?.id;
                 if (!currentUserId) {
+                  // Wait a bit for auth state to update after login
+                  await new Promise(resolve => setTimeout(resolve, 200));
                   const currentUser = await getCurrentUser();
                   currentUserId = currentUser?.id || null;
                 }
+                
+                // If still no user, try one more time after another delay
                 if (!currentUserId) {
-                  requireAuthForCreate();
+                  await new Promise(resolve => setTimeout(resolve, 300));
+                  const currentUser = await getCurrentUser();
+                  currentUserId = currentUser?.id || null;
+                }
+                
+                // Only require auth if we're absolutely sure there's no user
+                // Note: CreateRequestV2 will show an alert instead of forcing redirect
+                if (!currentUserId) {
+                  console.warn('No user found in onPublish');
+                  // Don't force redirect - let CreateRequestV2 handle it with alert
+                  // requireAuthForCreate();
                   return null;
                 }
 
@@ -2091,16 +2363,32 @@ const App: React.FC = () => {
                 
                 // إذا كان تعديل، استخدم updateRequest
                 if (isEditing && editRequestId && currentUserId) {
-                  const updatedRequest = await updateRequest(editRequestId, currentUserId, draftData);
+                  const updatedRequest = await updateRequest(editRequestId, currentUserId, draftData, request.seriousness);
                   if (updatedRequest) {
                     resultId = updatedRequest.id;
+                    // إذا كان الطلب مؤرشفاً، إظهار تنبيه
+                    if (updatedRequest.wasArchived) {
+                      setUpdateUnarchiveNotification({
+                        isVisible: true,
+                        requestId: updatedRequest.id,
+                      });
+                      // إخفاء التنبيه بعد 5 ثوان
+                      setTimeout(() => {
+                        setUpdateUnarchiveNotification({
+                          isVisible: false,
+                          requestId: null,
+                        });
+                      }, 5000);
+                    }
                   } else {
                     console.error("Failed to update request - updateRequest returned null");
                     return null;
                   }
                 } else {
                   // إنشاء طلب جديد
-                  const createdRequest = await createRequestFromChat(currentUserId, draftData);
+                  const createdRequest = await createRequestFromChat(currentUserId, draftData, {
+                    seriousness: request.seriousness,
+                  });
                   resultId = createdRequest?.id || null;
                 }
                 
@@ -2241,16 +2529,11 @@ const App: React.FC = () => {
           ? [...myRequests.filter(r => !allRequests.some(ar => ar.id === r.id)), ...allRequests]
           : allRequests;
         return (
-          <div className="h-full flex flex-col overflow-hidden relative">
-            {/* MyRequests - always mounted */}
-            <div 
-              className={`absolute inset-0 ${
-                activeBottomTab === "my-requests" 
-                  ? "z-[10] pointer-events-auto" 
-                  : "z-0 pointer-events-none hidden"
-              }`}
-            >
-              <MyRequests
+          <div className="h-full flex flex-col overflow-hidden relative bg-transparent">
+            {/* MyRequests - conditionally rendered */}
+            {activeBottomTab === "my-requests" && (
+              <div className="absolute inset-0 z-[10] pointer-events-auto">
+                <MyRequests
                 requests={myRequests}
                 archivedRequests={archivedRequests}
                 receivedOffersMap={receivedOffersMap}
@@ -2271,26 +2554,66 @@ const App: React.FC = () => {
                 onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
                 onArchiveRequest={async (requestId) => {
                   try {
-                    await archiveRequest(requestId, user?.id || '');
+                    // حفظ الطلب قبل حذفه
+                    const requestToArchive = myRequests.find(r => r.id === requestId);
+                    if (!requestToArchive) return;
+                    
+                    // تحديث فوري في الواجهة (optimistic update)
                     setMyRequests(prev => prev.filter(r => r.id !== requestId));
                     setArchivedRequests(prev => {
-                      const req = myRequests.find(r => r.id === requestId);
-                      return req ? [...prev, req] : prev;
+                      // تحديث حالة الطلب إلى archived ومخفي تلقائياً
+                      const archivedRequest = { 
+                        ...requestToArchive, 
+                        status: 'archived' as const,
+                        isPublic: false // إخفاء تلقائي عند الأرشفة
+                      };
+                      return [...prev, archivedRequest];
                     });
+                    
+                    // تحديث allRequests أيضاً
+                    setAllRequests(prev => prev.map(r => 
+                      r.id === requestId ? { ...r, status: 'archived' as const, isPublic: false } : r
+                    ));
+                    
+                    // تغيير الفلتر تلقائياً إلى قسم المؤرشف
+                    setMyRequestsFilter("completed");
+                    
+                    // تنفيذ الأرشفة في قاعدة البيانات
+                    await archiveRequest(requestId, user?.id || '');
                   } catch (error) {
                     console.error("Error archiving request:", error);
+                    // في حالة الخطأ، إعادة الطلب إلى myRequests
+                    const requestToRestore = archivedRequests.find(r => r.id === requestId);
+                    if (requestToRestore) {
+                      setArchivedRequests(prev => prev.filter(r => r.id !== requestId));
+                      setMyRequests(prev => [...prev, requestToRestore]);
+                    }
                   }
                 }}
                 onUnarchiveRequest={async (requestId) => {
                   try {
-                    await unarchiveRequest(requestId, user?.id || '');
+                    // حفظ الطلب قبل حذفه
+                    const requestToUnarchive = archivedRequests.find(r => r.id === requestId);
+                    if (!requestToUnarchive) return;
+                    
+                    // تحديث فوري في الواجهة (optimistic update)
                     setArchivedRequests(prev => prev.filter(r => r.id !== requestId));
                     setMyRequests(prev => {
-                      const req = archivedRequests.find(r => r.id === requestId);
-                      return req ? [...prev, req] : prev;
+                      // تحديث حالة الطلب إلى active
+                      const unarchivedRequest = { ...requestToUnarchive, status: 'active' as const };
+                      return [...prev, unarchivedRequest];
                     });
+                    
+                    // تنفيذ إلغاء الأرشفة في قاعدة البيانات
+                    await unarchiveRequest(requestId, user?.id || '');
                   } catch (error) {
                     console.error("Error unarchiving request:", error);
+                    // في حالة الخطأ، إعادة الطلب إلى archivedRequests
+                    const requestToRestore = myRequests.find(r => r.id === requestId);
+                    if (requestToRestore) {
+                      setMyRequests(prev => prev.filter(r => r.id !== requestId));
+                      setArchivedRequests(prev => [...prev, { ...requestToRestore, status: 'archived' as const }]);
+                    }
                   }
                 }}
                 onHideRequest={(requestId) => handleHideRequest(requestId)}
@@ -2306,18 +2629,16 @@ const App: React.FC = () => {
                 userId={user?.id}
                 viewedRequestIds={viewedRequestIds}
                 isActive={activeBottomTab === "my-requests"}
+                defaultFilter={myRequestsFilter}
+                onFilterChange={(filter) => setMyRequestsFilter(filter)}
               />
-            </div>
+              </div>
+            )}
 
-            {/* MyOffers - always mounted */}
-            <div 
-              className={`absolute inset-0 ${
-                activeBottomTab === "my-offers" 
-                  ? "z-[10] pointer-events-auto" 
-                  : "z-0 pointer-events-none hidden"
-              }`}
-            >
-              <MyOffers
+            {/* MyOffers - conditionally rendered */}
+            {activeBottomTab === "my-offers" && (
+              <div className="absolute inset-0 z-[10] pointer-events-auto">
+                <MyOffers
                 offers={myOffers}
                 archivedOffers={archivedOffers}
                 allRequests={allRequests}
@@ -2375,17 +2696,13 @@ const App: React.FC = () => {
                 viewedRequestIds={viewedRequestIds}
                 isActive={activeBottomTab === "my-offers"}
               />
-            </div>
+              </div>
+            )}
 
-            {/* Marketplace - always mounted */}
-            <div 
-              className={`absolute inset-0 ${
-                activeBottomTab === "marketplace" 
-                  ? "z-10 pointer-events-auto" 
-                  : "z-0 pointer-events-none hidden"
-              }`}
-            >
-              {allRequests && Array.isArray(allRequests)
+            {/* Marketplace - conditionally rendered */}
+            {activeBottomTab === "marketplace" && (
+              <div className="h-full w-full bg-transparent z-10 pointer-events-auto">
+                {allRequests && Array.isArray(allRequests)
                 ? (
                   <Marketplace
                     requests={mergedRequests}
@@ -2472,7 +2789,8 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 )}
-            </div>
+              </div>
+            )}
 
             {/* Bottom Navigation - shared across all tabs */}
             <BottomNavigation
@@ -2493,7 +2811,14 @@ const App: React.FC = () => {
               isDarkMode={isDarkMode}
               toggleTheme={() => setIsDarkMode(!isDarkMode)}
               onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
-              needsProfileSetup={!isGuest && (!user?.display_name || needsOnboarding)}
+              unreadMessagesCount={unreadMessagesCount}
+              unreadMessagesForMyRequests={unreadMessagesForMyRequests}
+              unreadMessagesForMyOffers={unreadMessagesForMyOffers}
+              unreadInterestsCount={unreadInterestsCount}
+              unreadNotificationsForMyRequests={unreadNotificationsForMyRequests}
+              unreadNotificationsForMyOffers={unreadNotificationsForMyOffers}
+              unreadNotificationsCount={unreadNotificationsForProfile}
+              needsProfileSetup={!isGuest && !user?.display_name?.trim()}
             />
           </div>
         );
@@ -2690,12 +3015,19 @@ const App: React.FC = () => {
               onUpdateProfile={async (updates) => {
                 if (user?.id) {
                   const result = await updateProfile(user.id, updates);
-                  if (result.success) {
-                    // إعادة جلب المستخدم لضمان تحديث جميع الحقول
-                    const fresh = await getCurrentUser();
-                    if (fresh) {
-                      setUser(fresh);
-                    }
+                  if (result.success && result.data) {
+                    // استخدام البيانات المحدثة مباشرة
+                    setUser(result.data);
+                    // إعادة جلب المستخدم أيضاً لضمان التزامن الكامل
+                    setTimeout(async () => {
+                      const fresh = await getCurrentUser();
+                      if (fresh) {
+                        setUser(fresh);
+                      }
+                    }, 200);
+                  } else if (result.error) {
+                    console.error('خطأ في تحديث الملف الشخصي:', result.error);
+                    throw new Error(result.error);
                   }
                 }
               }}
@@ -2877,7 +3209,31 @@ const App: React.FC = () => {
     }
   };
 
-  const unreadCount = (notifications || []).filter((n) => !n.isRead).length;
+  // حساب الإشعارات غير المقروءة بشكل منفصل
+  const unreadNotifications = (notifications || []).filter((n) => !n.isRead);
+  
+  // الإشعارات المرتبطة بطلباتي
+  const myRequestIds = new Set(myRequests.map(r => r.id));
+  const unreadNotificationsForMyRequests = unreadNotifications.filter(n => 
+    n.relatedRequest && myRequestIds.has(n.relatedRequest.id)
+  ).length;
+  
+  // الإشعارات المرتبطة بعروضي
+  const myOfferIds = new Set(myOffers.map(o => o.id));
+  const unreadNotificationsForMyOffers = unreadNotifications.filter(n => 
+    n.relatedOffer && myOfferIds.has(n.relatedOffer.id)
+  ).length;
+  
+  // الإشعارات الأخرى (system, status بدون relation، أو interest - لكن interest محسوبة في unreadInterestsCount)
+  const unreadNotificationsForProfile = unreadNotifications.filter(n => {
+    // استثناء الإشعارات المرتبطة بطلباتي أو عروضي
+    const isForMyRequest = n.relatedRequest && myRequestIds.has(n.relatedRequest.id);
+    const isForMyOffer = n.relatedOffer && myOfferIds.has(n.relatedOffer.id);
+    const isInterest = n.type === 'interest';
+    return !isForMyRequest && !isForMyOffer && !isInterest;
+  }).length;
+  
+  const unreadCount = unreadNotifications.length; // للتوافق مع الكود القديم
 
   // ==========================================
   // App View Rendering
@@ -2907,6 +3263,7 @@ const App: React.FC = () => {
         onComplete={handleOnboardingComplete}
         isLoading={false}
         initialName={user?.display_name}
+        hasExistingName={!!user?.display_name?.trim()}
       />
     );
   }
@@ -2920,27 +3277,71 @@ const App: React.FC = () => {
           try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user) {
+              console.log("🔍 AuthPage onAuthenticated - fetching profile...");
               const profile = await getCurrentUser();
+              console.log("🔍 AuthPage profile loaded:", profile);
               if (profile) {
                 setUser(profile);
                 
                 // التحقق إذا كان المستخدم جديداً ويحتاج الـ onboarding
-                const needsOnboard = await checkOnboardingStatus(profile.id);
+                console.log("🔍 AuthPage checking if user needs onboarding...");
+                const needsOnboard = await checkOnboardingStatus(profile.id, profile);
+                console.log("🔍 AuthPage onboarding check result:", needsOnboard);
                 if (needsOnboard) {
-                  console.log("🎯 New user detected after auth, showing onboarding...");
+                  console.log("✅ AuthPage: New user detected, showing onboarding...");
                   setNeedsOnboarding(true);
                   setIsNewUser(true);
                   setIsGuest(false);
                   localStorage.removeItem("abeely_guest_mode");
                   setAppView("onboarding");
                   return;
+                } else {
+                  console.log("⏭️ AuthPage: User does not need onboarding, going to main...");
                 }
+              } else {
+                console.log("⚠️ AuthPage: No profile found");
               }
               setIsGuest(false);
               localStorage.removeItem("abeely_guest_mode");
               
               // Check for saved form data and navigate accordingly
-              const savedRequestForm = localStorage.getItem('abeely_pending_request_form');
+              // SECURITY: Check user-specific key first, then generic key (for backward compatibility)
+              const userId = profile?.id;
+              const userSpecificKey = userId ? `abeely_pending_request_form_${userId}` : null;
+              const genericKey = 'abeely_pending_request_form';
+              
+              let savedRequestForm: string | null = null;
+              
+              // Try user-specific key first
+              if (userSpecificKey) {
+                savedRequestForm = localStorage.getItem(userSpecificKey);
+              }
+              
+              // Fallback to generic key if no user-specific data found
+              if (!savedRequestForm) {
+                savedRequestForm = localStorage.getItem(genericKey);
+              }
+              
+              // SECURITY: Verify that the draft belongs to the current user
+              if (savedRequestForm && userId) {
+                try {
+                  const formData = JSON.parse(savedRequestForm);
+                  // If draft has a userId and it doesn't match current user, ignore it
+                  if (formData.userId && formData.userId !== userId) {
+                    console.warn('Security: Draft belongs to different user, ignoring');
+                    savedRequestForm = null;
+                    // Clean up the draft that doesn't belong to this user
+                    if (userSpecificKey) {
+                      localStorage.removeItem(userSpecificKey);
+                    }
+                    localStorage.removeItem(genericKey);
+                  }
+                } catch (error) {
+                  console.error('Error parsing saved request form:', error);
+                  savedRequestForm = null;
+                }
+              }
+              
               const savedOfferForm = localStorage.getItem('abeely_pending_offer_form');
               const pendingRoute = localStorage.getItem('abeely_pending_route');
               if (pendingRoute) {
@@ -3007,7 +3408,7 @@ const App: React.FC = () => {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+      <main className="flex-1 flex flex-col h-full overflow-hidden relative md:pr-72">
         <div
           id="main-scroll-container"
           ref={scrollContainerRef}
@@ -3179,6 +3580,49 @@ const App: React.FC = () => {
           }
         }}
       />
+      
+      {/* Unarchive Toast - Shows when trying to unhide an archived request */}
+      <UnarchiveToast
+        isVisible={unarchiveToast.isVisible}
+        willBump={unarchiveToast.willBump}
+        onConfirm={handleConfirmUnarchive}
+        onCancel={handleCancelUnarchive}
+      />
+      
+      {/* Update Unarchive Notification - Shows when editing unarchives a request */}
+      <AnimatePresence>
+        {updateUnarchiveNotification.isVisible && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-4 left-4 right-4 z-[9999] max-w-md mx-auto"
+          >
+            <div className="rounded-2xl bg-gradient-to-br from-card via-card to-card/95 
+                           border border-yellow-500/30 shadow-2xl shadow-yellow-500/10 backdrop-blur-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-yellow-500/20">
+                  <AlertCircle size={18} className="text-yellow-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">
+                    تم إلغاء أرشفة الطلب تلقائياً
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    الطلب الآن نشط ومرئي في السوق
+                  </p>
+                </div>
+                <button
+                  onClick={() => setUpdateUnarchiveNotification({ isVisible: false, requestId: null })}
+                  className="p-1.5 rounded-full hover:bg-muted/50 transition-colors"
+                >
+                  <X size={16} className="text-muted-foreground" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

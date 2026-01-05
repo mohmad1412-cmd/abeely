@@ -19,7 +19,7 @@ export interface Request {
   deliveryTimeType?: 'immediate' | 'range' | 'not-specified';
   deliveryTimeFrom?: string;
   deliveryTimeTo?: string;
-  seriousness?: number; // 1 منخفض - 3 مرتفع
+  seriousness?: number; // 1 منخفض - 5 مرتفع جداً
   images?: string[]; // Changed from single image to array
   // Contact method preferences
   contactMethod?: 'whatsapp' | 'chat' | 'both';

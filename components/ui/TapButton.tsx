@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { hapticService } from '../../services/hapticService';
 
 interface RippleItem {
   id: number;
@@ -92,8 +93,8 @@ export const TapButton: React.FC<TapButtonProps> = ({
 
     setRipples(prev => [...prev, newRipple]);
 
-    if (haptic && navigator.vibrate) {
-      navigator.vibrate(6);
+    if (haptic) {
+      hapticService.tap();
     }
 
     setTimeout(() => {
