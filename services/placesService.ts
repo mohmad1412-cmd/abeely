@@ -306,10 +306,13 @@ export const searchCities = async (
     return cached.results;
   }
 
-  // التحقق من توفر Google Places
+  // انتظار تحميل Google Places API إذا لم يكن محمّلاً بعد
   if (!isGooglePlacesAvailable()) {
-    console.log('Google Places not available, using fallback');
-    return searchCitiesFallback(trimmedQuery);
+    const loaded = await waitForGooglePlaces();
+    if (!loaded) {
+      console.log('Google Places not available, using fallback');
+      return searchCitiesFallback(trimmedQuery);
+    }
   }
 
   const service = getAutocompleteService();
@@ -488,10 +491,13 @@ export const searchPlaces = async (
     return cached.results;
   }
 
-  // التحقق من توفر Google Places
+  // انتظار تحميل Google Places API إذا لم يكن محمّلاً بعد
   if (!isGooglePlacesAvailable()) {
-    console.log('Google Places not available, using fallback');
-    return searchCitiesFallback(trimmedQuery);
+    const loaded = await waitForGooglePlaces();
+    if (!loaded) {
+      console.log('Google Places not available, using fallback');
+      return searchCitiesFallback(trimmedQuery);
+    }
   }
 
   const service = getAutocompleteService();

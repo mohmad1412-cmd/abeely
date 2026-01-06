@@ -1,4 +1,5 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { logger } from '../utils/logger';
 import { createPortal } from "react-dom";
 import {
   Category,
@@ -93,6 +94,7 @@ interface MarketplaceProps {
   onScrollPositionChange?: (pos: number) => void;
   // Viewed requests from Backend - الطلبات المشاهدة من قاعدة البيانات
   viewedRequestIds?: Set<string>;
+  isLoadingViewedRequests?: boolean; // هل يتم تحميل viewedRequestIds حالياً؟
   // Main Header Props
   mode: "requests" | "offers";
   toggleMode: () => void;
@@ -110,6 +112,7 @@ interface MarketplaceProps {
   onClearAll: () => void;
   onSignOut: () => void;
   isLoading?: boolean;
+  isLoadingMyOffers?: boolean; // حالة تحميل myOffers
   onScrollButtonVisibilityChange?: (visible: boolean) => void;
   onHeaderCompressionChange?: (compressed: boolean) => void;
   onNavigateToProfile?: () => void;
@@ -149,6 +152,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   onScrollPositionChange,
   // Viewed requests from Backend
   viewedRequestIds: backendViewedIds,
+  isLoadingViewedRequests = false,
   // Main Header Props
   mode,
   toggleMode,
@@ -166,6 +170,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   onClearAll,
   onSignOut,
   isLoading = false,
+  isLoadingMyOffers = false,
   onScrollButtonVisibilityChange,
   onHeaderCompressionChange,
   onNavigateToProfile,
@@ -430,7 +435,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         }
       }
     } catch (e) {
-      console.error("Error loading guest viewed requests:", e);
+      logger.error("Error loading guest viewed requests:", e, 'service');
     }
   }, [isGuest]);
 
@@ -937,26 +942,26 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   };
 
   const toggleCity = (city: string) => {
-    console.log("toggleCity called with:", city);
+    logger.log("toggleCity called with:", city);
     setTempCities((prev) => {
-      console.log("Current cities:", prev);
+      logger.log("Current cities:", prev);
       // إذا كانت المدينة موجودة، نزيلها
       if (prev.includes(city)) {
         const newCities = prev.filter((c) => c !== city);
-        console.log("Removing city, new cities:", newCities);
+        logger.log("Removing city, new cities:", newCities);
         return newCities;
       } else {
         // إذا اختار "كل المدن"، نزيل المدن الأخرى (ما عدا "عن بعد")
         if (city === "كل المدن") {
           const remoteOnly = prev.filter((c) => c === "عن بعد");
           const newCities = [...remoteOnly, city];
-          console.log("Adding all cities, new cities:", newCities);
+          logger.log("Adding all cities, new cities:", newCities);
           return newCities;
         }
         // إذا اختار مدينة معينة، نزيل "كل المدن"
         const filtered = prev.filter((c) => c !== "كل المدن");
         const newCities = [...filtered, city];
-        console.log("Adding city, new cities:", newCities);
+        logger.log("Adding city, new cities:", newCities);
         return newCities;
       }
     });
@@ -1050,11 +1055,43 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     : requests;
 
   // حساب عدد الطلبات غير المقروءة في اهتماماتي
-  const unreadInterestsRequestsCount = interestsRequests.filter(
-    (req) => !viewedRequestIds.has(req.id),
-  ).length;
+  // لا نحسب الطلبات غير المقروءة أثناء التحميل لتجنب إظهار عدد خاطئ
+  const unreadInterestsRequestsCount = isLoadingViewedRequests
+    ? 0
+    : interestsRequests.filter(
+        (req) => !viewedRequestIds.has(req.id),
+      ).length;
 
-  const filteredRequests = requestsToFilter.filter((req) => {
+  // استخدام useMemo لضمان تحديث الفلترة عند تحديث myOffers
+  // هذا يمنع ظهور الطلبات مؤقتاً ثم اختفائها عند تحميل العروض
+  const filteredRequests = useMemo(() => {
+    // إذا كان المستخدم مسجل دخول ولا تزال myOffers قيد التحميل، لا نعرض أي طلبات
+    // هذا يمنع ظهور الطلبات التي لديها عروض ثم اختفائها فوراً
+    if (userId && isLoadingMyOffers) {
+      return [];
+    }
+
+    // إنشاء Set من request IDs التي قدم عليها المستخدم عرض (لتحسين الأداء)
+    // نستبعد العروض الملغاة (cancelled) فقط - العروض المكتملة (completed) والمنتهية (rejected) تبقى مخفية
+    // العروض المقبولة (accepted) والتفاوض (negotiating) تبقى مخفية أيضاً
+    const myOfferRequestIds = new Set(
+      myOffers
+        .filter(offer => 
+          offer.status !== "cancelled" && 
+          offer.status !== "completed" && 
+          offer.status !== "rejected"
+        )
+        .map(offer => offer.requestId)
+    );
+
+    return requestsToFilter.filter((req) => {
+      // إخفاء الطلبات التي قدم عليها المستخدم عرض (في جميع الأوضاع)
+      // المستخدم يريد رؤية فقط الطلبات التي لم يقدم عليها عرض بعد
+      if (userId && myOfferRequestIds.has(req.id)) {
+        // إخفاء الطلب إذا كان المستخدم قد قدم عليه عرض
+        return false;
+      }
+
     // Text search
     if (searchTerm) {
       const matchesSearch = req.title.includes(searchTerm) ||
@@ -1115,6 +1152,18 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     // but we still want to apply search and city/budget filters if the user uses them
     return true;
   });
+  }, [
+    requestsToFilter,
+    myOffers,
+    userId,
+    isLoadingMyOffers,
+    searchTerm,
+    searchCategories,
+    categories,
+    searchCities,
+    searchBudgetMin,
+    searchBudgetMax,
+  ]);
 
   // Infinite scroll: when user reaches the end (10th item for first page), load next page
   useEffect(() => {
@@ -2583,7 +2632,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         for (const registration of registrations) {
                           await registration.unregister();
                         }
-                        console.log(
+                        logger.log(
                           "[Hard Refresh] Service workers unregistered",
                         );
                       }
@@ -2594,7 +2643,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         await Promise.all(cacheNames.map((name) =>
                           caches.delete(name)
                         ));
-                        console.log("[Hard Refresh] Cache storage cleared");
+                        logger.log("[Hard Refresh] Cache storage cleared");
                       }
 
                       // 3. Clear ALL localStorage (except critical items)
@@ -2605,11 +2654,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           localStorage.removeItem(key);
                         }
                       });
-                      console.log("[Hard Refresh] localStorage cleared");
+                      logger.log("[Hard Refresh] localStorage cleared");
 
                       // 4. Clear ALL sessionStorage
                       sessionStorage.clear();
-                      console.log("[Hard Refresh] sessionStorage cleared");
+                      logger.log("[Hard Refresh] sessionStorage cleared");
 
                       // 5. Clear IndexedDB (Supabase uses this)
                       if ("indexedDB" in window) {
@@ -2619,7 +2668,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             indexedDB.deleteDatabase(db.name);
                           }
                         }
-                        console.log("[Hard Refresh] IndexedDB cleared");
+                        logger.log("[Hard Refresh] IndexedDB cleared");
                       }
 
                       // 6. Force hard reload (bypass cache)
@@ -2628,7 +2677,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       url.searchParams.set("_refresh", Date.now().toString());
                       window.location.replace(url.toString());
                     } catch (err) {
-                      console.error("[Hard Refresh] Error:", err);
+                      logger.error("[Hard Refresh] Error:", err, 'service');
                       // Fallback: just force reload
                       window.location.href = window.location.origin +
                         "?_refresh=" + Date.now();
@@ -3164,6 +3213,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       userId={user?.id}
                       isGuest={isGuest}
                       viewedRequestIds={viewedRequestIds}
+                      isLoadingViewedRequests={isLoadingViewedRequests}
                       newRequestIds={newRequestIds}
                       onSelectRequest={(req) => {
                         if (isGuest) {
@@ -3176,7 +3226,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                 JSON.stringify([...newSet]),
                               );
                             } catch (e) {
-                              console.error(
+                              logger.error(
                                 "Error saving guest viewed requests:",
                                 e,
                               );
@@ -3220,7 +3270,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             requestAuthorId === user.id;
                           const isNinthItem = index === 8; // 9th item (0-indexed)
                           const isTouchHovered = touchHoveredCardId === req.id; // هل الإصبع فوق هذا الكارت؟
+                          // نقطة القراءة تظهر فقط على الطلبات التي لم يفتحها المستخدم أبداً
+                          // ولا تظهر أثناء تحميل viewedRequestIds لتجنب الظهور المؤقت على كل الطلبات
                           const isUnread = !isMyRequest &&
+                            !isLoadingViewedRequests &&
                             !viewedRequestIds.has(req.id); // طلب غير مقروء
                           return (
                             <div
@@ -3268,7 +3321,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                           JSON.stringify([...newSet]),
                                         );
                                       } catch (e) {
-                                        console.error(
+                                        logger.error(
                                           "Error saving guest viewed requests:",
                                           e,
                                         );
@@ -3305,6 +3358,15 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                       />
                                     </motion.div>
                                   )}
+                                {/* Unread Indicator - نقطة القراءة (طلب غير مقروء) */}
+                                {isUnread && (
+                                  <motion.div
+                                    initial={{ opacity: 0, scale: 0 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    className="absolute top-3 right-3 z-20 w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50 border-2 border-white dark:border-card"
+                                    title="طلب غير مقروء"
+                                  />
+                                )}
                                 {/* Image Section */}
                                 {req.images && req.images.length > 0
                                   ? (
@@ -3420,7 +3482,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                     {/* Seriousness Indicator - مؤشر الجدية */}
                                     {isMyRequest && (() => {
                                       const receivedOffers =
-                                        receivedOffersMap.get(req.id) || [];
+                                        (receivedOffersMap.get(req.id) || []);
                                       const offersCount = receivedOffers.length;
                                       const seriousness = calculateSeriousness(
                                         offersCount,
@@ -3587,7 +3649,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                       ? (
                                         (() => {
                                           const receivedOffers =
-                                            receivedOffersMap.get(req.id) || [];
+                                            (receivedOffersMap.get(req.id) || []).filter(o => o.status !== 'archived');
                                           const offersCount =
                                             receivedOffers.length;
                                           return (

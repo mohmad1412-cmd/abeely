@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { Category, SupportedLocale, getCategoryLabel } from '../types';
 import { AVAILABLE_CATEGORIES } from '../data';
+import { logger } from '../utils/logger';
 
 /**
  * خدمة إدارة التصنيفات
@@ -382,26 +383,85 @@ export async function getCategoryIdsByLabels(labels: string[]): Promise<string[]
  * الاشتراك بتحديثات التصنيفات (Realtime)
  */
 export function subscribeToCategoriesUpdates(callback: (categories: Category[]) => void): () => void {
-  const channel = supabase
-    .channel('categories-changes')
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'categories',
-      },
-      async () => {
-        // مسح الـ cache وإعادة جلب التصنيفات
-        clearCategoriesCache();
-        const categories = await getCategories(true);
-        callback(categories);
+  let channel: ReturnType<typeof supabase.channel> | null = null;
+  let isSubscribed = false;
+  let retryCount = 0;
+  const MAX_RETRIES = 3;
+
+  const subscribe = () => {
+    // إزالة الـ channel السابق إذا كان موجوداً
+    if (channel) {
+      try {
+        supabase.removeChannel(channel);
+      } catch (e) {
+        // Ignore errors when removing channel
       }
-    )
-    .subscribe();
+    }
+
+    channel = supabase
+      .channel('categories-changes', {
+        config: {
+          broadcast: { self: false },
+          presence: { key: '' }
+        }
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'categories',
+        },
+        async () => {
+          // مسح الـ cache وإعادة جلب التصنيفات
+          clearCategoriesCache();
+          const categories = await getCategories(true);
+          callback(categories);
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          isSubscribed = true;
+          retryCount = 0;
+          logger.log('✅ Subscribed to categories updates');
+        } else if (status === 'CHANNEL_ERROR') {
+          logger.warn('⚠️ WebSocket channel error - categories updates may not work');
+          // إعادة المحاولة إذا لم نتجاوز الحد الأقصى
+          if (retryCount < MAX_RETRIES && !isSubscribed) {
+            retryCount++;
+            setTimeout(() => {
+              if (channel) subscribe();
+            }, 2000 * retryCount); // Exponential backoff
+          }
+        } else if (status === 'TIMED_OUT') {
+          logger.warn('⚠️ WebSocket connection timed out - categories updates may not work');
+          // إعادة المحاولة إذا لم نتجاوز الحد الأقصى
+          if (retryCount < MAX_RETRIES && !isSubscribed) {
+            retryCount++;
+            setTimeout(() => {
+              if (channel) subscribe();
+            }, 2000 * retryCount);
+          }
+        } else if (status === 'CLOSED') {
+          isSubscribed = false;
+          logger.warn('⚠️ WebSocket connection closed');
+        }
+      });
+  };
+
+  // بدء الاشتراك
+  subscribe();
 
   return () => {
-    supabase.removeChannel(channel);
+    if (channel) {
+      try {
+        supabase.removeChannel(channel);
+        channel = null;
+        isSubscribed = false;
+      } catch (e) {
+        // Ignore errors when removing channel
+      }
+    }
   };
 }
 

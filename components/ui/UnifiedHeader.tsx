@@ -272,6 +272,63 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
     <>
       <div className="h-16 flex items-center justify-between pt-[env(safe-area-inset-top,0px)]">
         <div className="flex items-center gap-3 flex-1 min-w-0">
+        {/* My Request Button - في يسار الهيدر */}
+        {false && showMyRequestButton && onMyRequestClick && (
+          <motion.button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
+              onMyRequestClick?.();
+            }}
+            initial={{ opacity: 0, scale: 0.8, x: 20, filter: "blur(8px)" }}
+            animate={{ 
+              opacity: 1, 
+              scale: 1, 
+              x: 0,
+              filter: "blur(0px)",
+              transition: {
+                type: "spring",
+                stiffness: 400,
+                damping: 25,
+                mass: 0.8,
+              }
+            }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.96 }}
+            className="relative flex items-center gap-2 h-11 px-4 rounded-xl group active:scale-95 bg-primary/10 border border-primary/30 hover:border-primary/50 hover:bg-primary/15 overflow-visible shrink-0"
+          >
+            {/* Shimmer effect */}
+            <span 
+              className="absolute inset-0 pointer-events-none animate-shimmer-diagonal rounded-xl overflow-hidden" 
+              style={{
+                background: 'linear-gradient(315deg, transparent 0%, transparent 35%, rgba(30, 150, 140, 0.1) 50%, transparent 65%, transparent 100%)',
+                backgroundSize: '200% 200%'
+              }} 
+            />
+            
+            <FileText size={16} className="relative z-10 text-primary" />
+            <span className="relative z-10 text-sm font-medium text-primary whitespace-nowrap flex items-center gap-1">
+              طلبي
+              {myRequestOffersCount > 0 && (
+                <span className="text-primary/70 text-[10px] font-bold animate-pulse">
+                  (عروض جديدة!)
+                </span>
+              )}
+            </span>
+            
+            {/* Notification badge for offers count */}
+            {myRequestOffersCount > 0 && (
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="absolute -top-2.5 -left-2.5 min-w-[20px] h-[20px] px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg z-30 border-2 border-white dark:border-gray-900"
+              >
+                {myRequestOffersCount}
+              </motion.span>
+            )}
+          </motion.button>
+        )}
+        
         {backButton ? (
           <motion.button
             onClick={() => {
@@ -760,8 +817,8 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
               {showThreeDotsMenu && threeDotsMenuItems.length > 0 && (
                 <DropdownMenu
                   trigger={
-                    <button className="p-1.5 rounded-lg hover:bg-black/5 transition-colors shrink-0">
-                      <MoreVertical size={18} strokeWidth={2.5} className="text-muted-foreground" />
+                    <button className="p-2 rounded-lg hover:bg-black/5 transition-colors shrink-0 -ml-1">
+                      <MoreVertical size={20} strokeWidth={2.5} className="text-muted-foreground" />
                     </button>
                   }
                   items={threeDotsMenuItems}
@@ -1132,61 +1189,6 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                       transition={{ duration: 0.5, delay: 0.1 }}
                     />
                   </>
-                )}
-              </motion.button>
-            ) : showMyRequestButton ? (
-              /* My Request Button - for viewing own request */
-              <motion.button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
-                  onMyRequestClick?.();
-                }}
-                initial={{ opacity: 0, scale: 0.8, x: 20, filter: "blur(8px)" }}
-                animate={{ 
-                  opacity: 1, 
-                  scale: 1, 
-                  x: 0,
-                  filter: "blur(0px)",
-                  transition: {
-                    type: "spring",
-                    stiffness: 400,
-                    damping: 25,
-                    mass: 0.8,
-                  }
-                }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.96 }}
-                className="relative flex items-center gap-2 h-11 px-4 rounded-xl group active:scale-95 bg-primary/10 border border-primary/30 hover:border-primary/50 hover:bg-primary/15 overflow-visible"
-              >
-                {/* Shimmer effect */}
-                <span 
-                  className="absolute inset-0 pointer-events-none animate-shimmer-diagonal rounded-xl overflow-hidden" 
-                  style={{
-                    background: 'linear-gradient(315deg, transparent 0%, transparent 35%, rgba(30, 150, 140, 0.1) 50%, transparent 65%, transparent 100%)',
-                    backgroundSize: '200% 200%'
-                  }} 
-                />
-                
-                <FileText size={16} className="relative z-10 text-primary" />
-                <span className="relative z-10 text-sm font-medium text-primary whitespace-nowrap flex items-center gap-1">
-                  طلبي
-                  {myRequestOffersCount > 0 && (
-                    <span className="text-primary/70 text-[10px] font-bold animate-pulse">
-                      (عروض جديدة!)
-                    </span>
-                  )}
-                </span>
-                
-                {/* Notification badge for offers count */}
-                {myRequestOffersCount > 0 && (
-                  <motion.span
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute -top-2.5 -left-2.5 min-w-[20px] h-[20px] px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg z-30 border-2 border-white dark:border-gray-900"
-                  >
-                    {myRequestOffersCount}
-                  </motion.span>
                 )}
               </motion.button>
             ) : showSearchButton && onSearchClick ? (

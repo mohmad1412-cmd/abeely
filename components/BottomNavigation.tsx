@@ -204,6 +204,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                   <motion.button
                     key={tab.id}
                     onClick={() => handleTabClick(tab.id)}
+                    data-testid={`nav-tab-create`}
                     className="relative flex items-center justify-center h-full px-3"
                     whileTap={{ scale: 0.9 }}
                   >
@@ -311,6 +312,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                     key={tab.id}
                     ref={profileButtonRef}
                     onClick={() => handleTabClick(tab.id)}
+                    data-testid={`nav-tab-profile`}
                     className="relative flex flex-col items-center justify-center flex-1 h-full gap-1.5"
                     whileTap={{ scale: 0.94 }}
                   >
@@ -403,6 +405,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                 <motion.button
                   key={tab.id}
                   onClick={() => handleTabClick(tab.id)}
+                  data-testid={`nav-tab-${tab.id}`}
                   className="relative flex flex-col items-center justify-center flex-1 h-full gap-1.5"
                   whileTap={{ scale: 0.94 }}
                 >
@@ -609,6 +612,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
           <div className="px-4 mb-4">
             <motion.button
               onClick={() => handleTabClick("create")}
+              data-testid="nav-sidebar-create"
               className="relative w-full"
               whileTap={{ scale: 0.98 }}
               whileHover={{ scale: 1.02 }}
@@ -654,6 +658,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                 <motion.button
                   key={tab.id}
                   onClick={() => handleTabClick(tab.id)}
+                  data-testid={`nav-sidebar-${tab.id}`}
                   className={`relative flex items-center gap-4 px-4 py-3 rounded-xl transition-all ${
                     isActive 
                       ? 'bg-primary/10 text-primary' 

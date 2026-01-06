@@ -84,19 +84,24 @@ export const findInterestedUsers = async (
   keywords?: string[]
 ): Promise<Array<{ userId: string; displayName: string; phone: string; matchType: string }>> => {
   try {
-    const { data, error } = await supabase
-      .rpc('find_interested_users', {
-        p_category: category,
-        p_city: city,
-        p_keywords: keywords
-      });
+    const { data, error } = await supabase.functions.invoke('find-interested-users', {
+      body: {
+        category,
+        city,
+        keywords
+      }
+    });
 
     if (error) {
       console.error('Error finding interested users:', error);
       return [];
     }
 
-    return (data || []).map((user: any) => ({
+    const payload = (data && typeof data === 'object' && 'data' in data)
+      ? (data as any).data
+      : data;
+
+    return (payload || []).map((user: any) => ({
       userId: user.user_id,
       displayName: user.display_name,
       phone: user.phone,
@@ -131,9 +136,10 @@ export const updatePreferencesDirect = async (
     if (preferences.roleMode !== undefined) {
       updateData.role_mode = preferences.roleMode;
     }
-    if (preferences.showNameToApprovedProvider !== undefined) {
-      updateData.show_name_to_approved_provider = preferences.showNameToApprovedProvider;
-    }
+    // Note: show_name_to_approved_provider column doesn't exist in the database yet
+    // if (preferences.showNameToApprovedProvider !== undefined) {
+    //   updateData.show_name_to_approved_provider = preferences.showNameToApprovedProvider;
+    // }
     
     updateData.updated_at = new Date().toISOString();
 
@@ -159,7 +165,7 @@ export const getPreferencesDirect = async (userId: string): Promise<UserPreferen
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('interested_categories, interested_cities, radar_words, notify_on_interest, role_mode, show_name_to_approved_provider')
+      .select('interested_categories, interested_cities, radar_words, notify_on_interest, role_mode')
       .eq('id', userId)
       .single();
 
@@ -185,4 +191,3 @@ export const getPreferencesDirect = async (userId: string): Promise<UserPreferen
     return null;
   }
 };
-

@@ -68,11 +68,57 @@ npm run build
 
 سيتم إنشاء ملفات الإنتاج في مجلد `dist/`
 
-## إعدادات Supabase (اختياري)
+## 🔧 إعدادات AI والـ Backend
 
-إذا كنت تستخدم دالة `supabase/functions/ai-chat`، عرّف المتغيرات التالية في Supabase:
+### المشكلة الشائعة: "ليش مافيه ربط مع الـ AI والـ Backend؟"
 
-- **`GEMINI_API_KEY`**: مفتاح Gemini API
+إذا كانت خدمة الـ AI لا تعمل، اتبع الخطوات التالية:
+
+#### الحل السريع (للتطوير المحلي):
+
+1. **إنشاء ملف `.env.local`**:
+   ```bash
+   copy env.local.example .env.local
+   ```
+
+2. **إضافة API Keys**:
+   ```env
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   VITE_ANTHROPIC_API_KEY=sk-ant-api03-xxxxx
+   ```
+
+3. **إعادة تشغيل الـ dev server**:
+   ```bash
+   npm run dev
+   ```
+
+#### الحل المُوصى به (للإنتاج):
+
+1. **رفع Edge Functions على Supabase**:
+   ```bash
+   # تثبيت Supabase CLI
+   npm install -g supabase
+   
+   # تسجيل الدخول
+   supabase login
+   
+   # ربط المشروع
+   supabase link --project-ref YOUR_PROJECT_REF
+   
+   # إضافة API Keys في Supabase Secrets
+   supabase secrets set ANTHROPIC_API_KEY=sk-ant-xxxxx
+   
+   # رفع Edge Functions
+   supabase functions deploy ai-chat
+   supabase functions deploy customer-service-ai
+   ```
+
+2. **التحقق من الربط**:
+   - افتح Console في المتصفح
+   - ابحث عن رسالة: `✅ Supabase Edge Function 'ai-chat' is healthy.`
+
+📖 **للمزيد من التفاصيل**: راجع ملف `AI_BACKEND_CONNECTION_FIX.md`
 
 ## المعاينة بعد البناء
 

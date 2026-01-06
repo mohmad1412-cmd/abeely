@@ -168,6 +168,15 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
 
     setIsLoading(true);
     try {
+      // انتظار تحميل Google Places API - دائماً نتحقق قبل البحث
+      // حتى لو كان isGoogleReady = true، قد لا يكون Places API جاهزاً بعد
+      const { waitForGooglePlaces } = await import('../../services/placesService');
+      const isPlacesReady = await waitForGooglePlaces();
+      
+      if (!isPlacesReady) {
+        console.warn('Google Places API not available, search may use fallback');
+      }
+
       // استخدام searchPlaces للبحث العام أو searchCities للمدن فقط
       const searchFn = searchMode === 'places' ? searchPlaces : searchCities;
       const searchResults = await searchFn(query);

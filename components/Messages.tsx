@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { logger } from '../utils/logger';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   MessageCircle, 
@@ -269,7 +270,7 @@ export const Messages: React.FC<MessagesProps> = ({
           }
         }
       } catch (error) {
-        console.error('Error loading conversations:', error);
+        logger.error('Error loading conversations:', error, 'service');
       } finally {
         setIsLoading(false);
       }
@@ -323,7 +324,7 @@ export const Messages: React.FC<MessagesProps> = ({
           )
         );
       } catch (error) {
-        console.error('Error loading messages:', error);
+        logger.error('Error loading messages:', error, 'service');
       } finally {
         setIsLoading(false);
       }
@@ -425,7 +426,7 @@ export const Messages: React.FC<MessagesProps> = ({
       setMediaRecorder(recorder);
       setIsRecording(true);
     } catch (error) {
-      console.error("Error starting recording:", error);
+      logger.error("Error starting recording:", error, 'service');
       alert("حدث خطأ في بدء التسجيل");
     }
   };
@@ -510,7 +511,7 @@ export const Messages: React.FC<MessagesProps> = ({
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }
     } catch (error) {
-      console.error('Error sending message:', error);
+      logger.error('Error sending message:', error, 'service');
     } finally {
       setIsSending(false);
     }

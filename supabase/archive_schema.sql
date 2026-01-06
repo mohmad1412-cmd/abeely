@@ -57,8 +57,17 @@ CREATE OR REPLACE FUNCTION archive_request(request_id_param UUID, user_id_param 
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF user_id_param IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RETURN FALSE;
+  END IF;
+
   -- Check if the request belongs to the user
   IF EXISTS (
     SELECT 1 FROM requests 
@@ -81,8 +90,16 @@ CREATE OR REPLACE FUNCTION archive_offer(offer_id_param UUID, user_id_param UUID
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF user_id_param IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RETURN FALSE;
+  END IF;
   -- Check if the offer belongs to the user
   IF EXISTS (
     SELECT 1 FROM offers 
@@ -105,10 +122,18 @@ CREATE OR REPLACE FUNCTION unarchive_request(request_id_param UUID, user_id_para
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   original_status TEXT;
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF user_id_param IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RETURN FALSE;
+  END IF;
   -- Get the original status before archiving (we'll use 'completed' as default, or you can store it separately)
   -- For now, we'll restore to 'completed' if it was archived, or keep as is
   IF EXISTS (
@@ -132,8 +157,16 @@ CREATE OR REPLACE FUNCTION unarchive_offer(offer_id_param UUID, user_id_param UU
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF user_id_param IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RETURN FALSE;
+  END IF;
   IF EXISTS (
     SELECT 1 FROM offers 
     WHERE id = offer_id_param AND provider_id = user_id_param AND status = 'archived'

@@ -129,6 +129,7 @@ export function getKnownCategoryColor(categoryId: string): string {
     
     // طعام - برتقالي
     'cooking': 'border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300',
+    'restaurants': 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/30 text-red-700 dark:text-red-300',
     'baking': 'border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300',
     'catering-food': 'border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300',
     

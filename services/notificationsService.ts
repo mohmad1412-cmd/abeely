@@ -52,8 +52,8 @@ export async function getNotifications(limit = 50): Promise<Notification[]> {
     if (offerIds.length > 0) {
       const { data: offers } = await supabase
         .from('offers')
-        .select('id, title, provider_name')
-        .in('id', offerIds);
+        .select('id, title, provider_name, status')
+        .in('id', offerIds)
       (offers || []).forEach(o => { offersMap[o.id] = o; });
     }
 
@@ -72,11 +72,16 @@ export async function getNotifications(limit = 50): Promise<Notification[]> {
       }
     }
 
-    // Transform data
+    // Transform data and filter out notifications with archived/deleted offers
     const data = (notificationsData || []).map(n => {
       const request = requestsMap[n.related_request_id];
       const offer = offersMap[n.related_offer_id];
       const message = messagesMap[n.related_message_id];
+      
+      // استثناء الإشعارات المرتبطة بعروض مؤرشفة أو محذوفة
+      if (n.related_offer_id && !offer) {
+        return null; // العرض مؤرشف أو محذوف
+      }
       
       return {
         ...n,
@@ -90,7 +95,7 @@ export async function getNotifications(limit = 50): Promise<Notification[]> {
           sender: profilesMap[message.sender_id] || null
         } : null,
       };
-    });
+    }).filter(Boolean); // إزالة القيم null
 
     return (data || []).map((n: any) => ({
       id: n.id,
@@ -327,9 +332,17 @@ export function subscribeToNotifications(
         }
 
         if (notif.related_offer_id) {
-          const { data: offer } = await supabase.from('offers').select('id, title, provider_name').eq('id', notif.related_offer_id).single();
+          const { data: offer } = await supabase
+            .from('offers')
+            .select('id, title, provider_name, status')
+            .eq('id', notif.related_offer_id)
+            .neq('status', 'archived') // استثناء العروض المؤرشفة
+            .single();
           if (offer) {
             relatedOffer = { id: offer.id, title: offer.title, providerName: offer.provider_name };
+          } else {
+            // العرض مؤرشف أو محذوف، لا نرسل الإشعار
+            return;
           }
         }
 

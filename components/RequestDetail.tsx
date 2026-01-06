@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { logger } from '../utils/logger';
 import { AppMode, Message as LocalMessage, Offer, Request } from "../types";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
@@ -132,7 +133,6 @@ interface RequestDetailProps {
   onNavigateToProfile?: () => void;
   onNavigateToSettings?: () => void;
   onCancelOffer?: (offerId: string) => Promise<void>; // Callback to cancel an offer
-  onEditOffer?: (offer: Offer) => void; // Callback to edit an offer
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
@@ -157,8 +157,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     onEditRequest,
     onNavigateToProfile,
     onNavigateToSettings,
-    onCancelOffer,
-    onEditOffer
+    onCancelOffer
   },
 ) => {
   const [negotiationOpen, setNegotiationOpen] = useState(false);
@@ -429,7 +428,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         );
         setHasExistingConversation(exists);
       } catch (error) {
-        console.error("خطأ في التحقق من المحادثة:", error);
+        logger.error("خطأ في التحقق من المحادثة:", error, 'service');
         setHasExistingConversation(false);
       } finally {
         setIsCheckingConversation(false);
@@ -485,7 +484,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       // يمكن استبدال هذا بتحديث الـ state مباشرة
       window.location.reload();
     } catch (error) {
-      console.error('خطأ في قبول العرض:', error);
+      logger.error('خطأ في قبول العرض:', error, 'service');
       setAcceptOfferError('حدث خطأ غير متوقع');
     } finally {
       setIsAcceptingOffer(false);
@@ -516,7 +515,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       // إعادة تحميل الصفحة لعرض التغييرات
       window.location.reload();
     } catch (error) {
-      console.error('خطأ في بدء التفاوض:', error);
+      logger.error('خطأ في بدء التفاوض:', error, 'service');
       setStartNegotiationError('حدث خطأ غير متوقع');
     } finally {
       setIsStartingNegotiation(false);
@@ -532,7 +531,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       try {
         const otherUserId = getOtherUserId();
         if (!otherUserId) {
-          console.warn("لا يوجد طرف آخر للمحادثة");
+          logger.warn("لا يوجد طرف آخر للمحادثة");
           setIsChatLoading(false);
           return;
         }
@@ -558,7 +557,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
           await markMessagesAsRead(conversation.id);
         }
       } catch (error) {
-        console.error("خطأ في تحميل المحادثة:", error);
+        logger.error("خطأ في تحميل المحادثة:", error, 'service');
       } finally {
         setIsChatLoading(false);
       }
@@ -608,7 +607,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       }
       setChatMessage("");
     } catch (error) {
-      console.error("خطأ في إرسال الرسالة:", error);
+      logger.error("خطأ في إرسال الرسالة:", error, 'service');
     } finally {
       setIsSendingMessage(false);
     }
@@ -642,7 +641,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
             shareFile = new File([blob], `request-${request.id.substring(0, 8)}.png`, { type: 'image/png' });
           }
         } catch (imgErr) {
-          console.log('Could not generate share image:', imgErr);
+          logger.log('Could not generate share image:', imgErr);
         }
       }
       
@@ -671,7 +670,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     } catch (err) {
       // User cancelled or error
       if ((err as Error).name !== 'AbortError') {
-        console.log(err);
+        logger.log(err);
       }
     }
   };
@@ -684,7 +683,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       setIsLinkCopied(true);
       setTimeout(() => setIsLinkCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy:', err);
+      logger.error('Failed to copy:', err, 'service');
     }
   };
 
@@ -1018,9 +1017,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         } else {
           alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
         }
-      } catch (err) {
-        console.error("Submit offer error:", err);
-        alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
+      } catch (err: any) {
+        logger.error("Submit offer error:", err, 'service');
+        const errorMessage = err?.message || err?.error?.message || "حدث خطأ في إرسال العرض. حاول مرة أخرى.";
+        console.error("Full error details:", err);
+        alert(`حدث خطأ في إرسال العرض:\n${errorMessage}\n\nتحقق من Console لمزيد من التفاصيل.`);
       } finally {
         setIsSubmittingOffer(false);
         setIsUploadingAttachments(false);
@@ -1177,7 +1178,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
             setIsIdCopied(false);
           }, 1500);
         } catch (err) {
-          console.error('Failed to copy ID:', err);
+          logger.error('Failed to copy ID:', err, 'service');
         }
       },
     },
@@ -1319,15 +1320,15 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   {isMyRequest ? (
                     <button 
                       onClick={handleEditRequest}
-                      className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0"
+                      className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 -ml-1"
                     >
-                      <Edit size={18} strokeWidth={2.5} className="text-muted-foreground" />
+                      <Edit size={20} strokeWidth={2.5} className="text-muted-foreground" />
                     </button>
                   ) : (
                     <DropdownMenu
                       trigger={
-                        <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0">
-                          <MoreVertical size={18} strokeWidth={2.5} className="text-muted-foreground" />
+                        <button className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 -ml-1">
+                          <MoreVertical size={20} strokeWidth={2.5} className="text-muted-foreground" />
                         </button>
                       }
                       items={dropdownItems}
@@ -1452,15 +1453,15 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   {isMyRequest ? (
                     <button 
                       onClick={handleEditRequest}
-                      className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0"
+                      className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 -ml-1"
                     >
-                      <Edit size={18} strokeWidth={2.5} className="text-muted-foreground" />
+                      <Edit size={20} strokeWidth={2.5} className="text-muted-foreground" />
                     </button>
                   ) : (
                     <DropdownMenu
                       trigger={
-                        <button className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0">
-                          <MoreVertical size={18} strokeWidth={2.5} className="text-muted-foreground" />
+                        <button className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 -ml-1">
+                          <MoreVertical size={20} strokeWidth={2.5} className="text-muted-foreground" />
                         </button>
                       }
                       items={dropdownItems}
@@ -2003,22 +2004,79 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           <h3>تفاصيل عرضي</h3>
                         </div>
                         
-                        {/* Status Badge */}
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 border ${
-                          myOffer.status === "accepted" 
-                            ? "bg-primary/10 text-primary border-primary/30" 
-                            : myOffer.status === "negotiating"
-                            ? "bg-primary/10 text-primary border-primary/30"
-                            : "bg-yellow-50 dark:bg-yellow-950 text-yellow-600 border-yellow-200"
-                        }`}>
-                          {myOffer.status === "accepted" && <CheckCircle size={14} />}
-                          {myOffer.status === "negotiating" && <MessageCircle size={14} />}
-                          {myOffer.status === "pending" && <Clock size={14} />}
+                        <div className="flex items-center gap-1.5">
+                          {/* Status Badge */}
+                          {(() => {
+                            const status = myOffer?.status || "pending";
+                            let badgeClass = "";
+                            let icon = null;
+                            let text = "";
+                            
+                            switch (status) {
+                              case "accepted":
+                                badgeClass = "bg-primary/10 text-primary border-primary/30";
+                                icon = <CheckCircle size={14} />;
+                                text = "مقبول";
+                                break;
+                              case "negotiating":
+                                badgeClass = "bg-primary/10 text-primary border-primary/30";
+                                icon = <MessageCircle size={14} />;
+                                text = "مفاوضة";
+                                break;
+                              case "pending":
+                                badgeClass = "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800";
+                                icon = <Clock size={14} />;
+                                text = "انتظار";
+                                break;
+                              case "completed":
+                                badgeClass = "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800";
+                                icon = <CheckCircle size={14} />;
+                                text = "مكتمل";
+                                break;
+                              case "rejected":
+                                badgeClass = "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800";
+                                icon = <X size={14} />;
+                                text = "منتهي";
+                                break;
+                              case "cancelled":
+                                badgeClass = "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700";
+                                icon = <X size={14} />;
+                                text = "ملغى";
+                                break;
+                              default:
+                                badgeClass = "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800";
+                                icon = <Clock size={14} />;
+                                text = "انتظار";
+                            }
+                            
+                            return (
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 border ${badgeClass}`}>
+                                {icon}
+                                {text}
+                              </span>
+                            );
+                          })()}
                           
-                          {myOffer.status === "accepted" && "مقبول"}
-                          {myOffer.status === "negotiating" && "مفاوضة"}
-                          {myOffer.status === "pending" && "انتظار"}
-                        </span>
+                          {/* Three Dots Menu */}
+                          {myOffer.status === "pending" && (
+                            <DropdownMenu
+                              trigger={
+                                <button className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground">
+                                  <MoreVertical size={14} strokeWidth={2.5} />
+                                </button>
+                              }
+                              items={[
+                                {
+                                  id: 'cancel',
+                                  label: 'حذف العرض',
+                                  icon: <Trash2 size={16} />,
+                                  onClick: () => setShowCancelConfirm(true),
+                                  variant: 'danger',
+                                },
+                              ]}
+                            />
+                          )}
+                        </div>
                       </div>
 
                       {/* Info Grid - Same Layout as Request Info */}
@@ -2095,26 +2153,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         {myOffer.description}
                       </p>
 
-                      {/* Actions for Pending Only */}
-                      {myOffer.status === "pending" && (
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            className="flex-1 text-red-500 hover:text-red-600 border-red-200"
-                            isLoading={isCancellingOffer}
-                            onClick={() => setShowCancelConfirm(true)}
-                          >
-                            إلغاء العرض
-                          </Button>
-                          <Button 
-                            variant="secondary" 
-                            className="flex-1"
-                            onClick={() => onEditOffer?.(myOffer)}
-                          >
-                            تعديل العرض
-                          </Button>
-                        </div>
-                      )}
 
                       {/* Cancel Confirmation Modal */}
                       <AnimatePresence>
@@ -2165,7 +2203,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                           navigator.vibrate(100);
                                         }
                                       } catch (error) {
-                                        console.error('Error cancelling offer:', error);
+                                        logger.error('Error cancelling offer:', error, 'service');
                                       } finally {
                                         setIsCancellingOffer(false);
                                       }
@@ -2866,7 +2904,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                               
                               needsOnboarding = !(alreadyOnboarded || (hasProfileName && (hasInterests || hasCities)));
                             } catch (err) {
-                              console.error('Error checking onboarding status:', err);
+                              logger.error('Error checking onboarding status:', err, 'service');
                               // في حالة الخطأ، نعتبر أن المستخدم يحتاج onboarding إذا لم يكن هناك اسم
                               needsOnboarding = !hasName;
                             }
@@ -2959,9 +2997,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                             } else {
                               setGuestOfferError("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
                             }
-                          } catch (err) {
-                            console.error("Submit offer error:", err);
-                            setGuestOfferError("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
+                          } catch (err: any) {
+                            logger.error("Submit offer error:", err, 'service');
+                            const errorMessage = err?.message || err?.error?.message || "حدث خطأ في إرسال العرض. حاول مرة أخرى.";
+                            console.error("Full error details:", err);
+                            setGuestOfferError(`حدث خطأ في إرسال العرض:\n${errorMessage}`);
                           } finally {
                             setIsSubmittingOffer(false);
                             setIsUploadingAttachments(false);

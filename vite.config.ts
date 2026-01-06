@@ -35,10 +35,6 @@ export default defineConfig({
             if (id.includes('@supabase')) {
               return 'supabase';
             }
-            // Google AI
-            if (id.includes('@google/generative-ai')) {
-              return 'google-ai';
-            }
             // Lucide Icons
             if (id.includes('lucide-react')) {
               return 'lucide-icons';

@@ -1,0 +1,703 @@
+[
+  {
+    "id": "TC001",
+    "title": "Login with Google OAuth success",
+    "description": "Verify that a user can successfully log in using Google OAuth authentication.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to login page"
+      },
+      {
+        "type": "action",
+        "description": "Click on 'Login with Google' button"
+      },
+      {
+        "type": "assertion",
+        "description": "Complete Google OAuth flow with valid account"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify user is logged in and redirected correctly"
+      }
+    ]
+  },
+  {
+    "id": "TC002",
+    "title": "Login with Email and Password success",
+    "description": "Verify that a user can successfully log in using valid email and password credentials.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to login page"
+      },
+      {
+        "type": "action",
+        "description": "Enter valid email and password"
+      },
+      {
+        "type": "action",
+        "description": "Click login button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify user is logged in and redirected correctly"
+      }
+    ]
+  },
+  {
+    "id": "TC003",
+    "title": "Login with Phone OTP success",
+    "description": "Verify user can log in via OTP received on phone and complete authentication flow successfully.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to login page"
+      },
+      {
+        "type": "action",
+        "description": "Select phone OTP authentication"
+      },
+      {
+        "type": "action",
+        "description": "Enter valid phone number"
+      },
+      {
+        "type": "action",
+        "description": "Request OTP and enter the received OTP"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify user is logged in successfully"
+      }
+    ]
+  },
+  {
+    "id": "TC004",
+    "title": "Login failure with invalid credentials",
+    "description": "Ensure login is rejected with an error message when user provides invalid email or password.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to login page"
+      },
+      {
+        "type": "action",
+        "description": "Enter invalid email or password"
+      },
+      {
+        "type": "action",
+        "description": "Click login button"
+      },
+      {
+        "type": "assertion",
+        "description": "Observe error message displayed and user remains logged out"
+      }
+    ]
+  },
+  {
+    "id": "TC005",
+    "title": "Guest mode access and restrictions",
+    "description": "Verify users can enter the platform in guest mode with limited features as specified.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to login page"
+      },
+      {
+        "type": "action",
+        "description": "Select guest mode option"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify user gains access with guest privileges"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify user cannot access restricted functions such as creating offers"
+      }
+    ]
+  },
+  {
+    "id": "TC006",
+    "title": "Create a new request using AI Assistant",
+    "description": "Validate that users can create a service request using the AI-powered assistant successfully.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Log in as authenticated user"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to create request page"
+      },
+      {
+        "type": "action",
+        "description": "Use AI Assistant to generate request details"
+      },
+      {
+        "type": "action",
+        "description": "Review and submit the request"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify new request is created and visible in user's requests list"
+      }
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "Edit existing request",
+    "description": "Ensure users can edit and save updates to existing requests properly.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Log in and navigate to user's requests"
+      },
+      {
+        "type": "action",
+        "description": "Select a request to edit"
+      },
+      {
+        "type": "action",
+        "description": "Modify request details and save"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify changes are persisted and reflected in request details"
+      }
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Archive and unarchive a request",
+    "description": "Verify the user can archive a request and later restore (unarchive) it successfully.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to a request owned by user"
+      },
+      {
+        "type": "action",
+        "description": "Archive the request"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify request is removed from active listings"
+      },
+      {
+        "type": "action",
+        "description": "Unarchive the request"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify request is visible again in active listings"
+      }
+    ]
+  },
+  {
+    "id": "TC009",
+    "title": "Hide and bump a request",
+    "description": "Ensure user can hide requests from marketplace and use bump feature to raise priority listing.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to user's active request"
+      },
+      {
+        "type": "action",
+        "description": "Hide the request"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify request is not visible in marketplace"
+      },
+      {
+        "type": "action",
+        "description": "Unhide and use bump feature on request"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify request moved higher in list priority"
+      }
+    ]
+  },
+  {
+    "id": "TC010",
+    "title": "Browse marketplace requests with filters",
+    "description": "Verify that marketplace requests can be filtered properly by category, city, budget, and view mode.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to marketplace page"
+      },
+      {
+        "type": "action",
+        "description": "Apply category filter"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify displayed requests belong to selected category"
+      },
+      {
+        "type": "action",
+        "description": "Apply city filter"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify requests match selected city"
+      },
+      {
+        "type": "action",
+        "description": "Set budget range filter"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify requests fall within budget range"
+      },
+      {
+        "type": "action",
+        "description": "Switch view modes (all, interests)"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify requests listed correspond to selected view mode"
+      }
+    ]
+  },
+  {
+    "id": "TC011",
+    "title": "Create and submit an offer on a request",
+    "description": "Test that a provider user can create an offer on a marketplace request using quick form or AI assistant and submit it successfully.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Log in as provider user"
+      },
+      {
+        "type": "action",
+        "description": "Browse requests and select one"
+      },
+      {
+        "type": "action",
+        "description": "Open offer creation form (quick or AI assisted)"
+      },
+      {
+        "type": "action",
+        "description": "Fill offer details and submit"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify offer is created and visible in offers list"
+      }
+    ]
+  },
+  {
+    "id": "TC012",
+    "title": "Edit and archive offers",
+    "description": "Verify users can edit their offers and archive/unarchive offers as needed.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to user's offers"
+      },
+      {
+        "type": "action",
+        "description": "Select an offer and modify details"
+      },
+      {
+        "type": "action",
+        "description": "Save changes"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify offer updates are saved"
+      },
+      {
+        "type": "action",
+        "description": "Archive the offer"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify offer is removed from active lists"
+      },
+      {
+        "type": "action",
+        "description": "Unarchive the offer"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify offer is restored"
+      }
+    ]
+  },
+  {
+    "id": "TC013",
+    "title": "Real-time messaging between requester and provider",
+    "description": "Ensure messages are sent and received instantly between requester and provider in the chat interface with file exchange supported.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Log in as requester and open conversation with provider"
+      },
+      {
+        "type": "action",
+        "description": "Send text message"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify provider receives the message in real-time"
+      },
+      {
+        "type": "action",
+        "description": "Send file attachment in chat"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify provider receives and can download file"
+      },
+      {
+        "type": "action",
+        "description": "Verify real-time notification appears on provider side"
+      }
+    ]
+  },
+  {
+    "id": "TC014",
+    "title": "Receive real-time notifications with correct sound alerts",
+    "description": "Validate that the user receives in-app notifications in real-time with distinct sound alerts per notification type and accurate unread count badge.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Trigger an event generating a notification (e.g., new offer, new message)"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify notification shows immediately in notifications panel"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the specific sound for the notification type plays"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify unread notification count badge increments correctly"
+      }
+    ]
+  },
+  {
+    "id": "TC015",
+    "title": "User profile preferences update",
+    "description": "Verify user can update settings such as theme (dark/light), language selection (Arabic, English, Urdu), and interests with changes persisting correctly.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to user profile settings"
+      },
+      {
+        "type": "action",
+        "description": "Change theme to dark mode"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify UI switches to dark mode"
+      },
+      {
+        "type": "action",
+        "description": "Switch language to Arabic"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify interface text updates and RTL layout activates"
+      },
+      {
+        "type": "action",
+        "description": "Manage and save interests"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify interests saved and reflected in marketplace filters"
+      }
+    ]
+  },
+  {
+    "id": "TC016",
+    "title": "Multi-language interface support and RTL layout",
+    "description": "Ensure interface supports all three languages (Arabic, English, Urdu) correctly and applies RTL layout for Arabic and Urdu.",
+    "category": "ui",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Switch UI language to Arabic"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify all texts translate and layout is RTL"
+      },
+      {
+        "type": "action",
+        "description": "Switch UI language to Urdu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify all texts translate and layout is RTL"
+      },
+      {
+        "type": "action",
+        "description": "Switch UI language to English"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify all texts translate to English and layout is LTR"
+      }
+    ]
+  },
+  {
+    "id": "TC017",
+    "title": "Category management and color coding localized",
+    "description": "Verify categories appear with proper localized names and colors in filters and listings.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Open marketplace filters"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify category names appear correctly in selected language"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify category colors match specification"
+      },
+      {
+        "type": "action",
+        "description": "Select category filter and verify category-related requests shown"
+      }
+    ]
+  },
+  {
+    "id": "TC018",
+    "title": "Location search with Google Maps integration",
+    "description": "Verify city search and autocomplete function works correctly using Google Maps API and results filter requests accordingly.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to marketplace"
+      },
+      {
+        "type": "action",
+        "description": "Enter partial city name in location search"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify autocomplete suggestions appear with correct places"
+      },
+      {
+        "type": "action",
+        "description": "Select a city suggestion"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify requests displayed are filtered to the selected city"
+      }
+    ]
+  },
+  {
+    "id": "TC019",
+    "title": "Security - Prevent unauthorized access to user data",
+    "description": "Verify the system blocks access to personal requests, offers, messages, and settings for unauthorized users.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Attempt to access user profile or requests without logging in"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify access denied and redirect to login"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to access other users' requests or offers via URL direct access"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify access denied or appropriate error shown"
+      }
+    ]
+  },
+  {
+    "id": "TC020",
+    "title": "Performance - Page load and response time under normal and high load",
+    "description": "Test that application pages load within acceptable times and remain stable under high concurrent user load.",
+    "category": "performance",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Measure page load time of main pages (login, marketplace, request creation)"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify load times meet performance targets (<3 seconds)"
+      },
+      {
+        "type": "action",
+        "description": "Simulate multiple concurrent users browsing and interacting"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify system remains responsive without errors or timeouts"
+      }
+    ]
+  },
+  {
+    "id": "TC021",
+    "title": "Error handling - Display global error boundary fallback UI",
+    "description": "Confirm that unexpected errors in UI components trigger global error boundary and display fallback user-friendly message.",
+    "category": "error handling",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Cause a component error (e.g., force a null reference exception)"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify global error boundary catches and displays fallback UI"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify user-friendly error message appears without app crash"
+      }
+    ]
+  },
+  {
+    "id": "TC022",
+    "title": "File upload and storage for messaging attachments",
+    "description": "Verify users can upload files as attachments in messages and that files are stored and retrievable correctly.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "In chat, upload a file attachment"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify file uploads without error and is stored"
+      },
+      {
+        "type": "action",
+        "description": "Send attachment in message and receive on other end"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify attachment can be downloaded/previewed by recipient"
+      }
+    ]
+  },
+  {
+    "id": "TC023",
+    "title": "Routing and deep linking supports direct navigation",
+    "description": "Validate that client-side routing works properly, deep links load correct views and states.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Use direct URL to open marketplace with filters applied"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify correct filtered view loads"
+      },
+      {
+        "type": "action",
+        "description": "Use deep link to open specific request detail page"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify correct request details are displayed"
+      }
+    ]
+  },
+  {
+    "id": "TC024",
+    "title": "Onboarding flow for first-time users",
+    "description": "Ensure first-time users are guided through onboarding screens before accessing core functionality.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Register new user and log in for the first time"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify onboarding screen sequence is presented"
+      },
+      {
+        "type": "action",
+        "description": "Complete onboarding steps"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify onboarding finishes and main app is accessible"
+      }
+    ]
+  },
+  {
+    "id": "TC025",
+    "title": "Haptic feedback on mobile devices",
+    "description": "Validate that mobile users receive haptic feedback on key interactions like button press and notifications.",
+    "category": "functional",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "On a supported device, perform UI interactions that trigger haptic feedback"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify haptic feedback is triggered appropriately and consistently"
+      }
+    ]
+  }
+]

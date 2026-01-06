@@ -429,6 +429,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                       }}
                       placeholder="5XXXXXXXX"
                       dir="ltr"
+                      data-testid="phone-input"
                       className="w-full min-w-0 py-3 px-4 rounded-xl bg-white/10 border border-white/20 text-white text-left text-xl font-semibold placeholder:text-white/30 placeholder:text-base placeholder:font-normal focus:border-white/50 focus:bg-white/15 outline-none transition-all"
                       maxLength={10}
                     />
@@ -448,6 +449,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 <button
                   onClick={handlePhoneSubmit}
                   disabled={isLoading || !isValidSaudiPhone(phone)}
+                  data-testid="send-otp-button"
                   className="w-full py-4 px-6 rounded-2xl bg-white/90 hover:bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-xl shadow-black/10 hover:shadow-2xl transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] text-base"
                 >
                   <span>إرسال رمز التحقق</span>
@@ -465,6 +467,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 <button
                   onClick={onGuestMode}
                   disabled={isLoading}
+                  data-testid="guest-mode-button"
                   className="w-full py-3 px-6 rounded-xl bg-white/5 hover:bg-white/10 border border-white/20 text-white/70 hover:text-white font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 text-sm"
                 >
                   <User size={16} />
@@ -639,6 +642,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                           inputMode="numeric"
                           maxLength={1}
                           value={otp[i] || ''}
+                          data-testid={`otp-input-${i}`}
                           onChange={(e) => {
                             const val = e.target.value.replace(/\D/g, '');
                             const newOtp = otp.split('');
@@ -766,6 +770,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 <motion.button
                   onClick={handleOTPVerify}
                   disabled={isLoading || otp.length !== 4 || showSuccess}
+                  data-testid="verify-otp-button"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   className={`w-full py-3 sm:py-4 px-5 sm:px-6 rounded-xl sm:rounded-2xl font-bold flex items-center justify-center gap-2 sm:gap-3 shadow-xl transition-all duration-300 disabled:cursor-not-allowed text-sm sm:text-base ${
@@ -825,6 +830,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="example@email.com"
                   dir="ltr"
+                  data-testid="email-input"
                   className="w-full py-3 sm:py-4 px-4 sm:px-6 rounded-xl sm:rounded-2xl bg-white/10 border-2 border-white/20 text-white text-center text-base sm:text-lg placeholder:text-white/40 focus:border-white/50 outline-none transition-all"
                 />
 
@@ -841,6 +847,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 <button
                   onClick={handleEmailSubmit}
                   disabled={isLoading || !email.includes('@')}
+                  data-testid="send-email-link-button"
                   className="w-full py-3 sm:py-4 px-4 sm:px-6 rounded-xl sm:rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] text-sm sm:text-base"
                 >
                   <span>إرسال رابط الدخول</span>

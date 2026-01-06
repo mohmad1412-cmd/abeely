@@ -283,7 +283,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
             </div>
           ) : isMyRequest ? (
             (() => {
-              const receivedOffers = receivedOffersMap.get(req.id) || [];
+              const receivedOffers = (receivedOffersMap.get(req.id) || []);
               const offersCount = receivedOffers.length;
               return (
                 <motion.button

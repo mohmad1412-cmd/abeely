@@ -196,6 +196,14 @@ AS $$
 DECLARE
   result JSONB;
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF p_user_id IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   UPDATE public.profiles
   SET 
     interested_categories = COALESCE(p_categories, interested_categories),
@@ -226,6 +234,14 @@ AS $$
 DECLARE
   result JSONB;
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF p_user_id IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   SELECT jsonb_build_object(
     'interested_categories', COALESCE(interested_categories, '{}'),
     'interested_cities', COALESCE(interested_cities, '{}'),
@@ -257,6 +273,10 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  IF COALESCE(auth.role(), '') <> 'service_role' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   RETURN QUERY
   SELECT DISTINCT
     p.id,
@@ -291,6 +311,14 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF user_id_param IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RETURN FALSE;
+  END IF;
+
   IF EXISTS (
     SELECT 1 FROM requests 
     WHERE id = request_id_param AND author_id = user_id_param
@@ -312,6 +340,14 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF user_id_param IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RETURN FALSE;
+  END IF;
+
   IF EXISTS (
     SELECT 1 FROM offers 
     WHERE id = offer_id_param AND provider_id = user_id_param
@@ -333,6 +369,14 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF user_id_param IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RETURN FALSE;
+  END IF;
+
   IF EXISTS (
     SELECT 1 FROM requests 
     WHERE id = request_id_param AND author_id = user_id_param AND status = 'archived'
@@ -354,6 +398,14 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF user_id_param IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RETURN FALSE;
+  END IF;
+
   IF EXISTS (
     SELECT 1 FROM offers 
     WHERE id = offer_id_param AND provider_id = user_id_param AND status = 'archived'
@@ -375,6 +427,7 @@ $$;
 CREATE OR REPLACE FUNCTION notify_on_new_offer()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
@@ -417,6 +470,7 @@ $$;
 CREATE OR REPLACE FUNCTION notify_on_offer_accepted()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
@@ -453,6 +507,7 @@ $$;
 CREATE OR REPLACE FUNCTION notify_on_new_message()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
@@ -514,6 +569,7 @@ $$;
 CREATE OR REPLACE FUNCTION notify_on_new_interest_request()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
@@ -730,6 +786,11 @@ AS $$
 DECLARE
   user_record auth.users%ROWTYPE;
 BEGIN
+  IF COALESCE(auth.role(), '') <> 'service_role'
+     AND COALESCE(current_setting('request.jwt.claim.role', true), '') <> '' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   IF EXISTS (SELECT 1 FROM public.profiles WHERE id = user_id) THEN
     RETURN FALSE;
   END IF;
@@ -788,8 +849,8 @@ $$;
 
 -- Function to verify guest phone
 CREATE OR REPLACE FUNCTION verify_guest_phone(
-  phone_number TEXT,
-  verification_code TEXT
+  p_phone_number TEXT,
+  p_verification_code TEXT
 )
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -802,8 +863,8 @@ BEGIN
   -- Find matching record
   SELECT * INTO guest_record
   FROM verified_guests
-  WHERE phone = phone_number
-    AND verification_code = verification_code
+  WHERE phone = p_phone_number
+    AND verification_code = p_verification_code
     AND code_expires_at > NOW()
     AND is_verified = FALSE;
   
@@ -817,8 +878,8 @@ BEGIN
     is_verified = TRUE,
     verified_at = NOW(),
     updated_at = NOW()
-  WHERE phone = phone_number
-    AND verification_code = verification_code;
+  WHERE phone = p_phone_number
+    AND verification_code = p_verification_code;
   
   RETURN TRUE;
 END;
@@ -834,6 +895,11 @@ AS $$
 DECLARE
   deleted_count INTEGER;
 BEGIN
+  IF COALESCE(auth.role(), '') <> 'service_role'
+     AND COALESCE(current_setting('request.jwt.claim.role', true), '') <> '' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   -- Delete records that expired more than 24 hours ago
   DELETE FROM verified_guests
   WHERE code_expires_at < NOW() - INTERVAL '24 hours';

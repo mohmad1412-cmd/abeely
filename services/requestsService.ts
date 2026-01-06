@@ -2,6 +2,8 @@ import { supabase } from "./supabaseClient";
 import { AIDraft, classifyAndDraft } from "./aiService";
 import { Request, Offer } from "../types";
 import { getCategoryIdsByLabels, OTHER_CATEGORY } from "./categoriesService";
+import { logger } from "../utils/logger";
+import { deleteFile } from "./storageService";
 
 type RequestInsert = {
   author_id?: string;
@@ -43,12 +45,12 @@ const linkCategoriesByLabels = async (requestId: string, labels: string[] = []) 
       .upsert(links, { onConflict: "request_id,category_id" });
     
     if (error) {
-      console.warn("Error linking categories:", error);
+      logger.warn("Error linking categories:", error);
     }
     
     return categoryIds;
   } catch (err) {
-    console.error("Error in linkCategoriesByLabels:", err);
+    logger.error("Error in linkCategoriesByLabels", err, "requestsService");
     // في حالة الخطأ، نحاول إضافة "أخرى" على الأقل
     try {
       await supabase
@@ -68,7 +70,7 @@ const upsertCategories = async (labels: string[] = []) => {
     .select("id,label")
     .in("label", labels);
   if (error) {
-    console.warn("Error fetching categories:", error);
+    logger.warn("Error fetching categories:", error);
     return [];
   }
   return data || [];
@@ -133,7 +135,7 @@ export async function createRequestFromChat(
         .select("id").single();
 
       if (error || !data?.id) {
-        console.error("Supabase Insert Error:", error);
+        logger.error("Supabase Insert Error", error, "createRequestFromChat");
         throw error || new Error("Insert failed: no id returned");
       }
 
@@ -148,7 +150,7 @@ export async function createRequestFromChat(
       const categories = draftData.categories || [];
       await linkCategoriesByLabels(data.id, categories);
     } catch (catErr) {
-      console.warn(
+      logger.warn(
         "Failed to link categories, but request was created:",
         catErr,
       );
@@ -160,7 +162,7 @@ export async function createRequestFromChat(
 
     return data;
   } catch (err) {
-    const e: any = err;
+    const e = err as Error & { code?: string; message?: string };
     const msg = e?.message || "";
     const code = e?.code || "";
 
@@ -170,7 +172,7 @@ export async function createRequestFromChat(
       throw err;
     }
 
-    console.log("⚠️ Trigger error detected, using fallback method (create non-public, then update)");
+    logger.log("⚠️ Trigger error detected, using fallback method (create non-public, then update)");
 
     // الخطوة 1: إنشاء الطلب كغير عام (لتجاوز الـ trigger)
     const fallbackPayload: RequestInsert = {
@@ -187,11 +189,11 @@ export async function createRequestFromChat(
         .single();
 
       if (insertError || !insertedData?.id) {
-        console.error("Fallback insert failed:", insertError);
+        logger.error("Fallback insert failed", insertError, "createRequestFromChat");
         throw insertError || new Error("Fallback insert failed");
       }
 
-      console.log("✅ Request created (non-public):", insertedData.id);
+      logger.log("✅ Request created (non-public):", insertedData.id);
 
       // الخطوة 2: تحديث الطلب ليصبح عاماً
       const { error: updateError } = await supabase
@@ -200,19 +202,19 @@ export async function createRequestFromChat(
         .eq("id", insertedData.id);
 
       if (updateError) {
-        console.warn("Failed to make request public:", updateError);
+        logger.warn("Failed to make request public:", updateError);
         // لا نرمي خطأ، الطلب تم إنشاؤه على أي حال
       } else {
-        console.log("✅ Request made public");
+        logger.log("✅ Request made public");
       }
 
       // الخطوة 3: ربط التصنيفات
       try {
         const categories = draftData.categories || [];
         await linkCategoriesByLabels(insertedData.id, categories);
-        console.log("✅ Categories linked");
+        logger.log("✅ Categories linked");
       } catch (catErr) {
-        console.warn("Failed to link categories in fallback:", catErr);
+        logger.warn("Failed to link categories in fallback:", catErr);
         // نحاول إضافة "أخرى" على الأقل
         try {
           await linkCategories(insertedData.id, ['other']);
@@ -221,7 +223,7 @@ export async function createRequestFromChat(
 
       return insertedData;
     } catch (fallbackErr) {
-      console.error("Fallback method failed:", fallbackErr);
+      logger.error("Fallback method failed:", fallbackErr);
       throw fallbackErr;
     }
   }
@@ -271,8 +273,8 @@ export interface CreateOfferInput {
 }
 
 export async function createOffer(input: CreateOfferInput): Promise<{ id: string } | null> {
-  console.log("=== createOffer called ===");
-  console.log("Input:", {
+  logger.log("=== createOffer called ===");
+  logger.log("Input:", {
     requestId: input.requestId,
     providerId: input.providerId,
     title: input.title,
@@ -280,22 +282,36 @@ export async function createOffer(input: CreateOfferInput): Promise<{ id: string
     hasImages: input.images?.length || 0
   });
   
+  // التحقق من الحقول المطلوبة
+  if (!input.requestId || !input.requestId.trim()) {
+    throw new Error("معرف الطلب مطلوب");
+  }
+  if (!input.providerId || !input.providerId.trim()) {
+    throw new Error("معرف مقدم الخدمة مطلوب");
+  }
+  if (!input.title || !input.title.trim()) {
+    throw new Error("عنوان العرض مطلوب");
+  }
+  if (!input.price || !input.price.trim()) {
+    throw new Error("السعر مطلوب");
+  }
+  
   const payload = {
-    request_id: input.requestId,
-    provider_id: input.providerId,
+    request_id: input.requestId.trim(),
+    provider_id: input.providerId.trim(),
     provider_name: "مزود خدمة",
-    title: input.title,
-    description: input.description || "",
-    price: input.price,
-    delivery_time: input.deliveryTime,
+    title: input.title.trim(),
+    description: (input.description || "").trim(),
+    price: input.price.trim(),
+    delivery_time: input.deliveryTime?.trim() || null,
     status: "pending" as const,
     is_negotiable: input.isNegotiable ?? true,
-    location: input.location,
+    location: input.location?.trim() || null,
     images: input.images || [],
   };
   
   try {
-    console.log("Payload to insert:", payload);
+    logger.log("Payload to insert:", payload);
     
     const { data, error } = await supabase
       .from("offers")
@@ -306,17 +322,18 @@ export async function createOffer(input: CreateOfferInput): Promise<{ id: string
     // إذا كان هناك data حتى مع وجود error، يعتبر العرض تم إنشاؤه بنجاح
     // (بعض الأخطاء في triggers قد تحدث بعد إنشاء العرض)
     if (data && data.id) {
-      console.log("✅ Offer created successfully (with potential trigger warning):", data);
+      logger.log("✅ Offer created successfully (with potential trigger warning):", data);
       return data;
     }
     
     if (error) {
-      console.error("❌ Create offer error:", {
+      logger.error("Create offer error", {
         message: error.message,
         code: error.code,
         details: error.details,
-        hint: error.hint
-      });
+        hint: error.hint,
+        payload: payload
+      }, "createOffer");
       
       // التحقق من وجود العرض رغم الخطأ (في حالة trigger errors)
       const isTriggerError = error.code === "42703" || 
@@ -325,7 +342,7 @@ export async function createOffer(input: CreateOfferInput): Promise<{ id: string
         error.code === "PGRST116"; // No rows returned (قد يحدث إذا فشل select بعد insert)
       
       if (isTriggerError) {
-        console.log("⚠️ Trigger error detected, checking if offer was created...");
+        logger.log("⚠️ Trigger error detected, checking if offer was created...");
         
         // محاولة العثور على العرض الذي تم إنشاؤه حديثاً (في آخر 5 ثوان)
         const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
@@ -341,29 +358,31 @@ export async function createOffer(input: CreateOfferInput): Promise<{ id: string
           .limit(1);
         
         if (existingOffers && existingOffers.length > 0 && existingOffers[0]?.id) {
-          console.log("✅ Offer was created despite trigger error:", existingOffers[0]);
+          logger.log("✅ Offer was created despite trigger error:", existingOffers[0]);
           return existingOffers[0];
         }
         
         // إذا لم نجد العرض، نحاول fallback method
-        console.log("⚠️ Offer not found, trying RPC fallback...");
+        logger.log("⚠️ Offer not found, trying RPC fallback...");
         return await createOfferWithoutTrigger(payload);
       }
       
-      return null;
+      // إرجاع خطأ مفصل للمستخدم
+      throw new Error(error.message || `خطأ في قاعدة البيانات: ${error.code || 'UNKNOWN'}`);
     }
     
-    console.log("✅ Offer created successfully:", data);
+    logger.log("✅ Offer created successfully:", data);
     return data;
-  } catch (err: any) {
-    console.error("❌ Create offer failed:", {
-      message: err?.message,
-      stack: err?.stack
-    });
+  } catch (err: unknown) {
+    const error = err as Error;
+    logger.error("Create offer failed", {
+      message: error.message,
+      stack: error.stack
+    }, "createOffer");
     
     // محاولة الـ fallback
     if (err?.message?.includes("notifications") || err?.code === "42703") {
-      console.log("⚠️ Trying fallback method...");
+      logger.log("⚠️ Trying fallback method...");
       return await createOfferWithoutTrigger(payload);
     }
     
@@ -372,32 +391,52 @@ export async function createOffer(input: CreateOfferInput): Promise<{ id: string
 }
 
 /**
- * Fallback: إنشاء عرض باستخدام RPC لتجاوز triggers
+ * Fallback: إنشاء عرض بدون trigger (إذا فشل الـ insert العادي)
+ * ملاحظة: RPC function غير موجودة حالياً، لذا نعيد null
  */
 async function createOfferWithoutTrigger(payload: any): Promise<{ id: string } | null> {
   try {
-    // نحاول استخدام RPC إذا كان موجوداً
-    const { data: rpcData, error: rpcError } = await supabase.rpc('create_offer_simple', {
-      p_request_id: payload.request_id,
-      p_provider_id: payload.provider_id,
-      p_provider_name: payload.provider_name,
-      p_title: payload.title,
-      p_description: payload.description,
-      p_price: payload.price,
-      p_delivery_time: payload.delivery_time,
-      p_is_negotiable: payload.is_negotiable,
-      p_location: payload.location,
-      p_images: payload.images
-    });
+    // RPC function غير موجودة حالياً
+    // يمكن إضافة RPC function لاحقاً إذا لزم الأمر
+    logger.warn("⚠️ RPC fallback method not available (create_offer_simple function not found)");
+    logger.warn("⚠️ Please run FIX_NOTIFICATIONS_RLS.sql to fix RLS policies for notifications");
+    
+    // محاولة إدراج مباشر بدون select (لتجنب trigger errors)
+    const { data, error } = await supabase
+      .from("offers")
+      .insert(payload);
 
-    if (!rpcError && rpcData) {
-      console.log("✅ Offer created via RPC:", rpcData);
-      return { id: rpcData };
+    if (error) {
+      logger.error("RPC fallback failed:", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      }, "createOfferWithoutTrigger");
+      return null;
+    }
+
+    // محاولة العثور على العرض الذي تم إنشاؤه
+    const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
+    const { data: existingOffers } = await supabase
+      .from("offers")
+      .select("id")
+      .eq("request_id", payload.request_id)
+      .eq("provider_id", payload.provider_id)
+      .eq("title", payload.title)
+      .eq("price", payload.price)
+      .gte("created_at", fiveSecondsAgo)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (existingOffers && existingOffers.length > 0 && existingOffers[0]?.id) {
+      logger.log("✅ Offer created via fallback:", existingOffers[0]);
+      return existingOffers[0];
     }
 
     // إذا الـ RPC غير موجود، نحاول تعطيل الـ trigger مؤقتاً (لن يعمل في معظم الحالات بسبب الصلاحيات)
     // كحل أخير، نعيد الخطأ للمستخدم
-    console.error("❌ RPC fallback failed:", rpcError);
+    logger.error("❌ RPC fallback failed:", rpcError);
     
     // محاولة أخيرة: إنشاء العرض بدون الحقول التي قد تسبب مشاكل
     const minimalPayload = {
@@ -418,14 +457,14 @@ async function createOfferWithoutTrigger(payload: any): Promise<{ id: string } |
       .single();
 
     if (!minError && minData) {
-      console.log("✅ Offer created with minimal payload:", minData);
+      logger.log("✅ Offer created with minimal payload:", minData);
       return minData;
     }
 
-    console.error("❌ All fallback methods failed");
+    logger.error("❌ All fallback methods failed");
     return null;
   } catch (err) {
-    console.error("❌ Fallback method failed:", err);
+    logger.error("❌ Fallback method failed:", err);
     return null;
   }
 }
@@ -451,18 +490,19 @@ export async function fetchRequestsPaginated(page: number = 0, pageSize: number 
         )
       `)
       .eq("is_public", true)
+      .eq("status", "active") // فقط الطلبات النشطة
       .order("created_at", { ascending: false })
       .range(from, to);
     data = res.data;
     error = res.error;
     count = null; // Don't use heavy count query for faster load
-  } catch (thrown: any) {
+  } catch (thrown: unknown) {
     throw thrown;
   }
 
   if (error) {
-    console.error("❌ Error fetching requests:", error);
-    console.error("Error details:", JSON.stringify({
+    logger.error("❌ Error fetching requests:", error);
+    logger.error("Error details:", JSON.stringify({
       message: error.message,
       code: error.code,
       details: error.details,
@@ -471,9 +511,14 @@ export async function fetchRequestsPaginated(page: number = 0, pageSize: number 
     throw error;
   }
   
-  console.log(`✅ Fetched ${data?.length || 0} requests (page ${page + 1})`);
+  logger.log(`✅ Fetched ${data?.length || 0} requests (page ${page + 1})`);
 
-  const transformed = Array.isArray(data) ? data.map(transformRequest) : [];
+  // فلترة إضافية للتأكد من عدم وجود طلبات مخفية
+  const filtered = Array.isArray(data) 
+    ? data.filter(req => req.is_public === true && req.status === 'active')
+    : [];
+  
+  const transformed = filtered.map(transformRequest);
   return { data: transformed, count };
 }
 
@@ -500,7 +545,7 @@ export async function checkSupabaseConnection(): Promise<{connected: boolean; er
       const { data, error } = await supabase.from("requests").select("id").limit(1);
       
       if (error) {
-        console.error("❌ Supabase query error:", JSON.stringify({
+        logger.error("❌ Supabase query error:", JSON.stringify({
           message: error.message,
           code: error.code,
           details: error.details,
@@ -508,14 +553,15 @@ export async function checkSupabaseConnection(): Promise<{connected: boolean; er
         }, null, 2));
         return { connected: false, error: error.message };
       }
-      console.log("✅ Supabase connection check passed");
+      logger.log("✅ Supabase connection check passed");
       return { connected: true };
     })();
     
     return await Promise.race([queryPromise, timeoutPromise]);
-  } catch (err: any) {
-    console.warn("⚠️ Supabase connection failed:", err.message);
-    return { connected: false, error: err.message };
+  } catch (err: unknown) {
+    const error = err as Error;
+    logger.warn("Supabase connection failed:", error.message);
+    return { connected: false, error: error.message };
   }
 }
 
@@ -536,7 +582,7 @@ export async function fetchRequestById(requestId: string): Promise<Request | nul
     .single();
 
   if (error) {
-    console.error("Error fetching request by ID:", error);
+    logger.error("Error fetching request by ID:", error);
     return null;
   }
 
@@ -564,7 +610,7 @@ export async function fetchMyRequests(userId: string): Promise<Request[]> {
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Error fetching my requests:", error);
+    logger.error("Error fetching my requests:", error);
     throw error;
   }
 
@@ -576,7 +622,7 @@ export async function fetchMyRequests(userId: string): Promise<Request[]> {
  */
 export async function fetchMyOffers(providerId: string): Promise<Offer[]> {
   if (!providerId) {
-    console.warn("fetchMyOffers: No providerId provided, returning empty array");
+    logger.warn("fetchMyOffers: No providerId provided, returning empty array");
     return [];
   }
 
@@ -587,10 +633,10 @@ export async function fetchMyOffers(providerId: string): Promise<Offer[]> {
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Error fetching offers:", error);
+    logger.error("Error fetching offers:", error);
     // بدلاً من رمي الخطأ، نعيد مصفوفة فارغة لتجنب كسر التطبيق
     // هذا يمنع إعادة التوجيه إلى Onboarding بسبب خطأ في جلب العروض
-    console.warn("Returning empty array due to error to prevent app crash");
+    logger.warn("Returning empty array due to error to prevent app crash");
     return [];
   }
 
@@ -622,7 +668,7 @@ export async function fetchOffersForRequest(requestId: string): Promise<Offer[]>
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Error fetching offers for request:", error);
+    logger.error("Error fetching offers for request:", error);
     throw error;
   }
 
@@ -649,7 +695,7 @@ export async function fetchOffersForRequest(requestId: string): Promise<Offer[]>
  */
 export async function fetchOffersForUserRequests(userId: string): Promise<Map<string, Offer[]>> {
   if (!userId) {
-    console.warn("fetchOffersForUserRequests: No userId provided, returning empty map");
+    logger.warn("fetchOffersForUserRequests: No userId provided, returning empty map");
     return new Map();
   }
 
@@ -660,7 +706,7 @@ export async function fetchOffersForUserRequests(userId: string): Promise<Map<st
     .eq("author_id", userId);
 
   if (requestsError) {
-    console.error("Error fetching user requests:", requestsError);
+    logger.error("Error fetching user requests:", requestsError);
     // بدلاً من رمي الخطأ، نعيد Map فارغ لتجنب كسر التطبيق
     return new Map();
   }
@@ -676,7 +722,7 @@ export async function fetchOffersForUserRequests(userId: string): Promise<Map<st
     .order("created_at", { ascending: false });
 
   if (offersError) {
-    console.error("Error fetching offers for user requests:", offersError);
+    logger.error("Error fetching offers for user requests:", offersError);
     return new Map();
   }
 
@@ -732,14 +778,14 @@ export async function migrateUserDraftRequests(userId: string): Promise<number> 
       .eq("status", "draft");
 
     if (updateError) {
-      console.error("Error migrating draft requests:", updateError);
+      logger.error("Error migrating draft requests:", updateError);
       return 0;
     }
 
-    console.log(`Migrated ${draftRequests.length} draft requests to active`);
+    logger.log(`Migrated ${draftRequests.length} draft requests to active`);
     return draftRequests.length;
   } catch (error) {
-    console.error("Error in migrateUserDraftRequests:", error);
+    logger.error("Error in migrateUserDraftRequests:", error);
     return 0;
   }
 }
@@ -760,8 +806,8 @@ export interface UpdateOfferInput {
 }
 
 export async function updateOffer(input: UpdateOfferInput): Promise<boolean> {
-  console.log("=== updateOffer called ===");
-  console.log("Input:", {
+  logger.log("=== updateOffer called ===");
+  logger.log("Input:", {
     offerId: input.offerId,
     providerId: input.providerId,
     title: input.title,
@@ -782,7 +828,7 @@ export async function updateOffer(input: UpdateOfferInput): Promise<boolean> {
   if (input.images !== undefined) updateData.images = input.images || [];
   
   try {
-    console.log("Update payload:", updateData);
+    logger.log("Update payload:", updateData);
     
     const { error } = await supabase
       .from("offers")
@@ -791,7 +837,7 @@ export async function updateOffer(input: UpdateOfferInput): Promise<boolean> {
       .eq("provider_id", input.providerId); // Security: only the owner can update
 
     if (error) {
-      console.error("❌ Update offer error:", {
+      logger.error("❌ Update offer error:", {
         message: error.message,
         code: error.code,
         details: error.details,
@@ -800,10 +846,10 @@ export async function updateOffer(input: UpdateOfferInput): Promise<boolean> {
       throw error;
     }
 
-    console.log("✅ Offer updated successfully");
+    logger.log("✅ Offer updated successfully");
     return true;
-  } catch (err: any) {
-    console.error("❌ Error updating offer:", err);
+  } catch (err: unknown) {
+    logger.error("Error updating offer", err as Error, "updateOffer");
     throw err;
   }
 }
@@ -828,15 +874,15 @@ export async function archiveRequest(requestId: string, userId: string): Promise
         .eq('author_id', userId);
 
       if (updateError) {
-        console.error("Error archiving request:", updateError);
+        logger.error("Error archiving request:", updateError);
         return false;
       }
       return true;
     }
 
     return data === true;
-  } catch (err: any) {
-    console.error("Error archiving request:", err);
+  } catch (err: unknown) {
+    logger.error("Error archiving request", err as Error, "archiveRequest");
     return false;
   }
 }
@@ -862,85 +908,122 @@ export async function unarchiveRequest(requestId: string, userId: string): Promi
         .eq('status', 'archived');
 
       if (updateError) {
-        console.error("Error unarchiving request:", updateError);
+        logger.error("Error unarchiving request:", updateError);
         return false;
       }
       return true;
     }
 
     return data === true;
-  } catch (err: any) {
-    console.error("Error unarchiving request:", err);
+  } catch (err: unknown) {
+    logger.error("Error unarchiving request", err as Error, "unarchiveRequest");
     return false;
   }
 }
 
 /**
- * Archive an offer
+ * Cancel/Delete an offer (previously archiveOffer)
+ * Deletes the offer and its images from storage
  */
 export async function archiveOffer(offerId: string, userId: string): Promise<boolean> {
   try {
-    // Use the database function for security
-    const { data, error } = await supabase.rpc('archive_offer', {
-      offer_id_param: offerId,
-      user_id_param: userId
-    });
+    console.log('🗑️ archiveOffer called', { offerId, userId });
+    
+    // First, get the offer to retrieve images
+    const { data: offer, error: fetchError } = await supabase
+      .from('offers')
+      .select('id, images')
+      .eq('id', offerId)
+      .eq('provider_id', userId)
+      .single();
 
-    if (error) {
-      // Fallback to direct update if function doesn't exist
-      const { error: updateError } = await supabase
-        .from('offers')
-        .update({ status: 'archived' })
-        .eq('id', offerId)
-        .eq('provider_id', userId);
-
-      if (updateError) {
-        console.error("Error archiving offer:", updateError);
-        return false;
-      }
-      return true;
+    if (fetchError || !offer) {
+      console.error('❌ Error fetching offer:', fetchError);
+      logger.error("Error fetching offer:", fetchError);
+      return false;
     }
 
-    return data === true;
-  } catch (err: any) {
-    console.error("Error archiving offer:", err);
+    console.log('📦 Offer found:', { id: offer.id, imagesCount: offer.images?.length || 0 });
+
+    // Delete images from storage if they exist
+    if (offer.images && Array.isArray(offer.images) && offer.images.length > 0) {
+      const OFFER_ATTACHMENTS_BUCKET = "offer-attachments";
+      
+      for (const imageUrl of offer.images) {
+        try {
+          if (!imageUrl || typeof imageUrl !== 'string') {
+            console.warn('⚠️ Invalid image URL:', imageUrl);
+            continue;
+          }
+          
+          console.log('🖼️ Processing image URL:', imageUrl);
+          
+          // Extract path from URL
+          // URL format: https://[project].supabase.co/storage/v1/object/public/offer-attachments/[offerId]/[filename]
+          // We need to extract the path after "offer-attachments/"
+          let filePath = '';
+          
+          // Try to find the bucket name in the URL
+          const bucketIndex = imageUrl.indexOf(`/${OFFER_ATTACHMENTS_BUCKET}/`);
+          if (bucketIndex !== -1) {
+            // Get everything after the bucket name
+            filePath = imageUrl.substring(bucketIndex + OFFER_ATTACHMENTS_BUCKET.length + 2);
+            console.log('📁 Extracted path (method 1):', filePath);
+          } else {
+            // Fallback: try to extract from URL parts
+            const urlParts = imageUrl.split('/');
+            const bucketPartIndex = urlParts.findIndex(part => part === OFFER_ATTACHMENTS_BUCKET);
+            if (bucketPartIndex !== -1 && bucketPartIndex < urlParts.length - 1) {
+              filePath = urlParts.slice(bucketPartIndex + 1).join('/');
+              console.log('📁 Extracted path (method 2):', filePath);
+            }
+          }
+          
+          if (filePath) {
+            console.log('🗑️ Deleting file:', { bucket: OFFER_ATTACHMENTS_BUCKET, path: filePath });
+            const deleted = await deleteFile(OFFER_ATTACHMENTS_BUCKET, filePath);
+            if (deleted) {
+              console.log(`✅ Deleted offer image: ${filePath}`);
+              logger.log(`✅ Deleted offer image: ${filePath}`);
+            } else {
+              console.warn(`❌ Failed to delete offer image: ${filePath}`);
+              logger.warn(`❌ Failed to delete offer image: ${filePath}`);
+            }
+          } else {
+            console.warn(`⚠️ Could not extract path from image URL: ${imageUrl}`);
+            logger.warn(`⚠️ Could not extract path from image URL: ${imageUrl}`);
+          }
+        } catch (deleteError) {
+          console.error('❌ Error deleting offer image:', deleteError);
+          logger.warn("Error deleting offer image:", deleteError);
+          // Continue with deletion even if image deletion fails
+        }
+      }
+    }
+
+    // Delete the offer from database
+    console.log('🗑️ Deleting offer from database:', offerId);
+    const { error } = await supabase
+      .from('offers')
+      .delete()
+      .eq('id', offerId)
+      .eq('provider_id', userId);
+
+    if (error) {
+      console.error('❌ Error deleting offer from database:', error);
+      logger.error("Error deleting offer:", error);
+      return false;
+    }
+
+    console.log('✅ Offer deleted successfully');
+    return true;
+  } catch (err: unknown) {
+    console.error('❌ Exception in archiveOffer:', err);
+    logger.error("Error deleting offer", err as Error, "archiveOffer");
     return false;
   }
 }
 
-/**
- * Unarchive an offer
- */
-export async function unarchiveOffer(offerId: string, userId: string): Promise<boolean> {
-  try {
-    // Use the database function for security
-    const { data, error } = await supabase.rpc('unarchive_offer', {
-      offer_id_param: offerId,
-      user_id_param: userId
-    });
-
-    if (error) {
-      // Fallback to direct update if function doesn't exist
-      const { error: updateError } = await supabase
-        .from('offers')
-        .update({ status: 'pending' })
-        .eq('id', offerId)
-        .eq('provider_id', userId)
-        .eq('status', 'archived');
-
-      if (updateError) {
-        console.error("Error unarchiving offer:", updateError);
-        return false;
-      }
-      return true;
-    }
-
-    return data === true;
-  } catch (err: any) {
-    console.error("Error unarchiving offer:", err);
-    return false;
-  }
-}
 
 /**
  * Fetch archived requests for a user
@@ -960,7 +1043,7 @@ export async function fetchArchivedRequests(userId: string): Promise<Request[]> 
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Error fetching archived requests:", error);
+    logger.error("Error fetching archived requests:", error);
     throw error;
   }
 
@@ -986,39 +1069,6 @@ export async function fetchArchivedRequests(userId: string): Promise<Request[]> 
     images: [],
     contactMethod: "both",
     seriousness: req.seriousness || 3,
-  }));
-}
-
-/**
- * Fetch archived offers for a user
- */
-export async function fetchArchivedOffers(providerId: string): Promise<Offer[]> {
-  const { data, error } = await supabase
-    .from("offers")
-    .select("*")
-    .eq("provider_id", providerId)
-    .eq("status", "archived")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("Error fetching archived offers:", error);
-    throw error;
-  }
-
-  return (data || []).map((offer: any) => ({
-    id: offer.id,
-    requestId: offer.request_id,
-    providerId: offer.provider_id,
-    providerName: offer.provider_name,
-    title: offer.title,
-    description: offer.description || "",
-    price: offer.price || "",
-    deliveryTime: offer.delivery_time || "",
-    status: offer.status,
-    createdAt: new Date(offer.created_at),
-    isNegotiable: offer.is_negotiable ?? true,
-    location: offer.location || "",
-    images: [],
   }));
 }
 
@@ -1141,7 +1191,7 @@ async function matchesUserInterests(
 
     return true;
   } catch (error) {
-    console.error("Error checking user interests:", error);
+    logger.error("Error checking user interests:", error);
     return false;
   }
 }
@@ -1267,12 +1317,12 @@ export async function hideRequest(requestId: string, userId: string): Promise<bo
       .eq('author_id', userId);
 
     if (error) {
-      console.error("Error hiding request:", error);
+      logger.error("Error hiding request:", error);
       return false;
     }
     return true;
   } catch (err) {
-    console.error("Error hiding request:", err);
+    logger.error("Error hiding request:", err);
     return false;
   }
 }
@@ -1289,12 +1339,12 @@ export async function unhideRequest(requestId: string, userId: string): Promise<
       .eq('author_id', userId);
 
     if (error) {
-      console.error("Error unhiding request:", error);
+      logger.error("Error unhiding request:", error);
       return false;
     }
     return true;
   } catch (err) {
-    console.error("Error unhiding request:", err);
+    logger.error("Error unhiding request:", err);
     return false;
   }
 }
@@ -1311,12 +1361,12 @@ export async function bumpRequest(requestId: string, userId: string): Promise<bo
       .eq('author_id', userId);
 
     if (error) {
-      console.error("Error bumping request:", error);
+      logger.error("Error bumping request:", error);
       return false;
     }
     return true;
   } catch (err) {
-    console.error("Error bumping request:", err);
+    logger.error("Error bumping request:", err);
     return false;
   }
 }
@@ -1335,10 +1385,10 @@ export async function updateRequest(
   draftData: AIDraft,
   seriousness?: number
 ): Promise<{ id: string; wasArchived?: boolean } | null> {
-  console.log("=== updateRequest called ===");
-  console.log("requestId:", requestId);
-  console.log("userId:", userId);
-  console.log("draftData:", draftData);
+  logger.log("=== updateRequest called ===");
+  logger.log("requestId:", requestId);
+  logger.log("userId:", userId);
+  logger.log("draftData:", draftData);
   
   try {
     // 1. التحقق من أن المستخدم هو صاحب الطلب وجلب معلومات الطلب الكاملة
@@ -1348,15 +1398,15 @@ export async function updateRequest(
       .eq('id', requestId)
       .single();
 
-    console.log("Existing request check:", { existingRequest, checkError });
+    logger.log("Existing request check:", { existingRequest, checkError });
 
     if (checkError || !existingRequest) {
-      console.error('الطلب غير موجود:', checkError);
+      logger.error('الطلب غير موجود:', checkError);
       return null;
     }
 
     if (existingRequest.author_id !== userId) {
-      console.error('غير مصرح لك بتعديل هذا الطلب:', {
+      logger.error('غير مصرح لك بتعديل هذا الطلب:', {
         requestAuthorId: existingRequest.author_id,
         currentUserId: userId
       });
@@ -1365,12 +1415,12 @@ export async function updateRequest(
 
     // 2. التحقق من عدم إمكانية التعديل إذا كان الطلب مكتمل أو تم قبول عرض
     if (existingRequest.status === 'completed') {
-      console.error('لا يمكن تعديل الطلب: الطلب مكتمل');
+      logger.error('لا يمكن تعديل الطلب: الطلب مكتمل');
       return null; // منع التعديل تماماً
     }
 
     if (existingRequest.accepted_offer_id) {
-      console.error('لا يمكن تعديل الطلب: تم قبول عرض على الطلب');
+      logger.error('لا يمكن تعديل الطلب: تم قبول عرض على الطلب');
       return null; // منع التعديل تماماً
     }
 
@@ -1382,16 +1432,16 @@ export async function updateRequest(
     const MAX_UPDATE_DAYS = 7; // 7 أيام كحد أقصى للتعديل
 
     if (daysSinceCreation > MAX_UPDATE_DAYS) {
-      console.error(`لا يمكن تعديل الطلب: تجاوز ${MAX_UPDATE_DAYS} أيام من الإنشاء (${daysSinceCreation.toFixed(1)} يوم)`);
+      logger.error(`لا يمكن تعديل الطلب: تجاوز ${MAX_UPDATE_DAYS} أيام من الإنشاء (${daysSinceCreation.toFixed(1)} يوم)`);
       return null; // منع التعديل تماماً
     }
 
-    console.log(`وقت التعديل مسموح (${daysSinceCreation.toFixed(1)} يوم من الإنشاء)`);
+    logger.log(`وقت التعديل مسموح (${daysSinceCreation.toFixed(1)} يوم من الإنشاء)`);
 
     // 4. التحقق من حالة الأرشفة - إذا كان مؤرشف، سنقوم بإلغاء الأرشفة
     const wasArchived = existingRequest.status === 'archived';
     if (wasArchived) {
-      console.log('الطلب مؤرشف، سيتم إلغاء الأرشفة تلقائياً');
+      logger.log('الطلب مؤرشف، سيتم إلغاء الأرشفة تلقائياً');
     }
 
     // 5. التحقق من شروط تحديث updated_at (bump)
@@ -1421,35 +1471,35 @@ export async function updateRequest(
     if (wasArchived) {
       updatePayload.status = 'active';
       updatePayload.is_public = true; // إظهار الطلب في السوق
-      console.log('سيتم إلغاء الأرشفة وتفعيل الطلب');
+      logger.log('سيتم إلغاء الأرشفة وتفعيل الطلب');
     }
 
     // 8. إذا كانت شروط bump متوفرة، أضف updated_at للتحديث (bump)
     if (canBump) {
       updatePayload.updated_at = new Date().toISOString();
-      console.log('سيتم تحديث updated_at لرفع الطلب في القائمة');
+      logger.log('سيتم تحديث updated_at لرفع الطلب في القائمة');
     } else {
-      console.log('لن يتم تحديث updated_at:', {
+      logger.log('لن يتم تحديث updated_at:', {
         status: existingRequest.status,
         hasAcceptedOffer: !!existingRequest.accepted_offer_id
       });
     }
 
-    console.log("Update payload:", updatePayload);
+    logger.log("Update payload:", updatePayload);
 
     const { error: updateError } = await supabase
       .from('requests')
       .update(updatePayload)
       .eq('id', requestId);
 
-    console.log("Update result:", { updateError });
+    logger.log("Update result:", { updateError });
 
     if (updateError) {
-      console.error('خطأ في تحديث الطلب:', updateError);
+      logger.error('خطأ في تحديث الطلب:', updateError);
       return null;
     }
     
-    console.log("Request updated successfully!");
+    logger.log("Request updated successfully!");
 
     // 5. تحديث التصنيفات - دائماً نحدث التصنيفات عند التعديل
     try {
@@ -1464,9 +1514,9 @@ export async function updateRequest(
         ? draftData.categories 
         : []; // سيتم إضافة "أخرى" تلقائياً في linkCategoriesByLabels
       await linkCategoriesByLabels(requestId, categories);
-      console.log("Categories updated:", categories.length > 0 ? categories : ['أخرى (افتراضي)']);
+      logger.log("Categories updated:", categories.length > 0 ? categories : ['أخرى (افتراضي)']);
     } catch (catErr) {
-      console.warn('Failed to update categories:', catErr);
+      logger.warn('Failed to update categories:', catErr);
       // نحاول إضافة "أخرى" على الأقل
       try {
         await linkCategories(requestId, ['other']);
@@ -1475,7 +1525,7 @@ export async function updateRequest(
 
     return { id: requestId, wasArchived };
   } catch (error) {
-    console.error('خطأ في تحديث الطلب:', error);
+    logger.error('خطأ في تحديث الطلب:', error);
     return null;
   }
 }
@@ -1515,7 +1565,7 @@ export async function acceptOffer(
       .eq('request_id', requestId);
 
     if (acceptError) {
-      console.error('خطأ في قبول العرض:', acceptError);
+      logger.error('خطأ في قبول العرض:', acceptError);
       return { success: false, error: 'فشل في قبول العرض' };
     }
 
@@ -1528,7 +1578,7 @@ export async function acceptOffer(
       .in('status', ['pending', 'negotiating']);
 
     if (rejectError) {
-      console.warn('تحذير: فشل في رفض العروض الأخرى:', rejectError);
+      logger.warn('تحذير: فشل في رفض العروض الأخرى:', rejectError);
     }
 
     // 4. تحديث حالة الطلب إلى "assigned"
@@ -1541,12 +1591,12 @@ export async function acceptOffer(
       .eq('id', requestId);
 
     if (updateRequestError) {
-      console.warn('تحذير: فشل في تحديث حالة الطلب:', updateRequestError);
+      logger.warn('تحذير: فشل في تحديث حالة الطلب:', updateRequestError);
     }
 
     return { success: true };
   } catch (error) {
-    console.error('خطأ في قبول العرض:', error);
+    logger.error('خطأ في قبول العرض:', error);
     return { success: false, error: 'حدث خطأ غير متوقع' };
   }
 }
@@ -1607,7 +1657,7 @@ export async function startNegotiation(
       .eq('id', offerId);
 
     if (updateError) {
-      console.error('خطأ في تحديث حالة العرض:', updateError);
+      logger.error('خطأ في تحديث حالة العرض:', updateError);
       return { success: false, error: 'فشل في بدء التفاوض' };
     }
 
@@ -1645,7 +1695,7 @@ export async function startNegotiation(
         }
       }
     } catch (convErr) {
-      console.warn('تحذير: فشل في إنشاء المحادثة:', convErr);
+      logger.warn('تحذير: فشل في إنشاء المحادثة:', convErr);
     }
 
     // 5. إرسال إشعار للعارض
@@ -1672,20 +1722,20 @@ export async function startNegotiation(
         });
 
       if (notifError) {
-        console.error('خطأ في إرسال الإشعار عند بدء التفاوض:', notifError);
+        logger.error('خطأ في إرسال الإشعار عند بدء التفاوض:', notifError);
         // لا نعيد false لأن التفاوض نجح، فقط الإشعار فشل
       } else {
-        console.log('✅ تم إرسال إشعار بدء التفاوض بنجاح');
+        logger.log('✅ تم إرسال إشعار بدء التفاوض بنجاح');
       }
     } catch (notifErr) {
-      console.error('خطأ غير متوقع في إرسال الإشعار:', notifErr);
+      logger.error('خطأ غير متوقع في إرسال الإشعار:', notifErr);
       // لا نعيد false لأن التفاوض نجح، فقط الإشعار فشل
     }
 
-    console.log('✅ تم بدء التفاوض بنجاح');
+    logger.log('✅ تم بدء التفاوض بنجاح');
     return { success: true, conversationId };
   } catch (error) {
-    console.error('خطأ في بدء التفاوض:', error);
+    logger.error('خطأ في بدء التفاوض:', error);
     return { success: false, error: 'حدث خطأ غير متوقع' };
   }
 }

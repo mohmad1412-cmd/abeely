@@ -103,18 +103,22 @@ USING (
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION verify_guest_phone(
-  phone_number TEXT,
-  verification_code TEXT
+  p_phone_number TEXT,
+  p_verification_code TEXT
 )
-RETURNS BOOLEAN AS $$
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   guest_record verified_guests%ROWTYPE;
 BEGIN
   -- Find matching record
   SELECT * INTO guest_record
   FROM verified_guests
-  WHERE phone = phone_number
-    AND verification_code = verification_code
+  WHERE phone = p_phone_number
+    AND verification_code = p_verification_code
     AND code_expires_at > NOW()
     AND is_verified = FALSE;
   
@@ -128,22 +132,31 @@ BEGIN
     is_verified = TRUE,
     verified_at = NOW(),
     updated_at = NOW()
-  WHERE phone = phone_number
-    AND verification_code = verification_code;
+  WHERE phone = p_phone_number
+    AND verification_code = p_verification_code;
   
   RETURN TRUE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- ==========================================
 -- Step 5: Create function to clean expired guest records
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION clean_expired_guest_records()
-RETURNS INTEGER AS $$
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   deleted_count INTEGER;
 BEGIN
+  IF COALESCE(auth.role(), '') <> 'service_role'
+     AND COALESCE(current_setting('request.jwt.claim.role', true), '') <> '' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   -- Delete records that expired more than 24 hours ago
   DELETE FROM verified_guests
   WHERE code_expires_at < NOW() - INTERVAL '24 hours';
@@ -151,7 +164,7 @@ BEGIN
   GET DIAGNOSTICS deleted_count = ROW_COUNT;
   RETURN deleted_count;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- ==========================================
 -- Step 6: Add helpful comments

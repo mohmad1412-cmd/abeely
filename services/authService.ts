@@ -1,15 +1,20 @@
 import { supabase } from './supabaseClient';
+import { logger } from '../utils/logger';
 
 // ======================================
-// 🔧 Test Phones - أرقام الاختبار
+// 🔧 Test Phones - أرقام الاختبار (Development Only)
 // ======================================
 // أرقام وهمية للتطوير والاختبار - تعمل مع رمز 0000
 // لتفعيل: أي رقم يبدأ بـ 555 مثل 0555555555
-// ملاحظة: تعمل في جميع البيئات للاختبار
+// ملاحظة: تعمل فقط في بيئة التطوير (DEV_MODE)
+const IS_DEV_MODE = import.meta.env.DEV;
 const TEST_PHONE_PREFIX = '555'; // أي رقم يبدأ بـ 555 يعتبر رقم اختبار
 const TEST_OTP_CODE = '0000';
 
 function isTestPhone(phone: string): boolean {
+  // Test phones فقط في بيئة التطوير
+  if (!IS_DEV_MODE) return false;
+  
   const cleanPhone = phone.replace(/\D/g, '');
   // يقبل 0555... أو 555...
   return cleanPhone.startsWith('0555') || cleanPhone.startsWith('555');
@@ -34,19 +39,49 @@ export interface UserProfile {
 }
 
 // Google Identity Services types
+interface GoogleIdConfiguration {
+  client_id: string;
+  callback: (response: { credential: string }) => void;
+  auto_select?: boolean;
+  cancel_on_tap_outside?: boolean;
+}
+
+interface GooglePromptNotification {
+  isNotDisplayed?: boolean;
+  isSkippedMoment?: boolean;
+  isDismissedMoment?: boolean;
+}
+
+interface GoogleOAuth2TokenClient {
+  requestAccessToken: (overrideConfig?: { prompt?: string }) => void;
+  callback: (response: { access_token?: string; error?: string }) => void;
+}
+
+interface GoogleOAuth2CodeClient {
+  requestCode: () => void;
+  callback: (response: { code?: string; error?: string }) => void;
+}
+
+interface GoogleOAuth2ClientConfig {
+  client_id: string;
+  scope: string;
+  callback?: (response: { access_token?: string; code?: string; error?: string }) => void;
+  redirect_uri?: string;
+}
+
 declare global {
   interface Window {
     google?: {
       accounts: {
         id: {
-          initialize: (config: any) => void;
-          prompt: (callback?: (notification: any) => void) => void;
-          renderButton: (element: HTMLElement, config: any) => void;
+          initialize: (config: GoogleIdConfiguration) => void;
+          prompt: (callback?: (notification: GooglePromptNotification) => void) => void;
+          renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void;
           disableAutoSelect: () => void;
         };
         oauth2: {
-          initTokenClient: (config: any) => any;
-          initCodeClient: (config: any) => any;
+          initTokenClient: (config: GoogleOAuth2ClientConfig) => GoogleOAuth2TokenClient;
+          initCodeClient: (config: GoogleOAuth2ClientConfig) => GoogleOAuth2CodeClient;
         };
       };
     };
@@ -88,7 +123,7 @@ export async function signInWithGooglePopup(): Promise<{ success: boolean; error
       // مسح guest mode
       localStorage.removeItem("abeely_guest_mode");
       
-      console.log("🔐 Starting Google popup sign-in...");
+      logger.log("🔐 Starting Google popup sign-in...");
 
       // الحصول على رابط OAuth من Supabase
       // نستخدم نفس الـ origin - الـ popup يشارك localStorage مع النافذة الأصلية
@@ -102,7 +137,7 @@ export async function signInWithGooglePopup(): Promise<{ success: boolean; error
       });
 
       if (error) {
-        console.error("❌ OAuth error:", error);
+        logger.error("❌ OAuth error:", error, 'service');
         resolve({ success: false, error: error.message });
         return;
       }
@@ -112,13 +147,13 @@ export async function signInWithGooglePopup(): Promise<{ success: boolean; error
         return;
       }
 
-      console.log("✅ Got OAuth URL, opening popup...");
+      logger.log("✅ Got OAuth URL, opening popup...");
       
       // فتح popup
       const popup = openPopupWindow(data.url, 'google_signin');
       
       if (!popup) {
-        console.error("❌ Popup blocked!");
+        logger.error("❌ Popup blocked!");
         resolve({ success: false, error: 'تم حظر النافذة المنبثقة. يرجى السماح للنوافذ المنبثقة.' });
         return;
       }
@@ -127,11 +162,11 @@ export async function signInWithGooglePopup(): Promise<{ success: boolean; error
       let resolved = false;
       
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        console.log("🔐 Auth state in popup flow:", event);
+        logger.log("🔐 Auth state in popup flow:", event);
         
         if (event === 'SIGNED_IN' && session?.user && !resolved) {
           resolved = true;
-          console.log("✅ User signed in via popup:", session.user.email);
+          logger.log("✅ User signed in via popup:", session.user.email);
           
           // إغلاق الـ popup إذا كان مفتوحاً
           try {
@@ -151,7 +186,7 @@ export async function signInWithGooglePopup(): Promise<{ success: boolean; error
       // تحقق دوري إذا أغلق المستخدم الـ popup
       const popupChecker = setInterval(() => {
         if (popup.closed && !resolved) {
-          console.log("⚠️ Popup closed by user");
+          logger.log("⚠️ Popup closed by user");
           resolved = true;
           subscription.unsubscribe();
           clearInterval(popupChecker);
@@ -170,9 +205,10 @@ export async function signInWithGooglePopup(): Promise<{ success: boolean; error
         }
       }, 120000);
 
-    } catch (err: any) {
-      console.error('❌ Google Sign-In exception:', err);
-      resolve({ success: false, error: err.message || 'حدث خطأ أثناء تسجيل الدخول' });
+    } catch (err: unknown) {
+      const error = err as Error;
+      logger.error('Google Sign-In exception', error, 'service');
+      resolve({ success: false, error: error.message || 'حدث خطأ أثناء تسجيل الدخول' });
     }
   });
 }
@@ -189,7 +225,7 @@ export async function signInWithOAuth(provider: 'google' | 'apple'): Promise<{ s
     // الحصول على الـ redirect URL الصحيح
     const redirectUrl = window.location.origin;
     
-    console.log("🔐 Starting OAuth redirect to:", redirectUrl);
+    logger.log("🔐 Starting OAuth redirect to:", redirectUrl);
 
     // Handle Capacitor (mobile)
     if (isCapacitor()) {
@@ -204,7 +240,7 @@ export async function signInWithOAuth(provider: 'google' | 'apple'): Promise<{ s
       });
       
       if (error) {
-        console.error("❌ OAuth error (Capacitor):", error);
+        logger.error("❌ OAuth error (Capacitor):", error, 'service');
         return { success: false, error: error.message };
       }
       
@@ -226,31 +262,32 @@ export async function signInWithOAuth(provider: 'google' | 'apple'): Promise<{ s
     });
 
     if (error) {
-      console.error("❌ OAuth error:", error);
+      logger.error("❌ OAuth error:", error, 'service');
       return { success: false, error: error.message };
     }
 
-    console.log("✅ OAuth initiated, redirecting...", data);
+    logger.log("✅ OAuth initiated, redirecting...", data);
     // المتصفح سيعيد التوجيه تلقائياً في نفس النافذة
     return { success: true };
-  } catch (err: any) {
-    console.error('❌ OAuth exception:', err);
-    return { success: false, error: err.message || 'حدث خطأ أثناء تسجيل الدخول' };
+  } catch (err: unknown) {
+    const error = err as Error;
+    logger.error('OAuth exception', error, 'service');
+    return { success: false, error: error.message || 'حدث خطأ أثناء تسجيل الدخول' };
   }
 }
 
 export async function getCurrentUser(): Promise<UserProfile | null> {
   try {
     // Try cached user first
-    let user: any = null;
+    let user: { id: string; phone?: string } | null = null;
     try {
       const { data: { user: fetchedUser }, error } = await supabase.auth.getUser();
       user = fetchedUser || null;
       if (error) {
-        console.warn('Supabase getUser warning:', error.message);
+        logger.warn('Supabase getUser warning:', error.message);
       }
     } catch (getUserErr) {
-      console.warn('Supabase getUser exception:', getUserErr);
+      logger.warn('Supabase getUser exception:', getUserErr);
     }
 
     // If access token is stale, try to recover the session before giving up
@@ -259,26 +296,26 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
         const { data: sessionData } = await supabase.auth.getSession();
         user = sessionData?.session?.user || null;
       } catch (sessionErr) {
-        console.warn('Supabase getSession warning:', sessionErr);
+        logger.warn('Supabase getSession warning:', sessionErr);
       }
     }
 
     // Last resort: explicit refresh (helps avoid surprise logouts mid-action)
     if (!user) {
       try {
-        console.log('Refreshing Supabase session because user is missing...');
+        logger.log('Refreshing Supabase session because user is missing...');
         const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
         if (refreshError) {
           const message = refreshError.message?.toLowerCase?.() || '';
           if (!message.includes('network')) {
-            console.warn('Supabase refreshSession error:', refreshError);
+            logger.warn('Supabase refreshSession error:', refreshError);
           } else {
-            console.warn('Network issue while refreshing session; keeping user state intact');
+            logger.warn('Network issue while refreshing session; keeping user state intact');
           }
         }
         user = refreshed?.session?.user || null;
       } catch (refreshErr) {
-        console.warn('Supabase refreshSession exception:', refreshErr);
+        logger.warn('Supabase refreshSession exception:', refreshErr);
       }
     }
 
@@ -317,7 +354,7 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
         .single();
 
       if (upsertError) {
-        console.error('Error creating profile:', upsertError);
+        logger.error('Error creating profile:', upsertError, 'service');
         return null;
       }
 
@@ -326,7 +363,7 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
 
     return profile as UserProfile;
   } catch (err) {
-    console.error('Error getting current user:', err);
+    logger.error('Error getting current user:', err, 'service');
     return null;
   }
 }
@@ -336,7 +373,9 @@ export async function signOut() {
   localStorage.removeItem('abeely_guest_mode');
 }
 
-export function onAuthStateChange(callback: (event: string, session: any) => void) {
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
+
+export function onAuthStateChange(callback: (event: AuthChangeEvent, session: Session | null) => void) {
   return supabase.auth.onAuthStateChange(callback);
 }
 
@@ -353,15 +392,16 @@ export async function updateProfile(userId: string, updates: Partial<UserProfile
       .single();
 
     if (error) {
-      console.error('❌ Error updating profile:', error);
+      logger.error('❌ Error updating profile:', error, 'service');
       return { success: false, error: error.message };
     }
 
-    console.log('✅ Profile updated:', data);
+    logger.log('✅ Profile updated:', data);
     return { success: true, data: data as UserProfile };
-  } catch (err: any) {
-    console.error('❌ Exception updating profile:', err);
-    return { success: false, error: err.message || 'حدث خطأ أثناء تحديث الملف الشخصي' };
+  } catch (err: unknown) {
+    const error = err as Error;
+    logger.error('Exception updating profile', error, 'service');
+    return { success: false, error: error.message || 'حدث خطأ أثناء تحديث الملف الشخصي' };
   }
 }
 
@@ -375,8 +415,9 @@ export async function signInWithEmail(email: string): Promise<{ success: boolean
       return { success: false, error: error.message };
     }
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message || 'حدث خطأ أثناء إرسال رابط الدخول' };
+  } catch (err: unknown) {
+    const error = err as Error;
+    return { success: false, error: error.message || 'حدث خطأ أثناء إرسال رابط الدخول' };
   }
 }
 
@@ -448,33 +489,59 @@ export async function sendOTP(phone: string): Promise<{ success: boolean; error?
     // تنسيق الرقم للصيغة الدولية
     const formattedPhone = formatPhoneToInternational(phone);
     
-    console.log('📱 Sending OTP to:', formattedPhone);
+    logger.log('📱 Sending OTP to:', formattedPhone);
+    logger.log('📱 Original phone input:', phone);
     
     // 🔧 وضع التطوير - أرقام الاختبار
     if (isTestPhone(phone)) {
-      console.log('🔧 DEV MODE: Test phone detected, skipping real SMS');
-      console.log('🔑 Use OTP code: 0000');
+      logger.log('🔧 DEV MODE: Test phone detected, skipping real SMS');
+      logger.log('🔑 Use OTP code: 0000');
       return { success: true };
     }
     
     // إرسال OTP عبر Supabase Auth (يستخدم Twilio تلقائياً)
-    const { error } = await supabase.auth.signInWithOtp({
+    logger.log('📤 Calling Supabase signInWithOtp with phone:', formattedPhone);
+    const { data, error } = await supabase.auth.signInWithOtp({
       phone: formattedPhone,
       options: {
-        shouldCreateUser: true
+        shouldCreateUser: true,
+        // إضافة channel للتأكد من استخدام SMS
+        channel: 'sms'
       }
     });
     
     if (error) {
-      console.error('❌ Supabase OTP Error:', error);
-      return { success: false, error: error.message };
+      logger.error('❌ Supabase OTP Error:', error, 'service');
+      logger.error('❌ Error details:', {
+        message: error.message,
+        status: error.status,
+        name: error.name
+      });
+      
+      // تحسين رسائل الخطأ
+      let errorMessage = error.message;
+      
+      if (error.message.includes('Invalid phone number') || error.message.includes('phone')) {
+        errorMessage = 'رقم الجوال غير صحيح. يرجى التأكد من إدخال رقم سعودي صحيح';
+      } else if (error.message.includes('rate limit') || error.message.includes('too many')) {
+        errorMessage = 'تم تجاوز الحد المسموح. يرجى الانتظار قليلاً ثم المحاولة مرة أخرى';
+      } else if (error.message.includes('provider') || error.message.includes('Twilio')) {
+        errorMessage = 'مشكلة في إعدادات Twilio. يرجى التحقق من إعدادات Supabase Dashboard';
+      } else if (error.message.includes('network') || error.message.includes('timeout')) {
+        errorMessage = 'مشكلة في الاتصال. يرجى التحقق من اتصالك بالإنترنت';
+      }
+      
+      return { success: false, error: errorMessage };
     }
     
-    console.log('✅ OTP sent successfully');
+    logger.log('✅ OTP sent successfully');
+    logger.log('✅ Response data:', data);
     return { success: true };
-  } catch (err: any) {
-    console.error('Error sending OTP:', err);
-    return { success: false, error: err.message || 'حدث خطأ أثناء إرسال رمز التحقق' };
+  } catch (err: unknown) {
+    const error = err as Error;
+    logger.error('❌ Exception in sendOTP:', error, 'service');
+    logger.error('❌ Error stack:', error.stack);
+    return { success: false, error: error.message || 'حدث خطأ أثناء إرسال رمز التحقق' };
   }
 }
 
@@ -489,101 +556,52 @@ export async function verifyOTP(phone: string, token: string): Promise<{ success
     // تنسيق الرقم للصيغة الدولية
     const formattedPhone = formatPhoneToInternational(phone);
     
-    console.log('🔐 Verifying OTP for:', formattedPhone);
+    logger.log('🔐 Verifying OTP for:', formattedPhone);
     
-    // 🔧 وضع التطوير - أرقام الاختبار
+    // 🔧 وضع التطوير - أرقام الاختبار (Fast path - no Supabase calls)
     if (isTestPhone(phone)) {
-      console.log('🔧 DEV MODE: Test phone verification');
+      logger.log('🔧 DEV MODE: Test phone verification');
       
       if (token === TEST_OTP_CODE) {
-        console.log('✅ DEV MODE: Test OTP accepted - verifying with Supabase');
+        logger.log('✅ DEV MODE: Test OTP accepted - using instant path');
         
-        // للأرقام الوهمية، نحاول استخدام verifyOtp مع Supabase
-        // Supabase سيقبل OTP 0000 للأرقام المحددة في config.toml [auth.sms.test_otp]
-        try {
-          const { data, error } = await supabase.auth.verifyOtp({
-            phone: formattedPhone,
-            token: token,
-            type: 'sms'
-          });
-          
-          if (error) {
-            console.log('🔧 DEV MODE: Supabase rejected test phone, trying to create user via signInWithOtp first');
-            
-            // محاولة إنشاء المستخدم أولاً عبر signInWithOtp
-            // ثم التحقق من OTP
-            try {
-              const { error: signInError } = await supabase.auth.signInWithOtp({
-                phone: formattedPhone,
-                options: {
-                  shouldCreateUser: true
-                }
-              });
-              
-              if (signInError && !signInError.message.includes('already registered')) {
-                console.warn('🔧 DEV MODE: Could not create test user via signInWithOtp:', signInError);
-              }
-              
-              // محاولة التحقق مرة أخرى
-              const { data: retryData, error: retryError } = await supabase.auth.verifyOtp({
-                phone: formattedPhone,
-                token: token,
-                type: 'sms'
-              });
-              
-              if (retryError) {
-                console.log('🔧 DEV MODE: Supabase still rejected, using fallback - test phone will work but may have limitations');
-                // طريقة بديلة: حفظ في localStorage
-                // لكن يجب أن نستخدم user ID حقيقي من Supabase إذا كان موجوداً
-                localStorage.setItem('dev_test_phone', formattedPhone);
-                localStorage.setItem('abeely_guest_mode', 'true');
-                
-                // محاولة الحصول على أي session موجود
-                const { data: sessionData } = await supabase.auth.getSession();
-                if (sessionData?.session?.user?.id) {
-                  localStorage.setItem('dev_test_user_id', sessionData.session.user.id);
-                  console.log('✅ DEV MODE: Found existing session:', sessionData.session.user.id);
-                  return { success: true };
-                }
-                
-                return { success: true };
-              }
-              
-              if (retryData?.user) {
-                console.log('✅ DEV MODE: Test user session created via Supabase after retry:', retryData.user.id);
-                localStorage.setItem('dev_test_user_id', retryData.user.id);
-                return { success: true };
-              }
-            } catch (retryErr) {
-              console.warn('🔧 DEV MODE: Retry failed, using fallback:', retryErr);
-            }
-            
-            // طريقة بديلة: حفظ في localStorage
-            localStorage.setItem('dev_test_phone', formattedPhone);
-            localStorage.setItem('abeely_guest_mode', 'true');
-            return { success: true };
-          }
-          
+        // حفظ الرقم في localStorage
+        localStorage.setItem('dev_test_phone', formattedPhone);
+        
+        // Fast path: إنشاء session فوري بدون انتظار Supabase
+        // هذا يمنع التعليق تماماً
+        localStorage.setItem('abeely_guest_mode', 'true');
+        localStorage.setItem('dev_test_user_id', `test_${Date.now()}`);
+        
+        // محاولة إنشاء session حقيقي في الخلفية (غير متزامن - لا ننتظره)
+        // هذا يحسن التجربة لكن لا يعلق الكود
+        supabase.auth.verifyOtp({
+          phone: formattedPhone,
+          token: TEST_OTP_CODE,
+          type: 'sms'
+        }).then(({ data, error }) => {
           if (data?.user) {
-            console.log('✅ DEV MODE: Test user session created via Supabase:', data.user.id);
+            logger.log('✅ DEV MODE: Background session created:', data.user.id);
             localStorage.setItem('dev_test_user_id', data.user.id);
-            return { success: true };
+            localStorage.removeItem('abeely_guest_mode');
+          } else if (error) {
+            logger.warn('⚠️ DEV MODE: Background verifyOtp failed (expected):', error.message);
           }
-        } catch (err) {
-          console.warn('🔧 DEV MODE: Test user creation failed, using fallback:', err);
-          localStorage.setItem('dev_test_phone', formattedPhone);
-          localStorage.setItem('abeely_guest_mode', 'true');
-          return { success: true };
-        }
+        }).catch((err) => {
+          logger.warn('⚠️ DEV MODE: Background verifyOtp exception (expected):', err);
+        });
         
+        // إرجاع فوري - لا ننتظر Supabase
+        logger.log('✅ DEV MODE: Guest mode activated instantly for test phone');
         return { success: true };
       } else {
-        console.log('❌ DEV MODE: Wrong test OTP (expected 0000)');
+        logger.log('❌ DEV MODE: Wrong test OTP (expected 0000)');
         return { success: false, error: 'رمز التحقق غير صحيح (استخدم 0000 للأرقام الوهمية)' };
       }
     }
     
     // التحقق من الرمز عبر Supabase Auth
+    logger.log('📤 Calling Supabase verifyOtp with phone:', formattedPhone, 'token:', token);
     const { data, error } = await supabase.auth.verifyOtp({
       phone: formattedPhone,
       token: token,
@@ -591,19 +609,36 @@ export async function verifyOTP(phone: string, token: string): Promise<{ success
     });
     
     if (error) {
-      console.error('❌ Supabase Verify Error:', error);
-      return { success: false, error: error.message };
+      logger.error('❌ Supabase Verify Error:', error, 'service');
+      logger.error('❌ Error details:', {
+        message: error.message,
+        status: error.status,
+        name: error.name
+      });
+      
+      // تحسين رسائل الخطأ
+      let errorMessage = error.message;
+      
+      if (error.message.includes('Invalid') || error.message.includes('expired')) {
+        errorMessage = 'رمز التحقق غير صحيح أو منتهي الصلاحية. يرجى طلب رمز جديد';
+      } else if (error.message.includes('rate limit') || error.message.includes('too many')) {
+        errorMessage = 'تم تجاوز الحد المسموح. يرجى الانتظار قليلاً ثم المحاولة مرة أخرى';
+      }
+      
+      return { success: false, error: errorMessage };
     }
     
-    if (data.user) {
-      console.log('✅ OTP verified, user logged in:', data.user.id);
+    if (data?.user) {
+      logger.log('✅ OTP verified, user logged in:', data.user.id);
+      logger.log('✅ Session data:', data);
       return { success: true };
     }
     
+    logger.warn('⚠️ No user in verify response:', data);
     return { success: false, error: 'رمز التحقق غير صحيح' };
-  } catch (err: any) {
-    console.error('Error verifying OTP:', err);
-    return { success: false, error: err.message || 'رمز التحقق غير صحيح' };
+  } catch (err: unknown) {
+    logger.error('Error verifying OTP', err as Error, 'service');
+    return { success: false, error: 'رمز التحقق غير صحيح' };
   }
 }
 

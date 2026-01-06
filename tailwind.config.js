@@ -114,6 +114,10 @@ export default {
           "0%, 100%": { transform: "rotate(-3deg)" },
           "50%": { transform: "rotate(3deg)" },
         },
+        bounce: {
+          "0%, 100%": { transform: "translateY(0)", opacity: "1" },
+          "50%": { transform: "translateY(-25%)", opacity: "0.5" },
+        },
       },
       animation: {
         "fade-in": "fade-in 0.2s ease-out",
@@ -129,6 +133,7 @@ export default {
         "spin-slow": "spin 3s linear infinite",
         float: "float 3s ease-in-out infinite",
         wiggle: "wiggle 0.5s ease-in-out",
+        "bounce-dot": "bounce 1s infinite",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",

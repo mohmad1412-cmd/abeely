@@ -13,22 +13,27 @@ import {
   X,
   ChevronDown,
   CheckCircle,
+  MoreVertical,
+  Edit,
+  Trash2,
+  AlertCircle,
+  Loader2,
+  RotateCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { UnifiedFilterIsland } from "./ui/UnifiedFilterIsland";
+import { Button } from "./ui/Button";
 
 type OfferFilter = "all" | "accepted" | "pending" | "completed";
 type SortOrder = "updatedAt" | "createdAt";
 
 interface MyOffersProps {
   offers: Offer[];
-  archivedOffers?: Offer[];
   allRequests: Request[];
   onSelectRequest: (req: Request) => void;
   onSelectOffer?: (offer: Offer) => void;
   onArchiveOffer?: (offerId: string) => void;
-  onUnarchiveOffer?: (offerId: string) => void;
   onOpenWhatsApp?: (phoneNumber: string, offer: Offer) => void;
   onOpenChat?: (requestId: string, offer: Offer) => void;
   userId?: string;
@@ -46,16 +51,16 @@ interface MyOffersProps {
   onCreateRequest?: () => void;
   // Is this page currently active
   isActive?: boolean;
+  // Pull-to-refresh callback
+  onRefresh?: () => void | Promise<void>;
 }
 
 export const MyOffers: React.FC<MyOffersProps> = ({
   offers,
-  archivedOffers = [],
   allRequests,
   onSelectRequest,
   onSelectOffer,
   onArchiveOffer,
-  onUnarchiveOffer,
   onOpenWhatsApp,
   onOpenChat,
   userId,
@@ -70,11 +75,28 @@ export const MyOffers: React.FC<MyOffersProps> = ({
   onOpenLanguagePopup,
   onCreateRequest,
   isActive = true,
+  onRefresh,
 }) => {
   // Header compression state - for smooth scroll animations
   const [isHeaderCompressed, setIsHeaderCompressed] = useState(false);
   const lastScrollY = useRef(0);
   const headerRef = useRef<HTMLDivElement>(null);
+  
+  // Pull-to-refresh state
+  const [pullToRefreshState, setPullToRefreshState] = useState<{
+    isPulling: boolean;
+    pullDistance: number;
+    isRefreshing: boolean;
+  }>({
+    isPulling: false,
+    pullDistance: 0,
+    isRefreshing: false,
+  });
+  
+  const pullStartY = useRef<number>(0);
+  const pullCurrentY = useRef<number>(0);
+  const pullDistanceRef = useRef<number>(0);
+  const isPullingActiveRef = useRef<boolean>(false);
   
   // Filter & Sort States
   const [offerFilter, setOfferFilter] = useState<OfferFilter>("all");
@@ -89,6 +111,10 @@ export const MyOffers: React.FC<MyOffersProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [openFilterDropdownId, setOpenFilterDropdownId] = useState<string | null>(null);
   const filterDropdownRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  
+  // Delete confirmation modal state
+  const [offerToDelete, setOfferToDelete] = useState<string | null>(null);
+  const [isDeletingOffer, setIsDeletingOffer] = useState(false);
   
   // Close filter dropdown when clicking outside
   useEffect(() => {
@@ -122,6 +148,152 @@ export const MyOffers: React.FC<MyOffersProps> = ({
     };
   }, [openFilterDropdownId]);
 
+  // Pull-to-refresh handlers
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !onRefresh) return;
+
+    const PULL_THRESHOLD = 60;
+    const MAX_PULL = 90;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      // Allow pull when scrollTop is very close to 0 (within 5px tolerance)
+      if (container.scrollTop > 5) {
+        isPullingActiveRef.current = false;
+        return;
+      }
+      isPullingActiveRef.current = true;
+      pullStartY.current = e.touches[0].clientY;
+      pullCurrentY.current = pullStartY.current;
+      pullDistanceRef.current = 0;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      // If pulling not active, ignore
+      if (!isPullingActiveRef.current || pullStartY.current === 0) return;
+
+      // If scrolled away from top, reset
+      if (container.scrollTop > 5) {
+        isPullingActiveRef.current = false;
+        pullDistanceRef.current = 0;
+        pullStartY.current = 0;
+        setPullToRefreshState({
+          isPulling: false,
+          pullDistance: 0,
+          isRefreshing: false,
+        });
+        return;
+      }
+
+      pullCurrentY.current = e.touches[0].clientY;
+      const pullDistance = Math.max(
+        0,
+        pullCurrentY.current - pullStartY.current,
+      );
+
+      if (pullDistance > 10) { // Threshold to start pull
+        e.preventDefault(); // Prevent default scroll
+        const limitedPull = Math.min(pullDistance, MAX_PULL);
+        pullDistanceRef.current = limitedPull;
+        setPullToRefreshState({
+          isPulling: true,
+          pullDistance: limitedPull,
+          isRefreshing: false,
+        });
+      }
+    };
+
+    const handleTouchEnd = () => {
+      // Always reset on touch end, regardless of pulling state
+      if (!isPullingActiveRef.current) {
+        return;
+      }
+
+      const currentPullDistance = pullDistanceRef.current;
+
+      if (currentPullDistance >= PULL_THRESHOLD && onRefresh) {
+        setPullToRefreshState({
+          isPulling: false,
+          pullDistance: 0,
+          isRefreshing: true,
+        });
+
+        // Haptic feedback
+        if (navigator.vibrate) {
+          navigator.vibrate(25);
+        }
+
+        // Call refresh and wait for completion
+        const refreshPromise = onRefresh();
+        const minDisplayTime = new Promise((resolve) =>
+          setTimeout(resolve, 1200)
+        );
+
+        const promiseToUse: Promise<void> =
+          refreshPromise && typeof refreshPromise === "object" &&
+            refreshPromise !== null && "then" in refreshPromise
+            ? refreshPromise as Promise<void>
+            : Promise.resolve();
+        Promise.all([
+          promiseToUse,
+          minDisplayTime,
+        ]).finally(() => {
+          setPullToRefreshState({
+            isPulling: false,
+            pullDistance: 0,
+            isRefreshing: false,
+          });
+        });
+      } else {
+        // Reset immediately if threshold not reached
+        setPullToRefreshState({
+          isPulling: false,
+          pullDistance: 0,
+          isRefreshing: false,
+        });
+      }
+
+      // Always cleanup
+      isPullingActiveRef.current = false;
+      pullStartY.current = 0;
+      pullCurrentY.current = 0;
+      pullDistanceRef.current = 0;
+    };
+
+    const handleTouchCancel = () => {
+      // Handle touch cancel (e.g., when scrolling is taken over by browser)
+      isPullingActiveRef.current = false;
+      pullStartY.current = 0;
+      pullCurrentY.current = 0;
+      pullDistanceRef.current = 0;
+      setPullToRefreshState({
+        isPulling: false,
+        pullDistance: 0,
+        isRefreshing: false,
+      });
+    };
+
+    // Add listeners to container for start/move
+    container.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+    });
+    container.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+    });
+    // Add end/cancel to document to catch all touch ends
+    document.addEventListener("touchend", handleTouchEnd, { passive: true });
+    document.addEventListener("touchcancel", handleTouchCancel, {
+      passive: true,
+    });
+
+    return () => {
+      container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
+      document.removeEventListener("touchcancel", handleTouchCancel);
+    };
+  }, [onRefresh]);
+
   // Scroll Listener for header compression - same logic as Marketplace
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -130,6 +302,15 @@ export const MyOffers: React.FC<MyOffersProps> = ({
     const handleScroll = () => {
       const scrollTop = container.scrollTop;
       const scrollDelta = scrollTop - lastScrollY.current;
+      
+      // Reset pull state if user scrolls away from top
+      if (scrollTop > 0 && pullToRefreshState.isPulling) {
+        setPullToRefreshState({
+          isPulling: false,
+          pullDistance: 0,
+          isRefreshing: false,
+        });
+      }
       
       if (scrollTop < 50) {
         // Always show when near top
@@ -146,26 +327,29 @@ export const MyOffers: React.FC<MyOffersProps> = ({
 
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [pullToRefreshState.isPulling]);
 
   // Counts
   const counts = useMemo(() => {
-    const allOffers = [...offers, ...archivedOffers];
     return {
-      all: allOffers.length,
+      all: offers.length,
       pending: offers.filter(offer => offer.status === "pending" || offer.status === "negotiating").length,
       accepted: offers.filter(offer => offer.status === "accepted").length,
-      completed: allOffers.filter(offer => offer.status === "archived").length
+      // المكتملة: العروض المقبولة التي تم إكمال الطلب عليها (completed)
+      // المنتهية: العروض المرفوضة لأن صاحب الطلب قبل عرض آخر (rejected)
+      completed: offers.filter(offer => 
+        offer.status === "completed" || 
+        offer.status === "rejected"
+      ).length,
     };
-  }, [offers, archivedOffers]);
+  }, [offers]);
 
   // Filtered & Sorted Offers
   const filteredOffers = useMemo(() => {
-    const allOffers = [...offers, ...archivedOffers];
     let result: Offer[] = [];
     
     if (offerFilter === "all") {
-      result = allOffers;
+      result = offers;
       if (hideRejected) {
         result = result.filter(offer => offer.status !== "rejected");
       }
@@ -173,8 +357,13 @@ export const MyOffers: React.FC<MyOffersProps> = ({
       result = offers.filter(offer => offer.status === "pending" || offer.status === "negotiating");
     } else if (offerFilter === "accepted") {
       result = offers.filter(offer => offer.status === "accepted");
-    } else {
-      result = allOffers.filter(offer => offer.status === "archived");
+    } else if (offerFilter === "completed") {
+      // المكتملة: العروض المقبولة التي تم إكمال الطلب عليها (completed)
+      // المنتهية: العروض المرفوضة لأن صاحب الطلب قبل عرض آخر (rejected)
+      result = offers.filter(offer => 
+        offer.status === "completed" || 
+        offer.status === "rejected"
+      );
     }
 
     // Text search filter
@@ -197,7 +386,7 @@ export const MyOffers: React.FC<MyOffersProps> = ({
         return bDate - aDate;
       }
     });
-  }, [offers, archivedOffers, offerFilter, sortOrder, hideRejected, searchTerm]);
+  }, [offers, offerFilter, sortOrder, hideRejected, searchTerm]);
 
   // Filter configurations for FloatingFilterIsland
   const filterConfigs = useMemo(() => [
@@ -209,7 +398,7 @@ export const MyOffers: React.FC<MyOffersProps> = ({
         { value: "all", label: "كل عروضي", count: counts.all },
         { value: "pending", label: "عروضي قيد الانتظار", count: counts.pending },
         { value: "accepted", label: "عروضي المقبولة", count: counts.accepted },
-        { value: "completed", label: "عروضي المكتملة والمؤرشفة", count: counts.completed },
+        { value: "completed", label: "عروضي المكتملة والمنتهية", count: counts.completed },
       ],
       value: offerFilter,
       onChange: (value: string) => setOfferFilter(value as OfferFilter),
@@ -218,7 +407,7 @@ export const MyOffers: React.FC<MyOffersProps> = ({
           case "all": return "كل عروضي";
           case "pending": return "عروضي قيد الانتظار";
           case "accepted": return "عروضي المقبولة";
-          case "completed": return "عروضي المكتملة والمؤرشفة";
+          case "completed": return "عروضي المكتملة والمنتهية";
         }
       },
       showCount: true,
@@ -506,6 +695,125 @@ export const MyOffers: React.FC<MyOffersProps> = ({
         </div>
       </div>
 
+      {/* Pull-to-Refresh Indicator - بعد الجزيرة مباشرة */}
+      <AnimatePresence>
+        {(pullToRefreshState.isPulling || pullToRefreshState.isRefreshing) && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{
+              height: pullToRefreshState.isRefreshing
+                ? 70
+                : Math.min(pullToRefreshState.pullDistance, 90),
+              opacity: 1,
+            }}
+            exit={{ height: 0, opacity: 0 }}
+            className="flex items-center justify-center overflow-hidden z-[70]"
+          >
+            <motion.div
+              initial={{ y: -20 }}
+              animate={{ y: 0 }}
+              className="flex flex-col items-center py-2"
+            >
+              <div className="relative w-10 h-10 flex items-center justify-center">
+                {/* Background Progress Circle */}
+                <svg
+                  className="absolute inset-0 w-full h-full transform -rotate-90"
+                  viewBox="0 0 40 40"
+                >
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="16"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    fill="transparent"
+                    className="text-primary/10"
+                  />
+                  {!pullToRefreshState.isRefreshing && (
+                    <motion.circle
+                      cx="20"
+                      cy="20"
+                      r="16"
+                      stroke="url(#pull-gradient-myoffers)"
+                      strokeWidth="2.5"
+                      fill="transparent"
+                      strokeDasharray={100.5}
+                      strokeDashoffset={100.5 -
+                        (Math.min(pullToRefreshState.pullDistance / 60, 1) *
+                          100.5)}
+                      strokeLinecap="round"
+                      className="opacity-60"
+                    />
+                  )}
+                  <defs>
+                    <linearGradient
+                      id="pull-gradient-myoffers"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="100%"
+                    >
+                      <stop offset="0%" stopColor="#1E968C" />
+                      <stop offset="100%" stopColor="#153659" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+
+                {/* Icon Container */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <AnimatePresence mode="wait">
+                    {pullToRefreshState.isRefreshing
+                      ? (
+                        <motion.div
+                          key="refreshing-icon"
+                          initial={{ opacity: 0, rotate: 0 }}
+                          animate={{ opacity: 1, rotate: 360 }}
+                          exit={{ opacity: 0 }}
+                          transition={{
+                            rotate: {
+                              duration: 1,
+                              repeat: Infinity,
+                              ease: "linear",
+                            },
+                            opacity: { duration: 0.2 },
+                          }}
+                          className="text-primary"
+                        >
+                          <Loader2 size={20} strokeWidth={2.5} />
+                        </motion.div>
+                      )
+                      : (
+                        <motion.div
+                          key="pulling-icon"
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{
+                            opacity: 1,
+                            scale: pullToRefreshState.pullDistance >= 60
+                              ? 1.1
+                              : 1,
+                            rotate: (pullToRefreshState.pullDistance / 60) *
+                              180,
+                          }}
+                          exit={{ opacity: 0, scale: 0.5 }}
+                          transition={{
+                            type: "spring",
+                            stiffness: 300,
+                            damping: 25,
+                          }}
+                          className={pullToRefreshState.pullDistance >= 60
+                            ? "text-primary"
+                            : "text-primary/50"}
+                        >
+                          <RotateCw size={16} strokeWidth={2.5} />
+                        </motion.div>
+                      )}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Content */}
       <div className="px-4 pb-24">
@@ -571,29 +879,37 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                   <div className="flex items-center gap-1.5">
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        offer.status === "pending"
-                          ? "bg-orange-100 text-orange-700"
+                        offer.status === "pending" || offer.status === "negotiating"
+                          ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
                           : offer.status === "accepted"
                           ? "bg-primary/15 text-primary"
-                          : "bg-primary/10 text-primary"
+                          : offer.status === "completed"
+                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                          : offer.status === "rejected" || offer.status === "cancelled"
+                          ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                          : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
                       }`}
                     >
-                      {offer.status === "pending"
-                        ? "انتظار"
+                      {offer.status === "pending" || offer.status === "negotiating"
+                        ? "قيد الانتظار"
                         : offer.status === "accepted"
                         ? "مقبول"
-                        : "تفاوض"}
+                        : offer.status === "completed"
+                        ? "مكتمل"
+                        : offer.status === "rejected" || offer.status === "cancelled"
+                        ? "منتهي"
+                        : "قيد الانتظار"}
                     </span>
-                    {onArchiveOffer && (
+                    {onArchiveOffer && offer.status !== "rejected" && offer.status !== "cancelled" && offer.status !== "completed" && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onArchiveOffer(offer.id);
+                          setOfferToDelete(offer.id);
                         }}
-                        className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground"
-                        title="أرشفة العرض"
+                        className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                        title="حذف العرض"
                       >
-                        <Archive size={14} />
+                        <Trash2 size={14} strokeWidth={2.5} />
                       </button>
                     )}
                   </div>
@@ -709,6 +1025,71 @@ export const MyOffers: React.FC<MyOffersProps> = ({
           })}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {offerToDelete && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => !isDeletingOffer && setOfferToDelete(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-card rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+                  <AlertCircle className="w-8 h-8 text-red-500" />
+                </div>
+                <h3 className="text-lg font-bold mb-2">حذف العرض</h3>
+                <p className="text-muted-foreground text-sm">
+                  هل أنت متأكد من حذف هذا العرض؟ بعد الحذف، سيظهر الطلب كأنه جديد ويمكنك تقديم عرض آخر عليه. لا يمكن التراجع عن هذا الإجراء.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => setOfferToDelete(null)}
+                  disabled={isDeletingOffer}
+                >
+                  إلغاء
+                </Button>
+                <Button
+                  variant="danger"
+                  className="flex-1"
+                  isLoading={isDeletingOffer}
+                  onClick={async () => {
+                    if (onArchiveOffer && offerToDelete) {
+                      setIsDeletingOffer(true);
+                      try {
+                        await onArchiveOffer(offerToDelete);
+                        setOfferToDelete(null);
+                        // Haptic feedback
+                        if (navigator.vibrate) {
+                          navigator.vibrate(100);
+                        }
+                      } catch (error) {
+                        console.error('Error deleting offer:', error);
+                      } finally {
+                        setIsDeletingOffer(false);
+                      }
+                    }
+                  }}
+                >
+                  حذف
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

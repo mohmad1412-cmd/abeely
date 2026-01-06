@@ -35,10 +35,19 @@ CREATE OR REPLACE FUNCTION update_user_preferences(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   result JSONB;
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF p_user_id IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   UPDATE public.profiles
   SET 
     interested_categories = COALESCE(p_categories, interested_categories),
@@ -65,10 +74,19 @@ CREATE OR REPLACE FUNCTION get_user_preferences(p_user_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   result JSONB;
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF p_user_id IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   SELECT jsonb_build_object(
     'interested_categories', COALESCE(interested_categories, '{}'),
     'interested_cities', COALESCE(interested_cities, '{}'),
@@ -99,8 +117,13 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
+  IF COALESCE(auth.role(), '') <> 'service_role' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   RETURN QUERY
   SELECT DISTINCT
     p.id,

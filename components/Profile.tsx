@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { logger } from '../utils/logger';
 import { Review } from '../types';
 import { Badge } from './ui/Badge';
 import { Calendar, Edit2, X, Check, Camera, User } from 'lucide-react';
@@ -64,6 +65,8 @@ export const Profile: React.FC<ProfileProps> = ({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [isSavingBio, setIsSavingBio] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync displayName and bio with user data when user changes
@@ -75,14 +78,17 @@ export const Profile: React.FC<ProfileProps> = ({
 
   const handleSaveName = async () => {
     if (onUpdateProfile && displayName.trim()) {
+      setIsSavingName(true);
       try {
         await onUpdateProfile({ display_name: displayName.trim() });
         // انتظر قليلاً للتأكد من تحديث user state
         await new Promise(resolve => setTimeout(resolve, 100));
         setIsEditingName(false);
       } catch (error) {
-        console.error('خطأ في حفظ الاسم:', error);
+        logger.error('خطأ في حفظ الاسم:', error, 'service');
         alert('حدث خطأ أثناء حفظ الاسم. يرجى المحاولة مرة أخرى.');
+      } finally {
+        setIsSavingName(false);
       }
     } else {
       setIsEditingName(false);
@@ -91,10 +97,20 @@ export const Profile: React.FC<ProfileProps> = ({
 
   const handleSaveBio = async () => {
     if (onUpdateProfile) {
-      const trimmedBio = bio.trim();
-      await onUpdateProfile({ bio: trimmedBio.length ? trimmedBio : null });
+      setIsSavingBio(true);
+      try {
+        const trimmedBio = bio.trim();
+        await onUpdateProfile({ bio: trimmedBio.length ? trimmedBio : null });
+        setIsEditingBio(false);
+      } catch (error) {
+        logger.error('خطأ في حفظ التعريف:', error, 'service');
+        alert('حدث خطأ أثناء حفظ التعريف. يرجى المحاولة مرة أخرى.');
+      } finally {
+        setIsSavingBio(false);
+      }
+    } else {
+      setIsEditingBio(false);
     }
-    setIsEditingBio(false);
   };
 
   const handleAvatarClick = () => {
@@ -135,10 +151,10 @@ export const Profile: React.FC<ProfileProps> = ({
             fileInputRef.current.value = '';
           }
         } else {
-          console.error('فشل رفع الصورة');
+          logger.error('فشل رفع الصورة');
         }
       } catch (error) {
-        console.error('خطأ في حفظ الصورة:', error);
+        logger.error('خطأ في حفظ الصورة:', error, 'service');
       } finally {
         setIsUploadingAvatar(false);
       }
@@ -287,10 +303,24 @@ export const Profile: React.FC<ProfileProps> = ({
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={handleSaveName}
-                            className="px-4 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors text-sm font-medium flex items-center gap-2"
+                            disabled={isSavingName}
+                            className="px-4 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            <Check size={16} />
-                            حفظ
+                            {isSavingName ? (
+                              <>
+                                <span className="inline-flex items-center gap-0.5">
+                                  <span className="animate-[bounce_1s_infinite]">.</span>
+                                  <span className="animate-[bounce_1s_infinite_0.2s]">.</span>
+                                  <span className="animate-[bounce_1s_infinite_0.4s]">.</span>
+                                </span>
+                                انتظار
+                              </>
+                            ) : (
+                              <>
+                                <Check size={16} />
+                                حفظ
+                              </>
+                            )}
                           </motion.button>
                           <motion.button
                             whileHover={{ scale: 1.05 }}
@@ -376,10 +406,24 @@ export const Profile: React.FC<ProfileProps> = ({
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={handleSaveBio}
-                        className="px-4 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors text-sm font-medium flex items-center gap-2"
+                        disabled={isSavingBio}
+                        className="px-4 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <Check size={16} />
-                        حفظ
+                        {isSavingBio ? (
+                          <>
+                            <span className="inline-flex items-center gap-0.5">
+                              <span className="animate-[bounce_1s_infinite]">.</span>
+                              <span className="animate-[bounce_1s_infinite_0.2s]">.</span>
+                              <span className="animate-[bounce_1s_infinite_0.4s]">.</span>
+                            </span>
+                            انتظار
+                          </>
+                        ) : (
+                          <>
+                            <Check size={16} />
+                            حفظ
+                          </>
+                        )}
                       </motion.button>
                       <motion.button
                         whileHover={{ scale: 1.05 }}

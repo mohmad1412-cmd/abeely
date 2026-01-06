@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { logger } from '../utils/logger';
 import { Moon, Sun, ArrowLeftRight, ArrowRight, Bell, MapPin, User, Languages, ChevronLeft, X, ChevronDown, Plus, Filter, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AVAILABLE_CATEGORIES } from '../data';
@@ -80,6 +81,12 @@ export const Settings: React.FC<SettingsProps> = ({
   const [editedEmail, setEditedEmail] = useState(user?.email || "");
   const [editedPhone, setEditedPhone] = useState(user?.phone || "");
   
+  // Loading states for save operations
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [isSavingPhone, setIsSavingPhone] = useState(false);
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  
   // Phone verification states
   const [phoneVerificationStep, setPhoneVerificationStep] = useState<'none' | 'phone' | 'otp'>('none');
   const [phoneOTP, setPhoneOTP] = useState('');
@@ -113,19 +120,27 @@ export const Settings: React.FC<SettingsProps> = ({
   const [newRadarWord, setNewRadarWord] = useState("");
   const [isInterestsPreviewExpanded, setIsInterestsPreviewExpanded] = useState(false);
 
-  const handleSaveInterests = () => {
-    setSelectedCategories(tempCategories);
-    setSelectedCities(tempCities);
-    setSelectedRadarWords(tempRadarWords);
-    if (onUpdatePreferences) {
-      onUpdatePreferences({
-        ...userPreferences,
-        interestedCategories: tempCategories,
-        interestedCities: tempCities,
-        notifyOnInterest
-      });
+  const handleSaveInterests = async () => {
+    setIsSavingPreferences(true);
+    try {
+      setSelectedCategories(tempCategories);
+      setSelectedCities(tempCities);
+      setSelectedRadarWords(tempRadarWords);
+      if (onUpdatePreferences) {
+        await onUpdatePreferences({
+          ...userPreferences,
+          interestedCategories: tempCategories,
+          interestedCities: tempCities,
+          notifyOnInterest
+        });
+      }
+      setIsManageInterestsOpen(false);
+    } catch (error) {
+      logger.error('خطأ في حفظ الإعدادات:', error, 'service');
+      alert('حدث خطأ أثناء حفظ الإعدادات. يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsSavingPreferences(false);
     }
-    setIsManageInterestsOpen(false);
   };
 
   const toggleCategory = (catId: string) => {
@@ -306,22 +321,37 @@ export const Settings: React.FC<SettingsProps> = ({
                         <button
                           onClick={async () => {
                             if (onUpdateProfile && editedName.trim()) {
+                              setIsSavingName(true);
                               try {
                                 await onUpdateProfile({ display_name: editedName.trim() });
                                 // انتظر قليلاً للتأكد من تحديث user state
                                 await new Promise(resolve => setTimeout(resolve, 100));
                                 setIsEditingName(false);
                               } catch (error) {
-                                console.error('خطأ في حفظ الاسم:', error);
+                                logger.error('خطأ في حفظ الاسم:', error, 'service');
                                 alert('حدث خطأ أثناء حفظ الاسم. يرجى المحاولة مرة أخرى.');
+                              } finally {
+                                setIsSavingName(false);
                               }
                             } else {
                               setIsEditingName(false);
                             }
                           }}
-                          className="text-xs text-primary hover:underline"
+                          disabled={isSavingName}
+                          className="text-xs text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                         >
-                          حفظ
+                          {isSavingName ? (
+                            <>
+                              <span className="inline-flex items-center gap-0.5">
+                                <span className="animate-[bounce_1s_infinite]">.</span>
+                                <span className="animate-[bounce_1s_infinite_0.2s]">.</span>
+                                <span className="animate-[bounce_1s_infinite_0.4s]">.</span>
+                              </span>
+                              انتظار
+                            </>
+                          ) : (
+                            'حفظ'
+                          )}
                         </button>
                         <button
                           onClick={() => {
@@ -366,6 +396,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         <button
                           onClick={async () => {
                             if (onUpdateProfile && editedEmail.trim() && editedEmail !== user?.email) {
+                              setIsSavingEmail(true);
                               try {
                                 // تحديث البريد الإلكتروني في Supabase Auth
                                 const { error: authError } = await supabase.auth.updateUser({
@@ -373,23 +404,39 @@ export const Settings: React.FC<SettingsProps> = ({
                                 });
                                 
                                 if (authError) {
-                                  console.error('Error updating email:', authError);
+                                  logger.error('Error updating email:', authError, 'service');
                                   alert('حدث خطأ أثناء تحديث البريد الإلكتروني: ' + authError.message);
                                   return;
                                 }
                                 
                                 // تحديث في جدول profiles أيضاً
                                 await onUpdateProfile({ email: editedEmail.trim() });
+                                setIsEditingEmail(false);
                               } catch (err: any) {
-                                console.error('Error updating email:', err);
+                                logger.error('Error updating email:', err, 'service');
                                 alert('حدث خطأ أثناء تحديث البريد الإلكتروني');
+                              } finally {
+                                setIsSavingEmail(false);
                               }
+                            } else {
+                              setIsEditingEmail(false);
                             }
-                            setIsEditingEmail(false);
                           }}
-                          className="text-xs text-primary hover:underline"
+                          disabled={isSavingEmail}
+                          className="text-xs text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                         >
-                          حفظ
+                          {isSavingEmail ? (
+                            <>
+                              <span className="inline-flex items-center gap-0.5">
+                                <span className="animate-[bounce_1s_infinite]">.</span>
+                                <span className="animate-[bounce_1s_infinite_0.2s]">.</span>
+                                <span className="animate-[bounce_1s_infinite_0.4s]">.</span>
+                              </span>
+                              انتظار
+                            </>
+                          ) : (
+                            'حفظ'
+                          )}
                         </button>
                         <button
                           onClick={() => {
@@ -988,9 +1035,21 @@ export const Settings: React.FC<SettingsProps> = ({
                     }
                     handleSaveInterests();
                   }}
-                  className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium"
+                  disabled={isSavingPreferences}
+                  className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                 >
-                  حفظ
+                  {isSavingPreferences ? (
+                    <>
+                      <span className="inline-flex items-center gap-0.5">
+                        <span className="animate-[bounce_1s_infinite]">.</span>
+                        <span className="animate-[bounce_1s_infinite_0.2s]">.</span>
+                        <span className="animate-[bounce_1s_infinite_0.4s]">.</span>
+                      </span>
+                      انتظار
+                    </>
+                  ) : (
+                    'حفظ'
+                  )}
                 </button>
               </div>
             </motion.div>

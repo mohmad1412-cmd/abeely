@@ -18,7 +18,11 @@ DROP FUNCTION IF EXISTS handle_user_update() CASCADE;
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   user_phone TEXT;
   user_email TEXT;
@@ -81,14 +85,18 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- ==========================================
 -- Step 3: Function to update profile when user data changes
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION handle_user_update()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   user_display_name TEXT;
   user_avatar_url TEXT;
@@ -132,7 +140,7 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- ==========================================
 -- Step 4: Create triggers
@@ -155,10 +163,19 @@ EXECUTE FUNCTION handle_user_update();
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION create_profile_for_user(user_id UUID)
-RETURNS BOOLEAN AS $$
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   user_record auth.users%ROWTYPE;
 BEGIN
+  IF COALESCE(auth.role(), '') <> 'service_role'
+     AND COALESCE(current_setting('request.jwt.claim.role', true), '') <> '' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   -- Check if profile already exists
   IF EXISTS (SELECT 1 FROM public.profiles WHERE id = user_id) THEN
     RETURN FALSE; -- Profile already exists
@@ -212,7 +229,7 @@ BEGIN
   
   RETURN TRUE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- ==========================================
 -- Step 6: Add helpful comments

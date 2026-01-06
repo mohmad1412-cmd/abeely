@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { AnimatePresence, motion, LayoutGroup } from "framer-motion";
 import { Check, X, AlertCircle } from "lucide-react";
 import { UnifiedHeader } from "./components/ui/UnifiedHeader";
@@ -33,7 +33,7 @@ import {
   UserPreferences,
   ViewState,
 } from "./types";
-import { MOCK_REQUESTS, MOCK_REVIEWS, AVAILABLE_CATEGORIES } from "./data";
+import { MOCK_REVIEWS, AVAILABLE_CATEGORIES } from "./data";
 import {
   clearAllNotifications,
   getNotifications,
@@ -57,7 +57,6 @@ import {
   archiveRequest,
   checkSupabaseConnection,
   createRequestFromChat,
-  fetchArchivedOffers,
   fetchArchivedRequests,
   fetchMyOffers,
   fetchMyRequests,
@@ -67,7 +66,6 @@ import {
   migrateUserDraftRequests,
   subscribeToNewRequests,
   subscribeToAllNewRequests,
-  unarchiveOffer,
   unarchiveRequest,
   updateRequest,
   hideRequest,
@@ -129,6 +127,7 @@ const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>("requests");
   const [view, setView] = useState<ViewState>("marketplace");
   const [previousView, setPreviousView] = useState<ViewState | null>(null);
+  const [previousBottomTab, setPreviousBottomTab] = useState<BottomNavTab | null>(null);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomNavTab>("marketplace");
   const [initialConversationId, setInitialConversationId] = useState<string | null>(null);
   const [titleKey, setTitleKey] = useState(0);
@@ -171,10 +170,11 @@ const App: React.FC = () => {
   const [viewedRequestIds, setViewedRequestIds] = useState<Set<string>>(
     new Set(),
   ); // الطلبات المشاهدة من قاعدة البيانات
+  const [isLoadingViewedRequests, setIsLoadingViewedRequests] = useState(true); // تتبع تحميل viewedRequestIds
   const [myOffers, setMyOffers] = useState<Offer[]>([]);
+  const [isLoadingMyOffers, setIsLoadingMyOffers] = useState(true); // تتبع تحميل myOffers
   const [receivedOffersMap, setReceivedOffersMap] = useState<Map<string, Offer[]>>(new Map()); // العروض المستلمة على طلبات المستخدم
   const [archivedRequests, setArchivedRequests] = useState<Request[]>([]);
-  const [archivedOffers, setArchivedOffers] = useState<Offer[]>([]);
   const [myRequestsFilter, setMyRequestsFilter] = useState<"active" | "approved" | "all" | "completed">("active");
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [marketplaceLoadedOnce, setMarketplaceLoadedOnce] = useState(false); // تم التحميل مرة واحدة على الأقل (حتى لو 0 نتائج)
@@ -215,7 +215,6 @@ const App: React.FC = () => {
   // ==========================================
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [requestToEdit, setRequestToEdit] = useState<Request | null>(null); // الطلب المراد تعديله
-  const [offerToEdit, setOfferToEdit] = useState<{ offer: Offer; request: Request } | null>(null); // العرض المراد تعديله مع الطلب المرتبط
   const [scrollToOfferSection, setScrollToOfferSection] = useState(false);
   const [navigatedFromSidebar, setNavigatedFromSidebar] = useState(false); // لتتبع مصدر التنقل
   const [highlightOfferId, setHighlightOfferId] = useState<string | null>(null); // لتمييز العرض عند النقر على إشعار
@@ -627,8 +626,8 @@ const App: React.FC = () => {
           
           setIsProcessingOAuth(false);
         } else if (alreadyProcessed) {
-          console.log("⏭️ OAuth code already processed, skipping...");
           // الـ code تمت معالجته، انتظر الـ onAuthStateChange
+          // لا نطبع log لتجنب التكرار
           setIsProcessingOAuth(true);
         }
         
@@ -704,7 +703,10 @@ const App: React.FC = () => {
 
     // الاستماع لتغييرات حالة المصادقة - هذا هو المكان الرئيسي لمعالجة OAuth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("🔐 Auth state changed:", event, session?.user?.email);
+      // فقط نطبع log إذا كان هناك session أو حدث مهم
+      if (session?.user || (event !== 'INITIAL_SESSION' && event !== 'TOKEN_REFRESHED')) {
+        console.log("🔐 Auth state changed:", event, session?.user?.email || 'no session');
+      }
       
       if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user && isMounted) {
         console.log("✅ User signed in:", session.user.email);
@@ -836,7 +838,7 @@ const App: React.FC = () => {
     // إذا كنا نعالج OAuth callback، لا تنتقل لـ auth
     if (authLoading || isProcessingOAuth) {
       console.log("⏳ Splash complete but still loading auth or processing OAuth...");
-      return;
+      return false;
     }
 
     if (user) {
@@ -989,9 +991,11 @@ const App: React.FC = () => {
           await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
 
         if (Array.isArray(firstPage)) {
-          setAllRequests(firstPage);
+          // فلترة الطلبات المخفية
+          const filtered = firstPage.filter(req => req.isPublic !== false);
+          setAllRequests(filtered);
           setMarketplacePage(0);
-          setMarketplaceHasMore(firstPage.length === MARKETPLACE_PAGE_SIZE);
+          setMarketplaceHasMore(filtered.length === MARKETPLACE_PAGE_SIZE);
           setMarketplaceLoadedOnce(true); // تم التحميل بنجاح
         }
       } catch (error) {
@@ -1021,8 +1025,8 @@ const App: React.FC = () => {
     if (!user?.id) {
       setMyRequests([]);
       setMyOffers([]);
+      setIsLoadingMyOffers(true);
       setArchivedRequests([]);
-      setArchivedOffers([]);
       setUserPreferences({
         interestedCategories: [],
         interestedCities: [],
@@ -1053,19 +1057,22 @@ const App: React.FC = () => {
         // ترقية الطلبات القديمة من "مسودة" إلى "نشط" (مرة واحدة لكل مستخدم)
         await migrateUserDraftRequests(user.id);
         
+        setIsLoadingMyOffers(true);
         await Promise.all([
           fetchMyRequests(user.id).then((reqs) =>
             setMyRequests(reqs.filter((r) => r.status !== "archived"))
           ),
-          fetchMyOffers(user.id).then((offers) =>
-            setMyOffers(offers.filter((o) => o.status !== "archived"))
-          ),
+          fetchMyOffers(user.id).then((offers) => {
+            // جلب جميع العروض بما فيها المكتملة والمنتهية (لا نستثني أي شيء)
+            setMyOffers(offers);
+            setIsLoadingMyOffers(false);
+          }),
           fetchOffersForUserRequests(user.id).then(setReceivedOffersMap),
           fetchArchivedRequests(user.id).then(setArchivedRequests),
-          fetchArchivedOffers(user.id).then(setArchivedOffers),
         ]);
       } catch (error) {
         console.error("Error loading user data:", error);
+        setIsLoadingMyOffers(false);
       }
     };
 
@@ -1078,19 +1085,28 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!user?.id || isGuest) {
       setViewedRequestIds(new Set());
+      setIsLoadingViewedRequests(false);
       return;
     }
 
     // Initial load
+    setIsLoadingViewedRequests(true);
     const loadViewedRequests = async () => {
-      const ids = await getViewedRequestIds();
-      setViewedRequestIds(ids);
+      try {
+        const ids = await getViewedRequestIds();
+        setViewedRequestIds(ids);
+      } catch (error) {
+        console.error('Error loading viewed requests:', error);
+      } finally {
+        setIsLoadingViewedRequests(false);
+      }
     };
     loadViewedRequests();
 
     // Subscribe to real-time updates
     const unsubscribe = subscribeToViewedRequests(user.id, (ids) => {
       setViewedRequestIds(ids);
+      // لا نغير isLoadingViewedRequests هنا لأن الـ subscription قد يحدث بعد التحميل الأولي
     });
 
     return () => {
@@ -1114,11 +1130,13 @@ const App: React.FC = () => {
           const { data: firstPage, count: totalCount } =
             await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
           if (Array.isArray(firstPage)) {
-            setAllRequests(firstPage);
+            // فلترة الطلبات المخفية
+            const filtered = firstPage.filter(req => req.isPublic !== false);
+            setAllRequests(filtered);
             setMarketplacePage(0);
             const more = typeof totalCount === "number"
-              ? firstPage.length < totalCount
-              : firstPage.length === MARKETPLACE_PAGE_SIZE;
+              ? filtered.length < totalCount
+              : filtered.length === MARKETPLACE_PAGE_SIZE;
             setMarketplaceHasMore(more);
             setMarketplaceLoadedOnce(true); // تم التحميل بنجاح
           }
@@ -1176,11 +1194,13 @@ const App: React.FC = () => {
             const { data: firstPage, count: totalCount } =
               await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
             if (Array.isArray(firstPage)) {
-              setAllRequests(firstPage);
+              // فلترة الطلبات المخفية
+              const filtered = firstPage.filter(req => req.isPublic !== false);
+              setAllRequests(filtered);
               setMarketplacePage(0);
               const more = typeof totalCount === "number"
-                ? firstPage.length < totalCount
-                : firstPage.length === MARKETPLACE_PAGE_SIZE;
+                ? filtered.length < totalCount
+                : filtered.length === MARKETPLACE_PAGE_SIZE;
               setMarketplaceHasMore(more);
               setMarketplaceLoadedOnce(true); // تم التحميل بنجاح (حتى لو 0 نتائج)
               clearInterval(intervalId);
@@ -1382,9 +1402,13 @@ const App: React.FC = () => {
         const seen = new Set(prev.map((r) => r.id));
         const merged = [...prev];
         for (const r of pageData) {
-          if (!seen.has(r.id)) merged.push(r);
+          // فقط أضف الطلبات العامة (غير المخفية)
+          if (!seen.has(r.id) && r.isPublic !== false) {
+            merged.push(r);
+          }
         }
-        return merged;
+        // إزالة الطلبات المخفية من القائمة الموجودة
+        return merged.filter(r => r.isPublic !== false);
       });
       setMarketplacePage(nextPage);
       const loadedSoFar = allRequests.length + (pageData?.length || 0);
@@ -1420,7 +1444,38 @@ const App: React.FC = () => {
           actualCities.length > 0;
 
         if (hasInterests) {
+          // إنشاء Sets للتحقق السريع
+          const myRequestIdsForInterests = new Set(myRequests.map(r => r.id));
+          const myOfferRequestIdsForInterests = new Set(
+            myOffers
+              .filter(offer => offer.status !== 'rejected')
+              .map(offer => offer.requestId)
+          );
+          
           const filtered = allRequests.filter((req) => {
+            // استبعاد الطلبات المخفية (isPublic === false)
+            if (req.isPublic === false) {
+              return false;
+            }
+            
+            // استبعاد طلبات المستخدم نفسه - استخدام Set للتحقق السريع
+            if (user?.id) {
+              // تحقق من myRequests
+              if (myRequestIdsForInterests.has(req.id)) {
+                return false;
+              }
+              
+              // تحقق من author مباشرة (fallback)
+              if (req.author && req.author === user.id) {
+                return false;
+              }
+              
+              // استبعاد الطلبات التي قدم عليها المستخدم عروض نشطة
+              if (myOfferRequestIdsForInterests.has(req.id)) {
+                return false;
+              }
+            }
+            
             // Check categories match
             const catMatch = activeCategories.length === 0 ||
               (req.categories || []).some((catLabel) => {
@@ -1492,6 +1547,8 @@ const App: React.FC = () => {
     loadInterestsData();
   }, [
     appView,
+    myOffers, // إضافة myOffers للاعتماديات لتحديث interestsRequests عند تغيير العروض
+    myRequests, // إضافة myRequests للاعتماديات لتحديث interestsRequests عند تغيير الطلبات
     user?.id,
     isGuest,
     allRequests,
@@ -1597,10 +1654,12 @@ const App: React.FC = () => {
     // Subscribe to all new public requests
     const unsubscribe = subscribeToAllNewRequests(
       async (newRequest) => {
-        // Add new request to all requests list (only if not exists)
+        // Add new request to all requests list (only if not exists and not hidden)
         setAllRequests((prev) => {
           const exists = prev.some((r) => r.id === newRequest.id);
           if (exists) return prev;
+          // فقط أضف الطلبات العامة (غير المخفية)
+          if (newRequest.isPublic === false) return prev;
           // Add to the beginning of the list (newest first)
           return [newRequest, ...prev];
         });
@@ -1740,8 +1799,17 @@ const App: React.FC = () => {
       return;
     }
 
-    if (view !== newView && (newView === "settings" || newView === "profile")) {
-      setPreviousView(view);
+    if (view !== newView) {
+      if (newView === "settings" || newView === "profile") {
+        setPreviousView(view);
+      } else if (newView === "request-detail") {
+        // حفظ الصفحة السابقة والتبويب السابق عند التنقل إلى request-detail
+        // فقط إذا لم نكن بالفعل في request-detail
+        if (view !== "request-detail") {
+          setPreviousView(view);
+          setPreviousBottomTab(activeBottomTab);
+        }
+      }
     }
 
     setView(newView as ViewState);
@@ -1773,6 +1841,15 @@ const App: React.FC = () => {
   ) => {
     // Marketplace component already saves scroll position via onScrollPositionChange
     // No need to manually save it here - marketplaceScrollPos is already up to date
+    // حفظ الصفحة السابقة والتبويب السابق للرجوع إليها
+    // فقط إذا لم نكن بالفعل في request-detail
+    if (view !== "request-detail") {
+      console.log('💾 Saving previousView:', view, 'and tab:', activeBottomTab);
+      setPreviousView(view);
+      setPreviousBottomTab(activeBottomTab);
+    } else {
+      console.log('⚠️ Already in request-detail, not saving previousView');
+    }
     setSelectedRequest(req);
     setScrollToOfferSection(scrollToOffer);
     setNavigatedFromSidebar(fromSidebar); // تتبع مصدر التنقل
@@ -1799,6 +1876,12 @@ const App: React.FC = () => {
   const handleSelectOffer = (offer: Offer, fromSidebar = false) => {
     const relatedRequest = allRequests.find((r) => r.id === offer.requestId);
     if (relatedRequest) {
+      // حفظ الصفحة السابقة والتبويب السابق للرجوع إليها
+      // فقط إذا لم نكن بالفعل في request-detail
+      if (view !== "request-detail") {
+        setPreviousView(view);
+        setPreviousBottomTab(activeBottomTab);
+      }
       setSelectedRequest(relatedRequest);
       setNavigatedFromSidebar(fromSidebar); // تتبع مصدر التنقل
       setView("request-detail");
@@ -1821,6 +1904,10 @@ const App: React.FC = () => {
         || myRequests.find(r => r.id === notification.relatedRequest?.id);
       
       if (targetRequest) {
+        if (view !== "request-detail") {
+          setPreviousView(view);
+          setPreviousBottomTab(activeBottomTab);
+        }
         setSelectedRequest(targetRequest);
         setScrollToOfferSection(true);
         // تمييز العرض المحدد
@@ -1862,9 +1949,27 @@ const App: React.FC = () => {
       setIsLoadingData(true);
       setRequestsLoadError(null);
 
+      // تحميل myOffers أولاً إذا كان المستخدم مسجل دخول
+      // هذا يضمن عدم ظهور الطلبات التي قدم عليها المستخدم عرض قبل أن يتم فلترتها
+      if (user?.id) {
+        setIsLoadingMyOffers(true);
+        const [myReqs, offers, receivedOffers] = await Promise.all([
+          fetchMyRequests(user.id),
+          fetchMyOffers(user.id),
+          fetchOffersForUserRequests(user.id)
+        ]);
+        setMyRequests(myReqs.filter((r) => r.status !== "archived"));
+        setMyOffers(offers);
+        setReceivedOffersMap(receivedOffers);
+        setIsLoadingMyOffers(false);
+      }
+
+      // الآن تحميل الطلبات بعد أن يكون myOffers جاهزاً
       const { data: firstPage, count: totalCount } =
         await fetchRequestsPaginated(0, MARKETPLACE_PAGE_SIZE);
-      setAllRequests(firstPage);
+      // فلترة الطلبات المخفية
+      const filtered = firstPage.filter(req => req.isPublic !== false);
+      setAllRequests(filtered);
       setMarketplacePage(0);
       const more = typeof totalCount === "number"
         ? firstPage.length < totalCount
@@ -1872,23 +1977,10 @@ const App: React.FC = () => {
       setMarketplaceHasMore(more);
       setMarketplaceLoadedOnce(true); // تم التحميل بنجاح
 
+      // تحميل الطلبات المؤرشفة إذا كان المستخدم مسجل دخول
       if (user?.id) {
-        const myReqs = await fetchMyRequests(user.id);
-        setMyRequests(myReqs.filter((r) => r.status !== "archived"));
-
-        const offers = await fetchMyOffers(user.id);
-        setMyOffers(offers.filter((o) => o.status !== "archived"));
-
-        // جلب العروض المستلمة على طلبات المستخدم
-        const receivedOffers = await fetchOffersForUserRequests(user.id);
-        setReceivedOffersMap(receivedOffers);
-
-        // Reload archived items
         const archivedReqs = await fetchArchivedRequests(user.id);
         setArchivedRequests(archivedReqs);
-
-        const archivedOffs = await fetchArchivedOffers(user.id);
-        setArchivedOffers(archivedOffs);
       }
     } catch (error) {
       console.error("Error reloading data:", error);
@@ -1925,31 +2017,41 @@ const App: React.FC = () => {
     }
   };
 
-  const handleArchiveOffer = async (offerId: string) => {
-    if (!user?.id) return;
+  const handleArchiveOffer = async (offerId: string): Promise<boolean> => {
+    if (!user?.id) {
+      console.error('❌ No user ID');
+      return false;
+    }
+
+    console.log('🗑️ handleArchiveOffer called', { offerId, userId: user.id });
 
     try {
       const success = await archiveOffer(offerId, user.id);
+      console.log('📊 archiveOffer result:', success);
+      
       if (success) {
+        // Remove the offer from local state immediately for better UX
+        setMyOffers(prev => {
+          const filtered = prev.filter(o => o.id !== offerId);
+          console.log('📝 Updated myOffers:', { before: prev.length, after: filtered.length });
+          return filtered;
+        });
+        // Reload data to sync with backend
         await reloadData();
+        console.log('✅ Offer deleted and data reloaded');
+        return true;
+      } else {
+        console.error("❌ Failed to delete offer");
+        alert("فشل حذف العرض. يرجى المحاولة مرة أخرى.");
+        return false;
       }
     } catch (error) {
-      console.error("Error archiving offer:", error);
+      console.error("❌ Error archiving offer:", error);
+      alert("حدث خطأ أثناء حذف العرض. يرجى المحاولة مرة أخرى.");
+      return false;
     }
   };
 
-  const handleUnarchiveOffer = async (offerId: string) => {
-    if (!user?.id) return;
-
-    try {
-      const success = await unarchiveOffer(offerId, user.id);
-      if (success) {
-        await reloadData();
-      }
-    } catch (error) {
-      console.error("Error unarchiving offer:", error);
-    }
-  };
 
   // ==========================================
   // Hide / Unhide / Bump Request
@@ -1960,7 +2062,8 @@ const App: React.FC = () => {
       const success = await hideRequest(requestId, user.id);
       if (success) {
         setMyRequests(prev => prev.map(r => r.id === requestId ? { ...r, isPublic: false } : r));
-        setAllRequests(prev => prev.map(r => r.id === requestId ? { ...r, isPublic: false } : r));
+        // إزالة الطلب المخفي من allRequests مباشرة
+        setAllRequests(prev => prev.filter(r => r.id !== requestId));
       }
     } catch (error) {
       console.error("Error hiding request:", error);
@@ -2099,6 +2202,7 @@ const App: React.FC = () => {
     setMode("offers");
     setSelectedRequest(null);
     setPreviousView(null);
+    setPreviousBottomTab(null);
     setSavedOffersModeState(null);
     setSavedRequestsModeState(null);
     setAppView("auth");
@@ -2256,18 +2360,25 @@ const App: React.FC = () => {
       interested_cities: data?.interested_cities
     });
 
+    // التحقق من localStorage أولاً - إذا كان المستخدم قد أكمل onboarding مسبقاً، لا نحتاج لإظهاره
+    const userOnboardedKey = `abeely_onboarded_${userId}`;
+    const localOnboarded = localStorage.getItem(userOnboardedKey) === 'true';
+    
+    if (localOnboarded) {
+      console.log("⏭️ User already onboarded (localStorage), skipping onboarding");
+      return false;
+    }
+
     // إذا كان المستخدم قد أكمل onboarding مسبقاً (في قاعدة البيانات)، لا نحتاج لإظهاره مرة أخرى
-    // لكن فقط إذا كان لديه اهتمامات أو مدن
-    if (alreadyOnboarded && (hasInterests || hasCities)) {
-      const userOnboardedKey = `abeely_onboarded_${userId}`;
+    // حتى لو لم يكن لديه اهتمامات أو مدن - يمكنه إضافتها لاحقاً من الإعدادات
+    if (alreadyOnboarded) {
       localStorage.setItem(userOnboardedKey, 'true');
-      console.log("⏭️ User already onboarded (DB flag) with interests, skipping onboarding");
+      console.log("⏭️ User already onboarded (DB flag), skipping onboarding");
       return false;
     }
 
     // إذا كان المستخدم لديه اسم + (اهتمامات أو مدن)، لا يحتاج onboarding
     if (hasName && (hasInterests || hasCities)) {
-      const userOnboardedKey = `abeely_onboarded_${userId}`;
       localStorage.setItem(userOnboardedKey, 'true');
       // تحديث قاعدة البيانات لإشارة has_onboarded
       try {
@@ -2525,9 +2636,60 @@ const App: React.FC = () => {
         );
       case "marketplace":
         // All three pages are always mounted - CSS controls visibility for smooth transitions
-        const mergedRequests = user?.id 
-          ? [...myRequests.filter(r => !allRequests.some(ar => ar.id === r.id)), ...allRequests]
-          : allRequests;
+        // فلترة قوية: استبعاد طلبات المستخدم والطلبات التي قدم عليها عروض
+        // إنشاء Sets للتحقق السريع
+        const myRequestIds = new Set(myRequests.map(r => r.id));
+        const myOfferRequestIds = new Set(
+          myOffers
+            .filter(offer => offer.status !== 'rejected')
+            .map(offer => offer.requestId)
+        );
+        
+        // Debug: التحقق من القيم
+        if (user?.id && (myRequestIds.size > 0 || myOfferRequestIds.size > 0)) {
+          console.log('🔍 Filtering marketplace requests:', {
+            userId: user.id,
+            myRequestsCount: myRequests.length,
+            myRequestIds: Array.from(myRequestIds),
+            myOffersCount: myOffers.length,
+            myOfferRequestIds: Array.from(myOfferRequestIds),
+            allRequestsCount: allRequests.length
+          });
+        }
+        
+        // فلترة صارمة: استبعاد طلبات المستخدم والطلبات التي قدم عليها عروض
+        const filteredAllRequests = allRequests.filter(req => {
+            // 1. استبعاد الطلبات المخفية
+            if (req.isPublic === false) {
+              return false;
+            }
+            
+            // 2. استبعاد طلبات المستخدم نفسه - تحقق من ID و author
+            if (user?.id) {
+              // تحقق من myRequests أولاً (الأسرع والأدق)
+              if (myRequestIds.has(req.id)) {
+                console.log('🚫 Filtered out my request:', req.id, req.title);
+                return false;
+              }
+              
+              // تحقق من author مباشرة (fallback للتأكد 100%)
+              if (req.author && req.author === user.id) {
+                console.log('🚫 Filtered out my request by author:', req.id, req.title);
+                return false;
+              }
+              
+              // 3. استبعاد الطلبات التي قدم عليها المستخدم عروض نشطة
+              if (myOfferRequestIds.has(req.id)) {
+                console.log('🚫 Filtered out request with my offer:', req.id, req.title);
+                return false;
+              }
+            }
+            
+            return true;
+          });
+        
+        // لا ندمج myRequests مع allRequests - كل واحد في مكانه
+        const mergedRequests = filteredAllRequests;
         return (
           <div className="h-full flex flex-col overflow-hidden relative bg-transparent">
             {/* MyRequests - conditionally rendered */}
@@ -2631,6 +2793,22 @@ const App: React.FC = () => {
                 isActive={activeBottomTab === "my-requests"}
                 defaultFilter={myRequestsFilter}
                 onFilterChange={(filter) => setMyRequestsFilter(filter)}
+                onRefresh={async () => {
+                  if (!user?.id) return;
+                  try {
+                    // إعادة جلب طلباتي والعروض المستلمة والطلبات المؤرشفة
+                    const [myReqs, receivedOffers, archivedReqs] = await Promise.all([
+                      fetchMyRequests(user.id),
+                      fetchOffersForUserRequests(user.id),
+                      fetchArchivedRequests(user.id),
+                    ]);
+                    setMyRequests(myReqs.filter((r) => r.status !== "archived"));
+                    setReceivedOffersMap(receivedOffers);
+                    setArchivedRequests(archivedReqs);
+                  } catch (error) {
+                    console.error("Error refreshing my requests:", error);
+                  }
+                }}
               />
               </div>
             )}
@@ -2640,7 +2818,6 @@ const App: React.FC = () => {
               <div className="absolute inset-0 z-[10] pointer-events-auto">
                 <MyOffers
                 offers={myOffers}
-                archivedOffers={archivedOffers}
                 allRequests={allRequests}
                 onSelectRequest={handleSelectRequest}
                 user={user}
@@ -2660,26 +2837,20 @@ const App: React.FC = () => {
                 onSelectOffer={(offer) => handleSelectOffer(offer, false)}
                 onArchiveOffer={async (offerId) => {
                   try {
+                    // حذف العرض فعلياً بدلاً من أرشفته
                     await archiveOffer(offerId, user?.id || '');
-                    setMyOffers(prev => prev.filter(o => o.id !== offerId));
-                    setArchivedOffers(prev => {
-                      const offer = myOffers.find(o => o.id === offerId);
-                      return offer ? [...prev, offer] : prev;
-                    });
+                    // تحديث قائمة العروض من قاعدة البيانات (سيتم تحديث status إلى cancelled)
+                    if (user?.id) {
+                      const offers = await fetchMyOffers(user.id);
+                      setMyOffers(offers);
+                    } else {
+                      // تحديث محلي: تغيير status إلى cancelled
+                      setMyOffers(prev => prev.map(o => 
+                        o.id === offerId ? { ...o, status: 'cancelled' as const } : o
+                      ));
+                    }
                   } catch (error) {
-                    console.error("Error archiving offer:", error);
-                  }
-                }}
-                onUnarchiveOffer={async (offerId) => {
-                  try {
-                    await unarchiveOffer(offerId, user?.id || '');
-                    setArchivedOffers(prev => prev.filter(o => o.id !== offerId));
-                    setMyOffers(prev => {
-                      const offer = archivedOffers.find(o => o.id === offerId);
-                      return offer ? [...prev, offer] : prev;
-                    });
-                  } catch (error) {
-                    console.error("Error unarchiving offer:", error);
+                    console.error("Error deleting offer:", error);
                   }
                 }}
                 onOpenWhatsApp={(phoneNumber, offer) => {
@@ -2695,6 +2866,16 @@ const App: React.FC = () => {
                 userId={user?.id}
                 viewedRequestIds={viewedRequestIds}
                 isActive={activeBottomTab === "my-offers"}
+                onRefresh={async () => {
+                  if (!user?.id) return;
+                  try {
+                    // إعادة جلب عروضي
+                    const offers = await fetchMyOffers(user.id);
+                    setMyOffers(offers);
+                  } catch (error) {
+                    console.error("Error refreshing my offers:", error);
+                  }
+                }}
               />
               </div>
             )}
@@ -2741,12 +2922,14 @@ const App: React.FC = () => {
                     hasMore={marketplaceHasMore}
                     isLoadingMore={marketplaceIsLoadingMore}
                     isLoading={isLoadingData}
+                    isLoadingMyOffers={isLoadingMyOffers}
                     onLoadMore={loadMoreMarketplaceRequests}
                     onRefresh={reloadData}
                     loadError={requestsLoadError}
                     savedScrollPosition={marketplaceScrollPos}
                     onScrollPositionChange={setMarketplaceScrollPos}
                     viewedRequestIds={viewedRequestIds}
+                    isLoadingViewedRequests={isLoadingViewedRequests}
                     mode={mode}
                     toggleMode={toggleMode}
                     isModeSwitching={isModeSwitching}
@@ -2823,25 +3006,75 @@ const App: React.FC = () => {
           </div>
         );
       case "request-detail":
-        // إثراء الطلب بالعروض المستلمة إذا كان المستخدم هو صاحب الطلب
+        // إثراء الطلب بالعروض المستلمة إذا كان المستخدم هو صاحب الطلب (استثناء العروض المؤرشفة)
         const enrichedRequest = selectedRequest ? {
           ...selectedRequest,
-          offers: receivedOffersMap.get(selectedRequest.id) || selectedRequest.offers || []
+          offers: (receivedOffersMap.get(selectedRequest.id) || selectedRequest.offers || [])
         } : null;
         const handleRequestDetailBack = () => {
+          console.log('🔙 handleRequestDetailBack called', {
+            previousView,
+            previousBottomTab,
+            currentView: view,
+            activeBottomTab,
+            mode
+          });
+          
           setSelectedRequest(null);
           setOfferToEdit(null);
           setScrollToOfferSection(false);
           setNavigatedFromSidebar(false);
-          // الرجوع دائماً للماركت بليس
-          setView("marketplace");
-          // Marketplace will restore scroll position via savedScrollPosition prop
+          
+          // تحديد الصفحة المستهدفة
+          let targetView: ViewState = "marketplace";
+          let targetTab: BottomNavTab = activeBottomTab || (mode === "requests" ? "my-requests" : "marketplace");
+          
+          // إذا كان هناك previousView صالح، استخدمه
+          if (previousView && 
+              previousView !== "request-detail" && 
+              (previousView === "marketplace" || 
+               previousView === "dashboard" || 
+               previousView === "my-requests" || 
+               previousView === "my-offers" || 
+               previousView === "messages" || 
+               previousView === "profile" || 
+               previousView === "settings")) {
+            targetView = previousView;
+            if (previousBottomTab) {
+              targetTab = previousBottomTab;
+            }
+            console.log('✅ Using previousView:', targetView, 'with tab:', targetTab);
+          } else {
+            // الرجوع للصفحة المناسبة حسب التبويب النشط أو الـ mode
+            if (previousBottomTab) {
+              targetTab = previousBottomTab;
+            }
+            console.log('⚠️ No valid previousView, using fallback:', {
+              targetView,
+              targetTab,
+              mode
+            });
+          }
+          
+          // تنظيف previousView قبل تغيير view
+          setPreviousView(null);
+          setPreviousBottomTab(null);
+          
+          // تغيير التبويب أولاً إذا لزم الأمر
+          if (targetTab !== activeBottomTab) {
+            setActiveBottomTab(targetTab);
+          }
+          
+          // تغيير الصفحة
+          setView(targetView);
+          
+          console.log('✅ Navigated to:', targetView, 'with tab:', targetTab);
         };
         
-        // إذا كان هناك عرض للتعديل والطلب المحدد يطابقه، نستخدم العرض المحدد
-        const offerForEdit = offerToEdit && offerToEdit.request.id === enrichedRequest.id 
-          ? offerToEdit.offer 
-          : getMyOfferOnRequest(enrichedRequest.id);
+        // البحث عن العرض في myOffers
+        const offerForEdit = enrichedRequest 
+          ? getMyOfferOnRequest(enrichedRequest.id) || myOffers.find(o => o.requestId === enrichedRequest.id)
+          : undefined;
         
         return enrichedRequest
           ? (
@@ -2882,20 +3115,7 @@ const App: React.FC = () => {
                     setView("messages");
                   }
                 }}
-                savedOfferForm={
-                  // إذا كان هناك عرض للتعديل والطلب المحدد يطابقه، نملأ النموذج بقيم العرض
-                  offerToEdit && offerToEdit.request.id === enrichedRequest.id
-                    ? {
-                        price: offerToEdit.offer.price || '',
-                        duration: offerToEdit.offer.duration || '',
-                        city: offerToEdit.offer.city || '',
-                        title: offerToEdit.offer.title || '',
-                        description: offerToEdit.offer.description || '',
-                        attachments: offerToEdit.offer.attachments || [],
-                        guestVerificationStep: 'none' as const,
-                      }
-                    : savedOfferForms[selectedRequest.id]
-                }
+                savedOfferForm={savedOfferForms[selectedRequest.id]}
                 onOfferFormChange={(form) => {
                   setSavedOfferForms((prev) => ({
                     ...prev,
@@ -2928,7 +3148,7 @@ const App: React.FC = () => {
                   // Reload user's offers after creating a new one
                   if (user?.id) {
                     const offers = await fetchMyOffers(user.id);
-                    setMyOffers(offers.filter((o) => o.status !== "archived"));
+                    setMyOffers(offers);
                   }
                 }}
                 onNavigateToProfile={() => {
@@ -2939,41 +3159,10 @@ const App: React.FC = () => {
                   setPreviousView(view);
                   setView("settings");
                 }}
-                onCancelOffer={async (offerId: string) => {
-                  // Cancel the offer by updating its status
-                  const { error } = await supabase
-                    .from("offers")
-                    .update({ status: "cancelled" })
-                    .eq("id", offerId);
-                  
-                  if (error) {
-                    console.error("Error cancelling offer:", error);
-                    throw error;
-                  }
-                  
-                  // Refresh my offers list
-                  if (user?.id) {
-                    const offers = await fetchMyOffers(user.id);
-                    setMyOffers(offers.filter((o) => o.status !== "archived" && o.status !== "cancelled"));
-                  }
-                  
-                  // Go back to marketplace after cancellation
-                  setView("marketplace");
-                }}
-                onEditOffer={(offer) => {
-                  // Navigate to edit offer mode
-                  // البحث عن الطلب المرتبط بهذا العرض
-                  const relatedRequest = allRequests.find(r => r.id === offer.requestId);
-                  if (relatedRequest) {
-                    // تحديد العرض والطلب المراد تعديلهما
-                    setOfferToEdit({ offer, request: relatedRequest });
-                    // فتح صفحة تفاصيل الطلب مع تمييز العرض للتعديل
-                    setSelectedRequest(relatedRequest);
-                    setScrollToOfferSection(true);
-                    // سيتم فتح RequestDetail تلقائياً عند تغيير selectedRequest
-                  } else {
-                    console.error("Request not found for offer:", offer);
-                    alert("حدث خطأ: لم يتم العثور على الطلب المرتبط بالعرض");
+                                onCancelOffer={async (offerId: string) => {
+                  const deleted = await handleArchiveOffer(offerId);
+                  if (deleted) {
+                    handleRequestDetailBack();
                   }
                 }}
               />
@@ -2984,7 +3173,11 @@ const App: React.FC = () => {
         const handleSettingsBack = () => {
           if (previousView) {
             setView(previousView);
+            if (previousBottomTab) {
+              setActiveBottomTab(previousBottomTab);
+            }
             setPreviousView(null);
+            setPreviousBottomTab(null);
           } else {
             handleNavigate(
               mode === "requests" ? "create-request" : "marketplace",
@@ -3062,7 +3255,11 @@ const App: React.FC = () => {
         const handleProfileBack = () => {
           if (previousView) {
             setView(previousView);
+            if (previousBottomTab) {
+              setActiveBottomTab(previousBottomTab);
+            }
             setPreviousView(null);
+            setPreviousBottomTab(null);
           } else {
             handleNavigate(
               mode === "requests" ? "create-request" : "marketplace",
@@ -3118,7 +3315,11 @@ const App: React.FC = () => {
         const handleMessagesBack = () => {
           if (previousView) {
             setView(previousView);
+            if (previousBottomTab) {
+              setActiveBottomTab(previousBottomTab);
+            }
             setPreviousView(null);
+            setPreviousBottomTab(null);
           } else {
             handleNavigate(
               mode === "requests" ? "create-request" : "marketplace",
@@ -3552,8 +3753,7 @@ const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Global Floating Orb - Hidden for now, replaced by header button */}
-      {/* TODO: May be re-enabled later for voice input on create-request page */}
+      {/* Global Floating Orb - Currently used for navigation, voice input feature may be added later */}
       <GlobalFloatingOrb
         mode={view === "create-request" ? "voice" : "navigate"}
         onNavigate={() => handleNavigate("create-request")}

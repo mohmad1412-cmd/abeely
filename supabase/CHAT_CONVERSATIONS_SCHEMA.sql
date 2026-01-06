@@ -38,15 +38,32 @@ CREATE INDEX IF NOT EXISTS idx_ai_conversation_messages_created_at ON ai_convers
 
 -- تحديث updated_at تلقائياً
 CREATE OR REPLACE FUNCTION update_ai_conversation_updated_at()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF auth.role() <> 'service_role' THEN
+    PERFORM 1 FROM ai_conversations
+    WHERE id = p_conversation_id
+      AND user_id = auth.uid();
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Forbidden';
+    END IF;
+  END IF;
+
   UPDATE ai_conversations
   SET updated_at = NOW()
   WHERE id = NEW.conversation_id;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
+DROP TRIGGER IF EXISTS trigger_update_ai_conversation_updated_at ON ai_conversation_messages;
 CREATE TRIGGER trigger_update_ai_conversation_updated_at
   AFTER INSERT OR UPDATE ON ai_conversation_messages
   FOR EACH ROW
@@ -59,6 +76,16 @@ CREATE TRIGGER trigger_update_ai_conversation_updated_at
 -- تفعيل RLS
 ALTER TABLE ai_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_conversation_messages ENABLE ROW LEVEL SECURITY;
+
+-- حذف الـ policies القديمة إن وجدت
+DROP POLICY IF EXISTS "Users can view their own conversations" ON ai_conversations;
+DROP POLICY IF EXISTS "Users can create their own conversations" ON ai_conversations;
+DROP POLICY IF EXISTS "Users can update their own conversations" ON ai_conversations;
+DROP POLICY IF EXISTS "Users can delete their own conversations" ON ai_conversations;
+DROP POLICY IF EXISTS "Users can view messages of their conversations" ON ai_conversation_messages;
+DROP POLICY IF EXISTS "Users can insert messages to their conversations" ON ai_conversation_messages;
+DROP POLICY IF EXISTS "Users can update messages of their conversations" ON ai_conversation_messages;
+DROP POLICY IF EXISTS "Users can delete messages of their conversations" ON ai_conversation_messages;
 
 -- المستخدمون يمكنهم قراءة محادثاتهم فقط
 CREATE POLICY "Users can view their own conversations"
@@ -138,10 +165,22 @@ CREATE POLICY "Users can delete messages of their conversations"
 
 -- دالة للحصول على المحادثة النشطة للمستخدم
 CREATE OR REPLACE FUNCTION get_active_conversation(p_user_id UUID)
-RETURNS UUID AS $$
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   v_conversation_id UUID;
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  IF p_user_id IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   SELECT id INTO v_conversation_id
   FROM ai_conversations
   WHERE user_id = p_user_id
@@ -151,14 +190,26 @@ BEGIN
   
   RETURN v_conversation_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- دالة لإنشاء محادثة جديدة
 CREATE OR REPLACE FUNCTION create_new_conversation(p_user_id UUID, p_title TEXT DEFAULT NULL)
-RETURNS UUID AS $$
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   v_conversation_id UUID;
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF p_user_id IS DISTINCT FROM auth.uid() AND auth.role() <> 'service_role' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   -- إيقاف جميع المحادثات النشطة السابقة
   UPDATE ai_conversations
   SET is_active = false
@@ -171,16 +222,20 @@ BEGIN
   
   RETURN v_conversation_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- دالة لإيقاف محادثة (عند نشر الطلب)
 CREATE OR REPLACE FUNCTION deactivate_conversation(p_conversation_id UUID, p_request_id UUID DEFAULT NULL)
-RETURNS VOID AS $$
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
   UPDATE ai_conversations
   SET is_active = false,
       request_id = COALESCE(p_request_id, request_id)
   WHERE id = p_conversation_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 

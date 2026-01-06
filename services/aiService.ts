@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { logger } from '../utils/logger';
 import { supabase } from "./supabaseClient";
 
 const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
@@ -7,7 +8,14 @@ const MODEL_NAME = "claude-sonnet-4-20250514"; // أو claude-3-5-sonnet-2024102
 let client: Anthropic | null = null;
 
 const getClient = () => {
-  if (!client && apiKey) client = new Anthropic({ apiKey });
+  if (!client && apiKey) {
+    // ⚠️ Warning: Using Anthropic SDK in browser requires dangerouslyAllowBrowser
+    // This is only used as a fallback when Edge Function is unavailable
+    client = new Anthropic({ 
+      apiKey,
+      dangerouslyAllowBrowser: true // Required for browser usage
+    });
+  }
   return client;
 };
 
@@ -35,7 +43,7 @@ function extractJson(text: string): any {
     if (!jsonMatch) throw new Error("No JSON found");
     return JSON.parse(jsonMatch[0]);
   } catch (e) {
-    console.error("JSON Parse Error", e);
+    logger.error("JSON Parse Error", e, 'service');
     return { summary: text };
   }
 }
@@ -66,6 +74,21 @@ export type ChatHistoryMessage = {
   text: string;
 };
 
+// Helper function to invoke Edge Function with timeout
+async function invokeWithTimeout<T>(
+  fn: () => Promise<{ data: T | null; error: any }>,
+  timeoutMs: number = 30000
+): Promise<{ data: T | null; error: any }> {
+  const timeout = new Promise<{ data: null; error: { message: string; name: string } }>((resolve) =>
+    setTimeout(() => resolve({
+      data: null,
+      error: { message: `Request timeout after ${timeoutMs}ms`, name: 'TimeoutError' }
+    }), timeoutMs)
+  );
+
+  return Promise.race([fn(), timeout]);
+}
+
 export async function generateDraftWithCta(
   text: string,
   attachments?: File[],
@@ -74,14 +97,17 @@ export async function generateDraftWithCta(
 ): Promise<AIDraft & { isClarification?: boolean; aiResponse: string }> {
   // 1. Try Supabase Edge Function first (Secure, handles API key on server)
   try {
-    console.log("🔄 Calling Supabase Edge Function 'ai-chat' (draft mode)...");
-    const { data, error } = await supabase.functions.invoke("ai-chat", {
-      body: { 
-        prompt: text,
-        mode: "draft",
-        chatHistory: chatHistory || [], // إرسال تاريخ المحادثة
-      },
-    });
+    logger.log("🔄 Calling Supabase Edge Function 'ai-chat' (draft mode)...");
+    const { data, error } = await invokeWithTimeout(
+      () => supabase.functions.invoke("ai-chat", {
+        body: { 
+          prompt: text,
+          mode: "draft",
+          chatHistory: chatHistory || [], // إرسال تاريخ المحادثة
+        },
+      }),
+      30000 // 30 seconds timeout
+    );
 
     if (!error && data) {
       // AI response received successfully
@@ -89,7 +115,7 @@ export async function generateDraftWithCta(
     }
     
     if (error) {
-      console.error("❌ Supabase Edge Function Error:", {
+      logger.error("❌ Supabase Edge Function Error:", {
         message: error.message,
         name: error.name,
         context: error.context,
@@ -106,20 +132,20 @@ export async function generateDraftWithCta(
         } as any;
       }
       
-      console.warn("⚠️ Supabase function error, falling back to direct API:", error);
+      logger.warn("⚠️ Supabase function error, falling back to direct API:", error);
     }
   } catch (err: any) {
-    console.error("❌ Failed to invoke Supabase function:", {
+    logger.error("❌ Failed to invoke Supabase function:", {
       message: err?.message,
       stack: err?.stack
     });
-    console.warn("⚠️ Falling back to direct API...");
+    logger.warn("⚠️ Falling back to direct API...");
   }
 
   // 2. Fallback to direct client-side call (if VITE_ANTHROPIC_API_KEY exists)
   const anthropic = getClient();
   if (!anthropic) {
-    console.error("❌ No Anthropic client available. VITE_ANTHROPIC_API_KEY:", apiKey ? "موجود" : "غير موجود");
+    logger.error("❌ No Anthropic client available. VITE_ANTHROPIC_API_KEY:", apiKey ? "موجود" : "غير موجود");
     return {
       summary: text,
       aiResponse: `⚠️ خدمة الذكاء الاصطناعي غير متوفرة حالياً.
@@ -263,7 +289,7 @@ ${audioBlob ? `
 `;
 
   try {
-    console.log(`🔄 جاري استخدام النموذج: ${MODEL_NAME}`);
+    logger.log(`🔄 جاري استخدام النموذج: ${MODEL_NAME}`);
     
     // بناء الرسائل
     const messages: Anthropic.MessageParam[] = [
@@ -306,7 +332,7 @@ ${audioBlob ? `
               },
             });
           } catch (err) {
-            console.error(`Error processing image ${file.name}:`, err);
+            logger.error(`Error processing image ${file.name}:`, err);
           }
         }
       }
@@ -320,7 +346,7 @@ ${audioBlob ? `
 
     // ملاحظة: Anthropic API لا يدعم الصوت حالياً بشكل مباشر
     if (audioBlob) {
-      console.warn("⚠️ Anthropic API لا يدعم الصوت حالياً، سيتم تجاهل التسجيل الصوتي");
+      logger.warn("⚠️ Anthropic API لا يدعم الصوت حالياً، سيتم تجاهل التسجيل الصوتي");
     }
     
     const response = await anthropic.messages.create({
@@ -333,13 +359,13 @@ ${audioBlob ? `
     const content = response.content[0];
     if (content.type === 'text') {
       const textContent = content.text;
-      console.log(`✅ نجح استخدام النموذج: ${MODEL_NAME}`);
+      logger.log(`✅ نجح استخدام النموذج: ${MODEL_NAME}`);
       return extractJson(textContent);
     }
     
     throw new Error("لم يتم الحصول على نص من الرد");
   } catch (err: any) {
-    console.error("Anthropic interaction error", err);
+    logger.error("Anthropic interaction error", err, 'service');
     
     // Handle specific error types
     if (err?.message?.includes("quota") || err?.message?.includes("Quota") || err?.status === 429) {
@@ -397,26 +423,29 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
   
   // 1. Try checking Edge Function first
   try {
-    const { data, error } = await supabase.functions.invoke("ai-chat", {
-      body: { prompt: "ping", mode: "chat" },
-    });
+    const { data, error } = await invokeWithTimeout(
+      () => supabase.functions.invoke("ai-chat", {
+        body: { prompt: "ping", mode: "chat" },
+      }),
+      10000 // 10 seconds timeout for ping
+    );
     
     if (!error && data) {
-      console.log("✅ Supabase Edge Function 'ai-chat' is healthy.");
+      logger.log("✅ Supabase Edge Function 'ai-chat' is healthy.");
       const result = { connected: true };
       aiConnectionCache = { ...result, timestamp: Date.now() };
       localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
       return result;
     }
   } catch (err) {
-    console.warn("⚠️ Edge Function check failed:", err);
+    logger.warn("⚠️ Edge Function check failed:", err);
   }
 
   // 2. Fallback to checking direct API key
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
   
   if (!apiKey) {
-    console.warn("⚠️ VITE_ANTHROPIC_API_KEY غير موجود في ملف .env");
+    logger.warn("⚠️ VITE_ANTHROPIC_API_KEY غير موجود في ملف .env");
     const result = { connected: false, error: "VITE_ANTHROPIC_API_KEY غير موجود في ملف .env" };
     aiConnectionCache = { ...result, timestamp: Date.now() };
     localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
@@ -425,7 +454,7 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
 
   const anthropic = getClient();
   if (!anthropic) {
-    console.error("❌ فشل في إنشاء عميل Anthropic");
+    logger.error("❌ فشل في إنشاء عميل Anthropic");
     const result = { connected: false, error: "فشل في إنشاء عميل Anthropic" };
     aiConnectionCache = { ...result, timestamp: Date.now() };
     localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
@@ -451,14 +480,14 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
     ]) as any;
     
     if (result?.content?.[0]?.type === 'text') {
-      console.log(`✅ الاتصال بالذكاء الاصطناعي ناجح باستخدام: ${modelName}`);
+      logger.log(`✅ الاتصال بالذكاء الاصطناعي ناجح باستخدام: ${modelName}`);
       const successResult = { connected: true };
       aiConnectionCache = { ...successResult, timestamp: Date.now() };
       localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
       return successResult;
     }
   } catch (err: any) {
-    console.warn(`⚠️ فشل النموذج ${modelName}:`, err.message);
+    logger.warn(`⚠️ فشل النموذج ${modelName}:`, err.message);
     const failResult = { connected: false, error: err.message };
     aiConnectionCache = { ...failResult, timestamp: Date.now() };
     localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
@@ -470,3 +499,5 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
   aiConnectionCache = { ...unknownResult, timestamp: Date.now() };
   return unknownResult;
 }
+
+// Image search functionality removed

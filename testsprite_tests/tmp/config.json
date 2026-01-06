@@ -1,0 +1,18 @@
+{
+  "status": "commited",
+  "type": "frontend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:3005",
+  "loginUser": "0555555555",
+  "loginPassword": "0000",
+  "executionArgs": {
+    "projectName": "copy-of-copy-of-servicelink-ai-platform",
+    "projectPath": "C:\\dev\\copy-of-copy-of-servicelink-ai-platform",
+    "testIds": [],
+    "additionalInstruction": "Use the test IDs from test-helpers.md. The app runs on http://localhost:3005. Focus on testing authentication flow, navigation, and marketplace features. Use data-testid attributes for element selection.",
+    "envs": {
+      "API_KEY": "sk-user-_IOSnF631M1Acf12-2EwWaVlwSr6NwCpEtvn_AoHh6fdNOZhZegoLVDmBOZcyzecJektr0YOG2B8G4CBhJvMHHWNlCK25tu1TtD53pebJWwZc73is6msgHVGcxBstQ_ynBU"
+    }
+  },
+  "proxy": "http://2f9a2ccc-cebf-470b-b769-f76e350008e4:pZHo1zhvxAQb65gMqxDcrqlwQql61Yqi@tun.testsprite.com:8080"
+}

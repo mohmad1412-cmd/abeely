@@ -65,12 +65,15 @@ CREATE INDEX IF NOT EXISTS idx_verified_guests_created_at ON verified_guests(cre
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
 BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 -- Add updated_at triggers
 CREATE TRIGGER update_profiles_updated_at
@@ -100,7 +103,10 @@ DROP FUNCTION IF EXISTS create_profile_for_user(UUID) CASCADE;
 
 -- Function to create profile when user is created
 CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
 DECLARE
   user_phone TEXT;
   user_email TEXT;
@@ -153,11 +159,15 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- Function to update profile when user data changes
 CREATE OR REPLACE FUNCTION handle_user_update()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   user_display_name TEXT;
   user_avatar_url TEXT;
@@ -198,14 +208,23 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- Function to manually create profile (for existing users)
 CREATE OR REPLACE FUNCTION create_profile_for_user(user_id UUID)
-RETURNS BOOLEAN AS $$
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   user_record auth.users%ROWTYPE;
 BEGIN
+  IF COALESCE(auth.role(), '') <> 'service_role'
+     AND COALESCE(current_setting('request.jwt.claim.role', true), '') <> '' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   IF EXISTS (SELECT 1 FROM public.profiles WHERE id = user_id) THEN
     RETURN FALSE;
   END IF;
@@ -256,7 +275,7 @@ BEGIN
   
   RETURN TRUE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- Create triggers
 CREATE TRIGGER on_auth_user_created
@@ -326,17 +345,21 @@ USING (
 
 -- Helper functions
 CREATE OR REPLACE FUNCTION verify_guest_phone(
-  phone_number TEXT,
-  verification_code TEXT
+  p_phone_number TEXT,
+  p_verification_code TEXT
 )
-RETURNS BOOLEAN AS $$
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   guest_record verified_guests%ROWTYPE;
 BEGIN
   SELECT * INTO guest_record
   FROM verified_guests
-  WHERE phone = phone_number
-    AND verification_code = verification_code
+  WHERE phone = p_phone_number
+    AND verification_code = p_verification_code
     AND code_expires_at > NOW()
     AND is_verified = FALSE;
   
@@ -349,25 +372,34 @@ BEGIN
     is_verified = TRUE,
     verified_at = NOW(),
     updated_at = NOW()
-  WHERE phone = phone_number
-    AND verification_code = verification_code;
+  WHERE phone = p_phone_number
+    AND verification_code = p_verification_code;
   
   RETURN TRUE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 CREATE OR REPLACE FUNCTION clean_expired_guest_records()
-RETURNS INTEGER AS $$
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   deleted_count INTEGER;
 BEGIN
+  IF COALESCE(auth.role(), '') <> 'service_role'
+     AND COALESCE(current_setting('request.jwt.claim.role', true), '') <> '' THEN
+    RAISE EXCEPTION 'Forbidden';
+  END IF;
+
   DELETE FROM verified_guests
   WHERE code_expires_at < NOW() - INTERVAL '24 hours';
   
   GET DIAGNOSTICS deleted_count = ROW_COUNT;
   RETURN deleted_count;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- ==========================================
 -- Step 4: Create profiles for existing users (if any)

@@ -54,7 +54,7 @@ export interface Offer {
   description: string;
   price: string;
   deliveryTime: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'negotiating' | 'archived';
+  status: 'pending' | 'accepted' | 'rejected' | 'negotiating' | 'cancelled' | 'completed';
   createdAt: Date;
   isNegotiable?: boolean;
   location?: string;

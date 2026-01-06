@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { logger } from '../utils/logger';
 
 interface Props {
   children: ReactNode;
@@ -7,6 +8,7 @@ interface Props {
 interface State {
   hasError: boolean;
   error?: Error;
+  errorInfo?: ErrorInfo;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -19,7 +21,12 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+    // Log error using logger (will be sent to monitoring service in production)
+    logger.error('Uncaught error in ErrorBoundary', error, 'ErrorBoundary');
+    logger.error('Error Info', errorInfo, 'ErrorBoundary');
+    
+    // Store error info for display
+    this.setState({ errorInfo });
   }
 
   public render() {
@@ -37,11 +44,16 @@ export class ErrorBoundary extends Component<Props, State> {
             >
               تحديث الصفحة
             </button>
-            {this.state.error && (
+            {(this.state.error || this.state.errorInfo) && (
               <details className="mt-4 text-left">
-                <summary className="cursor-pointer text-sm text-muted-foreground">تفاصيل الخطأ</summary>
-                <pre className="mt-2 text-xs bg-secondary p-2 rounded overflow-auto">
-                  {this.state.error.toString()}
+                <summary className="cursor-pointer text-sm text-muted-foreground">تفاصيل الخطأ (للمطورين)</summary>
+                <pre className="mt-2 text-xs bg-secondary p-2 rounded overflow-auto max-h-40">
+                  {this.state.error?.toString()}
+                  {this.state.errorInfo && (
+                    <div className="mt-2 text-muted-foreground">
+                      Component Stack: {this.state.errorInfo.componentStack}
+                    </div>
+                  )}
                 </pre>
               </details>
             )}

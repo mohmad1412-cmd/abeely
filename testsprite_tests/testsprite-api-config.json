@@ -1,0 +1,96 @@
+{
+  "project_name": "ServiceLink AI Platform",
+  "api_type": "supabase",
+  "base_url": "https://iwfvlrtmbixequntufjr.supabase.co",
+  "api_version": "v1",
+  "rest_api_base": "https://iwfvlrtmbixequntufjr.supabase.co/rest/v1",
+  "auth": {
+    "type": "bearer",
+    "header": "Authorization",
+    "token_prefix": "Bearer",
+    "anon_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA"
+  },
+  "tables": {
+    "requests": {
+      "endpoint": "/rest/v1/requests",
+      "description": "الطلبات الرئيسية",
+      "methods": ["GET", "POST", "PATCH", "DELETE"],
+      "required_fields": ["title", "description", "author_id"],
+      "optional_fields": ["budget_min", "budget_max", "location", "status", "is_public"]
+    },
+    "offers": {
+      "endpoint": "/rest/v1/offers",
+      "description": "العروض على الطلبات",
+      "methods": ["GET", "POST", "PATCH", "DELETE"],
+      "required_fields": ["request_id", "provider_id", "price", "description"],
+      "optional_fields": ["status", "duration", "city"]
+    },
+    "categories": {
+      "endpoint": "/rest/v1/categories",
+      "description": "التصنيفات",
+      "methods": ["GET"],
+      "required_fields": [],
+      "optional_fields": []
+    },
+    "request_categories": {
+      "endpoint": "/rest/v1/request_categories",
+      "description": "ربط الطلبات بالتصنيفات",
+      "methods": ["GET", "POST", "DELETE"],
+      "required_fields": ["request_id", "category_id"],
+      "optional_fields": []
+    },
+    "users": {
+      "endpoint": "/rest/v1/users",
+      "description": "معلومات المستخدمين",
+      "methods": ["GET", "PATCH"],
+      "required_fields": [],
+      "optional_fields": ["display_name", "avatar_url", "phone", "email"]
+    },
+    "notifications": {
+      "endpoint": "/rest/v1/notifications",
+      "description": "الإشعارات",
+      "methods": ["GET", "POST", "PATCH", "DELETE"],
+      "required_fields": ["user_id", "type", "title"],
+      "optional_fields": ["message", "data", "read_at"]
+    },
+    "messages": {
+      "endpoint": "/rest/v1/messages",
+      "description": "الرسائل",
+      "methods": ["GET", "POST", "PATCH"],
+      "required_fields": ["conversation_id", "sender_id", "content"],
+      "optional_fields": ["read_at", "attachments"]
+    },
+    "conversations": {
+      "endpoint": "/rest/v1/conversations",
+      "description": "المحادثات",
+      "methods": ["GET", "POST"],
+      "required_fields": ["participant1_id", "participant2_id"],
+      "optional_fields": ["request_id", "offer_id"]
+    },
+    "reports": {
+      "endpoint": "/rest/v1/reports",
+      "description": "البلاغات",
+      "methods": ["GET", "POST"],
+      "required_fields": ["reporter_id", "reason", "entity_type"],
+      "optional_fields": ["entity_id", "description"]
+    }
+  },
+  "auth_endpoints": {
+    "signup": "/auth/v1/signup",
+    "signin": "/auth/v1/token",
+    "signout": "/auth/v1/logout",
+    "user": "/auth/v1/user",
+    "otp": {
+      "send": "/auth/v1/otp",
+      "verify": "/auth/v1/verify"
+    }
+  },
+  "notes": [
+    "هذا التطبيق يستخدم Supabase JS Client في الغالب، وليس REST API مباشر",
+    "REST API متاح لكن الاختبارات قد تحتاج استخدام JS Client للاختبارات الواقعية",
+    "جميع الـ endpoints تحتاج Authorization header مع Bearer token",
+    "بعض الـ endpoints محمية بـ Row Level Security (RLS)",
+    "للاستخدام في TestSprite، استخدم /rest/v1/{table_name} للوصول للجداول"
+  ]
+}
+

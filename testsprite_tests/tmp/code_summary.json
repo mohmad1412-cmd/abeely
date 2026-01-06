@@ -1,0 +1,199 @@
+{
+  "tech_stack": [
+    "TypeScript",
+    "React",
+    "Vite",
+    "Supabase",
+    "TailwindCSS",
+    "Framer Motion",
+    "Capacitor",
+    "Anthropic Claude",
+    "Google Gemini",
+    "Playwright"
+  ],
+  "features": [
+    {
+      "name": "Authentication System",
+      "description": "Phone OTP authentication, email login, Google OAuth, guest mode",
+      "files": [
+        "components/AuthPage.tsx",
+        "components/AuthCallback.tsx",
+        "services/authService.ts",
+        "hooks/useAuth.ts"
+      ]
+    },
+    {
+      "name": "Marketplace",
+      "description": "Browse requests, filter by categories/cities/budget, view modes (all/interests), search",
+      "files": [
+        "components/Marketplace.tsx",
+        "components/ui/UnifiedFilterIsland.tsx",
+        "components/ui/FloatingFilterIsland.tsx",
+        "components/ui/ViewModeSwitcher.tsx"
+      ]
+    },
+    {
+      "name": "Request Management",
+      "description": "Create, edit, view, archive, hide, bump requests with AI assistance",
+      "files": [
+        "components/CreateRequestV2.tsx",
+        "components/RequestDetail.tsx",
+        "components/MyRequests.tsx",
+        "services/requestsService.ts"
+      ]
+    },
+    {
+      "name": "Offer Management",
+      "description": "Create, edit, view, archive offers on requests",
+      "files": [
+        "components/MyOffers.tsx",
+        "components/ui/QuickOfferForm.tsx",
+        "services/requestsService.ts"
+      ]
+    },
+    {
+      "name": "AI Assistant",
+      "description": "AI-powered request creation using Anthropic Claude and Google Gemini",
+      "files": [
+        "components/GlobalFloatingOrb.tsx",
+        "components/CreateRequestV2.tsx",
+        "services/aiService.ts",
+        "services/geminiService.ts",
+        "services/customerServiceAI.ts"
+      ]
+    },
+    {
+      "name": "Messaging System",
+      "description": "Real-time messaging between requesters and providers",
+      "files": [
+        "components/Messages.tsx",
+        "services/messagesService.ts",
+        "services/chatConversationsService.ts"
+      ]
+    },
+    {
+      "name": "Notifications",
+      "description": "Real-time notifications with sound alerts",
+      "files": [
+        "components/NotificationsPopover.tsx",
+        "services/notificationsService.ts",
+        "services/notificationSoundService.ts"
+      ]
+    },
+    {
+      "name": "User Profile & Settings",
+      "description": "User profile management, preferences, theme toggle, language selection",
+      "files": [
+        "components/Profile.tsx",
+        "components/Settings.tsx",
+        "services/preferencesService.ts"
+      ]
+    },
+    {
+      "name": "Categories Management",
+      "description": "Dynamic categories with multi-language support (Arabic, English, Urdu)",
+      "files": [
+        "services/categoriesService.ts",
+        "utils/categoryColors.ts"
+      ]
+    },
+    {
+      "name": "Location Services",
+      "description": "City search and autocomplete using Google Maps",
+      "files": [
+        "services/placesService.ts",
+        "components/ui/CityAutocomplete.tsx",
+        "hooks/useGoogleMapsLoader.ts"
+      ]
+    },
+    {
+      "name": "Request Views Tracking",
+      "description": "Track viewed requests and interests",
+      "files": [
+        "services/requestViewsService.ts"
+      ]
+    },
+    {
+      "name": "Routing & Navigation",
+      "description": "Client-side routing with deep linking support",
+      "files": [
+        "components/BottomNavigation.tsx",
+        "services/routingService.ts",
+        "App.tsx"
+      ]
+    },
+    {
+      "name": "UI Components",
+      "description": "Reusable UI components library",
+      "files": [
+        "components/ui/Button.tsx",
+        "components/ui/Badge.tsx",
+        "components/ui/LoadingSkeleton.tsx",
+        "components/ui/EmptyState.tsx",
+        "components/ui/ServiceCard.tsx",
+        "components/ui/SimpleRequestCard.tsx",
+        "components/ui/UnifiedHeader.tsx",
+        "components/ui/DropdownMenu.tsx",
+        "components/ui/InterestToast.tsx",
+        "components/ui/UnarchiveToast.tsx"
+      ]
+    },
+    {
+      "name": "Onboarding",
+      "description": "First-time user onboarding flow",
+      "files": [
+        "components/OnboardingScreen.tsx"
+      ]
+    },
+    {
+      "name": "Splash Screen",
+      "description": "App loading and initialization screen",
+      "files": [
+        "components/SplashScreen.tsx"
+      ]
+    },
+    {
+      "name": "Error Handling",
+      "description": "Global error boundary and error handling",
+      "files": [
+        "components/ErrorBoundary.tsx"
+      ]
+    },
+    {
+      "name": "Storage Service",
+      "description": "File upload and storage management",
+      "files": [
+        "services/storageService.ts"
+      ]
+    },
+    {
+      "name": "Haptic Feedback",
+      "description": "Mobile haptic feedback integration",
+      "files": [
+        "services/hapticService.ts",
+        "hooks/useRipple.ts"
+      ]
+    },
+    {
+      "name": "Reports Service",
+      "description": "Report inappropriate content",
+      "files": [
+        "services/reportsService.ts"
+      ]
+    },
+    {
+      "name": "Supabase Client",
+      "description": "Supabase database and auth client configuration",
+      "files": [
+        "services/supabaseClient.ts"
+      ]
+    },
+    {
+      "name": "Time Formatting",
+      "description": "Relative time formatting utilities",
+      "files": [
+        "utils/timeFormat.ts"
+      ]
+    }
+  ]
+}

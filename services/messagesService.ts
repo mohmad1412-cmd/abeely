@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { logger } from '../utils/logger';
 
 // ==========================================
 // Constants
@@ -74,7 +75,7 @@ export async function getConversations(): Promise<Conversation[]> {
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError) {
-      console.error('Auth error in getConversations:', authError);
+      logger.error('Auth error in getConversations:', authError, 'service');
       return [];
     }
     if (!user) return [];
@@ -87,7 +88,7 @@ export async function getConversations(): Promise<Conversation[]> {
       .order('last_message_at', { ascending: false, nullsFirst: false });
 
     if (convError) {
-      console.error('Supabase error in getConversations:', convError);
+      logger.error('Supabase error in getConversations:', convError, 'service');
       if (convError.code === '42P01' || convError.code === 'PGRST116') {
         return [];
       }
@@ -145,13 +146,13 @@ export async function getConversations(): Promise<Conversation[]> {
             .neq('sender_id', user.id);
           
           if (countError) {
-            console.warn('Error getting unread count for conversation:', conv.id, countError);
+            logger.warn('Error getting unread count for conversation:', conv.id, countError);
             unreadCount = 0;
           } else {
             unreadCount = count || 0;
           }
         } catch (countErr) {
-          console.warn('Exception getting unread count:', countErr);
+          logger.warn('Exception getting unread count:', countErr);
           unreadCount = 0;
         }
 
@@ -165,7 +166,7 @@ export async function getConversations(): Promise<Conversation[]> {
 
     return conversations;
   } catch (error) {
-    console.error('Error fetching conversations:', error);
+    logger.error('Error fetching conversations:', error, 'service');
     return [];
   }
 }
@@ -211,7 +212,7 @@ export async function getOrCreateConversation(
 
     return newConv as Conversation;
   } catch (error) {
-    console.error('Error getting/creating conversation:', error);
+    logger.error('Error getting/creating conversation:', error, 'service');
     return null;
   }
 }
@@ -263,7 +264,7 @@ export async function getConversation(conversationId: string): Promise<Conversat
       other_user: otherUser,
     } as Conversation;
   } catch (error) {
-    console.error('Error fetching conversation:', error);
+    logger.error('Error fetching conversation:', error, 'service');
     return null;
   }
 }
@@ -318,7 +319,7 @@ export async function getMessages(conversationId: string, limit = 50): Promise<M
 
     return data.reverse() as Message[]; // Reverse to show oldest first
   } catch (error) {
-    console.error('Error fetching messages:', error);
+    logger.error('Error fetching messages:', error, 'service');
     return [];
   }
 }
@@ -346,7 +347,7 @@ export async function sendMessage(
       .eq('id', conversationId)
       .single();
     if (!conv || (conv.participant1_id !== user.id && conv.participant2_id !== user.id)) {
-      console.warn('User not allowed to send in this conversation');
+      logger.warn('User not allowed to send in this conversation');
       return null;
     }
 
@@ -440,10 +441,10 @@ export async function sendMessage(
             });
 
           if (notifError) {
-            console.warn('Failed to create notification (trigger should handle it):', notifError);
+            logger.warn('Failed to create notification (trigger should handle it):', notifError);
           }
         } catch (notifError) {
-          console.warn('Exception creating notification (trigger should handle it):', notifError);
+          logger.warn('Exception creating notification (trigger should handle it):', notifError);
         }
       }
     }
@@ -453,7 +454,7 @@ export async function sendMessage(
       sender: senderProfile || null,
     } as Message;
   } catch (error) {
-    console.error('Error sending message:', error);
+    logger.error('Error sending message:', error, 'service');
     return null;
   }
 }
@@ -473,7 +474,7 @@ export async function markMessagesAsRead(conversationId: string): Promise<boolea
       .eq('id', conversationId)
       .single();
     if (!conv || (conv.participant1_id !== user.id && conv.participant2_id !== user.id)) {
-      console.warn('User not allowed to mark messages in this conversation');
+      logger.warn('User not allowed to mark messages in this conversation');
       return false;
     }
 
@@ -497,7 +498,7 @@ export async function markMessagesAsRead(conversationId: string): Promise<boolea
 
     return true;
   } catch (error) {
-    console.error('Error marking messages as read:', error);
+    logger.error('Error marking messages as read:', error, 'service');
     return false;
   }
 }
@@ -618,7 +619,7 @@ export async function closeConversationsForRequest(
       .neq('is_closed', true);
 
     if (error) {
-      console.error('خطأ في جلب المحادثات:', error);
+      logger.error('خطأ في جلب المحادثات:', error, 'service');
       return { closedCount: 0, systemMessagesSent: 0 };
     }
 
@@ -655,7 +656,7 @@ export async function closeConversationsForRequest(
 
     return { closedCount, systemMessagesSent };
   } catch (error) {
-    console.error('خطأ في إغلاق المحادثات:', error);
+    logger.error('خطأ في إغلاق المحادثات:', error, 'service');
     return { closedCount: 0, systemMessagesSent: 0 };
   }
 }
@@ -684,7 +685,7 @@ export async function sendSystemMessage(
       .single();
 
     if (error) {
-      console.error('خطأ في إرسال رسالة النظام:', error);
+      logger.error('خطأ في إرسال رسالة النظام:', error, 'service');
       return null;
     }
 
@@ -699,7 +700,7 @@ export async function sendSystemMessage(
 
     return data as Message;
   } catch (error) {
-    console.error('خطأ في إرسال رسالة النظام:', error);
+    logger.error('خطأ في إرسال رسالة النظام:', error, 'service');
     return null;
   }
 }
@@ -775,7 +776,7 @@ export async function uploadMessageAttachment(
       });
 
     if (error) {
-      console.error('Upload error:', error);
+      logger.error('Upload error:', error, 'service');
       return null;
     }
 
@@ -801,7 +802,7 @@ export async function uploadMessageAttachment(
       file_size: file.size,
     };
   } catch (error) {
-    console.error('Error uploading attachment:', error);
+    logger.error('Error uploading attachment:', error, 'service');
     return null;
   }
 }
@@ -849,7 +850,7 @@ export async function uploadVoiceMessage(
       });
 
     if (error) {
-      console.error('Voice upload error:', error);
+      logger.error('Voice upload error:', error, 'service');
       return null;
     }
 
@@ -863,7 +864,7 @@ export async function uploadVoiceMessage(
       duration: Math.round(duration),
     };
   } catch (error) {
-    console.error('Error uploading voice message:', error);
+    logger.error('Error uploading voice message:', error, 'service');
     return null;
   }
 }
@@ -901,7 +902,7 @@ export async function getTotalUnreadMessagesCount(): Promise<number> {
     if (countError) return 0;
     return count || 0;
   } catch (error) {
-    console.error('Error getting unread count:', error);
+    logger.error('Error getting unread count:', error, 'service');
     return 0;
   }
 }
@@ -970,7 +971,7 @@ export async function getUnreadMessagesForMyRequests(userRequestIds: string[]): 
     if (countError) return 0;
     return count || 0;
   } catch (error) {
-    console.error('Error getting unread messages for my requests:', error);
+    logger.error('Error getting unread messages for my requests:', error, 'service');
     return 0;
   }
 }
@@ -1006,7 +1007,7 @@ export async function getUnreadMessagesForMyOffers(userOfferIds: string[]): Prom
     if (countError) return 0;
     return count || 0;
   } catch (error) {
-    console.error('Error getting unread messages for my offers:', error);
+    logger.error('Error getting unread messages for my offers:', error, 'service');
     return 0;
   }
 }

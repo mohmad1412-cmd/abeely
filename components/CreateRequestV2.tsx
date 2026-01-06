@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { logger } from '../utils/logger';
 import ReactDOM from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -33,15 +34,9 @@ import {
   AlertCircle,
   Target,
 } from "lucide-react";
-import { findApproximateImages } from "../services/geminiService";
 import { UnifiedHeader } from "./ui/UnifiedHeader";
 import { Request } from "../types";
 import Anthropic from "@anthropic-ai/sdk";
-import {
-  FinalReview,
-  ClarificationPage,
-  CustomerServiceResponse,
-} from "../services/customerServiceAI";
 import { generateDraftWithCta } from "../services/aiService";
 import { VoiceProcessingStatus } from "./GlobalFloatingOrb";
 import { CityAutocomplete } from "./ui/CityAutocomplete";
@@ -146,6 +141,22 @@ const SubmitButtonWithShake: React.FC<SubmitButtonWithShakeProps> = ({
 // ============================================
 // Types
 // ============================================
+interface ClarificationPage {
+  pageNumber: number;
+  totalPages: number;
+  question: string;
+  answer?: string;
+}
+
+interface FinalReview {
+  title: string;
+  reformulated_request: string;
+  system_category: string;
+  new_category_suggestion: string;
+  location?: string;
+  ui_action: string;
+}
+
 interface AdditionalField {
   id: string;
   name: string;
@@ -217,7 +228,7 @@ const extractInfoFromMessage = async (
     
     // Note: Anthropic API doesn't support audio directly, so audio will be ignored
     if (audioBlob) {
-      console.warn("⚠️ Anthropic API doesn't support audio, audio blob will be ignored");
+      logger.warn("⚠️ Anthropic API doesn't support audio, audio blob will be ignored");
     }
     
     const prompt = `أنت مساعد ذكي في منصة "أبيلي" للطلبات. تفهم اللهجة السعودية والعربية الفصحى.
@@ -315,7 +326,7 @@ JSON فقط:
     
     return simpleExtraction(userMessage);
   } catch (error) {
-    console.error("AI Extraction Error:", error);
+    logger.error("AI Extraction Error:", error, 'service');
     return simpleExtraction(userMessage);
   }
 };
@@ -1015,13 +1026,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     };
   }, [fileUrls]);
   
-  // ==========================================
-  // Image Search State
-  // ==========================================
-  const [isImageSearching, setIsImageSearching] = useState(false);
-  const [searchedImages, setSearchedImages] = useState<string[]>([]);
-  const [selectedSearchImages, setSelectedSearchImages] = useState<Set<string>>(new Set());
-  const [selectedImageUrls, setSelectedImageUrls] = useState<string[]>([]);
+  // Image search functionality removed
   
   // ==========================================
   // Additional fields
@@ -1294,13 +1299,13 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       // Anonymous sign-in (must be enabled on Supabase)
       const { data, error } = await supabase.auth.signInAnonymously();
       if (error) {
-        console.error("Anonymous sign-in error:", error);
+        logger.error("Anonymous sign-in error:", error, 'service');
         return null;
       }
       const newUserId = data?.user?.id || data?.session?.user?.id || null;
       return newUserId;
     } catch (err) {
-      console.error("Anonymous sign-in exception:", err);
+      logger.error("Anonymous sign-in exception:", err, 'service');
       return null;
     }
   }, []);
@@ -1325,7 +1330,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         value: f.value,
         enabled: f.enabled,
       })),
-      selectedImageUrls: selectedImageUrls,
       attachedFiles: attachedFiles.map((file, index) => ({
         name: file.name,
         type: file.type,
@@ -1350,7 +1354,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     if (user?.id) {
       localStorage.removeItem('abeely_pending_request_form');
     }
-  }, [title, description, location, budgetMin, budgetMax, deliveryValue, customDeliveryValue, additionalFields, selectedImageUrls, attachedFiles, user?.id]);
+  }, [title, description, location, budgetMin, budgetMax, deliveryValue, customDeliveryValue, additionalFields, attachedFiles, user?.id]);
 
   // Restore form data from localStorage
   // SECURITY: Only restore drafts that belong to the current user
@@ -1386,7 +1390,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       // SECURITY: Verify that the draft belongs to the current user
       // If user is logged in and draft has a userId, they must match
       if (user?.id && formData.userId && formData.userId !== user.id) {
-        console.warn('Security: Draft belongs to different user, ignoring');
+        logger.warn('Security: Draft belongs to different user, ignoring');
         // Clean up the draft that doesn't belong to this user
         localStorage.removeItem(storageKey);
         return false;
@@ -1417,11 +1421,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         })));
       }
       
-      // Restore selected images
-      if (formData.selectedImageUrls && Array.isArray(formData.selectedImageUrls)) {
-        setSelectedImageUrls(formData.selectedImageUrls);
-      }
-      
       // Clear saved data after restoring
       localStorage.removeItem(storageKey);
       
@@ -1433,7 +1432,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       
       return true;
     } catch (error) {
-      console.error('Error restoring form data:', error);
+      logger.error('Error restoring form data:', error, 'service');
       if (storageKey) {
         localStorage.removeItem(storageKey);
       }
@@ -1445,7 +1444,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   useEffect(() => {
     if (!isGuest && restoreFormDataFromGuest()) {
       // Show a notification that data was restored
-      console.log('تم استعادة بيانات النموذج المحفوظة');
+      logger.log('تم استعادة بيانات النموذج المحفوظة');
     }
   }, [isGuest, restoreFormDataFromGuest]);
   
@@ -1541,56 +1540,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     );
   };
 
-  // ==========================================
-  // Image Search Functions
-  // ==========================================
-  const handleImageSearch = async (loadMore = false) => {
-    const searchQuery = title || description;
-    if (!searchQuery) {
-      return;
-    }
-    setIsImageSearching(true);
-    try {
-      const images = await findApproximateImages(searchQuery);
-      if (images && images.length > 0) {
-        if (loadMore) {
-          setSearchedImages(prev => {
-            const newImages = images.filter(img => !prev.includes(img));
-            return [...prev, ...newImages];
-          });
-        } else {
-          setSearchedImages(images);
-          setSelectedSearchImages(new Set());
-        }
-      }
-    } catch (e) {
-      console.error("Image search error:", e);
-    } finally {
-      setIsImageSearching(false);
-    }
-  };
-
-  const toggleImageSelection = (imageUrl: string) => {
-    setSelectedSearchImages(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(imageUrl)) {
-        newSet.delete(imageUrl);
-      } else {
-        newSet.add(imageUrl);
-      }
-      return newSet;
-    });
-  };
-
-  const addSelectedImagesToAttachments = () => {
-    if (selectedSearchImages.size === 0) return;
-    const selectedUrls = Array.from(selectedSearchImages);
-    setSelectedImageUrls(prev => [...prev, ...selectedUrls]);
-    // Remove selected images from search results (so they don't show as duplicates)
-    setSearchedImages(prev => prev.filter(img => !selectedSearchImages.has(img)));
-    setSelectedSearchImages(new Set());
-    // Keep search results visible - don't clear them
-  };
+  // Image search functions removed
   
   // Celebration state
   const [showCelebration, setShowCelebration] = useState(false);
@@ -1652,7 +1602,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       // استخراج عنوان ذكي من الوصف
       const desc = description.trim();
       
-      // محاولة استخدام AI للعنوان والتصنيف (استخدام ai-chat بدلاً من customer-service-ai)
+      // استخدام AI لاستخراج العنوان والتصنيفات
       const draft = await generateDraftWithCta(desc);
       
       if (draft && !draft.isClarification) {
@@ -1884,7 +1834,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         }
       }
     } catch (error) {
-      console.error("Error generating title:", error);
+      logger.error("Error generating title:", error, 'service');
       // Fallback: استخراج العنوان محلياً
       const desc = description.trim();
       const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
@@ -1996,7 +1946,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         updateVoiceStatus({ stage: 'processing', message: 'جاري تحليل طلبك...' });
       }, 1000);
       
-      // استخدام ai-chat بدلاً من customer-service-ai (ملاحظة: ai-chat لا يدعم الصوت مباشرة، سيتم تجاهل audioBlob)
+      // استخدام AI لاستخراج العنوان والتصنيفات من الوصف الصوتي
       const draft = await generateDraftWithCta(
         description || "طلب صوتي",
         undefined, // لا دعم للصور هنا
@@ -2049,7 +1999,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         updateVoiceStatus({ stage: 'error', message: 'فشل معالجة الطلب' });
       }
     } catch (error) {
-      console.error("Voice processing error:", error);
+      logger.error("Voice processing error:", error, 'service');
       updateVoiceStatus({ stage: 'error', message: 'حدث خطأ، حاول مرة أخرى' });
     } finally {
       setIsAiLoading(false);
@@ -2084,7 +2034,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     setIsAiLoading(true);
 
     try {
-      // استخدام ai-chat بدلاً من customer-service-ai
+      // استخدام AI لاستخراج العنوان والتصنيفات
       const draft = await generateDraftWithCta(
         userMessage || "طلب صوتي",
         undefined, // لا دعم للصور هنا
@@ -2155,7 +2105,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         }
       }
     } catch (error) {
-      console.error("Error processing message:", error);
+      logger.error("Error processing message:", error, 'service');
       setAiMessages((prev) => [
         ...prev,
         {
@@ -2274,7 +2224,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           if (draft.location) setLocation(draft.location);
         }
       } catch (error) {
-        console.error("Error reprocessing with answers:", error);
+        logger.error("Error reprocessing with answers:", error, 'service');
         setAiMessages((prev) => [
           ...prev,
           {
@@ -2319,11 +2269,11 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       try {
         const { data: refreshed, error } = await supabase.auth.refreshSession();
         if (error) {
-          console.warn("Refresh session before publish failed:", error.message);
+          logger.warn("Refresh session before publish failed:", error.message);
         }
         currentUserId = refreshed?.session?.user?.id || null;
       } catch (refreshErr) {
-        console.warn("Refresh session threw:", refreshErr);
+        logger.warn("Refresh session threw:", refreshErr);
       }
     }
 
@@ -2349,20 +2299,20 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           if (sessionData?.session?.user?.id) {
             testUserId = sessionData.session.user.id;
             localStorage.setItem('dev_test_user_id', testUserId);
-            console.log('🔧 DEV MODE: Found user ID from session:', testUserId);
+            logger.log('🔧 DEV MODE: Found user ID from session:', testUserId);
           }
         } catch (err) {
-          console.warn('🔧 DEV MODE: Could not get session:', err);
+          logger.warn('🔧 DEV MODE: Could not get session:', err);
         }
       }
       
       if (testPhone && testUserId) {
         // للأرقام الوهمية، نستخدم user ID من Supabase
-        console.log('🔧 DEV MODE: Using test user ID for request creation:', testUserId);
+        logger.log('🔧 DEV MODE: Using test user ID for request creation:', testUserId);
         currentUserId = testUserId;
       } else {
         // للأرقام الحقيقية، نطلب تسجيل الدخول
-        console.warn('No user found in handlePublishInternal, saving draft and showing auth alert');
+        logger.warn('No user found in handlePublishInternal, saving draft and showing auth alert');
         saveFormDataForGuest();
         // Show alert with options instead of forcing redirect
         setShowAuthAlert(true);
@@ -2432,9 +2382,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
 
     // تحديد ما إذا كان تعديل أو إنشاء جديد
     const isEditing = !!editingRequestId;
-    console.log(isEditing ? "Updating request:" : "Publishing request:", request);
-    console.log("editingRequestId:", editingRequestId);
-    console.log("currentUserId:", currentUserId);
+    logger.log(isEditing ? "Updating request:" : "Publishing request:", request);
+    logger.log("editingRequestId:", editingRequestId);
+    logger.log("currentUserId:", currentUserId);
     
     // تمرير معلومات التعديل إذا كنا في وضع التعديل
     // Note: onPublish will use user?.id from App.tsx, but we ensure we have currentUserId here
@@ -2785,7 +2735,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                           setIsSubmitting(false);
                         }
                       } catch (error) {
-                        console.error("Error submitting from final review:", error);
+                        logger.error("Error submitting from final review:", error, 'service');
                         setIsSubmitting(false);
                       }
                     }, 200);
@@ -3073,7 +3023,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                     setLocation(value);
                     // يمكن استخدام cityResult للحصول على الإحداثيات
                     if (cityResult?.lat && cityResult?.lng) {
-                      console.log('City coordinates:', cityResult.lat, cityResult.lng);
+                      logger.log('City coordinates:', cityResult.lat, cityResult.lng);
                     }
                   }}
                   placeholder="ابحث عن مدن، معالم، أو محلات..."
@@ -3262,12 +3212,12 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                 className="w-full flex items-center justify-between gap-2 pt-3 pb-2"
               >
                 <div className="flex items-center gap-2">
-                  <span className={attachedFiles.length > 0 || selectedImageUrls.length > 0 ? "text-primary" : "text-muted-foreground"}>
+                  <span className={attachedFiles.length > 0 ? "text-primary" : "text-muted-foreground"}>
                     <Paperclip size={18} />
                   </span>
-                  <span className={`text-sm font-medium ${attachedFiles.length > 0 || selectedImageUrls.length > 0 ? "text-primary" : "text-muted-foreground"}`}>
+                  <span className={`text-sm font-medium ${attachedFiles.length > 0 ? "text-primary" : "text-muted-foreground"}`}>
                     المرفقات وصور توضيحية
-                    {(attachedFiles.length > 0 || selectedImageUrls.length > 0) && (
+                    {attachedFiles.length > 0 && (
                       <motion.span
                         initial={{ scale: 0, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
@@ -3277,9 +3227,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       </motion.span>
                     )}
                   </span>
-                  {(attachedFiles.length > 0 || selectedImageUrls.length > 0) && (
+                  {attachedFiles.length > 0 && (
                     <span className="text-xs text-muted-foreground">
-                      {attachedFiles.length + selectedImageUrls.length} ملف
+                      {attachedFiles.length} ملف
                     </span>
                   )}
                 </div>
@@ -3304,7 +3254,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   >
                     <div className="pt-2 pb-3">
               {/* Uploaded Files Preview */}
-              {(attachedFiles.length > 0 || selectedImageUrls.length > 0) && (
+              {attachedFiles.length > 0 && (
                 <div className="flex gap-2 flex-wrap justify-start w-full mb-3">
                   {attachedFiles.map((file, index) => {
                     const isImage = file.type.startsWith("image/");
@@ -3371,52 +3321,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       </motion.div>
                     );
                   })}
-                  {/* Selected Image URLs */}
-                  {selectedImageUrls.map((url, index) => (
-                    <motion.div
-                      key={url + index}
-                      initial={{ scale: 0, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="relative group"
-                    >
-                      <div 
-                        className="w-20 h-20 rounded-xl overflow-hidden border border-indigo-300 bg-secondary cursor-pointer hover:border-indigo-400 transition-colors"
-                        onClick={() => {
-                          setPreviewAttachment({
-                            type: 'url',
-                            index,
-                            url: url
-                          });
-                        }}
-                      >
-                        <img src={url} alt="" className="w-full h-full object-cover" />
-                      </div>
-                      {/* Preview icon overlay */}
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-colors rounded-xl cursor-pointer"
-                        onClick={() => {
-                          setPreviewAttachment({
-                            type: 'url',
-                            index,
-                            url: url
-                          });
-                        }}
-                      >
-                        <ZoomIn size={16} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedImageUrls(prev => prev.filter((_, i) => i !== index));
-                        }}
-                        className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors z-10"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                      <div className="absolute bottom-0 inset-x-0 bg-indigo-500/80 text-white text-[8px] text-center py-0.5 rounded-b-xl">
-                        بحث
-                      </div>
-                    </motion.div>
-                  ))}
                 </div>
               )}
 
@@ -3432,123 +3336,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                   <span className="text-xs text-muted-foreground">رفع ملف/صورة</span>
                 </button>
                 
-                {/* Search Image Box - Hidden for now */}
-                {/* <button
-                  type="button"
-                  onClick={() => handleImageSearch(false)}
-                  className="flex-1 flex flex-col items-center justify-center h-24 bg-background border border-border rounded-lg cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors"
-                >
-                  {isImageSearching && searchedImages.length === 0 ? (
-                    <Loader2 size={28} className="animate-spin text-indigo-500" />
-                  ) : (
-                    <Search size={28} className="text-indigo-500 mb-2" />
-                  )}
-                  <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">
-                    بحث صورة من الإنترنت
-                  </span>
-                </button> */}
               </div>
-
-              {/* Image Search Results - Horizontal Scrollable */}
-              {searchedImages.length > 0 && (
-                <div className="mt-3 space-y-3">
-                  {/* Header */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">
-                      اختر الصور المناسبة ({selectedSearchImages.size} محددة)
-                    </span>
-                    <button
-                      onClick={() => {
-                        setSearchedImages([]);
-                        setSelectedSearchImages(new Set());
-                      }}
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      إغلاق
-                    </button>
-                  </div>
-                  
-                  {/* Horizontal Scroll Container */}
-                  <div className="relative">
-                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
-                      {searchedImages.map((imageUrl, index) => {
-                        const isSelected = selectedSearchImages.has(imageUrl);
-                        return (
-                          <motion.div
-                            key={imageUrl + index}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: index * 0.05 }}
-                            onClick={() => toggleImageSelection(imageUrl)}
-                            className={`relative shrink-0 w-28 h-28 rounded-xl overflow-hidden cursor-pointer border-2 transition-all ${
-                              isSelected 
-                                ? 'border-primary ring-2 ring-primary/30 scale-[1.02]' 
-                                : 'border-border hover:border-primary/50'
-                            }`}
-                          >
-                            <img
-                              src={imageUrl}
-                              alt={`نتيجة ${index + 1}`}
-                              className="w-full h-full object-cover"
-                              loading="lazy"
-                              onError={(e) => {
-                                // Remove broken image from results
-                                setSearchedImages(prev => prev.filter(img => img !== imageUrl));
-                              }}
-                            />
-                            <div className={`absolute inset-0 transition-colors ${
-                              isSelected ? 'bg-primary/20' : 'hover:bg-black/10'
-                            }`} />
-                            <div className={`absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center transition-all ${
-                              isSelected 
-                                ? 'bg-primary text-white' 
-                                : 'bg-white/80 border border-border'
-                            }`}>
-                              {isSelected && <Check size={14} strokeWidth={3} />}
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                      
-                      {/* Load More Button */}
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        onClick={() => !isImageSearching && handleImageSearch(true)}
-                        className={`shrink-0 w-28 h-28 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${
-                          isImageSearching 
-                            ? 'border-indigo-300 bg-indigo-50/50 dark:bg-indigo-950/20' 
-                            : 'border-border hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30'
-                        }`}
-                      >
-                        {isImageSearching ? (
-                          <Loader2 size={24} className="animate-spin text-indigo-500" />
-                        ) : (
-                          <>
-                            <RefreshCw size={20} className="text-indigo-500" />
-                            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
-                              المزيد
-                            </span>
-                          </>
-                        )}
-                      </motion.div>
-                    </div>
-                  </div>
-                  
-                  {/* Add Selected Button */}
-                  {selectedSearchImages.size > 0 && (
-                    <motion.button
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      onClick={addSelectedImagesToAttachments}
-                      className="w-full py-2.5 rounded-xl bg-primary text-white font-medium text-sm flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors"
-                    >
-                      <Check size={16} />
-                      إضافة {selectedSearchImages.size} صورة للمرفقات
-                    </motion.button>
-                  )}
-                </div>
-              )}
                     </div>
                   </motion.div>
                 )}
@@ -3783,7 +3571,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                 }
               }
             } catch (error) {
-              console.error("Error submitting:", error);
+              logger.error("Error submitting:", error, 'service');
             } finally {
               setIsSubmitting(false);
             }
@@ -3857,8 +3645,6 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       onClick={() => {
                         if (previewAttachment.type === 'file') {
                           setAttachedFiles(prev => prev.filter((_, i) => i !== previewAttachment.index));
-                        } else {
-                          setSelectedImageUrls(prev => prev.filter((_, i) => i !== previewAttachment.index));
                         }
                         setPreviewAttachment(null);
                       }}
@@ -4092,19 +3878,41 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       setIsVerifyingOTP(false);
                       if (result.success) {
                         // بعد التحقق الناجح، تأكد من وجود جلسة (مهم لرقم 0555/0000)
-                        let userProfile = await getCurrentUser();
-                        if (!userProfile?.id) {
-                          const anonId = await ensureGuestSession();
-                          if (!anonId) {
-                            setGuestError("فشل في إنشاء جلسة مؤقتة. حاول مرة أخرى أو سجّل دخول.");
-                            return;
-                          }
+                        // للأرقام الوهمية، نستخدم guest mode مباشرة بدون انتظار
+                        const cleanPhone = guestPhone.replace(/\D/g, '');
+                        const isTestPhone = cleanPhone.startsWith('0555') || cleanPhone.startsWith('555');
+                        
+                        let userProfile = null;
+                        if (isTestPhone) {
+                          // للأرقام الوهمية، نستخدم guest mode مباشرة
+                          logger.log('🔧 DEV MODE: Using guest mode for test phone');
+                          userProfile = { id: localStorage.getItem('dev_test_user_id') || `test_${Date.now()}` } as any;
+                        } else {
+                          // للأرقام الحقيقية، نحاول الحصول على user profile
                           userProfile = await getCurrentUser();
+                          if (!userProfile?.id) {
+                            const anonId = await ensureGuestSession();
+                            if (!anonId) {
+                              setGuestError("فشل في إنشاء جلسة مؤقتة. حاول مرة أخرى أو سجّل دخول.");
+                              return;
+                            }
+                            userProfile = await getCurrentUser();
+                          }
                         }
                         // بعد التحقق الناجح، تحقق من حالة Onboarding
                         if (userProfile?.id) {
                           localStorage.setItem('dev_test_user_id', userProfile.id);
-                          // التحقق من حالة Onboarding
+                          
+                          // للأرقام الوهمية، نتخطى التحقق من Onboarding تماماً
+                          if (isTestPhone) {
+                            logger.log('🔧 DEV MODE: Skipping onboarding check for test phone');
+                            // مباشرة الانتقال إلى شروط الاستخدام
+                            setGuestVerificationStep('terms');
+                            setGuestError(null);
+                            return;
+                          }
+                          
+                          // للأرقام الحقيقية فقط: التحقق من حالة Onboarding
                           const userOnboardedKey = `abeely_onboarded_${userProfile.id}`;
                           const localOnboarded = localStorage.getItem(userOnboardedKey) === 'true';
                           const hasName = !!userProfile.display_name?.trim();
@@ -4126,7 +3934,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                               
                               needsOnboarding = !(alreadyOnboarded || (hasProfileName && (hasInterests || hasCities)));
                             } catch (err) {
-                              console.error('Error checking onboarding status:', err);
+                              logger.error('Error checking onboarding status:', err, 'service');
                               // في حالة الخطأ، نعتبر أن المستخدم يحتاج onboarding إذا لم يكن هناك اسم
                               needsOnboarding = !hasName;
                             }
@@ -4265,7 +4073,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                           }
                         } else {
                           // للأرقام الوهمية، نستخدم رقم وهمي كـ user ID
-                          console.log('🔧 DEV MODE: Using test phone, allowing request creation without real user');
+                          logger.log('🔧 DEV MODE: Using test phone, allowing request creation without real user');
                         }
                         
                         const requestId = await handlePublishInternal();
@@ -4298,7 +4106,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                           setGuestError("فشل في إنشاء الطلب. حاول مرة أخرى.");
                         }
                       } catch (error) {
-                        console.error("Error submitting:", error);
+                        logger.error("Error submitting:", error, 'service');
                         setGuestError("حدث خطأ في إنشاء الطلب. حاول مرة أخرى.");
                       } finally {
                         setIsSubmitting(false);

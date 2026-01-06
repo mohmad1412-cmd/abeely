@@ -21,6 +21,8 @@ import {
   X,
   ChevronDown,
   CheckCircle,
+  Loader2,
+  RotateCw,
 } from "lucide-react";
 import { FaHandPointUp } from "react-icons/fa";
 import { format } from "date-fns";
@@ -60,6 +62,8 @@ interface MyRequestsProps {
   // External filter control
   defaultFilter?: RequestFilter;
   onFilterChange?: (filter: RequestFilter) => void;
+  // Pull-to-refresh callback
+  onRefresh?: () => void | Promise<void>;
 }
 
 export const MyRequests: React.FC<MyRequestsProps> = ({
@@ -87,11 +91,28 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   isActive = true,
   defaultFilter,
   onFilterChange,
+  onRefresh,
 }) => {
   // Header compression state - for smooth scroll animations
   const [isHeaderCompressed, setIsHeaderCompressed] = useState(false);
   const lastScrollY = useRef(0);
   const headerRef = useRef<HTMLDivElement>(null);
+  
+  // Pull-to-refresh state
+  const [pullToRefreshState, setPullToRefreshState] = useState<{
+    isPulling: boolean;
+    pullDistance: number;
+    isRefreshing: boolean;
+  }>({
+    isPulling: false,
+    pullDistance: 0,
+    isRefreshing: false,
+  });
+  
+  const pullStartY = useRef<number>(0);
+  const pullCurrentY = useRef<number>(0);
+  const pullDistanceRef = useRef<number>(0);
+  const isPullingActiveRef = useRef<boolean>(false);
   
   // Filter & Sort States
   const [reqFilter, setReqFilter] = useState<RequestFilter>(defaultFilter || "active");
@@ -152,6 +173,152 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
     };
   }, [openFilterDropdownId]);
 
+  // Pull-to-refresh handlers
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !onRefresh) return;
+
+    const PULL_THRESHOLD = 60;
+    const MAX_PULL = 90;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      // Allow pull when scrollTop is very close to 0 (within 5px tolerance)
+      if (container.scrollTop > 5) {
+        isPullingActiveRef.current = false;
+        return;
+      }
+      isPullingActiveRef.current = true;
+      pullStartY.current = e.touches[0].clientY;
+      pullCurrentY.current = pullStartY.current;
+      pullDistanceRef.current = 0;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      // If pulling not active, ignore
+      if (!isPullingActiveRef.current || pullStartY.current === 0) return;
+
+      // If scrolled away from top, reset
+      if (container.scrollTop > 5) {
+        isPullingActiveRef.current = false;
+        pullDistanceRef.current = 0;
+        pullStartY.current = 0;
+        setPullToRefreshState({
+          isPulling: false,
+          pullDistance: 0,
+          isRefreshing: false,
+        });
+        return;
+      }
+
+      pullCurrentY.current = e.touches[0].clientY;
+      const pullDistance = Math.max(
+        0,
+        pullCurrentY.current - pullStartY.current,
+      );
+
+      if (pullDistance > 10) { // Threshold to start pull
+        e.preventDefault(); // Prevent default scroll
+        const limitedPull = Math.min(pullDistance, MAX_PULL);
+        pullDistanceRef.current = limitedPull;
+        setPullToRefreshState({
+          isPulling: true,
+          pullDistance: limitedPull,
+          isRefreshing: false,
+        });
+      }
+    };
+
+    const handleTouchEnd = () => {
+      // Always reset on touch end, regardless of pulling state
+      if (!isPullingActiveRef.current) {
+        return;
+      }
+
+      const currentPullDistance = pullDistanceRef.current;
+
+      if (currentPullDistance >= PULL_THRESHOLD && onRefresh) {
+        setPullToRefreshState({
+          isPulling: false,
+          pullDistance: 0,
+          isRefreshing: true,
+        });
+
+        // Haptic feedback
+        if (navigator.vibrate) {
+          navigator.vibrate(25);
+        }
+
+        // Call refresh and wait for completion
+        const refreshPromise = onRefresh();
+        const minDisplayTime = new Promise((resolve) =>
+          setTimeout(resolve, 1200)
+        );
+
+        const promiseToUse: Promise<void> =
+          refreshPromise && typeof refreshPromise === "object" &&
+            refreshPromise !== null && "then" in refreshPromise
+            ? refreshPromise as Promise<void>
+            : Promise.resolve();
+        Promise.all([
+          promiseToUse,
+          minDisplayTime,
+        ]).finally(() => {
+          setPullToRefreshState({
+            isPulling: false,
+            pullDistance: 0,
+            isRefreshing: false,
+          });
+        });
+      } else {
+        // Reset immediately if threshold not reached
+        setPullToRefreshState({
+          isPulling: false,
+          pullDistance: 0,
+          isRefreshing: false,
+        });
+      }
+
+      // Always cleanup
+      isPullingActiveRef.current = false;
+      pullStartY.current = 0;
+      pullCurrentY.current = 0;
+      pullDistanceRef.current = 0;
+    };
+
+    const handleTouchCancel = () => {
+      // Handle touch cancel (e.g., when scrolling is taken over by browser)
+      isPullingActiveRef.current = false;
+      pullStartY.current = 0;
+      pullCurrentY.current = 0;
+      pullDistanceRef.current = 0;
+      setPullToRefreshState({
+        isPulling: false,
+        pullDistance: 0,
+        isRefreshing: false,
+      });
+    };
+
+    // Add listeners to container for start/move
+    container.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+    });
+    container.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+    });
+    // Add end/cancel to document to catch all touch ends
+    document.addEventListener("touchend", handleTouchEnd, { passive: true });
+    document.addEventListener("touchcancel", handleTouchCancel, {
+      passive: true,
+    });
+
+    return () => {
+      container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
+      document.removeEventListener("touchcancel", handleTouchCancel);
+    };
+  }, [onRefresh]);
+
   // Scroll Listener for header compression - same logic as Marketplace
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -160,6 +327,15 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
     const handleScroll = () => {
       const scrollTop = container.scrollTop;
       const scrollDelta = scrollTop - lastScrollY.current;
+      
+      // Reset pull state if user scrolls away from top
+      if (scrollTop > 0 && pullToRefreshState.isPulling) {
+        setPullToRefreshState({
+          isPulling: false,
+          pullDistance: 0,
+          isRefreshing: false,
+        });
+      }
       
       if (scrollTop < 50) {
         // Always show when near top
@@ -176,7 +352,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
 
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [pullToRefreshState.isPulling]);
 
   // Counts
   const counts = useMemo(() => {
@@ -531,6 +707,125 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
         </div>
       </div>
 
+      {/* Pull-to-Refresh Indicator - بعد الجزيرة مباشرة */}
+      <AnimatePresence>
+        {(pullToRefreshState.isPulling || pullToRefreshState.isRefreshing) && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{
+              height: pullToRefreshState.isRefreshing
+                ? 70
+                : Math.min(pullToRefreshState.pullDistance, 90),
+              opacity: 1,
+            }}
+            exit={{ height: 0, opacity: 0 }}
+            className="flex items-center justify-center overflow-hidden z-[70]"
+          >
+            <motion.div
+              initial={{ y: -20 }}
+              animate={{ y: 0 }}
+              className="flex flex-col items-center py-2"
+            >
+              <div className="relative w-10 h-10 flex items-center justify-center">
+                {/* Background Progress Circle */}
+                <svg
+                  className="absolute inset-0 w-full h-full transform -rotate-90"
+                  viewBox="0 0 40 40"
+                >
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="16"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    fill="transparent"
+                    className="text-primary/10"
+                  />
+                  {!pullToRefreshState.isRefreshing && (
+                    <motion.circle
+                      cx="20"
+                      cy="20"
+                      r="16"
+                      stroke="url(#pull-gradient-myrequests)"
+                      strokeWidth="2.5"
+                      fill="transparent"
+                      strokeDasharray={100.5}
+                      strokeDashoffset={100.5 -
+                        (Math.min(pullToRefreshState.pullDistance / 60, 1) *
+                          100.5)}
+                      strokeLinecap="round"
+                      className="opacity-60"
+                    />
+                  )}
+                  <defs>
+                    <linearGradient
+                      id="pull-gradient-myrequests"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="100%"
+                    >
+                      <stop offset="0%" stopColor="#1E968C" />
+                      <stop offset="100%" stopColor="#153659" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+
+                {/* Icon Container */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <AnimatePresence mode="wait">
+                    {pullToRefreshState.isRefreshing
+                      ? (
+                        <motion.div
+                          key="refreshing-icon"
+                          initial={{ opacity: 0, rotate: 0 }}
+                          animate={{ opacity: 1, rotate: 360 }}
+                          exit={{ opacity: 0 }}
+                          transition={{
+                            rotate: {
+                              duration: 1,
+                              repeat: Infinity,
+                              ease: "linear",
+                            },
+                            opacity: { duration: 0.2 },
+                          }}
+                          className="text-primary"
+                        >
+                          <Loader2 size={20} strokeWidth={2.5} />
+                        </motion.div>
+                      )
+                      : (
+                        <motion.div
+                          key="pulling-icon"
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{
+                            opacity: 1,
+                            scale: pullToRefreshState.pullDistance >= 60
+                              ? 1.1
+                              : 1,
+                            rotate: (pullToRefreshState.pullDistance / 60) *
+                              180,
+                          }}
+                          exit={{ opacity: 0, scale: 0.5 }}
+                          transition={{
+                            type: "spring",
+                            stiffness: 300,
+                            damping: 25,
+                          }}
+                          className={pullToRefreshState.pullDistance >= 60
+                            ? "text-primary"
+                            : "text-primary/50"}
+                        >
+                          <RotateCw size={16} strokeWidth={2.5} />
+                        </motion.div>
+                      )}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Content */}
       <div className="px-4 pb-24">
@@ -574,7 +869,8 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
             </div>
           )}
           {filteredRequests.map((req, index) => {
-            const requestOffers = receivedOffersMap.get(req.id) || [];
+            // استثناء العروض المؤرشفة
+            const requestOffers = (receivedOffersMap.get(req.id) || []).filter(o => o.status !== 'archived');
             const acceptedOffer = requestOffers.find(o => o.status === 'accepted');
             const pendingOffers = requestOffers.filter(o => o.status === 'pending' || o.status === 'negotiating');
             const requestNumber = req.requestNumber || req.id.slice(-4).toUpperCase();

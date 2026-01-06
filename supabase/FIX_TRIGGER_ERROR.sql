@@ -9,7 +9,11 @@ DROP TRIGGER IF EXISTS trigger_notify_on_new_interest_request ON requests;
 
 -- الخطوة 2: إعادة إنشاء الـ function بطريقة صحيحة
 CREATE OR REPLACE FUNCTION notify_on_new_interest_request()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   v_request_title TEXT;
   v_request_author_name TEXT;
@@ -116,7 +120,7 @@ EXCEPTION
     RAISE WARNING 'Error in notify_on_new_interest_request: %', SQLERRM;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- الخطوة 3: إعادة إنشاء الـ trigger
 CREATE TRIGGER trigger_notify_on_new_interest_request

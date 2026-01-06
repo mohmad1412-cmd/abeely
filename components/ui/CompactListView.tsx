@@ -25,6 +25,7 @@ interface CompactListViewProps {
   userId?: string;
   isGuest?: boolean;
   viewedRequestIds?: Set<string>;
+  isLoadingViewedRequests?: boolean;
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoadingMore?: boolean;
@@ -226,6 +227,7 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
   userId,
   isGuest = false,
   viewedRequestIds = new Set(),
+  isLoadingViewedRequests = false,
   onLoadMore,
   hasMore = false,
   isLoadingMore = false,
@@ -291,7 +293,10 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
       {/* List Content - بدون سكرول داخلي */}
       <div className="px-4 pt-4 pb-[1px] relative z-[1] w-full">
         {requests.map((request, index) => {
-          const isUnread = !viewedRequestIds.has(request.id);
+          const isViewed = isLoadingViewedRequests ||
+            viewedRequestIds.has(request.id);
+          const isUnread = !isLoadingViewedRequests &&
+            !viewedRequestIds.has(request.id);
           return (
             <div key={request.id} className="relative w-full">
               {/* نقطة غير مقروء - خارج الكرت على اليمين - فقط للجوالات */}
@@ -310,7 +315,7 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
                 request={request}
                 onTap={() => onSelectRequest(request)}
                 myOffer={getMyOffer(request.id)}
-                isViewed={viewedRequestIds.has(request.id)}
+                isViewed={isViewed}
                 index={index}
                 isNew={newRequestIds.has(request.id)}
                 categories={categories}
@@ -332,4 +337,3 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
 };
 
 export default CompactListView;
-

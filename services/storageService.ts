@@ -103,18 +103,21 @@ export const deleteFile = async (
   path: string
 ): Promise<boolean> => {
   try {
-    const { error } = await supabase.storage
+    console.log('🗑️ deleteFile called', { bucket, path });
+    
+    const { data, error } = await supabase.storage
       .from(bucket)
       .remove([path]);
 
     if (error) {
-      console.error('Delete error:', error);
+      console.error('❌ Delete error:', error);
       return false;
     }
 
+    console.log('✅ File deleted successfully:', { bucket, path, data });
     return true;
   } catch (err) {
-    console.error('Delete failed:', err);
+    console.error('❌ Delete failed:', err);
     return false;
   }
 };
