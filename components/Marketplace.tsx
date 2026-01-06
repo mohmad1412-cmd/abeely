@@ -1,5 +1,11 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { logger } from '../utils/logger';
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { logger } from "../utils/logger";
 import { createPortal } from "react-dom";
 import {
   Category,
@@ -358,41 +364,45 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
   // Calculate dynamic search placeholder based on context
   // Priority: Selected categories > View mode
-  const getSearchPlaceholder = (): { static: string; animated: string | string[]; isCategories?: boolean } => {
+  const getSearchPlaceholder = (): {
+    static: string;
+    animated: string | string[];
+    isCategories?: boolean;
+  } => {
     // إذا كان هناك تصنيفات محددة، اعرضها بغض النظر عن viewMode
     if (searchCategories.length > 0) {
       // Get category labels
       const categoryLabels = searchCategories
         .map((catId) => {
           const category = categories.find(
-            (c) => c.id === catId || c.label === catId
+            (c) => c.id === catId || c.label === catId,
           );
           return category?.label || catId;
         })
         .filter(Boolean);
-      
+
       if (categoryLabels.length > 0) {
         return {
           static: "أنت تبحث في",
           animated: categoryLabels, // Return array for rendering as badges
-          isCategories: true
+          isCategories: true,
         };
       }
     }
-    
+
     // إذا لم يكن هناك تصنيفات محددة، اعرض حسب viewMode
     if (viewMode === "interests") {
       return {
         static: "أنت تبحث في",
         animated: "اهتماماتك فقط...",
-        isCategories: false
+        isCategories: false,
       };
     }
-    
+
     return {
       static: "أنت تبحث في",
       animated: "كل الطلبات...",
-      isCategories: false
+      isCategories: false,
     };
   };
 
@@ -435,7 +445,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         }
       }
     } catch (e) {
-      logger.error("Error loading guest viewed requests:", e, 'service');
+      logger.error("Error loading guest viewed requests:", e, "service");
     }
   }, [isGuest]);
 
@@ -1059,8 +1069,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   const unreadInterestsRequestsCount = isLoadingViewedRequests
     ? 0
     : interestsRequests.filter(
-        (req) => !viewedRequestIds.has(req.id),
-      ).length;
+      (req) => !viewedRequestIds.has(req.id),
+    ).length;
 
   // استخدام useMemo لضمان تحديث الفلترة عند تحديث myOffers
   // هذا يمنع ظهور الطلبات مؤقتاً ثم اختفائها عند تحميل العروض
@@ -1076,12 +1086,12 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     // العروض المقبولة (accepted) والتفاوض (negotiating) تبقى مخفية أيضاً
     const myOfferRequestIds = new Set(
       myOffers
-        .filter(offer => 
-          offer.status !== "cancelled" && 
-          offer.status !== "completed" && 
+        .filter((offer) =>
+          offer.status !== "cancelled" &&
+          offer.status !== "completed" &&
           offer.status !== "rejected"
         )
-        .map(offer => offer.requestId)
+        .map((offer) => offer.requestId),
     );
 
     return requestsToFilter.filter((req) => {
@@ -1092,66 +1102,74 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         return false;
       }
 
-    // Text search
-    if (searchTerm) {
-      const matchesSearch = req.title.includes(searchTerm) ||
-        req.description.includes(searchTerm);
-      if (!matchesSearch) return false;
-    }
-
-    // Category filter (Multi-select)
-    if (searchCategories.length > 0) {
-      // If request has categories, check if any match selected categories
-      // Need to compare Arabic labels because req.categories contains labels
-      const hasMatch = req.categories?.some((catLabel) =>
-        searchCategories.some((catId) => {
-          const categoryObj = categories.find((c) => c.id === catId);
-          const interestLabel = categoryObj?.label || catId;
-          return catLabel.toLowerCase().includes(interestLabel.toLowerCase()) ||
-            interestLabel.toLowerCase().includes(catLabel.toLowerCase());
-        })
-      );
-      if (!hasMatch) return false;
-    }
-
-    // City filter (Multi-select)
-    // إذا تم اختيار "كل المدن" أو لم يتم اختيار أي مدينة، نتخطى الفلترة
-    if (searchCities.length > 0 && !searchCities.includes("كل المدن")) {
-      // نستثني "عن بعد" من الفلترة العادية - نتحقق منها بشكل منفصل
-      const citiesWithoutRemote = searchCities.filter((c) => c !== "عن بعد");
-      const includesRemote = searchCities.includes("عن بعد");
-
-      const hasCityMatch = citiesWithoutRemote.some((city) =>
-        req.location?.toLowerCase().includes(city.toLowerCase()) ||
-        city.toLowerCase().includes(req.location?.toLowerCase() || "")
-      );
-
-      // إذا اختار "عن بعد"، نتحقق أيضاً إذا كان الموقع يحتوي على "عن بعد"
-      const hasRemoteMatch = includesRemote && (
-        req.location?.toLowerCase().includes("عن بعد") ||
-        !req.location // طلبات بدون موقع تعتبر "عن بعد"
-      );
-
-      if (!hasCityMatch && !hasRemoteMatch && citiesWithoutRemote.length > 0) {
-        return false;
+      // Text search
+      if (searchTerm) {
+        const matchesSearch = req.title.includes(searchTerm) ||
+          req.description.includes(searchTerm);
+        if (!matchesSearch) return false;
       }
-      if (
-        !hasRemoteMatch && citiesWithoutRemote.length === 0 && includesRemote
-      ) return false;
-    }
 
-    // Budget filter
-    if (searchBudgetMin) {
-      if (Number(req.budgetMax || 0) < parseInt(searchBudgetMin)) return false;
-    }
-    if (searchBudgetMax) {
-      if (Number(req.budgetMin || 0) > parseInt(searchBudgetMax)) return false;
-    }
+      // Category filter (Multi-select)
+      if (searchCategories.length > 0) {
+        // If request has categories, check if any match selected categories
+        // Need to compare Arabic labels because req.categories contains labels
+        const hasMatch = req.categories?.some((catLabel) =>
+          searchCategories.some((catId) => {
+            const categoryObj = categories.find((c) => c.id === catId);
+            const interestLabel = categoryObj?.label || catId;
+            return catLabel.toLowerCase().includes(
+              interestLabel.toLowerCase(),
+            ) ||
+              interestLabel.toLowerCase().includes(catLabel.toLowerCase());
+          })
+        );
+        if (!hasMatch) return false;
+      }
 
-    // In interests mode, all requests in interestsRequests are already filtered by user interests
-    // but we still want to apply search and city/budget filters if the user uses them
-    return true;
-  });
+      // City filter (Multi-select)
+      // إذا تم اختيار "كل المدن" أو لم يتم اختيار أي مدينة، نتخطى الفلترة
+      if (searchCities.length > 0 && !searchCities.includes("كل المدن")) {
+        // نستثني "عن بعد" من الفلترة العادية - نتحقق منها بشكل منفصل
+        const citiesWithoutRemote = searchCities.filter((c) => c !== "عن بعد");
+        const includesRemote = searchCities.includes("عن بعد");
+
+        const hasCityMatch = citiesWithoutRemote.some((city) =>
+          req.location?.toLowerCase().includes(city.toLowerCase()) ||
+          city.toLowerCase().includes(req.location?.toLowerCase() || "")
+        );
+
+        // إذا اختار "عن بعد"، نتحقق أيضاً إذا كان الموقع يحتوي على "عن بعد"
+        const hasRemoteMatch = includesRemote && (
+          req.location?.toLowerCase().includes("عن بعد") ||
+          !req.location // طلبات بدون موقع تعتبر "عن بعد"
+        );
+
+        if (
+          !hasCityMatch && !hasRemoteMatch && citiesWithoutRemote.length > 0
+        ) {
+          return false;
+        }
+        if (
+          !hasRemoteMatch && citiesWithoutRemote.length === 0 && includesRemote
+        ) return false;
+      }
+
+      // Budget filter
+      if (searchBudgetMin) {
+        if (Number(req.budgetMax || 0) < parseInt(searchBudgetMin)) {
+          return false;
+        }
+      }
+      if (searchBudgetMax) {
+        if (Number(req.budgetMin || 0) > parseInt(searchBudgetMax)) {
+          return false;
+        }
+      }
+
+      // In interests mode, all requests in interestsRequests are already filtered by user interests
+      // but we still want to apply search and city/budget filters if the user uses them
+      return true;
+    });
   }, [
     requestsToFilter,
     myOffers,
@@ -1192,14 +1210,6 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       className="h-full flex flex-col overflow-hidden container mx-auto max-w-6xl relative pt-20"
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col items-center z-20">
-        {/* Gradient backdrop - solid at top, transparent at bottom */}
-        <div
-          className="absolute inset-x-0 top-0 h-24 pointer-events-none"
-          style={{
-            background:
-              "linear-gradient(to bottom, hsl(var(--background)) 0%, hsl(var(--background)) 40%, transparent 100%)",
-          }}
-        />
         <div className="pointer-events-auto px-4 pt-4 bg-transparent relative z-10">
           <UnifiedFilterIsland
             hasActiveFilters={hasActiveFilters}
@@ -1258,46 +1268,68 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       {/* Animated Placeholder - يظهر فقط عندما يكون الحقل فارغاً */}
                       {!searchTerm && (() => {
                         const placeholder = getSearchPlaceholder();
-                        const shouldAnimate = placeholder.isCategories && Array.isArray(placeholder.animated) && placeholder.animated.length > 0;
+                        const shouldAnimate = placeholder.isCategories &&
+                          Array.isArray(placeholder.animated) &&
+                          placeholder.animated.length > 0;
                         return (
                           <div className="absolute inset-0 flex items-center pointer-events-none pl-20 pr-2 overflow-hidden rtl">
                             <span className="text-sm font-medium text-muted-foreground whitespace-nowrap flex items-center gap-1 w-full">
-                              <span className="shrink-0">{placeholder.static}</span>
-                              {shouldAnimate ? (
-                                <span className="inline-block overflow-hidden flex-1 min-w-0 relative">
-                                  <span 
-                                    className="inline-flex items-center gap-1.5 animate-marquee-placeholder"
-                                    style={{ paddingLeft: '0.25rem' }}
-                                  >
-                                    {/* First set of badges */}
-                                    <span className="inline-flex items-center gap-1.5">
-                                      {Array.isArray(placeholder.animated) && placeholder.animated.map((label, idx) => (
-                                        <span
-                                          key={`first-${idx}`}
-                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/5 text-primary border border-primary/20 text-xs font-medium shrink-0"
-                                        >
-                                          {label}
-                                        </span>
-                                      ))}
-                                    </span>
-                                    {/* Second set of badges for seamless loop - تبدأ من اليسار */}
-                                    <span className="inline-flex items-center gap-1.5" style={{ marginLeft: '0.5rem' }}>
-                                      {Array.isArray(placeholder.animated) && placeholder.animated.map((label, idx) => (
-                                        <span
-                                          key={`second-${idx}`}
-                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/5 text-primary border border-primary/20 text-xs font-medium shrink-0"
-                                        >
-                                          {label}
-                                        </span>
-                                      ))}
+                              <span className="shrink-0">
+                                {placeholder.static}
+                              </span>
+                              {shouldAnimate
+                                ? (
+                                  <span className="inline-block overflow-hidden flex-1 min-w-0 relative">
+                                    <span
+                                      className="inline-flex items-center gap-1.5 animate-marquee-placeholder"
+                                      style={{ paddingLeft: "0.25rem" }}
+                                    >
+                                      {/* First set of badges */}
+                                      <span className="inline-flex items-center gap-1.5">
+                                        {Array.isArray(placeholder.animated) &&
+                                          placeholder.animated.map((
+                                            label,
+                                            idx,
+                                          ) => (
+                                            <span
+                                              key={`first-${idx}`}
+                                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/5 text-primary border border-primary/20 text-xs font-medium shrink-0"
+                                            >
+                                              {label}
+                                            </span>
+                                          ))}
+                                      </span>
+                                      {/* Second set of badges for seamless loop - تبدأ من اليسار */}
+                                      <span
+                                        className="inline-flex items-center gap-1.5"
+                                        style={{ marginLeft: "0.5rem" }}
+                                      >
+                                        {Array.isArray(placeholder.animated) &&
+                                          placeholder.animated.map((
+                                            label,
+                                            idx,
+                                          ) => (
+                                            <span
+                                              key={`second-${idx}`}
+                                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/5 text-primary border border-primary/20 text-xs font-medium shrink-0"
+                                            >
+                                              {label}
+                                            </span>
+                                          ))}
+                                      </span>
                                     </span>
                                   </span>
-                                </span>
-                              ) : (
-                                <span className="inline-block" style={{ paddingLeft: '0.25rem' }}>
-                                  {typeof placeholder.animated === 'string' ? placeholder.animated : ''}
-                                </span>
-                              )}
+                                )
+                                : (
+                                  <span
+                                    className="inline-block"
+                                    style={{ paddingLeft: "0.25rem" }}
+                                  >
+                                    {typeof placeholder.animated === "string"
+                                      ? placeholder.animated
+                                      : ""}
+                                  </span>
+                                )}
                             </span>
                           </div>
                         );
@@ -2677,7 +2709,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       url.searchParams.set("_refresh", Date.now().toString());
                       window.location.replace(url.toString());
                     } catch (err) {
-                      logger.error("[Hard Refresh] Error:", err, 'service');
+                      logger.error("[Hard Refresh] Error:", err, "service");
                       // Fallback: just force reload
                       window.location.href = window.location.origin +
                         "?_refresh=" + Date.now();
@@ -3309,7 +3341,37 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                 className={`flex-1 bg-card border border-border rounded-2xl overflow-hidden transition-all duration-300 flex flex-col cursor-pointer relative shadow-sm hover:shadow-md hover:border-primary/20 ${
                                   isTouchHovered ? "" : "group"
                                 }`}
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  // Update guest viewed requests in localStorage
+                                  if (isGuest) {
+                                    setGuestViewedIds((prev) => {
+                                      const newSet = new Set(prev);
+                                      newSet.add(req.id);
+                                      try {
+                                        localStorage.setItem(
+                                          "guestViewedRequestIds",
+                                          JSON.stringify([...newSet]),
+                                        );
+                                      } catch (e) {
+                                        logger.error(
+                                          "Error saving guest viewed requests:",
+                                          e,
+                                        );
+                                      }
+                                      return newSet;
+                                    });
+                                  }
+                                  onSelectRequest(req);
+                                }}
+                                onTouchStart={(e) => {
+                                  // Prevent scroll interference
+                                  e.stopPropagation();
+                                }}
+                                onTouchEnd={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
                                   // Update guest viewed requests in localStorage
                                   if (isGuest) {
                                     setGuestViewedIds((prev) => {
@@ -3370,10 +3432,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                 {/* Image Section */}
                                 {req.images && req.images.length > 0
                                   ? (
-                                    <motion.div
-                                      layoutId={`image-${req.id}`}
-                                      className="h-40 w-full bg-secondary overflow-hidden relative"
-                                    >
+                                    <motion.div className="h-40 w-full bg-secondary overflow-hidden relative">
                                       <motion.img
                                         src={req.images[0]}
                                         alt={req.title}
@@ -3393,10 +3452,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                     </motion.div>
                                   )
                                   : (
-                                    <motion.div
-                                      layoutId={`image-${req.id}`}
-                                      className="h-40 w-full relative overflow-hidden"
-                                    >
+                                    <motion.div className="h-40 w-full relative overflow-hidden">
                                       {/* Simple Gray Background - Empty State */}
                                       <div className="absolute inset-0 bg-muted/8" />
 
@@ -3482,7 +3538,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                     {/* Seriousness Indicator - مؤشر الجدية */}
                                     {isMyRequest && (() => {
                                       const receivedOffers =
-                                        (receivedOffersMap.get(req.id) || []);
+                                        receivedOffersMap.get(req.id) || [];
                                       const offersCount = receivedOffers.length;
                                       const seriousness = calculateSeriousness(
                                         offersCount,
@@ -3515,8 +3571,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                               ] || seriousnessColors[3]
                                             }`}
                                           >
-                                            الجدية:{" "}
-                                            {seriousnessLabels[
+                                            الجدية: {seriousnessLabels[
                                               finalSeriousness
                                             ] || seriousnessLabels[3]}{" "}
                                             ({offersCount}{" "}
@@ -3543,23 +3598,32 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                                   // Parse location: "حي النرجس، الرياض" or "الرياض"
                                                   const locationParts = req
                                                     .location.split("،").map(
-                                                      (s) => s.trim()
+                                                      (s) => s.trim(),
                                                     );
                                                   const city =
                                                     locationParts.length > 1
                                                       ? locationParts[
-                                                          locationParts.length - 1
-                                                        ]
+                                                        locationParts.length - 1
+                                                      ]
                                                       : locationParts[0];
                                                   return city;
                                                 })()
                                                 : "غير محددة";
-                                              const shouldAnimate = cityText.length > 6;
+                                              const shouldAnimate =
+                                                cityText.length > 6;
                                               return (
-                                                <span className={`text-xs font-medium text-foreground whitespace-nowrap inline-flex ${shouldAnimate ? 'animate-marquee-continuous' : ''}`}>
+                                                <span
+                                                  className={`text-xs font-medium text-foreground whitespace-nowrap inline-flex ${
+                                                    shouldAnimate
+                                                      ? "animate-marquee-continuous"
+                                                      : ""
+                                                  }`}
+                                                >
                                                   <span>{cityText}</span>
                                                   {shouldAnimate && (
-                                                    <span className="inline-block mr-4">{cityText}</span>
+                                                    <span className="inline-block mr-4">
+                                                      {cityText}
+                                                    </span>
                                                   )}
                                                 </span>
                                               );
@@ -3593,15 +3657,25 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                         <div className="relative h-9 rounded-md border border-border/60 bg-background flex items-center justify-center overflow-hidden transition-all hover:border-primary/40 group">
                                           <div className="w-full h-full flex items-center justify-center px-2 overflow-hidden pt-0.5">
                                             {(() => {
-                                              const budgetText = req.budgetType === "fixed"
-                                                ? `${req.budgetMin}-${req.budgetMax}`
-                                                : "غير محددة";
-                                              const shouldAnimate = budgetText.length > 8;
+                                              const budgetText =
+                                                req.budgetType === "fixed"
+                                                  ? `${req.budgetMin}-${req.budgetMax}`
+                                                  : "غير محددة";
+                                              const shouldAnimate =
+                                                budgetText.length > 8;
                                               return (
-                                                <span className={`text-xs font-medium text-foreground whitespace-nowrap inline-flex ${shouldAnimate ? 'animate-marquee-continuous' : ''}`}>
+                                                <span
+                                                  className={`text-xs font-medium text-foreground whitespace-nowrap inline-flex ${
+                                                    shouldAnimate
+                                                      ? "animate-marquee-continuous"
+                                                      : ""
+                                                  }`}
+                                                >
                                                   <span>{budgetText}</span>
                                                   {shouldAnimate && (
-                                                    <span className="inline-block mr-4">{budgetText}</span>
+                                                    <span className="inline-block mr-4">
+                                                      {budgetText}
+                                                    </span>
                                                   )}
                                                 </span>
                                               );
@@ -3618,13 +3692,24 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                         <div className="relative h-9 rounded-md border border-border/60 bg-background flex items-center justify-center overflow-hidden transition-all hover:border-primary/40 group">
                                           <div className="w-full h-full flex items-center justify-center px-2 overflow-hidden pt-0.5">
                                             {(() => {
-                                              const deliveryText = req.deliveryTimeFrom || "غير محددة";
-                                              const shouldAnimate = deliveryText.length > 6;
+                                              const deliveryText =
+                                                req.deliveryTimeFrom ||
+                                                "غير محددة";
+                                              const shouldAnimate =
+                                                deliveryText.length > 6;
                                               return (
-                                                <span className={`text-xs font-medium text-foreground whitespace-nowrap inline-flex ${shouldAnimate ? 'animate-marquee-continuous' : ''}`}>
+                                                <span
+                                                  className={`text-xs font-medium text-foreground whitespace-nowrap inline-flex ${
+                                                    shouldAnimate
+                                                      ? "animate-marquee-continuous"
+                                                      : ""
+                                                  }`}
+                                                >
                                                   <span>{deliveryText}</span>
                                                   {shouldAnimate && (
-                                                    <span className="inline-block mr-4">{deliveryText}</span>
+                                                    <span className="inline-block mr-4">
+                                                      {deliveryText}
+                                                    </span>
                                                   )}
                                                 </span>
                                               );
@@ -3649,7 +3734,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                       ? (
                                         (() => {
                                           const receivedOffers =
-                                            (receivedOffersMap.get(req.id) || []).filter(o => o.status !== 'archived');
+                                            (receivedOffersMap.get(req.id) ||
+                                              []).filter((o) =>
+                                                o.status !== "archived"
+                                              );
                                           const offersCount =
                                             receivedOffers.length;
                                           return (

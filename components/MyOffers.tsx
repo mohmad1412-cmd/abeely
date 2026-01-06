@@ -33,11 +33,12 @@ interface MyOffersProps {
   allRequests: Request[];
   onSelectRequest: (req: Request) => void;
   onSelectOffer?: (offer: Offer) => void;
-  onArchiveOffer?: (offerId: string) => void;
+  onArchiveOffer?: (offerId: string) => Promise<boolean> | void;
   onOpenWhatsApp?: (phoneNumber: string, offer: Offer) => void;
   onOpenChat?: (requestId: string, offer: Offer) => void;
   userId?: string;
   viewedRequestIds?: Set<string>;
+  unreadMessagesPerOffer?: Map<string, number>; // عدد الرسائل غير المقروءة لكل عرض
   // Profile dropdown props
   user?: any;
   isGuest?: boolean;
@@ -65,6 +66,7 @@ export const MyOffers: React.FC<MyOffersProps> = ({
   onOpenChat,
   userId,
   viewedRequestIds = new Set(),
+  unreadMessagesPerOffer = new Map(),
   user,
   isGuest = false,
   onNavigateToProfile,
@@ -852,6 +854,7 @@ export const MyOffers: React.FC<MyOffersProps> = ({
             const contactStatus = getContactStatus(offer);
             const requestNumber = relatedReq?.requestNumber || relatedReq?.id?.slice(-4).toUpperCase() || '';
             const shouldShowName = offer.status === 'accepted' && relatedReq?.showAuthorName !== false && relatedReq?.authorName;
+            const unreadCount = unreadMessagesPerOffer?.get(offer.id) || 0;
 
             return (
               <motion.div
@@ -859,18 +862,67 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                 initial={false}
                 animate={{ opacity: 1, y: 0 }}
                 whileHover={{ y: -8, scale: 1.02 }}
-                onClick={() => {
+                onClick={(e) => {
+                  // Don't handle click if clicking on delete button or inside delete button
+                  const target = e.target as HTMLElement;
+                  const deleteButton = target.closest('button[title="حذف العرض"]');
+                  if (deleteButton || target.closest('svg')?.parentElement?.getAttribute('title') === 'حذف العرض') {
+                    e.stopPropagation();
+                    return; // Let delete button handle its own events
+                  }
+                  e.preventDefault();
+                  e.stopPropagation();
                   if (onSelectOffer) {
                     onSelectOffer(offer);
                   } else if (relatedReq) {
                     onSelectRequest(relatedReq);
                   }
                 }}
+                onTouchStart={(e) => {
+                  // Don't prevent propagation if clicking on delete button
+                  const target = e.target as HTMLElement;
+                  const deleteButton = target.closest('button[title="حذف العرض"]');
+                  if (deleteButton || target.closest('svg')?.parentElement?.getAttribute('title') === 'حذف العرض') {
+                    return; // Let delete button handle its own events
+                  }
+                  // Prevent scroll interference
+                  e.stopPropagation();
+                }}
+                onTouchEnd={(e) => {
+                  // Don't prevent if clicking on delete button
+                  const target = e.target as HTMLElement;
+                  const deleteButton = target.closest('button[title="حذف العرض"]');
+                  if (deleteButton || target.closest('svg')?.parentElement?.getAttribute('title') === 'حذف العرض') {
+                    return; // Let delete button handle its own events
+                  }
+                  e.preventDefault();
+                  e.stopPropagation();
+                  // Force state update to ensure request/offer opens
+                  setTimeout(() => {
+                    if (onSelectOffer) {
+                      onSelectOffer(offer);
+                    } else if (relatedReq) {
+                      onSelectRequest(relatedReq);
+                    }
+                  }, 0);
+                }}
                 className="bg-card border border-border rounded-2xl p-4 pt-5 transition-colors cursor-pointer relative shadow-sm group text-right"
               >
                 <span className="absolute -top-3 right-4 bg-card px-2 py-0.5 text-[11px] font-bold text-primary rounded-full border border-border">
                   عرضي
                 </span>
+                
+                {/* Badge for unread messages */}
+                {unreadCount > 0 && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute top-3 left-3 z-20 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow-lg border-2 border-white dark:border-card"
+                    title={`${unreadCount} رسالة غير مقروءة`}
+                  >
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </motion.div>
+                )}
                 
                 <div className="flex items-start justify-between mb-2">
                   <span className="font-bold text-base truncate text-primary max-w-[70%]">
@@ -900,14 +952,35 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                         ? "منتهي"
                         : "قيد الانتظار"}
                     </span>
-                    {onArchiveOffer && offer.status !== "rejected" && offer.status !== "cancelled" && offer.status !== "completed" && (
+                    {(() => {
+                      const showDeleteButton = onArchiveOffer && offer.status !== "rejected" && offer.status !== "cancelled" && offer.status !== "completed";
+                      if (!showDeleteButton) {
+                        console.log('🚫 Delete button hidden for offer:', offer.id, {
+                          hasOnArchiveOffer: !!onArchiveOffer,
+                          status: offer.status,
+                        });
+                      }
+                      return showDeleteButton;
+                    })() && (
                       <button
                         onClick={(e) => {
+                          e.preventDefault();
                           e.stopPropagation();
+                          if (navigator.vibrate) navigator.vibrate(10);
                           setOfferToDelete(offer.id);
                         }}
-                        className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                        }}
+                        onTouchStart={(e) => {
+                          e.stopPropagation();
+                          if (navigator.vibrate) navigator.vibrate(10);
+                          setOfferToDelete(offer.id);
+                        }}
+                        className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 active:bg-red-100 dark:active:bg-red-900/30 rounded-lg transition-colors text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 relative z-[100] cursor-pointer"
+                        style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
                         title="حذف العرض"
+                        type="button"
                       >
                         <Trash2 size={14} strokeWidth={2.5} />
                       </button>
@@ -1033,7 +1106,8 @@ export const MyOffers: React.FC<MyOffersProps> = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+            style={{ pointerEvents: 'auto' }}
             onClick={() => !isDeletingOffer && setOfferToDelete(null)}
           >
             <motion.div
@@ -1065,18 +1139,27 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                   variant="danger"
                   className="flex-1"
                   isLoading={isDeletingOffer}
-                  onClick={async () => {
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     if (onArchiveOffer && offerToDelete) {
                       setIsDeletingOffer(true);
                       try {
-                        await onArchiveOffer(offerToDelete);
-                        setOfferToDelete(null);
-                        // Haptic feedback
-                        if (navigator.vibrate) {
-                          navigator.vibrate(100);
+                        const result = await onArchiveOffer(offerToDelete);
+                        if (result === true) {
+                          // Success - close modal
+                          setOfferToDelete(null);
+                          // Haptic feedback
+                          if (navigator.vibrate) {
+                            navigator.vibrate(100);
+                          }
+                        } else {
+                          // If deletion failed, show error but don't close modal
+                          alert('فشل حذف العرض. يرجى المحاولة مرة أخرى.');
                         }
                       } catch (error) {
                         console.error('Error deleting offer:', error);
+                        alert('حدث خطأ أثناء حذف العرض. يرجى المحاولة مرة أخرى.');
                       } finally {
                         setIsDeletingOffer(false);
                       }
