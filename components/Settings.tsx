@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { logger } from '../utils/logger';
-import { Moon, Sun, ArrowLeftRight, ArrowRight, Bell, MapPin, User, Languages, ChevronLeft, X, ChevronDown, Plus, Filter, LogOut } from 'lucide-react';
+import { logger } from '../utils/logger.ts';
+import { Bell, User, X, ChevronDown, Plus, Filter } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AVAILABLE_CATEGORIES } from '../data';
-import { UserPreferences } from '../types';
-import { UserProfile, sendOTP, verifyOTP } from '../services/authService';
-import { supabase } from '../services/supabaseClient';
-import { UnifiedHeader } from './ui/UnifiedHeader';
-import { hapticService } from '../services/hapticService';
+import { AVAILABLE_CATEGORIES } from '../data.ts';
+import { UserPreferences } from '../types.ts';
+import { UserProfile, sendOTP, verifyOTP } from '../services/authService.ts';
+import { supabase } from '../services/supabaseClient.ts';
+import { UnifiedHeader } from './ui/UnifiedHeader.tsx';
+import { hapticService } from '../services/hapticService.ts';
 
 interface SettingsProps {
   isDarkMode: boolean;
@@ -24,12 +24,12 @@ interface SettingsProps {
   isModeSwitching: boolean;
   unreadCount: number;
   hasUnreadMessages: boolean;
-  setView: (view: any) => void;
-  setPreviousView: (view: any) => void;
+  setView: (view: string) => void;
+  setPreviousView: (view: string) => void;
   titleKey: number;
-  notifications: any[];
+  notifications: Array<{ id: string; [key: string]: unknown }>;
   onMarkAsRead: (id: string) => void;
-  onNotificationClick?: (notification: any) => void;
+  onNotificationClick?: (notification: { id: string; [key: string]: unknown }) => void;
   onClearAll: () => void;
   isGuest?: boolean;
   onNavigateToProfile?: () => void;
@@ -44,8 +44,6 @@ const CITIES = [
 ];
 
 export const Settings: React.FC<SettingsProps> = ({ 
-  isDarkMode, 
-  toggleTheme, 
   onBack,
   userPreferences = {
     interestedCategories: [],
@@ -85,7 +83,6 @@ export const Settings: React.FC<SettingsProps> = ({
   // Loading states for save operations
   const [isSavingName, setIsSavingName] = useState(false);
   const [isSavingEmail, setIsSavingEmail] = useState(false);
-  const [isSavingPhone, setIsSavingPhone] = useState(false);
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   
   // Phone verification states
@@ -227,8 +224,9 @@ export const Settings: React.FC<SettingsProps> = ({
       } else {
         setPhoneError(translateAuthError(result.error || 'حدث خطأ أثناء إرسال رمز التحقق'));
       }
-    } catch (err: any) {
-      setPhoneError(translateAuthError(err.message || 'حدث خطأ أثناء إرسال رمز التحقق'));
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      setPhoneError(translateAuthError(error.message || 'حدث خطأ أثناء إرسال رمز التحقق'));
     } finally {
       setIsSendingOTP(false);
     }
@@ -258,8 +256,9 @@ export const Settings: React.FC<SettingsProps> = ({
       } else {
         setPhoneError(translateAuthError(result.error || 'رمز التحقق غير صحيح'));
       }
-    } catch (err: any) {
-      setPhoneError(translateAuthError(err.message || 'رمز التحقق غير صحيح'));
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      setPhoneError(translateAuthError(error.message || 'رمز التحقق غير صحيح'));
     } finally {
       setIsVerifyingOTP(false);
     }
@@ -286,7 +285,7 @@ export const Settings: React.FC<SettingsProps> = ({
         onGoToMarketplace={onBack}
         title="الإعدادات"
         currentView="settings"
-        hideModeToggle={true}
+        hideModeToggle
         isGuest={isGuest}
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToSettings={onNavigateToSettings}
@@ -314,7 +313,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         <input
                           type="text"
                           value={editedName}
-                          onChange={(e) => setEditedName((e.target as HTMLInputElement).value)}
+                          onChange={(e) => setEditedName(e.target.value)}
                           className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-right"
                           dir="rtl"
                           autoFocus
@@ -355,6 +354,7 @@ export const Settings: React.FC<SettingsProps> = ({
                           )}
                         </button>
                         <button
+                          type="button"
                           onClick={() => {
                             setEditedName(user?.display_name || "");
                             setIsEditingName(false);
@@ -371,7 +371,8 @@ export const Settings: React.FC<SettingsProps> = ({
                     )}
                   </div>
                   {!isEditingName && (
-                    <button 
+                    <button
+                      type="button"
                       onClick={() => setIsEditingName(true)}
                       className="text-xs text-primary hover:underline shrink-0 mr-2"
                     >
@@ -389,7 +390,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         <input
                           type="email"
                           value={editedEmail}
-                          onChange={(e) => setEditedEmail((e.target as HTMLInputElement).value)}
+                          onChange={(e) => setEditedEmail(e.target.value)}
                           className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-left"
                           dir="ltr"
                           autoFocus
@@ -413,7 +414,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                 // تحديث في جدول profiles أيضاً
                                 await onUpdateProfile({ email: editedEmail.trim() });
                                 setIsEditingEmail(false);
-                              } catch (err: any) {
+                              } catch (err: unknown) {
                                 logger.error('Error updating email:', err, 'service');
                                 alert('حدث خطأ أثناء تحديث البريد الإلكتروني');
                               } finally {
@@ -440,6 +441,7 @@ export const Settings: React.FC<SettingsProps> = ({
                           )}
                         </button>
                         <button
+                          type="button"
                           onClick={() => {
                             setEditedEmail(user?.email || "");
                             setIsEditingEmail(false);
@@ -456,7 +458,8 @@ export const Settings: React.FC<SettingsProps> = ({
                     )}
                   </div>
                   {!isEditingEmail && (
-                    <button 
+                    <button
+                      type="button"
                       onClick={() => setIsEditingEmail(true)}
                       className="text-xs text-primary hover:underline shrink-0 mr-2"
                     >
@@ -474,7 +477,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         <input
                           type="tel"
                           value={editedPhone}
-                          onChange={(e) => setEditedPhone((e.target as HTMLInputElement).value)}
+                          onChange={(e) => setEditedPhone(e.target.value)}
                           className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-left"
                           dir="ltr"
                           autoFocus
@@ -483,6 +486,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         {phoneVerificationStep === 'none' ? (
                           <>
                             <button
+                              type="button"
                               onClick={() => {
                                 setTempPhone(editedPhone.trim());
                                 setPhoneVerificationStep('phone');
@@ -494,6 +498,7 @@ export const Settings: React.FC<SettingsProps> = ({
                               حفظ
                             </button>
                             <button
+                              type="button"
                               onClick={() => {
                                 setEditedPhone(user?.phone || "");
                                 setIsEditingPhone(false);
@@ -514,7 +519,8 @@ export const Settings: React.FC<SettingsProps> = ({
                     )}
                   </div>
                   {!isEditingPhone && (
-                    <button 
+                    <button
+                      type="button"
                       onClick={() => {
                         setIsEditingPhone(true);
                         setEditedPhone(user?.phone || "");
@@ -552,6 +558,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     </p>
                   </div>
                   <button
+                    type="button"
                     onClick={() => {
                       hapticService.impact();
                       const newValue = !showNameToApprovedProvider;
@@ -594,6 +601,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     <p className="text-xs text-muted-foreground">إشعار عند وجود طلبات جديدة حسب اهتماماتك</p>
              </div>
                   <button
+                    type="button"
                     onClick={() => {
                       // Haptic feedback
                       hapticService.impact();
@@ -617,7 +625,8 @@ export const Settings: React.FC<SettingsProps> = ({
                     <p className="font-medium text-sm">إشعارات العروض</p>
                     <p className="text-xs text-muted-foreground">إشعار عند استلام عروض جديدة على طلباتك</p>
                   </div>
-          <button 
+          <button
+                    type="button"
                     onClick={() => {
                       // Haptic feedback
                       hapticService.impact();
@@ -642,6 +651,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     <p className="text-xs text-muted-foreground">إشعار عند استلام رسائل جديدة</p>
                   </div>
                   <button
+                    type="button"
                     onClick={() => {
                       // Haptic feedback
                       hapticService.impact();
@@ -682,6 +692,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => {
                     setTempCategories(selectedCategories);
                     setTempCities(selectedCities);
@@ -800,6 +811,7 @@ export const Settings: React.FC<SettingsProps> = ({
               <div className="flex items-center justify-between p-4 border-b border-border">
                 <h3 className="text-lg font-bold">إدارة الاهتمامات</h3>
                 <button
+                  type="button"
                   onClick={() => setIsManageInterestsOpen(false)}
                   className="p-2 hover:bg-secondary rounded-lg transition-colors"
                 >
@@ -820,6 +832,7 @@ export const Settings: React.FC<SettingsProps> = ({
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={() => {
                         // Haptic feedback
                         hapticService.impact();
@@ -864,12 +877,13 @@ export const Settings: React.FC<SettingsProps> = ({
                             type="text"
                             placeholder="بحث..."
                             value={categorySearch}
-                            onChange={(e) => setCategorySearch((e.target as HTMLInputElement).value)}
+                            onChange={(e) => setCategorySearch(e.target.value)}
                             className="w-full text-xs px-3 py-1.5 rounded-lg border-2 border-[#1E968C]/30 bg-background focus:border-[#178075] focus:outline-none transition-all"
                           />
                           <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar">
                             {filteredCategories.map((cat: { id: string; label: string; emoji: string }) => (
                               <button
+                                type="button"
                                 key={cat.id}
                                 onClick={() => toggleCategory(cat.id)}
                                 className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
@@ -914,12 +928,13 @@ export const Settings: React.FC<SettingsProps> = ({
                             type="text"
                             placeholder="بحث..."
                             value={citySearch}
-                            onChange={(e) => setCitySearch((e.target as HTMLInputElement).value)}
+                            onChange={(e) => setCitySearch(e.target.value)}
                             className="w-full text-xs px-3 py-1.5 rounded-lg border-2 border-[#1E968C]/30 bg-background focus:border-[#178075] focus:outline-none transition-all"
                           />
                           <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar">
                             {filteredCities.map((city) => (
                               <button
+                                type="button"
                                 key={city}
                                 onClick={() => toggleCity(city)}
                                 className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
@@ -968,7 +983,7 @@ export const Settings: React.FC<SettingsProps> = ({
                               type="text"
                               placeholder="اكتب الكلمة..."
                               value={newRadarWord}
-                              onChange={(e) => setNewRadarWord((e.target as HTMLInputElement).value)}
+                              onChange={(e) => setNewRadarWord(e.target.value)}
                               onKeyPress={(e) => {
                                 if (e.key === 'Enter') {
                                   e.preventDefault();
@@ -978,6 +993,7 @@ export const Settings: React.FC<SettingsProps> = ({
                               className="flex-1 text-xs px-3 py-1.5 rounded-lg border-2 border-[#1E968C]/30 bg-background focus:border-[#178075] focus:outline-none transition-all"
                             />
                             <button
+                              type="button"
                               onClick={addRadarWord}
                               disabled={!newRadarWord.trim()}
                               className="px-3 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
@@ -994,6 +1010,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                 >
                                   <span>{word}</span>
                                   <button
+                                    type="button"
                                     onClick={() => removeRadarWord(word)}
                                     className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
                                   >
@@ -1013,12 +1030,14 @@ export const Settings: React.FC<SettingsProps> = ({
               {/* Modal Footer */}
               <div className="flex gap-3 p-4 border-t border-border">
                 <button
+                  type="button"
                   onClick={() => setIsManageInterestsOpen(false)}
                   className="flex-1 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors font-medium"
                 >
                   إلغاء
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     // Haptic feedback
                     hapticService.impact();
@@ -1060,6 +1079,7 @@ export const Settings: React.FC<SettingsProps> = ({
               <div className="flex items-center justify-between p-4 border-b border-border">
                 <h3 className="text-lg font-bold">التحقق من رقم الجوال</h3>
                 <button
+                  type="button"
                   onClick={() => {
                     setPhoneVerificationStep('none');
                     setPhoneOTP('');
@@ -1086,6 +1106,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     )}
                     <div className="flex gap-3">
                       <button
+                        type="button"
                         onClick={() => {
                           setPhoneVerificationStep('none');
                           setPhoneError(null);
@@ -1096,6 +1117,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         إلغاء
                       </button>
                       <button
+                        type="button"
                         onClick={handleSendPhoneOTP}
                         disabled={isSendingOTP}
                         className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1113,7 +1135,7 @@ export const Settings: React.FC<SettingsProps> = ({
                       type="text"
                       value={phoneOTP}
                       onChange={(e) => {
-                        const value = (e.target as HTMLInputElement).value.replace(/\D/g, '').slice(0, 6);
+                        const value = e.target.value.replace(/\D/g, '').slice(0, 6);
                         setPhoneOTP(value);
                         setPhoneError(null);
                       }}

@@ -8,7 +8,7 @@
         "@supabase/functions-js": "jsr:@supabase/functions-js@^2.8.9"
     },
     "compilerOptions": {
-        "lib": ["deno.window", "deno.ns", "esnext"]
+        "lib": ["deno.window", "deno.ns", "esnext", "dom", "dom.iterable"]
     },
     "exclude": ["node_modules", "dist", "android"]
 }

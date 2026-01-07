@@ -7,29 +7,29 @@ import React, {
 } from "react";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { AlertCircle, Check, X } from "lucide-react";
-import { UnifiedHeader } from "./components/ui/UnifiedHeader";
+import { UnifiedHeader } from "./components/ui/UnifiedHeader.tsx";
 
 // Components
-import { Marketplace } from "./components/Marketplace";
-import { RequestDetail } from "./components/RequestDetail";
-import { BottomNavigation, BottomNavTab } from "./components/BottomNavigation";
-import { MyRequests } from "./components/MyRequests";
-import { MyOffers } from "./components/MyOffers";
-import { Settings } from "./components/Settings";
-import { Profile } from "./components/Profile";
-import { NotificationsPopover } from "./components/NotificationsPopover";
-import { SplashScreen } from "./components/SplashScreen";
-import { AuthPage } from "./components/AuthPage";
-import { Messages } from "./components/Messages";
-import { CreateRequestV2 } from "./components/CreateRequestV2";
+import { Marketplace } from "./components/Marketplace.tsx";
+import { RequestDetail } from "./components/RequestDetail.tsx";
+import { BottomNavigation, BottomNavTab } from "./components/BottomNavigation.tsx";
+import { MyRequests } from "./components/MyRequests.tsx";
+import { MyOffers } from "./components/MyOffers.tsx";
+import { Settings } from "./components/Settings.tsx";
+import { Profile } from "./components/Profile.tsx";
+import { NotificationsPopover } from "./components/NotificationsPopover.tsx";
+import { SplashScreen } from "./components/SplashScreen.tsx";
+import { AuthPage } from "./components/AuthPage.tsx";
+import { Messages } from "./components/Messages.tsx";
+import { CreateRequestV2 } from "./components/CreateRequestV2.tsx";
 import {
   GlobalFloatingOrb,
   VoiceProcessingStatus,
-} from "./components/GlobalFloatingOrb";
-import { InterestToast, useInterestToast } from "./components/ui/InterestToast";
-import { UnarchiveToast } from "./components/ui/UnarchiveToast";
-import { notificationSound } from "./services/notificationSoundService";
-import { OnboardingScreen } from "./components/OnboardingScreen";
+} from "./components/GlobalFloatingOrb.tsx";
+import { InterestToast, useInterestToast } from "./components/ui/InterestToast.tsx";
+import { UnarchiveToast } from "./components/ui/UnarchiveToast.tsx";
+import { notificationSound } from "./services/notificationSoundService.ts";
+import { OnboardingScreen } from "./components/OnboardingScreen.tsx";
 
 // Types & Data
 import {
@@ -40,8 +40,8 @@ import {
   Review,
   UserPreferences,
   ViewState,
-} from "./types";
-import { AVAILABLE_CATEGORIES, MOCK_REVIEWS } from "./data";
+} from "./types.ts";
+import { AVAILABLE_CATEGORIES, MOCK_REVIEWS } from "./data.ts";
 import {
   clearAllNotifications,
   getNotifications,
@@ -49,7 +49,7 @@ import {
   markAllNotificationsAsRead,
   markNotificationAsRead,
   subscribeToNotifications,
-} from "./services/notificationsService";
+} from "./services/notificationsService.ts";
 
 import {
   getOrCreateConversation,
@@ -57,7 +57,7 @@ import {
   getUnreadMessagesForMyOffers,
   getUnreadMessagesForMyRequests,
   subscribeToUnreadCount,
-} from "./services/messagesService";
+} from "./services/messagesService.ts";
 
 // Services
 import {
@@ -79,40 +79,40 @@ import {
   unarchiveRequest,
   unhideRequest,
   updateRequest,
-} from "./services/requestsService";
+} from "./services/requestsService.ts";
 import {
   getUnreadInterestsCount,
   getViewedRequestIds,
   subscribeToViewedRequests,
-} from "./services/requestViewsService";
+} from "./services/requestViewsService.ts";
 import {
   getPreferencesDirect,
   updatePreferencesDirect,
-} from "./services/preferencesService";
-import { checkAIConnection } from "./services/aiService";
-import { supabase } from "./services/supabaseClient";
+} from "./services/preferencesService.ts";
+import { checkAIConnection } from "./services/aiService.ts";
+import { supabase } from "./services/supabaseClient.ts";
 import {
   getCurrentUser,
   onAuthStateChange,
   signOut as authSignOut,
   updateProfile,
   UserProfile,
-} from "./services/authService";
-import { FullScreenLoading } from "./components/ui/LoadingSkeleton";
-import { ConnectionError } from "./components/ui/ConnectionError";
-import { SwipeBackWrapper } from "./components/ui/SwipeBackWrapper";
+} from "./services/authService.ts";
+import { FullScreenLoading } from "./components/ui/LoadingSkeleton.tsx";
+import { ConnectionError } from "./components/ui/ConnectionError.tsx";
+import { SwipeBackWrapper } from "./components/ui/SwipeBackWrapper.tsx";
 import {
   ParsedRoute,
   parseRoute,
   routeTypeToViewState,
   updateUrl,
-} from "./services/routingService";
+} from "./services/routingService.ts";
 import { App as CapacitorApp } from "@capacitor/app";
 import {
   initPushNotifications,
   refreshPushToken,
   removePushToken,
-} from "./services/pushNotificationService";
+} from "./services/pushNotificationService.ts";
 
 // Auth Views
 type AppView = "splash" | "auth" | "onboarding" | "main" | "connection-error";
@@ -3895,7 +3895,7 @@ const App: React.FC = () => {
             try {
               // استيراد الدالة للحصول على المحادثة
               const { getConversation } = await import(
-                "./services/messagesService"
+                "./services/messagesService.ts"
               );
               const conversation = await getConversation(initialConversationId);
 
