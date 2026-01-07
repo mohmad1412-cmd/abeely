@@ -97,7 +97,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
       0,
       (unreadMessagesForMyOffers || 0) + (unreadNotificationsForMyOffers || 0),
     ),
-    profile: Math.max(0, unreadNotificationsCount || 0),
+    profile: 0, // لا نعرض badge على زر "أنت"
   };
 
   const renderBadge = (count?: number) => {
