@@ -62,7 +62,11 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
       className={`bg-card border border-border rounded-2xl overflow-hidden transition-colors flex flex-col cursor-pointer relative shadow-sm ${
         isTouchHovered ? "" : "group"
       }`}
-      onClick={() => {
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("🖱️ ServiceCard clicked:", req.id);
+        
         if (isGuest) {
           setGuestViewedIds((prev) => {
             const newSet = new Set(prev);
@@ -78,7 +82,10 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
             return newSet;
           });
         }
+        
+        console.log("📞 Calling onSelectRequest for:", req.id);
         onSelectRequest(req);
+        console.log("✅ onSelectRequest called");
       }}
       onMouseEnter={() => setTouchHoveredCardId(req.id)}
       onMouseLeave={() => setTouchHoveredCardId(null)}

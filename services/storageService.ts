@@ -15,7 +15,7 @@ const AVATARS_BUCKET = "avatars";
 const generateFileName = (file: File, prefix: string): string => {
   const timestamp = Date.now();
   const randomString = Math.random().toString(36).substring(2, 8);
-  const extension = file.name.split('.').pop() || 'file';
+  const extension = file.name.split(".").pop() || "file";
   return `${prefix}/${timestamp}-${randomString}.${extension}`;
 };
 
@@ -25,20 +25,20 @@ const generateFileName = (file: File, prefix: string): string => {
 export const uploadFile = async (
   file: File,
   bucket: string,
-  prefix: string
+  prefix: string,
 ): Promise<{ url: string; path: string } | null> => {
   try {
     const filePath = generateFileName(file, prefix);
-    
+
     const { data, error } = await supabase.storage
       .from(bucket)
       .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false
+        cacheControl: "3600",
+        upsert: false,
       });
 
     if (error) {
-      console.error('Upload error:', error);
+      console.error("Upload error:", error);
       return null;
     }
 
@@ -49,10 +49,10 @@ export const uploadFile = async (
 
     return {
       url: urlData.publicUrl,
-      path: data.path
+      path: data.path,
     };
   } catch (err) {
-    console.error('Upload failed:', err);
+    console.error("Upload failed:", err);
     return null;
   }
 };
@@ -62,7 +62,7 @@ export const uploadFile = async (
  */
 export const uploadOfferAttachments = async (
   files: File[],
-  offerId: string
+  offerId: string,
 ): Promise<string[]> => {
   const uploadedUrls: string[] = [];
 
@@ -81,12 +81,16 @@ export const uploadOfferAttachments = async (
  */
 export const uploadRequestAttachments = async (
   files: File[],
-  requestId: string
+  requestId: string,
 ): Promise<string[]> => {
   const uploadedUrls: string[] = [];
 
   for (const file of files) {
-    const result = await uploadFile(file, REQUEST_ATTACHMENTS_BUCKET, requestId);
+    const result = await uploadFile(
+      file,
+      REQUEST_ATTACHMENTS_BUCKET,
+      requestId,
+    );
     if (result) {
       uploadedUrls.push(result.url);
     }
@@ -100,24 +104,21 @@ export const uploadRequestAttachments = async (
  */
 export const deleteFile = async (
   bucket: string,
-  path: string
+  path: string,
 ): Promise<boolean> => {
   try {
-    console.log('🗑️ deleteFile called', { bucket, path });
-    
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from(bucket)
       .remove([path]);
 
     if (error) {
-      console.error('❌ Delete error:', error);
+      console.error("❌ Delete error:", error);
       return false;
     }
 
-    console.log('✅ File deleted successfully:', { bucket, path, data });
     return true;
   } catch (err) {
-    console.error('❌ Delete failed:', err);
+    console.error("❌ Delete failed:", err);
     return false;
   }
 };
@@ -126,25 +127,25 @@ export const deleteFile = async (
  * Get file size in human readable format
  */
 export const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 Bytes';
+  if (bytes === 0) return "0 Bytes";
   const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const sizes = ["Bytes", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 };
 
 /**
  * Check if file is an image
  */
 export const isImageFile = (file: File): boolean => {
-  return file.type.startsWith('image/');
+  return file.type.startsWith("image/");
 };
 
 /**
  * Check if file is a video
  */
 export const isVideoFile = (file: File): boolean => {
-  return file.type.startsWith('video/');
+  return file.type.startsWith("video/");
 };
 
 /**
@@ -156,27 +157,32 @@ export const MAX_FILE_SIZE = 10 * 1024 * 1024;
  * Allowed file types
  */
 export const ALLOWED_FILE_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'video/mp4',
-  'video/webm',
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "video/mp4",
+  "video/webm",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 
 /**
  * Validate file before upload
  */
-export const validateFile = (file: File): { valid: boolean; error?: string } => {
+export const validateFile = (
+  file: File,
+): { valid: boolean; error?: string } => {
   if (file.size > MAX_FILE_SIZE) {
-    return { valid: false, error: `الملف كبير جداً. الحد الأقصى ${formatFileSize(MAX_FILE_SIZE)}` };
+    return {
+      valid: false,
+      error: `الملف كبير جداً. الحد الأقصى ${formatFileSize(MAX_FILE_SIZE)}`,
+    };
   }
 
   if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-    return { valid: false, error: 'نوع الملف غير مدعوم' };
+    return { valid: false, error: "نوع الملف غير مدعوم" };
   }
 
   return { valid: true };
@@ -189,19 +195,19 @@ export const validateFile = (file: File): { valid: boolean; error?: string } => 
 export const uploadAvatar = async (
   file: File,
   userId: string,
-  oldAvatarUrl?: string | null
+  oldAvatarUrl?: string | null,
 ): Promise<string | null> => {
   try {
     // Validate file
     const validation = validateFile(file);
     if (!validation.valid) {
-      console.error('Avatar validation failed:', validation.error);
+      console.error("Avatar validation failed:", validation.error);
       return null;
     }
 
     // Only allow images for avatars
     if (!isImageFile(file)) {
-      console.error('Avatar must be an image');
+      console.error("Avatar must be an image");
       return null;
     }
 
@@ -209,38 +215,28 @@ export const uploadAvatar = async (
     if (oldAvatarUrl) {
       try {
         // Extract path from URL (remove domain and bucket prefix)
-        const urlParts = oldAvatarUrl.split('/');
-        const pathIndex = urlParts.findIndex(part => part === AVATARS_BUCKET);
+        const urlParts = oldAvatarUrl.split("/");
+        const pathIndex = urlParts.findIndex((part) => part === AVATARS_BUCKET);
         if (pathIndex !== -1 && pathIndex < urlParts.length - 1) {
-          const oldPath = urlParts.slice(pathIndex + 1).join('/');
+          const oldPath = urlParts.slice(pathIndex + 1).join("/");
           await deleteFile(AVATARS_BUCKET, oldPath);
         }
       } catch (err) {
-        console.warn('Failed to delete old avatar:', err);
+        console.warn("Failed to delete old avatar:", err);
         // Continue anyway
       }
     }
 
     // Upload new avatar
     const result = await uploadFile(file, AVATARS_BUCKET, userId);
-    
+
     if (result) {
       return result.url;
     }
 
     return null;
   } catch (err) {
-    console.error('Avatar upload failed:', err);
+    console.error("Avatar upload failed:", err);
     return null;
   }
 };
-
-
-
-
-
-
-
-
-
-

@@ -51,6 +51,7 @@ interface UnifiedHeaderProps {
   backButton?: boolean;
   onBack?: () => void;
   closeIcon?: boolean; // Use X icon instead of arrow for back button
+  showBackButtonOnDesktop?: boolean; // Show back button on desktop/wide mode (default: false)
   title?: string;
   isScrolled?: boolean;
   showTabs?: boolean;
@@ -131,6 +132,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
   backButton,
   onBack,
   closeIcon = false,
+  showBackButtonOnDesktop = false,
   title,
   isScrolled = true,
   currentView,
@@ -338,7 +340,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.88 }}
             transition={{ type: "spring", stiffness: 500, damping: 25 }}
-            className="relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group shrink-0"
+            className={`relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group shrink-0 ${showBackButtonOnDesktop ? '' : 'md:hidden'}`}
           >
             {/* Pulse ring effect - only on active/touch */}
             <span className="absolute inset-0 rounded-full border-2 border-primary/50 opacity-0 group-active:opacity-100 group-active:animate-ping" />
@@ -346,7 +348,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           </motion.button>
         ) : onGoToMarketplace ? (
           <motion.button
-            className="relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group shrink-0"
+            className="relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group shrink-0 md:hidden"
             onClick={() => {
               if (navigator.vibrate) navigator.vibrate(12);
               onGoToMarketplace?.();

@@ -13,605 +13,549 @@
 ## 2️⃣ Requirement Validation Summary
 
 #### Test TC001
-- **Test Name:** Login with Google OAuth success
-- **Test Code:** [TC001_Login_with_Google_OAuth_success.py](./TC001_Login_with_Google_OAuth_success.py)
-- **Test Error:** 
+- **Test Name:** Authentication with Email Login Success
+- **Test Code:** [TC001_Authentication_with_Email_Login_Success.py](./TC001_Authentication_with_Email_Login_Success.py)
+- **Test Error:** The login page only supports phone number login and does not provide an email/password login form. Therefore, the task to verify login with email and password cannot be completed as the UI does not support it.
 Browser Console Logs:
-[ERROR] Failed to load resource: net::ERR_CONTENT_LENGTH_MISMATCH (at http://localhost:3005/node_modules/.vite/deps/chunk-KDCVS43I.js?v=83574dff:0:0)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/6fe435ff-d170-451c-8f34-2911d320ed97
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://fonts.gstatic.com/s/ibmplexsansarabic/v14/Qw3NZRtWPQCuHme67tEYUIx3Kh0PHR9N6YOG-eCRXMR5Kw.woff2:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://fonts.gstatic.com/s/ibmplexsansarabic/v14/Qw3NZRtWPQCuHme67tEYUIx3Kh0PHR9N6YPO_-CRXMR5Kw.woff2:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://fonts.gstatic.com/s/ibmplexsansarabic/v14/Qw3CZRtWPQCuHme67tEYUIx3Kh0PHR9N6Ys43PWrfQ.woff2:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
+[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&eventsPerSecond=10&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:1509:0)
+[WARNING] [WARN] ⚠️ WebSocket channel error - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket channel error - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://api.anthropic.com/v1/messages:0:0)
+[WARNING] [WARN] ⚠️ WebSocket connection timed out - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&eventsPerSecond=10&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:1509:0)
+[WARNING] [WARN] ⚠️ WebSocket channel error - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/568a9615-57a1-4300-a3fc-f92d19828c2a
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC002
-- **Test Name:** Login with Email and Password success
-- **Test Code:** [TC002_Login_with_Email_and_Password_success.py](./TC002_Login_with_Email_and_Password_success.py)
-- **Test Error:** 
+- **Test Name:** Authentication with Email Login Failure
+- **Test Code:** [TC002_Authentication_with_Email_Login_Failure.py](./TC002_Authentication_with_Email_Login_Failure.py)
+- **Test Error:** Login page is empty and does not contain login form elements. Cannot verify login failure with invalid credentials. Reporting issue and stopping.
 Browser Console Logs:
-[ERROR] Failed to load resource: net::ERR_CONTENT_LENGTH_MISMATCH (at http://localhost:3005/node_modules/.vite/deps/chunk-KDCVS43I.js?v=83574dff:0:0)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/bf7e6e2b-6771-48f6-98cb-8dbf41bd741b
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/CreateRequestV2.tsx?t=1767715308051:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@react-refresh:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/App.tsx?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/ErrorBoundary.tsx:0:0)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/a1a58988-5752-4e00-bb9d-749a250b796e
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC003
-- **Test Name:** Login with Phone OTP success
-- **Test Code:** [null](./null)
-- **Test Error:** Test execution timed out after 15 minutes
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/12963c14-da81-48f4-bb5b-ae8486bae027
+- **Test Name:** Authentication with Phone OTP Success
+- **Test Code:** [TC003_Authentication_with_Phone_OTP_Success.py](./TC003_Authentication_with_Phone_OTP_Success.py)
+- **Test Error:** The user cannot successfully log in using phone number OTP authentication because the login page is missing all necessary interactive elements. The page is empty and does not allow entering phone number or OTP. The issue should be reported to the development team for resolution.
+Browser Console Logs:
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/react-dom_client.js?v=2fb96622:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/index.tsx?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@react-refresh:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/chunk-DC5AMYBS.js?v=2fb96622:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/ErrorBoundary.tsx:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/chunk-RLJ2RCJQ.js?v=2fb96622:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/8ade9c93-e3ef-4bdd-8137-08ddedf157a5
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC004
-- **Test Name:** Login failure with invalid credentials
-- **Test Code:** [TC004_Login_failure_with_invalid_credentials.py](./TC004_Login_failure_with_invalid_credentials.py)
-- **Test Error:** Failed to go to the start URL. Err: Error executing action go_to_url: Page.goto: Timeout 60000ms exceeded.
-Call log:
-  - navigating to "http://localhost:3005/", waiting until "load"
-
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/bf4732d8-f44a-4f6f-875b-127d768ebb7a
+- **Test Name:** Authentication with Google OAuth Success
+- **Test Code:** [TC004_Authentication_with_Google_OAuth_Success.py](./TC004_Authentication_with_Google_OAuth_Success.py)
+- **Test Error:** The main page at http://localhost:3005/ is empty with no interactive elements visible. Unable to find login link or button to proceed with Google OAuth login test. Reporting this issue and stopping the task.
+Browser Console Logs:
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/BottomNavigation.tsx?t=1767715308038:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/Marketplace.tsx?t=1767714524387:0:0)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/82d32975-b591-427a-8499-0c4d557db279
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC005
-- **Test Name:** Guest mode access and restrictions
-- **Test Code:** [TC005_Guest_mode_access_and_restrictions.py](./TC005_Guest_mode_access_and_restrictions.py)
+- **Test Name:** Guest Mode Access
+- **Test Code:** [TC005_Guest_Mode_Access.py](./TC005_Guest_Mode_Access.py)
 - **Test Error:** 
 Browser Console Logs:
-[ERROR] Failed to load resource: net::ERR_CONTENT_LENGTH_MISMATCH (at http://localhost:3005/services/categoriesService.ts:0:0)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/65e2e2a0-c3e3-4341-b9ad-0d5497d960ed
+[ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED (at https://accounts.google.com/gsi/client:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/MyRequests.tsx:0:0)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:0:0)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/6f500fb1-afa2-4e5f-811a-aa80e55b754a
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC006
-- **Test Name:** Create a new request using AI Assistant
-- **Test Code:** [TC006_Create_a_new_request_using_AI_Assistant.py](./TC006_Create_a_new_request_using_AI_Assistant.py)
-- **Test Error:** The user successfully logged in and navigated to the create request page. The request description and location were input, but the location selection from the dropdown could not be completed due to missing elements. The request was not submitted, and the creation was not verified. Therefore, the task to validate that users can create a service request using the AI-powered assistant is not fully completed due to UI interaction limitations and connection issues encountered during testing.
+- **Test Name:** Create New Request Using AI Assistant
+- **Test Code:** [TC006_Create_New_Request_Using_AI_Assistant.py](./TC006_Create_New_Request_Using_AI_Assistant.py)
+- **Test Error:** Login process is blocked due to verification code submission failure. Cannot proceed to create request page or test AI assistant request creation. Task stopped.
 Browser Console Logs:
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&order=created_at.desc&offset=0&limit=10:0:0)
-[ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/services/requestsService.ts:282:12)
-[ERROR] Error details: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:269:17)\n    at async loadPublicData (http://localhost:3005/App.tsx:713:56)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:283:12)
-[ERROR] Error loading public data: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/App.tsx:720:16)
-[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:1509:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/categories?select=id%2Clabel%2Clabel_en%2Clabel_ur%2Cicon%2Cemoji%2Cdescription&is_active=eq.true&order=sort_order.asc:0:0)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-[WARNING] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: WebSocket is closed before the connection is established. (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:2999:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/ba8ca800-c71f-4b0e-96b0-1be24ab4d16f
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/App.tsx?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/styles/globals.css?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:0:0)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/chunk-DC5AMYBS.js?v=2fb96622:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/5218ae9d-1838-4cca-9696-9accbcbcb269
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC007
-- **Test Name:** Edit existing request
-- **Test Code:** [TC007_Edit_existing_request.py](./TC007_Edit_existing_request.py)
-- **Test Error:** 
+- **Test Name:** Create New Request Using Manual Form
+- **Test Code:** [TC007_Create_New_Request_Using_Manual_Form.py](./TC007_Create_New_Request_Using_Manual_Form.py)
+- **Test Error:** The homepage at http://localhost:3005/ is completely empty with no interactive elements visible, preventing login and navigation. Therefore, it is not possible to verify that users can create a new request using the manual input form without AI assistance. The issue has been reported. Task is marked as done due to this blocking issue.
 Browser Console Logs:
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&order=created_at.desc&offset=0&limit=10:0:0)
-[ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/services/requestsService.ts:282:12)
-[ERROR] Error details: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:269:17)\n    at async loadPublicData (http://localhost:3005/App.tsx:713:56)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:283:12)
-[ERROR] Error loading public data: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/App.tsx:720:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:1509:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/categories?select=id%2Clabel%2Clabel_en%2Clabel_ur%2Cicon%2Cemoji%2Cdescription&is_active=eq.true&order=sort_order.asc:0:0)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/252f1f56-8e94-4ff8-a229-41b24c5bd2d8
+[ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/lucide-react.js?v=2fb96622:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/RequestDetail.tsx?t=1767715308039:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/Marketplace.tsx?t=1767714524387:0:0)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/caf7c1e0-5025-4af4-8148-9bf14fb982d9
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC008
-- **Test Name:** Archive and unarchive a request
-- **Test Code:** [TC008_Archive_and_unarchive_a_request.py](./TC008_Archive_and_unarchive_a_request.py)
-- **Test Error:** 
+- **Test Name:** Edit Existing Request
+- **Test Code:** [TC008_Edit_Existing_Request.py](./TC008_Edit_Existing_Request.py)
+- **Test Error:** The application at http://localhost:3005/ is not loading, resulting in a chrome error page. No interactive elements are available to perform the login or navigate to the requests page. Please ensure the local server is running and accessible. The task to verify editing an existing request cannot proceed until the app is accessible.
 Browser Console Logs:
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&order=created_at.desc&offset=0&limit=10:0:0)
-[ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/services/requestsService.ts:282:12)
-[ERROR] Error details: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:269:17)\n    at async loadPublicData (http://localhost:3005/App.tsx:713:56)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:283:12)
-[ERROR] Error loading public data: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/App.tsx:720:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:1509:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/categories?select=id%2Clabel%2Clabel_en%2Clabel_ur%2Cicon%2Cemoji%2Cdescription&is_active=eq.true&order=sort_order.asc:0:0)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/5fcc5261-0721-4661-b92b-2048a4ebae5a
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/AuthPage.tsx:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/c23e556d-bfd0-41cc-a4e5-035543fba59f
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC009
-- **Test Name:** Hide and bump a request
-- **Test Code:** [TC009_Hide_and_bump_a_request.py](./TC009_Hide_and_bump_a_request.py)
-- **Test Error:** 
+- **Test Name:** Archive and Unarchive Request
+- **Test Code:** [TC009_Archive_and_Unarchive_Request.py](./TC009_Archive_and_Unarchive_Request.py)
+- **Test Error:** The test to verify archiving a request hides it from active views and unarchiving restores it correctly could not be fully completed because there were no active requests available to archive or archived requests to unarchive. The user was able to log in as guest, navigate to the requests page, and confirm the absence of active requests. Without existing requests, the archiving and unarchiving functionality could not be tested. Please ensure there are requests in the system to perform this test fully.
 Browser Console Logs:
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:1509:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&order=created_at.desc&offset=0&limit=10:0:0)
-[ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/services/requestsService.ts:282:12)
-[ERROR] Error details: {
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:814:0)
+[ERROR] [vite] failed to connect to websocket.
+your current setup:
+  (browser) localhost:3005/ <--[HTTP]--> localhost:3005/ (server)
+  (browser) localhost:3005/ <--[WebSocket (failing)]--> localhost:3005/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr . (at http://localhost:3005/@vite/client:829:24)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/MyOffers.tsx:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/OnboardingScreen.tsx:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/services/preferencesService.ts:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/index.tsx?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@react-refresh:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://maps.googleapis.com/maps/api/mapsjs/gen_204?csp_test=true:0:0)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&status=eq.active&order=created_at.desc&offset=0&limit=10:0:0)
+[ERROR] [ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
+    at fetch (http://lo…://localhost:3005/App.tsx?t=1767715331235:809:56), hint: , code: } (at http://localhost:3005/utils/logger.ts:26:14)
+[ERROR] [ERROR] Error details: {
   "message": "TypeError: Failed to fetch",
   "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:269:17)\n    at async loadPublicData (http://localhost:3005/App.tsx:713:56)",
+  "details": "TypeError: Failed to fetch\n    at fetch (http://localhost:3005/services/supabaseClient.ts:52:18)\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:11440:40\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:287:17)\n    at async loadPublicData (http://localhost:3005/App.tsx?t=1767715331235:809:56)",
   "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:283:12)
+} (at http://localhost:3005/utils/logger.ts:26:14)
 [ERROR] Error loading public data: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/App.tsx:720:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/categories?select=id%2Clabel%2Clabel_en%2Clabel_ur%2Cicon%2Cemoji%2Cdescription&is_active=eq.true&order=sort_order.asc:0:0)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/7197d02a-9274-43ef-be21-7b1ff9e1b7b8
+    at fetch (http://lo…://localhost:3005/App.tsx?t=1767715331235:809:56), hint: , code: } (at http://localhost:3005/App.tsx?t=1767715331235:817:16)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/b66b2aa3-38bf-4088-92fe-0d400f43e60e
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC010
-- **Test Name:** Browse marketplace requests with filters
-- **Test Code:** [TC010_Browse_marketplace_requests_with_filters.py](./TC010_Browse_marketplace_requests_with_filters.py)
+- **Test Name:** Hide and Bump Request
+- **Test Code:** [TC010_Hide_and_Bump_Request.py](./TC010_Hide_and_Bump_Request.py)
 - **Test Error:** 
 Browser Console Logs:
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:1509:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&order=created_at.desc&offset=0&limit=10:0:0)
-[ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/services/requestsService.ts:282:12)
-[ERROR] Error details: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:269:17)\n    at async loadPublicData (http://localhost:3005/App.tsx:713:56)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:283:12)
-[ERROR] Error loading public data: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/App.tsx:720:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/categories?select=id%2Clabel%2Clabel_en%2Clabel_ur%2Cicon%2Cemoji%2Cdescription&is_active=eq.true&order=sort_order.asc:0:0)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/55dc077b-422d-4b01-be60-5ba2018064cf
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/services/notificationsService.ts:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/react-icons_fa.js?v=2fb96622:0:0)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/5c67f4aa-3b1d-46ef-a227-9c963d7ee877
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC011
-- **Test Name:** Create and submit an offer on a request
-- **Test Code:** [TC011_Create_and_submit_an_offer_on_a_request.py](./TC011_Create_and_submit_an_offer_on_a_request.py)
-- **Test Error:** 
-Browser Console Logs:
-[ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED (at https://accounts.google.com/gsi/client:0:0)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&order=created_at.desc&offset=0&limit=10:0:0)
-[ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/services/requestsService.ts:282:12)
-[ERROR] Error details: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:269:17)\n    at async loadPublicData (http://localhost:3005/App.tsx:713:56)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:283:12)
-[ERROR] Error loading public data: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/App.tsx:720:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:1509:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/categories?select=id%2Clabel%2Clabel_en%2Clabel_ur%2Cicon%2Cemoji%2Cdescription&is_active=eq.true&order=sort_order.asc:0:0)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/413466a9-d5e6-41c6-827a-c720abd0d6c0
-- **Status:** ❌ Failed
+- **Test Name:** Browse Requests with Filters
+- **Test Code:** [TC011_Browse_Requests_with_Filters.py](./TC011_Browse_Requests_with_Filters.py)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/cdcf08e0-aee3-43d7-b200-287d1039711c
+- **Status:** ✅ Passed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC012
-- **Test Name:** Edit and archive offers
-- **Test Code:** [TC012_Edit_and_archive_offers.py](./TC012_Edit_and_archive_offers.py)
+- **Test Name:** Switch Marketplace View Modes
+- **Test Code:** [TC012_Switch_Marketplace_View_Modes.py](./TC012_Switch_Marketplace_View_Modes.py)
 - **Test Error:** 
 Browser Console Logs:
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&order=created_at.desc&offset=0&limit=10:0:0)
-[ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/services/requestsService.ts:282:12)
-[ERROR] Error details: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:269:17)\n    at async loadPublicData (http://localhost:3005/App.tsx:713:56)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:283:12)
-[ERROR] Error loading public data: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/App.tsx:720:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:1509:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/categories?select=id%2Clabel%2Clabel_en%2Clabel_ur%2Cicon%2Cemoji%2Cdescription&is_active=eq.true&order=sort_order.asc:0:0)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/8a52dcab-fa3e-48b8-8e9d-dc092b46db25
+[ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:0:0)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection timed out - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&eventsPerSecond=10&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:1509:0)
+[WARNING] [WARN] ⚠️ WebSocket channel error - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket channel error - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[ERROR] WebSocket connection to 'ws://localhost:3005/' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:1034:0)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/70c61b64-a534-45b2-a405-c5bd1838c0aa
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC013
-- **Test Name:** Real-time messaging between requester and provider
-- **Test Code:** [TC013_Real_time_messaging_between_requester_and_provider.py](./TC013_Real_time_messaging_between_requester_and_provider.py)
-- **Test Error:** Failed to go to the start URL. Err: Error executing action go_to_url: Page.goto: Timeout 60000ms exceeded.
-Call log:
-  - navigating to "http://localhost:3005/", waiting until "load"
-
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/3a8d3fcf-35ba-45b5-8ada-47c4e0a1bf0d
+- **Test Name:** Submit Offer on a Request using AI Assistant
+- **Test Code:** [TC013_Submit_Offer_on_a_Request_using_AI_Assistant.py](./TC013_Submit_Offer_on_a_Request_using_AI_Assistant.py)
+- **Test Error:** The app homepage is empty and no interactive elements are available to proceed with the test steps. The task to verify providers can create and submit offers using AI assistance cannot be completed due to this issue.
+Browser Console Logs:
+[ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/Messages.tsx?t=1767712771359:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/services/categoriesService.ts:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/index.tsx?t=1767715331235:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/0ad9b2f8-f697-445a-b5c7-1ae16fec4363
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC014
-- **Test Name:** Receive real-time notifications with correct sound alerts
-- **Test Code:** [TC014_Receive_real_time_notifications_with_correct_sound_alerts.py](./TC014_Receive_real_time_notifications_with_correct_sound_alerts.py)
-- **Test Error:** 
-Browser Console Logs:
-[ERROR] Failed to load resource: net::ERR_CONTENT_LENGTH_MISMATCH (at http://localhost:3005/node_modules/.vite/deps/chunk-KDCVS43I.js?v=83574dff:0:0)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/8e0a4730-9a2f-4d27-af8a-1448d0edaaa5
-- **Status:** ❌ Failed
+- **Test Name:** Submit Manual Offer on a Request
+- **Test Code:** [TC014_Submit_Manual_Offer_on_a_Request.py](./TC014_Submit_Manual_Offer_on_a_Request.py)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/58f067fd-f7f1-427a-a813-ef430f835bad
+- **Status:** ✅ Passed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC015
-- **Test Name:** User profile preferences update
-- **Test Code:** [TC015_User_profile_preferences_update.py](./TC015_User_profile_preferences_update.py)
-- **Test Error:** 
-Browser Console Logs:
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&order=created_at.desc&offset=0&limit=10:0:0)
-[ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/services/requestsService.ts:282:12)
-[ERROR] Error details: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:269:17)\n    at async loadPublicData (http://localhost:3005/App.tsx:713:56)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:283:12)
-[ERROR] Error loading public data: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/App.tsx:720:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:1509:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/categories?select=id%2Clabel%2Clabel_en%2Clabel_ur%2Cicon%2Cemoji%2Cdescription&is_active=eq.true&order=sort_order.asc:0:0)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/e67b0a80-e2d0-4fad-ab10-1fd23532e79a
-- **Status:** ❌ Failed
+- **Test Name:** Edit and Archive Offers
+- **Test Code:** [TC015_Edit_and_Archive_Offers.py](./TC015_Edit_and_Archive_Offers.py)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/ff5450ba-6325-4622-8cb3-8d5e1c38cc03
+- **Status:** ✅ Passed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC016
-- **Test Name:** Multi-language interface support and RTL layout
-- **Test Code:** [TC016_Multi_language_interface_support_and_RTL_layout.py](./TC016_Multi_language_interface_support_and_RTL_layout.py)
-- **Test Error:** Failed to go to the start URL. Err: Error executing action go_to_url: Page.goto: Timeout 60000ms exceeded.
-Call log:
-  - navigating to "http://localhost:3005/", waiting until "load"
-
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/4b7b09f1-8cf2-46f0-a16b-21e71fef6b7d
+- **Test Name:** Initiate and Conduct Negotiation
+- **Test Code:** [TC016_Initiate_and_Conduct_Negotiation.py](./TC016_Initiate_and_Conduct_Negotiation.py)
+- **Test Error:** 
+Browser Console Logs:
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/App.tsx?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/styles/globals.css?t=1767715331235:0:0)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:814:0)
+[ERROR] [vite] failed to connect to websocket.
+your current setup:
+  (browser) localhost:3005/ <--[HTTP]--> localhost:3005/ (server)
+  (browser) localhost:3005/ <--[WebSocket (failing)]--> localhost:3005/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr . (at http://localhost:3005/@vite/client:829:24)
+[ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:0:0)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/94fb0245-b70e-4608-9ed9-8200415cb659
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC017
-- **Test Name:** Category management and color coding localized
-- **Test Code:** [TC017_Category_management_and_color_coding_localized.py](./TC017_Category_management_and_color_coding_localized.py)
-- **Test Error:** Failed to go to the start URL. Err: Error executing action go_to_url: Page.goto: Timeout 60000ms exceeded.
-Call log:
-  - navigating to "http://localhost:3005/", waiting until "load"
-
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/6f56eaf0-8ffb-44b7-9486-e86a4c52ac6e
+- **Test Name:** Real-time Messaging Functionality
+- **Test Code:** [TC017_Real_time_Messaging_Functionality.py](./TC017_Real_time_Messaging_Functionality.py)
+- **Test Error:** The task to verify instant messages between requesters and providers with real-time sending, receiving, and file exchange support could not be fully completed. The user successfully logged in as a requester and navigated the marketplace and order creation pages. However, no active orders were available to open a chat with a provider, and attempts to create or submit offers encountered navigation or page state issues. Therefore, real-time message sending, receiving, and file attachment verification in the chat could not be performed. Further testing requires active orders and stable navigation to the chat interface.
+Browser Console Logs:
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/react-dom_client.js?v=2fb96622:0:0)
+[ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED (at https://accounts.google.com/gsi/client:0:0)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection timed out - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&eventsPerSecond=10&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:1509:0)
+[WARNING] [WARN] ⚠️ WebSocket channel error - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/3e5bdefe-5d7e-4cfe-bd69-a6d71700b584
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC018
-- **Test Name:** Location search with Google Maps integration
-- **Test Code:** [TC018_Location_search_with_Google_Maps_integration.py](./TC018_Location_search_with_Google_Maps_integration.py)
-- **Test Error:** Failed to go to the start URL. Err: Error executing action go_to_url: Page.goto: Timeout 60000ms exceeded.
-Call log:
-  - navigating to "http://localhost:3005/", waiting until "load"
-
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/19a3a9ee-8d53-42dd-b558-51cefac8ee46
+- **Test Name:** In-App Notifications with Sound and Badge Count
+- **Test Code:** [TC018_In_App_Notifications_with_Sound_and_Badge_Count.py](./TC018_In_App_Notifications_with_Sound_and_Badge_Count.py)
+- **Test Error:** The login page is empty with no login form or buttons, preventing authentication and further testing of notifications. Please check the app server or deployment for issues.
+Browser Console Logs:
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/styles/globals.css?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/react-dom_client.js?v=2fb96622:0:0)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:814:0)
+[ERROR] [vite] failed to connect to websocket.
+your current setup:
+  (browser) localhost:3005/ <--[HTTP]--> localhost:3005/ (server)
+  (browser) localhost:3005/ <--[WebSocket (failing)]--> localhost:3005/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr . (at http://localhost:3005/@vite/client:829:24)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/ErrorBoundary.tsx:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/lucide-react.js?v=2fb96622:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/Marketplace.tsx?t=1767714524387:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/ui/LoadingSkeleton.tsx:0:0)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/4cd1e1e8-863a-4b2a-bba4-802aeb787666
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC019
-- **Test Name:** Security - Prevent unauthorized access to user data
-- **Test Code:** [TC019_Security___Prevent_unauthorized_access_to_user_data.py](./TC019_Security___Prevent_unauthorized_access_to_user_data.py)
-- **Test Error:** 
+- **Test Name:** User Profile Settings Update
+- **Test Code:** [TC019_User_Profile_Settings_Update.py](./TC019_User_Profile_Settings_Update.py)
+- **Test Error:** Tested profile preferences update on the app. Successfully updated user interests as a guest. However, login was blocked due to verification code submission failure, preventing access to full profile settings. Theme toggle (dark/light) did not change the UI theme as expected. Language change (Arabic, English, Urdu) did not update UI text or layout direction. These issues prevent full verification of profile preferences update. Task is incomplete due to these critical issues.
 Browser Console Logs:
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&order=created_at.desc&offset=0&limit=10:0:0)
-[ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/services/requestsService.ts:282:12)
-[ERROR] Error details: {
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/styles/globals.css?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/react-dom_client.js?v=2fb96622:0:0)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/chunk-DC5AMYBS.js?v=2fb96622:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/index.tsx?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@react-refresh:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/ErrorBoundary.tsx:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/chunk-DC5AMYBS.js?v=2fb96622:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/lucide-react.js?v=2fb96622:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&status=eq.active&order=created_at.desc&offset=0&limit=10:0:0)
+[ERROR] [ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
+    at fetch (http://lo…://localhost:3005/App.tsx?t=1767715331235:809:56), hint: , code: } (at http://localhost:3005/utils/logger.ts:26:14)
+[ERROR] [ERROR] Error details: {
   "message": "TypeError: Failed to fetch",
   "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:269:17)\n    at async loadPublicData (http://localhost:3005/App.tsx:713:56)",
+  "details": "TypeError: Failed to fetch\n    at fetch (http://localhost:3005/services/supabaseClient.ts:52:18)\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:11440:40\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:287:17)\n    at async loadPublicData (http://localhost:3005/App.tsx?t=1767715331235:809:56)",
   "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:283:12)
-[ERROR] Error loading public data: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/App.tsx:720:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:1509:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/categories?select=id%2Clabel%2Clabel_en%2Clabel_ur%2Cicon%2Cemoji%2Cdescription&is_active=eq.true&order=sort_order.asc:0:0)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/15fbba2e-f891-4a12-9923-43d5bbb9edca
+} (at http://localhost:3005/utils/logger.ts:26:14)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/c6524230-c813-4301-b9de-daaf07a9ec98
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC020
-- **Test Name:** Performance - Page load and response time under normal and high load
-- **Test Code:** [TC020_Performance___Page_load_and_response_time_under_normal_and_high_load.py](./TC020_Performance___Page_load_and_response_time_under_normal_and_high_load.py)
-- **Test Error:** 
+- **Test Name:** Multi-language Interface and RTL Support
+- **Test Code:** [TC020_Multi_language_Interface_and_RTL_Support.py](./TC020_Multi_language_Interface_and_RTL_Support.py)
+- **Test Error:** The UI verification for Arabic language was successful. However, the app is currently not accessible at http://localhost:3005, preventing further verification for Urdu and English languages. Please ensure the app server is running and accessible to continue testing.
 Browser Console Logs:
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&order=created_at.desc&offset=0&limit=10:0:0)
-[ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/services/requestsService.ts:282:12)
-[ERROR] Error details: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:269:17)\n    at async loadPublicData (http://localhost:3005/App.tsx:713:56)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:283:12)
-[ERROR] Error loading public data: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/App.tsx:720:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:1509:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/categories?select=id%2Clabel%2Clabel_en%2Clabel_ur%2Cicon%2Cemoji%2Cdescription&is_active=eq.true&order=sort_order.asc:0:0)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/623261dd-4061-4b42-b332-44991ce0250e
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/react.js?v=2fb96622:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/react-dom_client.js?v=2fb96622:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/styles/globals.css?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED (at https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/ErrorBoundary.tsx:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/App.tsx?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/chunk-DC5AMYBS.js?v=2fb96622:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED (at https://accounts.google.com/gsi/client:0:0)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/79bfd1fa-1e3d-49ca-b4c4-936deaab6ea0
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC021
-- **Test Name:** Error handling - Display global error boundary fallback UI
-- **Test Code:** [TC021_Error_handling___Display_global_error_boundary_fallback_UI.py](./TC021_Error_handling___Display_global_error_boundary_fallback_UI.py)
+- **Test Name:** Google Maps City Autocomplete and Search
+- **Test Code:** [TC021_Google_Maps_City_Autocomplete_and_Search.py](./TC021_Google_Maps_City_Autocomplete_and_Search.py)
 - **Test Error:** 
 Browser Console Logs:
-[ERROR] Failed to load resource: net::ERR_CONTENT_LENGTH_MISMATCH (at http://localhost:3005/node_modules/.vite/deps/chunk-KDCVS43I.js?v=83574dff:0:0)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/eb1d02fc-60a2-48e4-9fad-40044247c9a5
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection timed out - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&eventsPerSecond=10&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:1509:0)
+[WARNING] [WARN] ⚠️ WebSocket channel error - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket channel error - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/199d077f-6509-45d3-85e4-36f213da8ff9
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC022
-- **Test Name:** File upload and storage for messaging attachments
-- **Test Code:** [TC022_File_upload_and_storage_for_messaging_attachments.py](./TC022_File_upload_and_storage_for_messaging_attachments.py)
-- **Test Error:** 
+- **Test Name:** Security: Data Encryption and Access Control
+- **Test Code:** [TC022_Security_Data_Encryption_and_Access_Control.py](./TC022_Security_Data_Encryption_and_Access_Control.py)
+- **Test Error:** The testing task to verify that sensitive user data such as passwords and personal info are encrypted in storage and proper access controls prevent unauthorized data access could not be fully completed due to a blocked login flow. Unauthorized API access was correctly denied, indicating some access control is in place. However, the login process is blocked because the verification code input field does not appear after sending the code, preventing further authentication and verification of encrypted password storage. This issue has been reported. Further testing requires a functional login flow.
 Browser Console Logs:
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/vite/dist/client/env.mjs:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
 [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
 [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:1509:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&order=created_at.desc&offset=0&limit=10:0:0)
-[ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/services/requestsService.ts:282:12)
-[ERROR] Error details: {
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&status=eq.active&order=created_at.desc&offset=0&limit=10:0:0)
+[ERROR] [ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
+    at fetch (http://lo…://localhost:3005/App.tsx?t=1767715331235:809:56), hint: , code: } (at http://localhost:3005/utils/logger.ts:26:14)
+[ERROR] [ERROR] Error details: {
   "message": "TypeError: Failed to fetch",
   "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:269:17)\n    at async loadPublicData (http://localhost:3005/App.tsx:713:56)",
+  "details": "TypeError: Failed to fetch\n    at fetch (http://localhost:3005/services/supabaseClient.ts:52:18)\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:11440:40\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:287:17)\n    at async loadPublicData (http://localhost:3005/App.tsx?t=1767715331235:809:56)",
   "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:283:12)
+} (at http://localhost:3005/utils/logger.ts:26:14)
 [ERROR] Error loading public data: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/App.tsx:720:16)
+    at fetch (http://lo…://localhost:3005/App.tsx?t=1767715331235:809:56), hint: , code: } (at http://localhost:3005/App.tsx?t=1767715331235:817:16)
 [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
+[ERROR] [ERROR] ❌ Supabase query error: {
   "message": "TypeError: Failed to fetch",
   "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
+  "details": "TypeError: Failed to fetch\n    at fetch (http://localhost:3005/services/supabaseClient.ts:52:18)\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:11440:40\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:11455:12\n    at async http://localhost:3005/services/requestsService.ts:325:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:338:12)\n    at async Promise.all (index 0)",
   "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/categories?select=id%2Clabel%2Clabel_en%2Clabel_ur%2Cicon%2Cemoji%2Cdescription&is_active=eq.true&order=sort_order.asc:0:0)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
+} (at http://localhost:3005/utils/logger.ts:26:14)
+[ERROR] [ERROR] ❌ Supabase query error: {
+  "message": "AbortError: signal is aborted without reason",
   "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
+  "details": "AbortError: signal is aborted without reason\n    at http://localhost:3005/services/supabaseClient.ts:51:57",
   "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/15f1cd19-63e5-4fba-a9e4-512c6f1b5172
+} (at http://localhost:3005/utils/logger.ts:26:14)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&status=eq.active&order=created_at.desc&offset=0&limit=10:0:0)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/96e30f1b-5876-47fe-ad57-8f8b347e008c
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC023
-- **Test Name:** Routing and deep linking supports direct navigation
-- **Test Code:** [TC023_Routing_and_deep_linking_supports_direct_navigation.py](./TC023_Routing_and_deep_linking_supports_direct_navigation.py)
-- **Test Error:** 
+- **Test Name:** Performance: Fast Loading Times and UI Responsiveness
+- **Test Code:** [TC023_Performance_Fast_Loading_Times_and_UI_Responsiveness.py](./TC023_Performance_Fast_Loading_Times_and_UI_Responsiveness.py)
+- **Test Error:** The application main page loads but only displays a static title with no interactive elements or navigation options. Direct navigation to login or marketplace pages fails. Unable to perform further UI interaction or performance tests as required by the task. Please verify the application deployment and server status.
 Browser Console Logs:
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[WARNING] ⚠️ Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/services/requestsService.ts:320:12)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/functions/v1/ai-chat:0:0)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=*%2Crequest_categories%28category_id%2Ccategories%28id%2Clabel%29%29&is_public=eq.true&order=created_at.desc&offset=0&limit=10:0:0)
-[ERROR] ❌ Error fetching requests: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/services/requestsService.ts:282:12)
-[ERROR] Error details: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async fetchRequestsPaginated (http://localhost:3005/services/requestsService.ts:269:17)\n    at async loadPublicData (http://localhost:3005/App.tsx:713:56)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:283:12)
-[ERROR] Error loading public data: {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
-    at http://localhost…PublicData (http://localhost:3005/App.tsx:713:56), hint: , code: } (at http://localhost:3005/App.tsx:720:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/requests?select=id&limit=1:0:0)
-[ERROR] ❌ Supabase query error: {
-  "message": "TypeError: Failed to fetch",
-  "code": "",
-  "details": "TypeError: Failed to fetch\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11441:23\n    at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:11455:12\n    at async http://localhost:3005/services/requestsService.ts:306:31\n    at async checkSupabaseConnection (http://localhost:3005/services/requestsService.ts:319:12)\n    at async Promise.all (index 0)",
-  "hint": ""
-} (at http://localhost:3005/services/requestsService.ts:307:16)
-[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://iwfvlrtmbixequntufjr.supabase.co/rest/v1/categories?select=id%2Clabel%2Clabel_en%2Clabel_ur%2Cicon%2Cemoji%2Cdescription&is_active=eq.true&order=sort_order.asc:0:0)
-[WARNING] Error fetching categories from backend, using local fallback: TypeError: Failed to fetch (at http://localhost:3005/services/categoriesService.ts:22:14)
-[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=83574dff:1509:0)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/726ba442-a3d9-44cb-ba25-e3d40e5cb096
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/styles/globals.css?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/App.tsx?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/react-dom_client.js?v=2fb96622:0:0)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/Marketplace.tsx?t=1767714524387:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/components/RequestDetail.tsx?t=1767715308039:0:0)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/10b6e76d-9421-4196-ba9a-bb301a5b0084
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC024
-- **Test Name:** Onboarding flow for first-time users
-- **Test Code:** [TC024_Onboarding_flow_for_first_time_users.py](./TC024_Onboarding_flow_for_first_time_users.py)
+- **Test Name:** Error Handling: Global Error Boundary
+- **Test Code:** [TC024_Error_Handling_Global_Error_Boundary.py](./TC024_Error_Handling_Global_Error_Boundary.py)
 - **Test Error:** 
 Browser Console Logs:
-[ERROR] Failed to load resource: net::ERR_CONTENT_LENGTH_MISMATCH (at http://localhost:3005/node_modules/.vite/deps/chunk-KDCVS43I.js?v=83574dff:0:0)
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/0ce5dec8-b4d5-4db1-872c-7f559f8d1317
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://api.anthropic.com/v1/messages:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://api.anthropic.com/v1/messages:0:0)
+[WARNING] [WARN] ⚠️ WebSocket connection timed out - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[ERROR] WebSocket connection to 'wss://iwfvlrtmbixequntufjr.supabase.co/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZnZscnRtYml4ZXF1bnR1ZmpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0MzMxMjcsImV4cCI6MjA4MjAwOTEyN30.NCgLu7sP87odD-W3JW8Gp_6BTcI3w4VFgBhskZ5D0RA&eventsPerSecond=10&vsn=1.0.0' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/@supabase_supabase-js.js?v=2fb96622:1509:0)
+[WARNING] [WARN] ⚠️ WebSocket channel error - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket channel error - categories updates may not work (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] ⚠️ WebSocket connection closed (at http://localhost:3005/utils/logger.ts:36:14)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/0bdb905c-be59-48d5-b0e4-3ec3dbedd782
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC025
-- **Test Name:** Haptic feedback on mobile devices
-- **Test Code:** [TC025_Haptic_feedback_on_mobile_devices.py](./TC025_Haptic_feedback_on_mobile_devices.py)
-- **Test Error:** Failed to go to the start URL. Err: Error executing action go_to_url: Page.goto: Timeout 60000ms exceeded.
-Call log:
-  - navigating to "http://localhost:3005/", waiting until "load"
+- **Test Name:** Notification Badge Count Reset on Reading
+- **Test Code:** [TC025_Notification_Badge_Count_Reset_on_Reading.py](./TC025_Notification_Badge_Count_Reset_on_Reading.py)
+- **Test Error:** Login process failed to proceed past phone number input screen, preventing further testing of notification unread count reset. Reporting issue and stopping test.
+Browser Console Logs:
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/react-dom_client.js?v=2fb96622:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] ⚠️ فشل النموذج claude-sonnet-4-20250514: AI connection timeout (5s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+[WARNING] [WARN] Supabase connection failed: Connection timeout (15s) (at http://localhost:3005/utils/logger.ts:36:14)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/2574fdbf-8e5a-4197-90ee-21d2570528f3
+- **Status:** ❌ Failed
+- **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
+---
 
-- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/7ad57f97-1c78-4a5a-ab4a-27cb4d53c5ab/1cb5fc2e-ee30-4463-a1fd-5b725d924854
+#### Test TC026
+- **Test Name:** File Upload in Messaging
+- **Test Code:** [TC026_File_Upload_in_Messaging.py](./TC026_File_Upload_in_Messaging.py)
+- **Test Error:** The app page at http://localhost:3005/ is empty and does not load any UI elements. Therefore, I cannot proceed with the testing of file upload and messaging features. Please ensure the app server is running and the UI is accessible.
+Browser Console Logs:
+[ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED (at https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/node_modules/.vite/deps/chunk-DC5AMYBS.js?v=2fb96622:0:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+[WARNING] Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading (at https://maps.googleapis.com/maps/api/js?key=AIzaSyBFP8kmj-ojjfKJX6tKIGoJwvM_hHrsQBU&libraries=places&language=ar:1374:287)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/index.tsx?t=1767715331235:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@react-refresh:0:0)
+[ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE (at https://maps.googleapis.com/maps/api/mapsjs/gen_204?csp_test=true:0:0)
+[ERROR] WebSocket connection to 'ws://localhost:3005/?token=wav4qoU8GoXY' failed: Error in connection establishment: net::ERR_EMPTY_RESPONSE (at http://localhost:3005/@vite/client:801:0)
+- **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/86ff689b-098a-4816-8a57-8cee2ddff3c0/7356ed70-29cf-4d0c-b5b4-bfcb68d85576
 - **Status:** ❌ Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
@@ -619,7 +563,7 @@ Call log:
 
 ## 3️⃣ Coverage & Matching Metrics
 
-- **0.00** of tests passed
+- **11.54** of tests passed
 
 | Requirement        | Total Tests | ✅ Passed | ❌ Failed  |
 |--------------------|-------------|-----------|------------|

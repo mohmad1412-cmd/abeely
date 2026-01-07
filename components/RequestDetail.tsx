@@ -81,6 +81,9 @@ interface RequestDetailProps {
   myOffer?: Offer;
   onBack: () => void;
   isGuest?: boolean;
+  isDarkMode?: boolean;
+  toggleTheme?: () => void;
+  onOpenLanguagePopup?: () => void;
   scrollToOfferSection?: boolean;
   navigatedFromSidebar?: boolean; // لتحديد إذا كان التنقل من الشريط الجانبي
   highlightOfferId?: string | null; // لتمييز عرض معين عند النقر على إشعار
@@ -136,7 +139,7 @@ interface RequestDetailProps {
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
-  { request, mode, myOffer, onBack, isGuest = false, scrollToOfferSection = false, navigatedFromSidebar = false, highlightOfferId = null, onNavigateToMessages, autoTranslateRequests = false, currentLanguage = 'ar', onCompleteRequest, savedOfferForm, onOfferFormChange, savedScrollPosition = 0, onScrollPositionChange,
+  { request, mode, myOffer, onBack, isGuest = false, isDarkMode, toggleTheme, onOpenLanguagePopup, scrollToOfferSection = false, navigatedFromSidebar = false, highlightOfferId = null, onNavigateToMessages, autoTranslateRequests = false, currentLanguage = 'ar', onCompleteRequest, savedOfferForm, onOfferFormChange, savedScrollPosition = 0, onScrollPositionChange,
     // Unified Header Props
     toggleMode,
     isModeSwitching,
@@ -971,6 +974,13 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         return;
       }
       
+      // التحقق من أن المستخدم لا يقدم عرض على طلبه الخاص
+      const requestAuthorId = (request as any).authorId || (request as any).author_id || request.author;
+      if (requestAuthorId && userData.user.id === requestAuthorId) {
+        alert("لا يمكنك تقديم عرض على طلبك الخاص");
+        return;
+      }
+      
       setIsSubmittingOffer(true);
       
       try {
@@ -1217,6 +1227,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         unreadCount={unreadCount}
         hasUnreadMessages={hasUnreadMessages}
         user={user}
+        isDarkMode={isDarkMode}
+        toggleTheme={toggleTheme}
+        onOpenLanguagePopup={onOpenLanguagePopup}
         setView={setView}
         setPreviousView={setPreviousView}
         titleKey={titleKey}
@@ -1227,6 +1240,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         onSignOut={onSignOut}
         backButton
         onBack={onBack}
+        showBackButtonOnDesktop={true}
         title={request.title}
         isScrolled={isScrolled}
         currentView="request-detail"
@@ -1572,41 +1586,40 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   </span>
                 </div>
 
-                {/* Budget and Delivery Time - Third Row */}
-                {(request.budgetType === "fixed" && request.budgetMin && request.budgetMax) || request.deliveryTimeFrom ? (
-                  <div className="flex flex-col sm:flex-row gap-4 w-full">
-                    {/* Budget */}
-                    {(request.budgetType === "fixed" && request.budgetMin && request.budgetMax) && (
-                      <div className="flex flex-col gap-1.5 flex-1">
-                        <span 
-                          className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
-                          onClick={() => setClickedIcons(prev => ({ ...prev, budget: !prev.budget }))}
-                        >
-                          <DollarSign size={18} className={clickedIcons.budget ? "text-primary" : "text-primary"} />{" "}
-                          الميزانية
-                        </span>
-                        <span className="font-bold text-sm text-primary">
-                          {request.budgetMin} - {request.budgetMax} ر.س
-                        </span>
-                      </div>
-                    )}
-                    
-                    {/* Delivery Time */}
-                    {request.deliveryTimeFrom && (
-                      <div className="flex flex-col gap-1.5 flex-1">
-                        <span 
-                          className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
-                          onClick={() => setClickedIcons(prev => ({ ...prev, delivery: !prev.delivery }))}
-                        >
-                          <Clock size={18} className={clickedIcons.delivery ? "text-primary" : "text-primary"} /> مدة التنفيذ
-                        </span>
-                        <span className="font-bold text-sm text-muted-foreground">
-                          {request.deliveryTimeFrom}
-                        </span>
-                      </div>
-                    )}
+                {/* Budget - Third Row */}
+                {(request.budgetMin || request.budgetMax) && (
+                  <div className="flex flex-col gap-1.5 w-full">
+                    <span 
+                      className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
+                      onClick={() => setClickedIcons(prev => ({ ...prev, budget: !prev.budget }))}
+                    >
+                      <DollarSign size={18} className={clickedIcons.budget ? "text-primary" : "text-primary"} />{" "}
+                      الميزانية
+                    </span>
+                    <span className="font-bold text-sm text-primary">
+                      {request.budgetMin && request.budgetMax 
+                        ? `${request.budgetMin} - ${request.budgetMax} ر.س`
+                        : request.budgetMax 
+                          ? `حتى ${request.budgetMax} ر.س`
+                          : `من ${request.budgetMin} ر.س`}
+                    </span>
                   </div>
-                ) : null}
+                )}
+
+                {/* Delivery Time - Fourth Row */}
+                {request.deliveryTimeFrom && (
+                  <div className="flex flex-col gap-1.5 w-full">
+                    <span 
+                      className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
+                      onClick={() => setClickedIcons(prev => ({ ...prev, delivery: !prev.delivery }))}
+                    >
+                      <Clock size={18} className={clickedIcons.delivery ? "text-primary" : "text-primary"} /> مدة التنفيذ
+                    </span>
+                    <span className="font-bold text-sm text-muted-foreground">
+                      {request.deliveryTimeFrom}
+                    </span>
+                  </div>
+                )}
               </motion.div>
 
               <motion.div
@@ -1747,6 +1760,27 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         <p className="text-sm text-muted-foreground bg-secondary/30 p-3 rounded-lg mb-3">
                           {offer.description}
                         </p>
+
+                        {/* Offer Images */}
+                        {offer.images && offer.images.length > 0 && (
+                          <div className="mb-3 flex gap-2 overflow-x-auto pb-2">
+                            {offer.images.map((imageUrl, imgIndex) => (
+                              <motion.img
+                                key={imgIndex}
+                                src={imageUrl}
+                                alt={`صورة ${imgIndex + 1}`}
+                                className="w-24 h-24 rounded-lg object-cover border border-border shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                                onClick={() => {
+                                  // يمكن إضافة modal لعرض الصورة بالحجم الكامل
+                                  window.open(imageUrl, '_blank');
+                                }}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: imgIndex * 0.1 }}
+                              />
+                            ))}
+                          </div>
+                        )}
 
                         <div className="flex gap-3">
                           {/* PENDING ACTIONS */}
@@ -2153,6 +2187,26 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         {myOffer.description}
                       </p>
 
+                      {/* My Offer Images */}
+                      {myOffer.images && myOffer.images.length > 0 && (
+                        <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
+                          {myOffer.images.map((imageUrl, imgIndex) => (
+                            <motion.img
+                              key={imgIndex}
+                              src={imageUrl}
+                              alt={`صورة ${imgIndex + 1}`}
+                              className="w-24 h-24 rounded-lg object-cover border border-border shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                              onClick={() => {
+                                // يمكن إضافة modal لعرض الصورة بالحجم الكامل
+                                window.open(imageUrl, '_blank');
+                              }}
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ delay: imgIndex * 0.1 }}
+                            />
+                          ))}
+                        </div>
+                      )}
 
                       {/* Cancel Confirmation Modal */}
                       <AnimatePresence>
@@ -2637,7 +2691,18 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
         {/* Floating Submit Offer Button - Like "أرسل الطلب الآن" */}
         {!isMyRequest && !isMyOffer && request.status === "active" && (
-          <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4">
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{
+              type: "spring",
+              stiffness: 400,
+              damping: 35,
+              mass: 0.8,
+            }}
+            className="fixed bottom-0 left-0 right-0 md:right-72 z-[110] bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4"
+          >
             <motion.button
               layout
               onClick={async () => {
@@ -2701,7 +2766,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 </>
               )}
             </motion.button>
-          </div>
+          </motion.div>
         )}
 
         {/* Guest Offer Verification Modal */}
@@ -2879,6 +2944,16 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           const userProfile = await getCurrentUser();
                           if (!userProfile?.id) {
                             setGuestOfferError("فشل تسجيل الدخول. حاول مرة أخرى.");
+                            return;
+                          }
+                          
+                          // التحقق من أن المستخدم لا يقدم عرض على طلبه الخاص
+                          const requestAuthorId = (request as any).authorId || (request as any).author_id || request.author;
+                          if (requestAuthorId && userProfile.id === requestAuthorId) {
+                            setGuestOfferError("لا يمكنك تقديم عرض على طلبك الخاص");
+                            setGuestOfferVerificationStep('none');
+                            setGuestOfferPhone("");
+                            setGuestOfferOTP("");
                             return;
                           }
                           

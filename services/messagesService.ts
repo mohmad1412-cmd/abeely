@@ -1011,3 +1011,111 @@ export async function getUnreadMessagesForMyOffers(userOfferIds: string[]): Prom
     return 0;
   }
 }
+
+/**
+ * Get unread messages count per request ID
+ * Returns a map of requestId -> unread count
+ */
+export async function getUnreadMessagesPerRequest(userRequestIds: string[]): Promise<Map<string, number>> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !userRequestIds || userRequestIds.length === 0) return new Map();
+
+    // Get conversations linked to user's requests with request_id
+    const { data: conversations, error: convError } = await supabase
+      .from('conversations')
+      .select('id, request_id')
+      .in('request_id', userRequestIds)
+      .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`);
+
+    if (convError || !conversations || conversations.length === 0) return new Map();
+
+    const conversationIds = conversations.map(c => c.id);
+    const requestIdToConvIds = new Map<string, string[]>();
+    conversations.forEach(conv => {
+      if (conv.request_id) {
+        const existing = requestIdToConvIds.get(conv.request_id) || [];
+        existing.push(conv.id);
+        requestIdToConvIds.set(conv.request_id, existing);
+      }
+    });
+
+    // Get unread messages per conversation
+    const { data: messages, error: messagesError } = await supabase
+      .from('messages')
+      .select('conversation_id')
+      .in('conversation_id', conversationIds)
+      .eq('is_read', false)
+      .neq('sender_id', user.id);
+
+    if (messagesError) return new Map();
+
+    // Count messages per request
+    const result = new Map<string, number>();
+    requestIdToConvIds.forEach((convIds, requestId) => {
+      const count = (messages || []).filter(m => convIds.includes(m.conversation_id)).length;
+      if (count > 0) {
+        result.set(requestId, count);
+      }
+    });
+
+    return result;
+  } catch (error) {
+    logger.error('Error getting unread messages per request:', error, 'service');
+    return new Map();
+  }
+}
+
+/**
+ * Get unread messages count per offer ID
+ * Returns a map of offerId -> unread count
+ */
+export async function getUnreadMessagesPerOffer(userOfferIds: string[]): Promise<Map<string, number>> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !userOfferIds || userOfferIds.length === 0) return new Map();
+
+    // Get conversations linked to user's offers with offer_id
+    const { data: conversations, error: convError } = await supabase
+      .from('conversations')
+      .select('id, offer_id')
+      .in('offer_id', userOfferIds)
+      .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`);
+
+    if (convError || !conversations || conversations.length === 0) return new Map();
+
+    const conversationIds = conversations.map(c => c.id);
+    const offerIdToConvIds = new Map<string, string[]>();
+    conversations.forEach(conv => {
+      if (conv.offer_id) {
+        const existing = offerIdToConvIds.get(conv.offer_id) || [];
+        existing.push(conv.id);
+        offerIdToConvIds.set(conv.offer_id, existing);
+      }
+    });
+
+    // Get unread messages per conversation
+    const { data: messages, error: messagesError } = await supabase
+      .from('messages')
+      .select('conversation_id')
+      .in('conversation_id', conversationIds)
+      .eq('is_read', false)
+      .neq('sender_id', user.id);
+
+    if (messagesError) return new Map();
+
+    // Count messages per offer
+    const result = new Map<string, number>();
+    offerIdToConvIds.forEach((convIds, offerId) => {
+      const count = (messages || []).filter(m => convIds.includes(m.conversation_id)).length;
+      if (count > 0) {
+        result.set(offerId, count);
+      }
+    });
+
+    return result;
+  } catch (error) {
+    logger.error('Error getting unread messages per offer:', error, 'service');
+    return new Map();
+  }
+}

@@ -189,6 +189,22 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   onViewModeChange,
   newRequestIds = new Set(),
 }) => {
+  // Validate onSelectRequest
+  if (!onSelectRequest) {
+    console.error("❌ Marketplace: onSelectRequest is not provided!");
+    return (
+      <div className="h-full flex items-center justify-center">
+        <p className="text-destructive">Error: onSelectRequest is missing</p>
+      </div>
+    );
+  }
+  
+  console.log("🏪 Marketplace rendered:", {
+    requestsCount: requests.length,
+    hasOnSelectRequest: !!onSelectRequest,
+    onSelectRequestType: typeof onSelectRequest,
+  });
+  
   // View mode state - "all" or "interests"
   const [viewMode, setViewMode] = useState<"all" | "interests">("all");
 
@@ -2620,11 +2636,26 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               </div>
 
               <h3 className="text-xl font-bold text-foreground mb-3">
-                لم نتمكن من التحميل
+                {loadError.includes("timeout") || loadError.includes("Connection timeout")
+                  ? "انتهت مهلة الاتصال"
+                  : "لم نتمكن من التحميل"}
               </h3>
-              <p className="text-muted-foreground max-w-xs mx-auto leading-relaxed mb-8 text-sm">
-                قد يكون هناك مشكلة مؤقتة في الاتصال. لا تقلق، جرب مرة أخرى!
-              </p>
+              <div className="text-muted-foreground max-w-xs mx-auto leading-relaxed mb-8 text-sm space-y-2">
+                {loadError.includes("timeout") || loadError.includes("Connection timeout")
+                  ? (
+                    <>
+                      <p>لا يمكن الاتصال بخادم Supabase. تأكد من:</p>
+                      <ul className="list-disc list-inside space-y-1 text-xs">
+                        <li>اتصالك بالإنترنت</li>
+                        <li>إعدادات Supabase في ملف .env.local</li>
+                        <li>أن Supabase project يعمل</li>
+                      </ul>
+                    </>
+                  )
+                  : (
+                    <p>{loadError || "قد يكون هناك مشكلة مؤقتة في الاتصال. لا تقلق، جرب مرة أخرى!"}</p>
+                  )}
+              </div>
 
               <div className="flex flex-col gap-3 w-full max-w-xs">
                 {/* Primary Retry Button with animated icon */}
@@ -3248,6 +3279,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       isLoadingViewedRequests={isLoadingViewedRequests}
                       newRequestIds={newRequestIds}
                       onSelectRequest={(req) => {
+                        console.log("🛒 Marketplace: ServiceCard clicked, calling onSelectRequest:", req.id);
                         if (isGuest) {
                           setGuestViewedIds((prev) => {
                             const newSet = new Set(prev);
@@ -3266,7 +3298,9 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             return newSet;
                           });
                         }
+                        console.log("📞 Marketplace: Calling parent onSelectRequest:", req.id);
                         onSelectRequest(req);
+                        console.log("✅ Marketplace: onSelectRequest called successfully");
                       }}
                       onLoadMore={onLoadMore}
                       hasMore={hasMore}

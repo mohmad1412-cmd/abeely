@@ -7,6 +7,7 @@ import { UserPreferences } from '../types';
 import { UserProfile, sendOTP, verifyOTP } from '../services/authService';
 import { supabase } from '../services/supabaseClient';
 import { UnifiedHeader } from './ui/UnifiedHeader';
+import { hapticService } from '../services/hapticService';
 
 interface SettingsProps {
   isDarkMode: boolean;
@@ -144,7 +145,7 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const toggleCategory = (catId: string) => {
-    if (navigator.vibrate) navigator.vibrate(10);
+    hapticService.tap();
     setTempCategories(prev => 
       prev.includes(catId) 
         ? prev.filter(id => id !== catId)
@@ -153,7 +154,7 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const toggleCity = (city: string) => {
-    if (navigator.vibrate) navigator.vibrate(10);
+    hapticService.tap();
     setTempCities(prev => {
       if (prev.includes(city)) {
         return prev.filter(c => c !== city);
@@ -174,7 +175,7 @@ export const Settings: React.FC<SettingsProps> = ({
     city.toLowerCase().includes(citySearch.toLowerCase())
   );
 
-  const filteredCategories = AVAILABLE_CATEGORIES.filter(cat =>
+  const filteredCategories = AVAILABLE_CATEGORIES.filter((cat: { id: string; label: string; emoji: string }) =>
     cat.label.toLowerCase().includes(categorySearch.toLowerCase())
   );
 
@@ -313,7 +314,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         <input
                           type="text"
                           value={editedName}
-                          onChange={(e) => setEditedName(e.target.value)}
+                          onChange={(e) => setEditedName((e.target as HTMLInputElement).value)}
                           className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-right"
                           dir="rtl"
                           autoFocus
@@ -388,7 +389,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         <input
                           type="email"
                           value={editedEmail}
-                          onChange={(e) => setEditedEmail(e.target.value)}
+                          onChange={(e) => setEditedEmail((e.target as HTMLInputElement).value)}
                           className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-left"
                           dir="ltr"
                           autoFocus
@@ -473,7 +474,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         <input
                           type="tel"
                           value={editedPhone}
-                          onChange={(e) => setEditedPhone(e.target.value)}
+                          onChange={(e) => setEditedPhone((e.target as HTMLInputElement).value)}
                           className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-left"
                           dir="ltr"
                           autoFocus
@@ -552,9 +553,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   </div>
                   <button
                     onClick={() => {
-                      if (navigator.vibrate) {
-                        navigator.vibrate(15);
-                      }
+                      hapticService.impact();
                       const newValue = !showNameToApprovedProvider;
                       setShowNameToApprovedProvider(newValue);
                       if (onUpdatePreferences) {
@@ -597,9 +596,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   <button
                     onClick={() => {
                       // Haptic feedback
-                      if (navigator.vibrate) {
-                        navigator.vibrate(15);
-                      }
+                      hapticService.impact();
                       setNotifyOnInterest(!notifyOnInterest);
                     }}
                     className={`w-14 h-7 rounded-full p-1 transition-all relative flex items-center shrink-0 ${
@@ -623,9 +620,7 @@ export const Settings: React.FC<SettingsProps> = ({
           <button 
                     onClick={() => {
                       // Haptic feedback
-                      if (navigator.vibrate) {
-                        navigator.vibrate(15);
-                      }
+                      hapticService.impact();
                       setNotifyOnOffers(!notifyOnOffers);
                     }}
                     className={`w-14 h-7 rounded-full p-1 transition-all relative flex items-center shrink-0 ${
@@ -649,9 +644,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   <button
                     onClick={() => {
                       // Haptic feedback
-                      if (navigator.vibrate) {
-                        navigator.vibrate(15);
-                      }
+                      hapticService.impact();
                       setNotifyOnMessages(!notifyOnMessages);
                     }}
                     className={`w-14 h-7 rounded-full p-1 transition-all relative flex items-center shrink-0 ${
@@ -733,7 +726,7 @@ export const Settings: React.FC<SettingsProps> = ({
                               <h4 className="text-xs font-bold text-muted-foreground mb-2">التصنيفات المختارة:</h4>
                               <div className="flex flex-wrap gap-2">
                                 {selectedCategories.map((catId) => {
-                                  const cat = AVAILABLE_CATEGORIES.find(c => c.id === catId);
+                                  const cat = AVAILABLE_CATEGORIES.find((c: { id: string; label: string; emoji: string }) => c.id === catId);
                                   return cat ? (
                                     <div
                                       key={catId}
@@ -829,9 +822,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     <button
                       onClick={() => {
                         // Haptic feedback
-                        if (navigator.vibrate) {
-                          navigator.vibrate(15);
-                        }
+                        hapticService.impact();
                         setNotifyOnInterest(!notifyOnInterest);
                       }}
                       className={`w-14 h-7 rounded-full p-1 transition-all relative flex items-center shrink-0 ${
@@ -873,11 +864,11 @@ export const Settings: React.FC<SettingsProps> = ({
                             type="text"
                             placeholder="بحث..."
                             value={categorySearch}
-                            onChange={(e) => setCategorySearch(e.target.value)}
+                            onChange={(e) => setCategorySearch((e.target as HTMLInputElement).value)}
                             className="w-full text-xs px-3 py-1.5 rounded-lg border-2 border-[#1E968C]/30 bg-background focus:border-[#178075] focus:outline-none transition-all"
                           />
                           <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar">
-                            {filteredCategories.map((cat) => (
+                            {filteredCategories.map((cat: { id: string; label: string; emoji: string }) => (
                               <button
                                 key={cat.id}
                                 onClick={() => toggleCategory(cat.id)}
@@ -923,7 +914,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             type="text"
                             placeholder="بحث..."
                             value={citySearch}
-                            onChange={(e) => setCitySearch(e.target.value)}
+                            onChange={(e) => setCitySearch((e.target as HTMLInputElement).value)}
                             className="w-full text-xs px-3 py-1.5 rounded-lg border-2 border-[#1E968C]/30 bg-background focus:border-[#178075] focus:outline-none transition-all"
                           />
                           <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar">
@@ -977,7 +968,7 @@ export const Settings: React.FC<SettingsProps> = ({
                               type="text"
                               placeholder="اكتب الكلمة..."
                               value={newRadarWord}
-                              onChange={(e) => setNewRadarWord(e.target.value)}
+                              onChange={(e) => setNewRadarWord((e.target as HTMLInputElement).value)}
                               onKeyPress={(e) => {
                                 if (e.key === 'Enter') {
                                   e.preventDefault();
@@ -1030,9 +1021,7 @@ export const Settings: React.FC<SettingsProps> = ({
                 <button
                   onClick={() => {
                     // Haptic feedback
-                    if (navigator.vibrate) {
-                      navigator.vibrate(15);
-                    }
+                    hapticService.impact();
                     handleSaveInterests();
                   }}
                   disabled={isSavingPreferences}
@@ -1124,7 +1113,7 @@ export const Settings: React.FC<SettingsProps> = ({
                       type="text"
                       value={phoneOTP}
                       onChange={(e) => {
-                        const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                        const value = (e.target as HTMLInputElement).value.replace(/\D/g, '').slice(0, 6);
                         setPhoneOTP(value);
                         setPhoneError(null);
                       }}

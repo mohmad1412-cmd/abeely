@@ -186,6 +186,9 @@ interface MessagesProps {
   isModeSwitching: boolean;
   unreadCount: number;
   hasUnreadMessages: boolean;
+  isDarkMode?: boolean;
+  toggleTheme?: () => void;
+  onOpenLanguagePopup?: () => void;
   setView: (view: any) => void;
   setPreviousView: (view: any) => void;
   titleKey: number;
@@ -199,8 +202,8 @@ interface MessagesProps {
   onNavigateToSettings?: () => void;
 }
 
-export const Messages: React.FC<MessagesProps> = ({ 
-  onBack, 
+export const Messages: React.FC<MessagesProps> = ({
+  onBack,
   onSelectConversation,
   initialConversationId,
   mode,
@@ -208,6 +211,9 @@ export const Messages: React.FC<MessagesProps> = ({
   isModeSwitching,
   unreadCount,
   hasUnreadMessages,
+  isDarkMode,
+  toggleTheme,
+  onOpenLanguagePopup,
   setView,
   setPreviousView,
   titleKey,
@@ -541,6 +547,9 @@ export const Messages: React.FC<MessagesProps> = ({
           unreadCount={unreadCount}
           hasUnreadMessages={hasUnreadMessages}
           user={user}
+          isDarkMode={isDarkMode}
+          toggleTheme={toggleTheme}
+          onOpenLanguagePopup={onOpenLanguagePopup}
           setView={setView}
           setPreviousView={setPreviousView}
           titleKey={titleKey}

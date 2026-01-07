@@ -53,7 +53,7 @@ export async function getNotifications(limit = 50): Promise<Notification[]> {
       const { data: offers } = await supabase
         .from('offers')
         .select('id, title, provider_name, status')
-        .in('id', offerIds)
+        .in('id', offerIds);
       (offers || []).forEach(o => { offersMap[o.id] = o; });
     }
 
@@ -286,11 +286,12 @@ export async function createNotification(
 // ==========================================
 
 /**
- * Subscribe to new notifications
+ * Subscribe to new notifications and updates
  */
 export function subscribeToNotifications(
   userId: string,
-  callback: (notification: Notification) => void
+  callback: (notification: Notification) => void,
+  onUpdate?: (notification: Notification) => void
 ) {
   const channel = supabase
     .channel(`notifications:${userId}`)
@@ -374,6 +375,94 @@ export function subscribeToNotifications(
           relatedOffer,
           relatedMessage,
         });
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${userId}`,
+      },
+      async (payload) => {
+        const n = payload.new as any;
+        
+        // Fetch notification data without foreign key joins
+        const { data: notif } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('id', n.id)
+          .single();
+
+        if (!notif) return;
+
+        // Fetch related data if needed
+        let relatedRequest: any = undefined;
+        let relatedOffer: any = undefined;
+        let relatedMessage: any = undefined;
+
+        if (notif.related_request_id) {
+          const { data: req } = await supabase.from('requests').select('id, title, author_id').eq('id', notif.related_request_id).single();
+          if (req) {
+            let authorName: string | undefined;
+            if (req.author_id) {
+              const { data: author } = await supabase.from('profiles').select('display_name').eq('id', req.author_id).single();
+              authorName = author?.display_name || undefined;
+            }
+            relatedRequest = { id: req.id, title: req.title, authorName };
+          }
+        }
+
+        if (notif.related_offer_id) {
+          const { data: offer } = await supabase
+            .from('offers')
+            .select('id, title, provider_name, status')
+            .eq('id', notif.related_offer_id)
+            .neq('status', 'archived')
+            .single();
+          if (offer) {
+            relatedOffer = { id: offer.id, title: offer.title, providerName: offer.provider_name };
+          }
+        }
+
+        if (notif.related_message_id) {
+          const { data: msg } = await supabase.from('messages').select('id, content, sender_id').eq('id', notif.related_message_id).single();
+          if (msg) {
+            let senderName = 'مستخدم';
+            if (msg.sender_id) {
+              const { data: sender } = await supabase.from('profiles').select('display_name').eq('id', msg.sender_id).single();
+              senderName = sender?.display_name || 'مستخدم';
+            }
+            relatedMessage = {
+              id: msg.id,
+              senderName,
+              preview: msg.content.substring(0, 50) + (msg.content.length > 50 ? '...' : ''),
+            };
+          }
+        }
+
+        // إرسال الإشعار المحدث (خاصة عند تغيير is_read)
+        const updatedNotification: Notification = {
+          id: notif.id,
+          type: notif.type as Notification['type'],
+          title: notif.title,
+          message: notif.message,
+          timestamp: new Date(notif.created_at),
+          isRead: notif.is_read,
+          linkTo: notif.link_to || undefined,
+          relatedRequest,
+          relatedOffer,
+          relatedMessage,
+        };
+        
+        // استدعاء callback التحديث إذا كان موجوداً
+        if (onUpdate) {
+          onUpdate(updatedNotification);
+        } else {
+          // إذا لم يكن هناك callback منفصل، استخدم نفس callback
+          callback(updatedNotification);
+        }
       }
     )
     .subscribe();

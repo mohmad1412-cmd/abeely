@@ -1,4 +1,4 @@
-import { Category, Request, Offer, Notification, Review } from './types';
+import { Category, Review } from "./types";
 
 /**
  * قائمة التصنيفات الشاملة مع دعم متعدد اللغات
@@ -10,148 +10,625 @@ import { Category, Request, Offer, Notification, Review } from './types';
  */
 export const AVAILABLE_CATEGORIES: Category[] = [
   // تقنية
-  { id: 'software-dev', label: 'تطوير برمجيات', label_en: 'Software Development', label_ur: 'سافٹ ویئر ڈویلپمنٹ', icon: 'Code', emoji: '💻' },
-  { id: 'web-dev', label: 'تطوير مواقع', label_en: 'Web Development', label_ur: 'ویب ڈویلپمنٹ', icon: 'Globe', emoji: '🌐' },
-  { id: 'mobile-apps', label: 'تطبيقات جوال', label_en: 'Mobile Apps', label_ur: 'موبائل ایپس', icon: 'Smartphone', emoji: '📱' },
-  { id: 'it-support', label: 'دعم تقني', label_en: 'IT Support', label_ur: 'آئی ٹی سپورٹ', icon: 'Headphones', emoji: '🎧' },
-  { id: 'data-analysis', label: 'تحليل بيانات', label_en: 'Data Analysis', label_ur: 'ڈیٹا تجزیہ', icon: 'BarChart', emoji: '📊' },
-  { id: 'ai-services', label: 'خدمات ذكاء اصطناعي', label_en: 'AI Services', label_ur: 'اے آئی خدمات', icon: 'Brain', emoji: '🧠' },
-  
-  // تصميم
-  { id: 'graphic-design', label: 'تصميم جرافيك', label_en: 'Graphic Design', label_ur: 'گرافک ڈیزائن', icon: 'Palette', emoji: '🎨' },
-  { id: 'ui-ux', label: 'تصميم واجهات', label_en: 'UI/UX Design', label_ur: 'یو آئی ڈیزائن', icon: 'Layout', emoji: '📐' },
-  { id: 'logo-branding', label: 'شعارات وهوية', label_en: 'Logo & Branding', label_ur: 'لوگو اور برانڈنگ', icon: 'Figma', emoji: '✨' },
-  { id: 'interior-design', label: 'تصميم داخلي', label_en: 'Interior Design', label_ur: 'انٹیریئر ڈیزائن', icon: 'Sofa', emoji: '🛋️' },
-  { id: 'architectural', label: 'تصميم معماري', label_en: 'Architectural Design', label_ur: 'تعمیراتی ڈیزائن', icon: 'Building2', emoji: '🏗️' },
-  
-  // محتوى
-  { id: 'content-writing', label: 'كتابة محتوى', label_en: 'Content Writing', label_ur: 'مواد لکھنا', icon: 'FileText', emoji: '📝' },
-  { id: 'copywriting', label: 'كتابة إعلانية', label_en: 'Copywriting', label_ur: 'کاپی رائٹنگ', icon: 'PenTool', emoji: '✍️' },
-  { id: 'translation', label: 'ترجمة', label_en: 'Translation', label_ur: 'ترجمہ', icon: 'Languages', emoji: '🌍' },
-  { id: 'voice-over', label: 'تعليق صوتي', label_en: 'Voice Over', label_ur: 'وائس اوور', icon: 'Mic', emoji: '🎙️' },
-  { id: 'proofreading', label: 'تدقيق لغوي', label_en: 'Proofreading', label_ur: 'پروف ریڈنگ', icon: 'Check', emoji: '✔️' },
-  
-  // تسويق
-  { id: 'digital-marketing', label: 'تسويق رقمي', label_en: 'Digital Marketing', label_ur: 'ڈیجیٹل مارکیٹنگ', icon: 'TrendingUp', emoji: '📈' },
-  { id: 'social-media', label: 'سوشيال ميديا', label_en: 'Social Media', label_ur: 'سوشل میڈیا', icon: 'Share2', emoji: '📲' },
-  { id: 'seo', label: 'تحسين محركات البحث', label_en: 'SEO', label_ur: 'ایس ای او', icon: 'Search', emoji: '🔍' },
-  { id: 'advertising', label: 'إعلانات', label_en: 'Advertising', label_ur: 'اشتہارات', icon: 'Megaphone', emoji: '📣' },
-  
-  // خدمات مهنية
-  { id: 'legal-services', label: 'خدمات قانونية', label_en: 'Legal Services', label_ur: 'قانونی خدمات', icon: 'Scale', emoji: '⚖️' },
-  { id: 'accounting', label: 'محاسبة', label_en: 'Accounting', label_ur: 'اکاؤنٹنگ', icon: 'Calculator', emoji: '🧮' },
-  { id: 'consulting', label: 'استشارات', label_en: 'Consulting', label_ur: 'مشاورت', icon: 'MessageSquare', emoji: '💬' },
-  { id: 'hr-services', label: 'موارد بشرية', label_en: 'HR Services', label_ur: 'ایچ آر خدمات', icon: 'Users', emoji: '👥' },
-  
-  // تعليم
-  { id: 'tutoring', label: 'دروس خصوصية', label_en: 'Tutoring', label_ur: 'ٹیوشن', icon: 'GraduationCap', emoji: '🎓' },
-  { id: 'online-courses', label: 'دورات أونلاين', label_en: 'Online Courses', label_ur: 'آن لائن کورسز', icon: 'Monitor', emoji: '🖥️' },
-  { id: 'language-learning', label: 'تعليم لغات', label_en: 'Language Learning', label_ur: 'زبان سیکھنا', icon: 'BookOpen', emoji: '📖' },
-  { id: 'skills-training', label: 'تدريب مهارات', label_en: 'Skills Training', label_ur: 'ہنر کی تربیت', icon: 'Target', emoji: '🎯' },
-  
-  // صحة
-  { id: 'medical-consult', label: 'استشارات طبية', label_en: 'Medical Consultation', label_ur: 'طبی مشاورت', icon: 'Stethoscope', emoji: '🩺' },
-  { id: 'nutrition', label: 'تغذية', label_en: 'Nutrition', label_ur: 'غذائیت', icon: 'Apple', emoji: '🍎' },
-  { id: 'fitness', label: 'لياقة بدنية', label_en: 'Fitness', label_ur: 'فٹنس', icon: 'Dumbbell', emoji: '💪' },
-  { id: 'mental-health', label: 'صحة نفسية', label_en: 'Mental Health', label_ur: 'ذہنی صحت', icon: 'Heart', emoji: '❤️' },
-  
-  // صيانة ومنزل
-  { id: 'plumbing', label: 'سباكة', label_en: 'Plumbing', label_ur: 'پلمبنگ', icon: 'Droplet', emoji: '🔧' },
-  { id: 'electrical', label: 'كهرباء', label_en: 'Electrical', label_ur: 'بجلی', icon: 'Zap', emoji: '⚡' },
-  { id: 'ac-services', label: 'تكييف', label_en: 'AC Services', label_ur: 'اے سی خدمات', icon: 'Wind', emoji: '❄️' },
-  { id: 'home-repair', label: 'إصلاحات منزلية', label_en: 'Home Repair', label_ur: 'گھر کی مرمت', icon: 'Hammer', emoji: '🔨' },
-  { id: 'appliance-repair', label: 'صيانة أجهزة', label_en: 'Appliance Repair', label_ur: 'آلات کی مرمت', icon: 'Settings', emoji: '⚙️' },
-  { id: 'painting', label: 'دهانات', label_en: 'Painting', label_ur: 'پینٹنگ', icon: 'Paintbrush', emoji: '🖌️' },
-  { id: 'carpentry', label: 'نجارة', label_en: 'Carpentry', label_ur: 'بڑھئی گری', icon: 'Axe', emoji: '🪓' },
-  
-  // نقل
-  { id: 'moving', label: 'نقل عفش', label_en: 'Moving Services', label_ur: 'سامان منتقلی', icon: 'Truck', emoji: '🚚' },
-  { id: 'shipping', label: 'شحن', label_en: 'Shipping', label_ur: 'شپنگ', icon: 'Package', emoji: '📦' },
-  { id: 'delivery', label: 'توصيل', label_en: 'Delivery', label_ur: 'ڈیلیوری', icon: 'MapPin', emoji: '📍' },
-  
-  // سيارات
-  { id: 'car-repair', label: 'صيانة سيارات', label_en: 'Car Repair', label_ur: 'گاڑی کی مرمت', icon: 'Car', emoji: '🚗' },
-  { id: 'car-wash', label: 'غسيل سيارات', label_en: 'Car Wash', label_ur: 'گاڑی دھلائی', icon: 'Droplets', emoji: '💧' },
-  { id: 'car-rental', label: 'تأجير سيارات', label_en: 'Car Rental', label_ur: 'گاڑی کرایہ', icon: 'Key', emoji: '🔑' },
-  { id: 'driver-services', label: 'خدمات سائق', label_en: 'Driver Services', label_ur: 'ڈرائیور خدمات', icon: 'UserCheck', emoji: '👨‍✈️' },
-  
-  // مناسبات
-  { id: 'event-planning', label: 'تنظيم مناسبات', label_en: 'Event Planning', label_ur: 'تقریب کی منصوبہ بندی', icon: 'Calendar', emoji: '📅' },
-  { id: 'catering', label: 'تموين', label_en: 'Catering', label_ur: 'کیٹرنگ', icon: 'UtensilsCrossed', emoji: '🍴' },
-  { id: 'photography', label: 'تصوير', label_en: 'Photography', label_ur: 'فوٹوگرافی', icon: 'Camera', emoji: '📷' },
-  { id: 'videography', label: 'تصوير فيديو', label_en: 'Videography', label_ur: 'ویڈیو گرافی', icon: 'Video', emoji: '🎬' },
-  { id: 'entertainment', label: 'ترفيه', label_en: 'Entertainment', label_ur: 'تفریح', icon: 'Music', emoji: '🎵' },
-  { id: 'flowers-decor', label: 'زهور وتزيين', label_en: 'Flowers & Decor', label_ur: 'پھول اور سجاوٹ', icon: 'Flower', emoji: '💐' },
-  
-  // جمال وعناية
-  { id: 'hair-styling', label: 'تصفيف شعر', label_en: 'Hair Styling', label_ur: 'بالوں کا اسٹائل', icon: 'Scissors', emoji: '✂️' },
-  { id: 'makeup', label: 'مكياج', label_en: 'Makeup', label_ur: 'میک اپ', icon: 'Sparkles', emoji: '💄' },
-  { id: 'spa-massage', label: 'سبا ومساج', label_en: 'Spa & Massage', label_ur: 'سپا اور مساج', icon: 'Flower2', emoji: '🌸' },
-  { id: 'nails', label: 'أظافر', label_en: 'Nails', label_ur: 'ناخن', icon: 'Hand', emoji: '💅' },
-  
-  // تنظيف
-  { id: 'home-cleaning', label: 'تنظيف منازل', label_en: 'Home Cleaning', label_ur: 'گھر کی صفائی', icon: 'Home', emoji: '🏠' },
-  { id: 'office-cleaning', label: 'تنظيف مكاتب', label_en: 'Office Cleaning', label_ur: 'دفتر کی صفائی', icon: 'Building', emoji: '🏢' },
-  { id: 'laundry', label: 'غسيل وكي', label_en: 'Laundry', label_ur: 'لانڈری', icon: 'Shirt', emoji: '👔' },
-  { id: 'pest-control', label: 'مكافحة حشرات', label_en: 'Pest Control', label_ur: 'کیڑے مکوڑے کنٹرول', icon: 'Bug', emoji: '🐛' },
-  
-  // طعام
-  { id: 'cooking', label: 'طبخ منزلي', label_en: 'Home Cooking', label_ur: 'گھر کا کھانا', icon: 'ChefHat', emoji: '👨‍🍳' },
-  { id: 'restaurants', label: 'مطاعم', label_en: 'Restaurants', label_ur: 'ریسٹورانٹس', icon: 'UtensilsCrossed', emoji: '🍽️' },
-  { id: 'baking', label: 'حلويات ومخبوزات', label_en: 'Baking', label_ur: 'بیکنگ', icon: 'Cake', emoji: '🎂' },
-  { id: 'catering-food', label: 'تموين طعام', label_en: 'Food Catering', label_ur: 'کھانے کی کیٹرنگ', icon: 'Soup', emoji: '🍲' },
-  
-  // عقارات
-  { id: 'real-estate', label: 'عقارات', label_en: 'Real Estate', label_ur: 'رئیل اسٹیٹ', icon: 'Building2', emoji: '🏘️' },
-  { id: 'property-mgmt', label: 'إدارة عقارات', label_en: 'Property Management', label_ur: 'جائیداد کا انتظام', icon: 'KeyRound', emoji: '🔐' },
-  
-  // حيوانات أليفة
-  { id: 'pet-care', label: 'رعاية حيوانات', label_en: 'Pet Care', label_ur: 'پالتو جانوروں کی دیکھ بھال', icon: 'Cat', emoji: '🐱' },
-  { id: 'pet-grooming', label: 'تجميل حيوانات', label_en: 'Pet Grooming', label_ur: 'پالتو جانوروں کی گرومنگ', icon: 'Sparkle', emoji: '✨' },
-  
-  // أمن وحماية
-  { id: 'security', label: 'خدمات أمنية', label_en: 'Security Services', label_ur: 'سیکیورٹی خدمات', icon: 'Shield', emoji: '🛡️' },
-  { id: 'cctv', label: 'كاميرات مراقبة', label_en: 'CCTV Installation', label_ur: 'سی سی ٹی وی', icon: 'Cctv', emoji: '📹' },
-  
-  // أخرى
-  { id: 'other', label: 'أخرى', label_en: 'Other', label_ur: 'دیگر', icon: 'Grid3x3', emoji: '📦' },
-];
-
-
-export const MOCK_NOTIFICATIONS: Notification[] = [
   {
-    id: '1',
-    type: 'system',
-    title: 'مرحباً بك في منصة خدماتي',
-    message: 'نتمنى لك تجربة موفقة في إنجاز أعمالك.',
-    timestamp: new Date('2024-05-01'),
-    isRead: true
+    id: "software-dev",
+    label: "تطوير برمجيات",
+    label_en: "Software Development",
+    label_ur: "سافٹ ویئر ڈویلپمنٹ",
+    icon: "Code",
+    emoji: "💻",
   },
   {
-    id: '2',
-    type: 'offer',
-    title: 'عرض جديد على طلبك',
-    message: 'تلقيت عرضاً جديداً على طلب "تطوير متجر إلكتروني"',
-    timestamp: new Date(),
-    isRead: false
-  }
+    id: "web-dev",
+    label: "تطوير مواقع",
+    label_en: "Web Development",
+    label_ur: "ویب ڈویلپمنٹ",
+    icon: "Globe",
+    emoji: "🌐",
+  },
+  {
+    id: "mobile-apps",
+    label: "تطبيقات جوال",
+    label_en: "Mobile Apps",
+    label_ur: "موبائل ایپس",
+    icon: "Smartphone",
+    emoji: "📱",
+  },
+  {
+    id: "it-support",
+    label: "دعم تقني",
+    label_en: "IT Support",
+    label_ur: "آئی ٹی سپورٹ",
+    icon: "Headphones",
+    emoji: "🎧",
+  },
+  {
+    id: "data-analysis",
+    label: "تحليل بيانات",
+    label_en: "Data Analysis",
+    label_ur: "ڈیٹا تجزیہ",
+    icon: "BarChart",
+    emoji: "📊",
+  },
+  {
+    id: "ai-services",
+    label: "خدمات ذكاء اصطناعي",
+    label_en: "AI Services",
+    label_ur: "اے آئی خدمات",
+    icon: "Brain",
+    emoji: "🧠",
+  },
+
+  // تصميم
+  {
+    id: "graphic-design",
+    label: "تصميم جرافيك",
+    label_en: "Graphic Design",
+    label_ur: "گرافک ڈیزائن",
+    icon: "Palette",
+    emoji: "🎨",
+  },
+  {
+    id: "ui-ux",
+    label: "تصميم واجهات",
+    label_en: "UI/UX Design",
+    label_ur: "یو آئی ڈیزائن",
+    icon: "Layout",
+    emoji: "📐",
+  },
+  {
+    id: "logo-branding",
+    label: "شعارات وهوية",
+    label_en: "Logo & Branding",
+    label_ur: "لوگو اور برانڈنگ",
+    icon: "Figma",
+    emoji: "✨",
+  },
+  {
+    id: "interior-design",
+    label: "تصميم داخلي",
+    label_en: "Interior Design",
+    label_ur: "انٹیریئر ڈیزائن",
+    icon: "Sofa",
+    emoji: "🛋️",
+  },
+  {
+    id: "architectural",
+    label: "تصميم معماري",
+    label_en: "Architectural Design",
+    label_ur: "تعمیراتی ڈیزائن",
+    icon: "Building2",
+    emoji: "🏗️",
+  },
+
+  // محتوى
+  {
+    id: "content-writing",
+    label: "كتابة محتوى",
+    label_en: "Content Writing",
+    label_ur: "مواد لکھنا",
+    icon: "FileText",
+    emoji: "📝",
+  },
+  {
+    id: "copywriting",
+    label: "كتابة إعلانية",
+    label_en: "Copywriting",
+    label_ur: "کاپی رائٹنگ",
+    icon: "PenTool",
+    emoji: "✍️",
+  },
+  {
+    id: "translation",
+    label: "ترجمة",
+    label_en: "Translation",
+    label_ur: "ترجمہ",
+    icon: "Languages",
+    emoji: "🌍",
+  },
+  {
+    id: "voice-over",
+    label: "تعليق صوتي",
+    label_en: "Voice Over",
+    label_ur: "وائس اوور",
+    icon: "Mic",
+    emoji: "🎙️",
+  },
+  {
+    id: "proofreading",
+    label: "تدقيق لغوي",
+    label_en: "Proofreading",
+    label_ur: "پروف ریڈنگ",
+    icon: "Check",
+    emoji: "✔️",
+  },
+
+  // تسويق
+  {
+    id: "digital-marketing",
+    label: "تسويق رقمي",
+    label_en: "Digital Marketing",
+    label_ur: "ڈیجیٹل مارکیٹنگ",
+    icon: "TrendingUp",
+    emoji: "📈",
+  },
+  {
+    id: "social-media",
+    label: "سوشيال ميديا",
+    label_en: "Social Media",
+    label_ur: "سوشل میڈیا",
+    icon: "Share2",
+    emoji: "📲",
+  },
+  {
+    id: "seo",
+    label: "تحسين محركات البحث",
+    label_en: "SEO",
+    label_ur: "ایس ای او",
+    icon: "Search",
+    emoji: "🔍",
+  },
+  {
+    id: "advertising",
+    label: "إعلانات",
+    label_en: "Advertising",
+    label_ur: "اشتہارات",
+    icon: "Megaphone",
+    emoji: "📣",
+  },
+
+  // خدمات مهنية
+  {
+    id: "legal-services",
+    label: "خدمات قانونية",
+    label_en: "Legal Services",
+    label_ur: "قانونی خدمات",
+    icon: "Scale",
+    emoji: "⚖️",
+  },
+  {
+    id: "accounting",
+    label: "محاسبة",
+    label_en: "Accounting",
+    label_ur: "اکاؤنٹنگ",
+    icon: "Calculator",
+    emoji: "🧮",
+  },
+  {
+    id: "consulting",
+    label: "استشارات",
+    label_en: "Consulting",
+    label_ur: "مشاورت",
+    icon: "MessageSquare",
+    emoji: "💬",
+  },
+  {
+    id: "hr-services",
+    label: "موارد بشرية",
+    label_en: "HR Services",
+    label_ur: "ایچ آر خدمات",
+    icon: "Users",
+    emoji: "👥",
+  },
+
+  // تعليم
+  {
+    id: "tutoring",
+    label: "دروس خصوصية",
+    label_en: "Tutoring",
+    label_ur: "ٹیوشن",
+    icon: "GraduationCap",
+    emoji: "🎓",
+  },
+  {
+    id: "online-courses",
+    label: "دورات أونلاين",
+    label_en: "Online Courses",
+    label_ur: "آن لائن کورسز",
+    icon: "Monitor",
+    emoji: "🖥️",
+  },
+  {
+    id: "language-learning",
+    label: "تعليم لغات",
+    label_en: "Language Learning",
+    label_ur: "زبان سیکھنا",
+    icon: "BookOpen",
+    emoji: "📖",
+  },
+  {
+    id: "skills-training",
+    label: "تدريب مهارات",
+    label_en: "Skills Training",
+    label_ur: "ہنر کی تربیت",
+    icon: "Target",
+    emoji: "🎯",
+  },
+
+  // صحة
+  {
+    id: "medical-consult",
+    label: "استشارات طبية",
+    label_en: "Medical Consultation",
+    label_ur: "طبی مشاورت",
+    icon: "Stethoscope",
+    emoji: "🩺",
+  },
+  {
+    id: "nutrition",
+    label: "تغذية",
+    label_en: "Nutrition",
+    label_ur: "غذائیت",
+    icon: "Apple",
+    emoji: "🍎",
+  },
+  {
+    id: "fitness",
+    label: "لياقة بدنية",
+    label_en: "Fitness",
+    label_ur: "فٹنس",
+    icon: "Dumbbell",
+    emoji: "💪",
+  },
+  {
+    id: "mental-health",
+    label: "صحة نفسية",
+    label_en: "Mental Health",
+    label_ur: "ذہنی صحت",
+    icon: "Heart",
+    emoji: "❤️",
+  },
+
+  // صيانة ومنزل
+  {
+    id: "plumbing",
+    label: "سباكة",
+    label_en: "Plumbing",
+    label_ur: "پلمبنگ",
+    icon: "Droplet",
+    emoji: "🔧",
+  },
+  {
+    id: "electrical",
+    label: "كهرباء",
+    label_en: "Electrical",
+    label_ur: "بجلی",
+    icon: "Zap",
+    emoji: "⚡",
+  },
+  {
+    id: "ac-services",
+    label: "تكييف",
+    label_en: "AC Services",
+    label_ur: "اے سی خدمات",
+    icon: "Wind",
+    emoji: "❄️",
+  },
+  {
+    id: "home-repair",
+    label: "إصلاحات منزلية",
+    label_en: "Home Repair",
+    label_ur: "گھر کی مرمت",
+    icon: "Hammer",
+    emoji: "🔨",
+  },
+  {
+    id: "appliance-repair",
+    label: "صيانة أجهزة",
+    label_en: "Appliance Repair",
+    label_ur: "آلات کی مرمت",
+    icon: "Settings",
+    emoji: "⚙️",
+  },
+  {
+    id: "painting",
+    label: "دهانات",
+    label_en: "Painting",
+    label_ur: "پینٹنگ",
+    icon: "Paintbrush",
+    emoji: "🖌️",
+  },
+  {
+    id: "carpentry",
+    label: "نجارة",
+    label_en: "Carpentry",
+    label_ur: "بڑھئی گری",
+    icon: "Axe",
+    emoji: "🪓",
+  },
+
+  // نقل
+  {
+    id: "moving",
+    label: "نقل عفش",
+    label_en: "Moving Services",
+    label_ur: "سامان منتقلی",
+    icon: "Truck",
+    emoji: "🚚",
+  },
+  {
+    id: "shipping",
+    label: "شحن",
+    label_en: "Shipping",
+    label_ur: "شپنگ",
+    icon: "Package",
+    emoji: "📦",
+  },
+  {
+    id: "delivery",
+    label: "توصيل",
+    label_en: "Delivery",
+    label_ur: "ڈیلیوری",
+    icon: "MapPin",
+    emoji: "📍",
+  },
+
+  // سيارات
+  {
+    id: "car-repair",
+    label: "صيانة سيارات",
+    label_en: "Car Repair",
+    label_ur: "گاڑی کی مرمت",
+    icon: "Car",
+    emoji: "🚗",
+  },
+  {
+    id: "car-wash",
+    label: "غسيل سيارات",
+    label_en: "Car Wash",
+    label_ur: "گاڑی دھلائی",
+    icon: "Droplets",
+    emoji: "💧",
+  },
+  {
+    id: "car-rental",
+    label: "تأجير سيارات",
+    label_en: "Car Rental",
+    label_ur: "گاڑی کرایہ",
+    icon: "Key",
+    emoji: "🔑",
+  },
+  {
+    id: "driver-services",
+    label: "خدمات سائق",
+    label_en: "Driver Services",
+    label_ur: "ڈرائیور خدمات",
+    icon: "UserCheck",
+    emoji: "👨‍✈️",
+  },
+
+  // مناسبات
+  {
+    id: "event-planning",
+    label: "تنظيم مناسبات",
+    label_en: "Event Planning",
+    label_ur: "تقریب کی منصوبہ بندی",
+    icon: "Calendar",
+    emoji: "📅",
+  },
+  {
+    id: "catering",
+    label: "تموين",
+    label_en: "Catering",
+    label_ur: "کیٹرنگ",
+    icon: "UtensilsCrossed",
+    emoji: "🍴",
+  },
+  {
+    id: "photography",
+    label: "تصوير",
+    label_en: "Photography",
+    label_ur: "فوٹوگرافی",
+    icon: "Camera",
+    emoji: "📷",
+  },
+  {
+    id: "videography",
+    label: "تصوير فيديو",
+    label_en: "Videography",
+    label_ur: "ویڈیو گرافی",
+    icon: "Video",
+    emoji: "🎬",
+  },
+  {
+    id: "entertainment",
+    label: "ترفيه",
+    label_en: "Entertainment",
+    label_ur: "تفریح",
+    icon: "Music",
+    emoji: "🎵",
+  },
+  {
+    id: "flowers-decor",
+    label: "زهور وتزيين",
+    label_en: "Flowers & Decor",
+    label_ur: "پھول اور سجاوٹ",
+    icon: "Flower",
+    emoji: "💐",
+  },
+
+  // جمال وعناية
+  {
+    id: "hair-styling",
+    label: "تصفيف شعر",
+    label_en: "Hair Styling",
+    label_ur: "بالوں کا اسٹائل",
+    icon: "Scissors",
+    emoji: "✂️",
+  },
+  {
+    id: "makeup",
+    label: "مكياج",
+    label_en: "Makeup",
+    label_ur: "میک اپ",
+    icon: "Sparkles",
+    emoji: "💄",
+  },
+  {
+    id: "spa-massage",
+    label: "سبا ومساج",
+    label_en: "Spa & Massage",
+    label_ur: "سپا اور مساج",
+    icon: "Flower2",
+    emoji: "🌸",
+  },
+  {
+    id: "nails",
+    label: "أظافر",
+    label_en: "Nails",
+    label_ur: "ناخن",
+    icon: "Hand",
+    emoji: "💅",
+  },
+
+  // تنظيف
+  {
+    id: "home-cleaning",
+    label: "تنظيف منازل",
+    label_en: "Home Cleaning",
+    label_ur: "گھر کی صفائی",
+    icon: "Home",
+    emoji: "🏠",
+  },
+  {
+    id: "office-cleaning",
+    label: "تنظيف مكاتب",
+    label_en: "Office Cleaning",
+    label_ur: "دفتر کی صفائی",
+    icon: "Building",
+    emoji: "🏢",
+  },
+  {
+    id: "laundry",
+    label: "غسيل وكي",
+    label_en: "Laundry",
+    label_ur: "لانڈری",
+    icon: "Shirt",
+    emoji: "👔",
+  },
+  {
+    id: "pest-control",
+    label: "مكافحة حشرات",
+    label_en: "Pest Control",
+    label_ur: "کیڑے مکوڑے کنٹرول",
+    icon: "Bug",
+    emoji: "🐛",
+  },
+
+  // طعام
+  {
+    id: "cooking",
+    label: "طبخ منزلي",
+    label_en: "Home Cooking",
+    label_ur: "گھر کا کھانا",
+    icon: "ChefHat",
+    emoji: "👨‍🍳",
+  },
+  {
+    id: "restaurants",
+    label: "مطاعم",
+    label_en: "Restaurants",
+    label_ur: "ریسٹورانٹس",
+    icon: "UtensilsCrossed",
+    emoji: "🍽️",
+  },
+  {
+    id: "baking",
+    label: "حلويات ومخبوزات",
+    label_en: "Baking",
+    label_ur: "بیکنگ",
+    icon: "Cake",
+    emoji: "🎂",
+  },
+  {
+    id: "catering-food",
+    label: "تموين طعام",
+    label_en: "Food Catering",
+    label_ur: "کھانے کی کیٹرنگ",
+    icon: "Soup",
+    emoji: "🍲",
+  },
+
+  // عقارات
+  {
+    id: "real-estate",
+    label: "عقارات",
+    label_en: "Real Estate",
+    label_ur: "رئیل اسٹیٹ",
+    icon: "Building2",
+    emoji: "🏘️",
+  },
+  {
+    id: "property-mgmt",
+    label: "إدارة عقارات",
+    label_en: "Property Management",
+    label_ur: "جائیداد کا انتظام",
+    icon: "KeyRound",
+    emoji: "🔐",
+  },
+
+  // حيوانات أليفة
+  {
+    id: "pet-care",
+    label: "رعاية حيوانات",
+    label_en: "Pet Care",
+    label_ur: "پالتو جانوروں کی دیکھ بھال",
+    icon: "Cat",
+    emoji: "🐱",
+  },
+  {
+    id: "pet-grooming",
+    label: "تجميل حيوانات",
+    label_en: "Pet Grooming",
+    label_ur: "پالتو جانوروں کی گرومنگ",
+    icon: "Sparkle",
+    emoji: "✨",
+  },
+
+  // أمن وحماية
+  {
+    id: "security",
+    label: "خدمات أمنية",
+    label_en: "Security Services",
+    label_ur: "سیکیورٹی خدمات",
+    icon: "Shield",
+    emoji: "🛡️",
+  },
+  {
+    id: "cctv",
+    label: "كاميرات مراقبة",
+    label_en: "CCTV Installation",
+    label_ur: "سی سی ٹی وی",
+    icon: "Cctv",
+    emoji: "📹",
+  },
+
+  // أخرى
+  {
+    id: "other",
+    label: "أخرى",
+    label_en: "Other",
+    label_ur: "دیگر",
+    icon: "Grid3x3",
+    emoji: "📦",
+  },
 ];
 
 export const MOCK_REVIEWS: Review[] = [
   {
-    id: '1',
-    authorName: 'سارة أحمد',
+    id: "1",
+    authorName: "سارة أحمد",
     rating: 5,
-    comment: 'عمل ممتاز واحترافي جداً، أنصح بالتعامل معه.',
-    date: new Date('2024-04-15'),
-    role: 'requester'
+    comment: "عمل ممتاز واحترافي جداً، أنصح بالتعامل معه.",
+    date: new Date("2024-04-15"),
+    role: "requester",
   },
   {
-    id: '2',
-    authorName: 'شركة الأفق',
+    id: "2",
+    authorName: "شركة الأفق",
     rating: 4,
-    comment: 'جودة جيدة والتزام بالوقت، لكن التواصل كان يمكن أن يكون أفضل.',
-    date: new Date('2024-03-20'),
-    role: 'requester'
-  }
+    comment: "جودة جيدة والتزام بالوقت، لكن التواصل كان يمكن أن يكون أفضل.",
+    date: new Date("2024-03-20"),
+    role: "requester",
+  },
 ];

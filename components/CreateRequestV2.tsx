@@ -375,6 +375,9 @@ interface CreateRequestV2Props {
   onGoToRequest?: (requestId: string) => void; // Navigate to created request
   onGoToMarketplace?: () => void; // Navigate back to marketplace
   onRequireAuth?: () => void;
+  isDarkMode?: boolean;
+  toggleTheme?: () => void;
+  onOpenLanguagePopup?: () => void;
   // Request to edit (if editing existing request)
   requestToEdit?: Request | null;
   onClearRequestToEdit?: () => void; // Clear after editing is done
@@ -941,6 +944,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   onGoToRequest,
   onGoToMarketplace,
   onRequireAuth,
+  isDarkMode,
+  toggleTheme,
+  onOpenLanguagePopup,
   requestToEdit,
   onClearRequestToEdit,
   mode,
@@ -2424,6 +2430,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         isModeSwitching={isModeSwitching}
         unreadCount={unreadCount}
         user={user}
+        isDarkMode={isDarkMode}
+        toggleTheme={toggleTheme}
+        onOpenLanguagePopup={onOpenLanguagePopup}
         titleKey={titleKey}
         notifications={notifications}
         onMarkAsRead={onMarkAsRead}
@@ -3537,7 +3546,18 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
 
       {/* زر الإرسال العائم في الأسفل */}
       {!isCityAutocompleteOpen && (
-      <div className="fixed bottom-0 left-0 right-0 md:right-72 z-50 bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4">
+      <motion.div
+        initial={{ y: 100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 100, opacity: 0 }}
+        transition={{
+          type: "spring",
+          stiffness: 400,
+          damping: 35,
+          mass: 0.8,
+        }}
+        className="fixed bottom-0 left-0 right-0 md:right-72 z-[110] bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4"
+      >
         {/* زر أرسل الطلب الآن */}
         <SubmitButtonWithShake
           canSubmit={canSubmit}
@@ -3578,7 +3598,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           }}
           onGoToRequest={onGoToRequest}
         />
-      </div>
+      </motion.div>
       )}
 
       {/* Attachment Preview Modal */}

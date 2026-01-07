@@ -1,28 +1,28 @@
-import React, { useState, useRef, useMemo, useEffect } from "react";
-import { Request, Offer } from "../types";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Offer, Request } from "../types";
+import { AnimatePresence, motion } from "framer-motion";
 import {
-  FileText,
-  MapPin,
-  Calendar,
-  Briefcase,
   Archive,
   ArchiveRestore,
-  MessageCircle,
   ArrowUpDown,
+  Briefcase,
+  Calendar,
+  CheckCircle,
+  ChevronDown,
   Clock,
-  User,
-  Search,
-  Plus,
-  MoreVertical,
   Eye,
   EyeOff,
-  RefreshCw,
-  X,
-  ChevronDown,
-  CheckCircle,
+  FileText,
   Loader2,
+  MapPin,
+  MessageCircle,
+  MoreVertical,
+  Plus,
+  RefreshCw,
   RotateCw,
+  Search,
+  User,
+  X,
 } from "lucide-react";
 import { FaHandPointUp } from "react-icons/fa";
 import { format } from "date-fns";
@@ -46,6 +46,7 @@ interface MyRequestsProps {
   onOpenChat?: (requestId: string, offer: Offer) => void;
   userId?: string;
   viewedRequestIds?: Set<string>;
+  unreadMessagesPerRequest?: Map<string, number>; // عدد الرسائل غير المقروءة لكل طلب
   // Profile dropdown props
   user?: any;
   isGuest?: boolean;
@@ -79,6 +80,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   onOpenChat,
   userId,
   viewedRequestIds = new Set(),
+  unreadMessagesPerRequest = new Map(),
   user,
   isGuest = false,
   onNavigateToProfile,
@@ -97,7 +99,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   const [isHeaderCompressed, setIsHeaderCompressed] = useState(false);
   const lastScrollY = useRef(0);
   const headerRef = useRef<HTMLDivElement>(null);
-  
+
   // Pull-to-refresh state
   const [pullToRefreshState, setPullToRefreshState] = useState<{
     isPulling: boolean;
@@ -108,21 +110,25 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
     pullDistance: 0,
     isRefreshing: false,
   });
-  
+  // Flag to prevent click events after pull-to-refresh
+  const preventClickAfterPullRef = useRef(false);
+
   const pullStartY = useRef<number>(0);
   const pullCurrentY = useRef<number>(0);
   const pullDistanceRef = useRef<number>(0);
   const isPullingActiveRef = useRef<boolean>(false);
-  
+
   // Filter & Sort States
-  const [reqFilter, setReqFilter] = useState<RequestFilter>(defaultFilter || "active");
+  const [reqFilter, setReqFilter] = useState<RequestFilter>(
+    defaultFilter || "active",
+  );
   const [sortOrder, setSortOrder] = useState<SortOrder>("createdAt");
-  
+
   // Search state
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchInputOpen, setIsSearchInputOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  
+
   // تحديث الفلتر عند تغييره من الخارج
   useEffect(() => {
     if (defaultFilter !== undefined && defaultFilter !== reqFilter) {
@@ -130,7 +136,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultFilter]);
-  
+
   // إشعار الوالد عند تغيير الفلتر
   const handleFilterChange = (newFilter: RequestFilter) => {
     setReqFilter(newFilter);
@@ -138,38 +144,54 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   };
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [openFilterDropdownId, setOpenFilterDropdownId] = useState<string | null>(null);
+  const [openFilterDropdownId, setOpenFilterDropdownId] = useState<
+    string | null
+  >(null);
   const filterDropdownRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  
+
   // Close filter dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (openFilterDropdownId) {
-        const dropdownRef = filterDropdownRefs.current.get(openFilterDropdownId);
+        const dropdownRef = filterDropdownRefs.current.get(
+          openFilterDropdownId,
+        );
         if (dropdownRef && !dropdownRef.contains(event.target as Node)) {
           setOpenFilterDropdownId(null);
         }
       }
+
+      // Close menu when clicking outside
+      if (openMenuId) {
+        const target = event.target as HTMLElement;
+        if (
+          !target.closest(`button[title="خيارات الطلب"]`) &&
+          !target.closest(".absolute.left-0.top-7")
+        ) {
+          setOpenMenuId(null);
+        }
+      }
     };
-    
-    if (openFilterDropdownId) {
+
+    if (openFilterDropdownId || openMenuId) {
       document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
-  }, [openFilterDropdownId]);
+  }, [openFilterDropdownId, openMenuId]);
 
   // Prevent body scroll when dropdown is open
   useEffect(() => {
     if (openFilterDropdownId) {
-      document.body.style.overflow = 'hidden';
-      document.body.style.touchAction = 'none';
+      document.body.style.overflow = "hidden";
+      document.body.style.touchAction = "none";
     } else {
-      document.body.style.overflow = '';
-      document.body.style.touchAction = '';
+      document.body.style.overflow = "";
+      document.body.style.touchAction = "";
     }
     return () => {
-      document.body.style.overflow = '';
-      document.body.style.touchAction = '';
+      document.body.style.overflow = "";
+      document.body.style.touchAction = "";
     };
   }, [openFilterDropdownId]);
 
@@ -235,6 +257,15 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
       }
 
       const currentPullDistance = pullDistanceRef.current;
+
+      // If there was any pull movement (even if below threshold), prevent click events
+      if (currentPullDistance > 10) {
+        preventClickAfterPullRef.current = true;
+        // Reset flag after a short delay to allow normal clicks again
+        setTimeout(() => {
+          preventClickAfterPullRef.current = false;
+        }, 300);
+      }
 
       if (currentPullDistance >= PULL_THRESHOLD && onRefresh) {
         setPullToRefreshState({
@@ -327,7 +358,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
     const handleScroll = () => {
       const scrollTop = container.scrollTop;
       const scrollDelta = scrollTop - lastScrollY.current;
-      
+
       // Reset pull state if user scrolls away from top
       if (scrollTop > 0 && pullToRefreshState.isPulling) {
         setPullToRefreshState({
@@ -336,7 +367,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
           isRefreshing: false,
         });
       }
-      
+
       if (scrollTop < 50) {
         // Always show when near top
         setIsHeaderCompressed(false);
@@ -350,8 +381,8 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
       lastScrollY.current = scrollTop;
     };
 
-    container.addEventListener('scroll', handleScroll, { passive: true });
-    return () => container.removeEventListener('scroll', handleScroll);
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
   }, [pullToRefreshState.isPulling]);
 
   // Counts
@@ -359,9 +390,15 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
     const allReqs = [...requests, ...archivedRequests];
     return {
       all: allReqs.length,
-      active: requests.filter(req => req.status === "active" || (req.status as any) === "draft").length,
-      approved: requests.filter(req => req.status === "assigned").length,
-      completed: allReqs.filter(req => req.status === "completed" || req.status === "archived").length
+      active: requests.filter((req) =>
+        req.status === "active" || (req.status as any) === "draft"
+      ).length,
+      approved: requests.filter((req) =>
+        req.status === "assigned"
+      ).length,
+      completed: allReqs.filter((req) =>
+        req.status === "completed" || req.status === "archived"
+      ).length,
     };
   }, [requests, archivedRequests]);
 
@@ -369,20 +406,24 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   const filteredRequests = useMemo(() => {
     const allReqs = [...requests, ...archivedRequests];
     let result: Request[] = [];
-    
+
     if (reqFilter === "all") {
       result = allReqs;
     } else if (reqFilter === "active") {
-      result = requests.filter(req => req.status === "active" || (req.status as any) === "draft");
+      result = requests.filter((req) =>
+        req.status === "active" || (req.status as any) === "draft"
+      );
     } else if (reqFilter === "approved") {
-      result = requests.filter(req => req.status === "assigned");
+      result = requests.filter((req) => req.status === "assigned");
     } else {
-      result = allReqs.filter(req => req.status === "completed" || req.status === "archived");
+      result = allReqs.filter((req) =>
+        req.status === "completed" || req.status === "archived"
+      );
     }
 
     // Text search filter
     if (searchTerm) {
-      result = result.filter(req => 
+      result = result.filter((req) =>
         req.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         req.description?.toLowerCase().includes(searchTerm.toLowerCase())
       );
@@ -412,16 +453,24 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
         { value: "all", label: "كل طلباتي", count: counts.all },
         { value: "active", label: "طلباتي النشطة", count: counts.active },
         { value: "approved", label: "طلباتي المعتمدة", count: counts.approved },
-        { value: "completed", label: "طلباتي المكتملة والمؤرشفة", count: counts.completed },
+        {
+          value: "completed",
+          label: "طلباتي المكتملة والمؤرشفة",
+          count: counts.completed,
+        },
       ],
       value: reqFilter,
       onChange: (value: string) => handleFilterChange(value as RequestFilter),
       getLabel: () => {
         switch (reqFilter) {
-          case "all": return "كل طلباتي";
-          case "active": return "طلباتي النشطة";
-          case "approved": return "طلباتي المعتمدة";
-          case "completed": return "طلباتي المكتملة والمؤرشفة";
+          case "all":
+            return "كل طلباتي";
+          case "active":
+            return "طلباتي النشطة";
+          case "approved":
+            return "طلباتي المعتمدة";
+          case "completed":
+            return "طلباتي المكتملة والمؤرشفة";
         }
       },
       showCount: true,
@@ -429,22 +478,31 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   ], [reqFilter, counts]);
 
   const getStatusConfig = (req: Request) => {
-    if (req.status === 'assigned' || req.status === 'completed') {
-      return { text: "تم اعتماد عرض", color: "bg-primary/15 text-primary", icon: "✅" };
+    if (req.status === "assigned" || req.status === "completed") {
+      return {
+        text: "تم اعتماد عرض",
+        color: "bg-primary/15 text-primary",
+        icon: "✅",
+      };
     }
-    if (req.status === 'archived') {
-      return { text: "مؤرشف", color: "bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400", icon: "📦" };
+    if (req.status === "archived") {
+      return {
+        text: "مؤرشف",
+        color:
+          "bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400",
+        icon: "📦",
+      };
     }
     return { text: "نشط", color: "bg-primary/15 text-primary", icon: "🟢" };
   };
 
   return (
-    <div 
+    <div
       ref={scrollContainerRef}
       className="h-full overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar overflow-y-auto"
     >
       {/* Sticky Header Wrapper - Unified with main header - same structure as Marketplace */}
-      <div 
+      <div
         ref={headerRef}
         className="sticky top-0 z-[60] overflow-visible"
       >
@@ -452,8 +510,8 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
         <div
           className="absolute left-0 right-0 pointer-events-none"
           style={{
-            top: '-50px',
-            height: 'calc(100% + 100px)',
+            top: "-50px",
+            height: "calc(100% + 100px)",
             background: `linear-gradient(to bottom,
               rgba(var(--background-rgb), 1) 0%,
               rgba(var(--background-rgb), 1) 60%,
@@ -467,221 +525,277 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
         <div
           className="absolute left-0 right-0 bottom-0 h-16 pointer-events-none"
           style={{
-            background: 'linear-gradient(to bottom, rgba(var(--background-rgb), 0), rgba(var(--background-rgb), 0.6), rgba(var(--background-rgb), 1))',
+            background:
+              "linear-gradient(to bottom, rgba(var(--background-rgb), 0), rgba(var(--background-rgb), 0.6), rgba(var(--background-rgb), 1))",
           }}
         />
         {/* Container for header and filter island - fixed compact size */}
-        <div 
+        <div
           className="flex flex-col overflow-visible origin-top"
           style={{
-            transform: 'scale(0.92) translateY(4px)',
+            transform: "scale(0.92) translateY(4px)",
           }}
         >
           {/* Unified Filter Island with Search - inside scaled container */}
           <div className="px-4 pt-4 bg-transparent relative z-10">
-            <UnifiedFilterIsland 
+            <UnifiedFilterIsland
               isActive={isActive}
               isSearchOpen={isSearchInputOpen || !!searchTerm}
             >
               {/* Center Content - Filter Dropdown or Search Input */}
               <div className="flex-1 flex items-center relative min-w-0 overflow-visible">
                 <AnimatePresence mode="popLayout">
-                  {isSearchInputOpen || searchTerm ? (
-                    /* Search Input Mode */
-                    <motion.div
-                      key="search-input"
-                      initial={{ x: 100, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: 100, opacity: 0 }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 400,
-                        damping: 30,
-                      }}
-                      className="flex items-center gap-1.5 flex-1 px-2 min-w-0 overflow-hidden relative"
-                      dir="rtl"
-                    >
-                      {/* Animated Placeholder */}
-                      {!searchTerm && (
-                        <div className="absolute inset-0 flex items-center pointer-events-none pl-20 pr-2 overflow-hidden rtl">
-                          <span className="text-sm font-medium text-muted-foreground whitespace-nowrap flex items-center gap-1 w-full">
-                            <span className="shrink-0">ابحث في</span>
-                            <span className="inline-block" style={{ paddingLeft: '0.25rem' }}>
-                              طلباتك...
-                            </span>
-                          </span>
-                        </div>
-                      )}
-                      <input
-                        ref={searchInputRef}
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder=""
+                  {isSearchInputOpen || searchTerm
+                    ? (
+                      /* Search Input Mode */
+                      <motion.div
+                        key="search-input"
+                        initial={{ x: 100, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: 100, opacity: 0 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 30,
+                        }}
+                        className="flex items-center gap-1.5 flex-1 px-2 min-w-0 overflow-hidden relative"
                         dir="rtl"
-                        className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-foreground py-2 text-right min-w-0 relative z-10 pl-20"
-                        autoFocus
-                        onBlur={() => {
-                          setTimeout(() => {
-                            if (!searchTerm) {
+                      >
+                        {/* Animated Placeholder */}
+                        {!searchTerm && (
+                          <div className="absolute inset-0 flex items-center pointer-events-none pl-20 pr-2 overflow-hidden rtl">
+                            <span className="text-sm font-medium text-muted-foreground whitespace-nowrap flex items-center gap-1 w-full">
+                              <span className="shrink-0">ابحث في</span>
+                              <span
+                                className="inline-block"
+                                style={{ paddingLeft: "0.25rem" }}
+                              >
+                                طلباتك...
+                              </span>
+                            </span>
+                          </div>
+                        )}
+                        <input
+                          ref={searchInputRef}
+                          type="text"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          placeholder=""
+                          dir="rtl"
+                          className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-foreground py-2 text-right min-w-0 relative z-10 pl-20"
+                          autoFocus
+                          onBlur={() => {
+                            setTimeout(() => {
+                              if (!searchTerm) {
+                                setIsSearchInputOpen(false);
+                              }
+                            }, 150);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              setSearchTerm("");
                               setIsSearchInputOpen(false);
                             }
-                          }, 150);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Escape") {
-                            setSearchTerm("");
-                            setIsSearchInputOpen(false);
-                          }
-                        }}
-                      />
-                      {searchTerm && (
+                          }}
+                        />
+                        {searchTerm && (
+                          <motion.button
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            onClick={() => {
+                              setSearchTerm("");
+                              searchInputRef.current?.focus();
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors shrink-0"
+                          >
+                            <X size={14} strokeWidth={2.5} />
+                          </motion.button>
+                        )}
                         <motion.button
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
+                          transition={{ delay: 0.15 }}
                           onClick={() => {
                             setSearchTerm("");
-                            searchInputRef.current?.focus();
+                            setIsSearchInputOpen(false);
                           }}
-                          className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors shrink-0"
+                          className="text-[11px] font-medium text-primary/70 hover:text-primary px-2 py-1 rounded-lg hover:bg-primary/10 transition-colors shrink-0"
                         >
-                          <X size={14} strokeWidth={2.5} />
+                          إلغاء
                         </motion.button>
-                      )}
-                      <motion.button
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: 0.15 }}
-                        onClick={() => {
-                          setSearchTerm("");
-                          setIsSearchInputOpen(false);
+                      </motion.div>
+                    )
+                    : (
+                      /* Filter Dropdown Mode */
+                      <motion.div
+                        key="filter-dropdown"
+                        initial={{ y: 40, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: 40, opacity: 0 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 30,
                         }}
-                        className="text-[11px] font-medium text-primary/70 hover:text-primary px-2 py-1 rounded-lg hover:bg-primary/10 transition-colors shrink-0"
+                        className="flex items-center justify-center flex-1 relative min-w-0 gap-1.5"
                       >
-                        إلغاء
-                      </motion.button>
-                    </motion.div>
-                  ) : (
-                    /* Filter Dropdown Mode */
-                    <motion.div
-                      key="filter-dropdown"
-                      initial={{ y: 40, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      exit={{ y: 40, opacity: 0 }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 400,
-                        damping: 30,
-                      }}
-                      className="flex items-center justify-center flex-1 relative min-w-0 gap-1.5"
-                    >
-                      {filterConfigs.map((filter, idx) => (
-                        <React.Fragment key={filter.id}>
-                          {idx > 0 && (
-                            <div className="w-px h-6 bg-border/50" />
-                          )}
-                          <div
-                            ref={(el) => {
-                              if (el) filterDropdownRefs.current.set(filter.id, el);
-                            }}
-                            className="relative"
-                          >
-                            <motion.button
-                              onClick={() => {
-                                if (navigator.vibrate) navigator.vibrate(10);
-                                setOpenFilterDropdownId(openFilterDropdownId === filter.id ? null : filter.id);
+                        {filterConfigs.map((filter, idx) => (
+                          <React.Fragment key={filter.id}>
+                            {idx > 0 && (
+                              <div className="w-px h-6 bg-border/50" />
+                            )}
+                            <div
+                              ref={(el) => {
+                                if (el) {
+                                  filterDropdownRefs.current.set(filter.id, el);
+                                }
                               }}
-                              whileTap={{ scale: 0.96 }}
-                              className={`inline-flex items-center gap-2 px-3 py-2 rounded-full transition-all whitespace-nowrap ${
-                                openFilterDropdownId === filter.id
-                                  ? "bg-primary/15 text-primary"
-                                  : "hover:bg-secondary/60 text-muted-foreground hover:text-foreground"
-                              }`}
+                              className="relative"
                             >
-                              <span className="text-primary">{filter.icon}</span>
-                              <span className="text-xs font-bold">
-                                {filter.getLabel()}
-                              </span>
-                              {filter.showCount !== false && filter.options.find(o => o.value === filter.value)?.count !== undefined && (
-                                <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[10px] font-bold bg-primary text-white">
-                                  {filter.options.find(o => o.value === filter.value)?.count}
-                                </span>
-                              )}
-                              <motion.div
-                                animate={{ rotate: openFilterDropdownId === filter.id ? 180 : 0 }}
-                                transition={{ duration: 0.2 }}
+                              <motion.button
+                                onClick={() => {
+                                  if (navigator.vibrate) navigator.vibrate(10);
+                                  setOpenFilterDropdownId(
+                                    openFilterDropdownId === filter.id
+                                      ? null
+                                      : filter.id,
+                                  );
+                                }}
+                                whileTap={{ scale: 0.96 }}
+                                className={`inline-flex items-center gap-2 px-3 py-2 rounded-full transition-all whitespace-nowrap ${
+                                  openFilterDropdownId === filter.id
+                                    ? "bg-primary/15 text-primary"
+                                    : "hover:bg-secondary/60 text-muted-foreground hover:text-foreground"
+                                }`}
                               >
-                                <ChevronDown size={12} className="text-muted-foreground" />
-                              </motion.div>
-                            </motion.button>
-                          
-                            {/* Dropdown Menu */}
-                            <AnimatePresence>
-                              {openFilterDropdownId === filter.id && (
-                                <>
-                                  {/* Backdrop */}
-                                  <div
-                                    className="fixed inset-0 z-40 touch-none"
-                                    onClick={() => setOpenFilterDropdownId(null)}
-                                    onWheel={(e) => e.preventDefault()}
-                                    onTouchMove={(e) => e.preventDefault()}
+                                <span className="text-primary">
+                                  {filter.icon}
+                                </span>
+                                <span className="text-xs font-bold">
+                                  {filter.getLabel()}
+                                </span>
+                                {filter.showCount !== false &&
+                                  filter.options.find((o) =>
+                                      o.value === filter.value
+                                    )?.count !== undefined &&
+                                  (
+                                    <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[10px] font-bold bg-primary text-white">
+                                      {filter.options.find((o) =>
+                                        o.value === filter.value
+                                      )?.count}
+                                    </span>
+                                  )}
+                                <motion.div
+                                  animate={{
+                                    rotate: openFilterDropdownId === filter.id
+                                      ? 180
+                                      : 0,
+                                  }}
+                                  transition={{ duration: 0.2 }}
+                                >
+                                  <ChevronDown
+                                    size={12}
+                                    className="text-muted-foreground"
                                   />
-                                  <motion.div
-                                    initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                    transition={{ duration: 0.2, ease: "easeOut" }}
-                                    className="absolute w-64 bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden right-0 mt-2"
-                                    style={{
-                                      maxHeight: 'calc(100vh - 120px)',
-                                      overflowY: 'auto',
-                                    }}
-                                  >
-                                    <div className="p-2 flex flex-col gap-1">
-                                      {filter.options.map((option) => (
-                                        <motion.button
-                                          key={option.value}
-                                          whileTap={{ scale: 0.98 }}
-                                          onClick={() => {
-                                            if (navigator.vibrate) navigator.vibrate(10);
-                                            filter.onChange(option.value);
-                                            setOpenFilterDropdownId(null);
-                                          }}
-                                          className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                                            filter.value === option.value 
-                                              ? "bg-primary/15 text-primary border border-primary/20" 
-                                              : "text-foreground hover:bg-secondary/80 border border-transparent"
-                                          }`}
-                                        >
-                                          <div className="flex items-center gap-2.5 text-right">
-                                            {option.icon && <span className={filter.value === option.value ? "text-primary" : "text-muted-foreground"}>{option.icon}</span>}
-                                            <span className="font-bold">{option.label}</span>
-                                          </div>
-                                          {option.count !== undefined ? (
-                                            <span
-                                              className={`inline-flex items-center justify-center min-w-[1.5rem] h-6 rounded-full px-2 text-[11px] font-bold ${
-                                                filter.value === option.value
-                                                  ? "bg-primary text-white"
-                                                  : "bg-secondary text-muted-foreground"
-                                              }`}
-                                            >
-                                              {option.count}
-                                            </span>
-                                          ) : filter.value === option.value ? (
-                                            <CheckCircle size={16} className="text-primary" />
-                                          ) : null}
-                                        </motion.button>
-                                      ))}
-                                    </div>
-                                  </motion.div>
-                                </>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        </React.Fragment>
-                      ))}
-                    </motion.div>
-                  )}
+                                </motion.div>
+                              </motion.button>
+
+                              {/* Dropdown Menu */}
+                              <AnimatePresence>
+                                {openFilterDropdownId === filter.id && (
+                                  <>
+                                    {/* Backdrop */}
+                                    <div
+                                      className="fixed inset-0 z-40 touch-none"
+                                      onClick={() =>
+                                        setOpenFilterDropdownId(null)}
+                                      onWheel={(e) => e.preventDefault()}
+                                      onTouchMove={(e) => e.preventDefault()}
+                                    />
+                                    <motion.div
+                                      initial={{
+                                        opacity: 0,
+                                        y: -8,
+                                        scale: 0.95,
+                                      }}
+                                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                                      exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                      transition={{
+                                        duration: 0.2,
+                                        ease: "easeOut",
+                                      }}
+                                      className="absolute w-64 bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden right-0 mt-2"
+                                      style={{
+                                        maxHeight: "calc(100vh - 120px)",
+                                        overflowY: "auto",
+                                      }}
+                                    >
+                                      <div className="p-2 flex flex-col gap-1">
+                                        {filter.options.map((option) => (
+                                          <motion.button
+                                            key={option.value}
+                                            whileTap={{ scale: 0.98 }}
+                                            onClick={() => {
+                                              if (navigator.vibrate) {
+                                                navigator.vibrate(10);
+                                              }
+                                              filter.onChange(option.value);
+                                              setOpenFilterDropdownId(null);
+                                            }}
+                                            className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                                              filter.value === option.value
+                                                ? "bg-primary/15 text-primary border border-primary/20"
+                                                : "text-foreground hover:bg-secondary/80 border border-transparent"
+                                            }`}
+                                          >
+                                            <div className="flex items-center gap-2.5 text-right">
+                                              {option.icon && (
+                                                <span
+                                                  className={filter.value ===
+                                                      option.value
+                                                    ? "text-primary"
+                                                    : "text-muted-foreground"}
+                                                >
+                                                  {option.icon}
+                                                </span>
+                                              )}
+                                              <span className="font-bold">
+                                                {option.label}
+                                              </span>
+                                            </div>
+                                            {option.count !== undefined
+                                              ? (
+                                                <span
+                                                  className={`inline-flex items-center justify-center min-w-[1.5rem] h-6 rounded-full px-2 text-[11px] font-bold ${
+                                                    filter.value ===
+                                                        option.value
+                                                      ? "bg-primary text-white"
+                                                      : "bg-secondary text-muted-foreground"
+                                                  }`}
+                                                >
+                                                  {option.count}
+                                                </span>
+                                              )
+                                              : filter.value === option.value
+                                              ? (
+                                                <CheckCircle
+                                                  size={16}
+                                                  className="text-primary"
+                                                />
+                                              )
+                                              : null}
+                                          </motion.button>
+                                        ))}
+                                      </div>
+                                    </motion.div>
+                                  </>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          </React.Fragment>
+                        ))}
+                      </motion.div>
+                    )}
                 </AnimatePresence>
               </div>
 
@@ -829,19 +943,20 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
 
       {/* Content */}
       <div className="px-4 pb-24">
-        <div key={reqFilter} className="grid grid-cols-1 gap-6 min-h-[100px] pt-2">
+        <div
+          key={reqFilter}
+          className="grid grid-cols-1 gap-6 min-h-[100px] pt-2"
+        >
           {filteredRequests.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center min-h-[50vh]">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-secondary mb-4">
-                {reqFilter === "all" ? (
-                  <FileText className="text-muted-foreground" size={24} />
-                ) : (
-                  <Search className="text-muted-foreground" size={24} />
-                )}
+                {reqFilter === "all"
+                  ? <FileText className="text-muted-foreground" size={24} />
+                  : <Search className="text-muted-foreground" size={24} />}
               </div>
               <h3 className="text-lg font-bold text-foreground mb-2">
-                {reqFilter === "all" 
-                  ? "لا توجد طلبات" 
+                {reqFilter === "all"
+                  ? "لا توجد طلبات"
                   : reqFilter === "active"
                   ? "لا توجد طلبات نشطة"
                   : reqFilter === "approved"
@@ -870,17 +985,30 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
           )}
           {filteredRequests.map((req, index) => {
             // استثناء العروض المؤرشفة
-            const requestOffers = (receivedOffersMap.get(req.id) || []).filter(o => o.status !== 'archived');
-            const acceptedOffer = requestOffers.find(o => o.status === 'accepted');
-            const pendingOffers = requestOffers.filter(o => o.status === 'pending' || o.status === 'negotiating');
-            const requestNumber = req.requestNumber || req.id.slice(-4).toUpperCase();
+            const requestOffers = (receivedOffersMap.get(req.id) || []).filter(
+              (o) => o.status !== "archived"
+            );
+            const acceptedOffer = requestOffers.find((o) =>
+              o.status === "accepted"
+            );
+            const pendingOffers = requestOffers.filter((o) =>
+              o.status === "pending" || o.status === "negotiating"
+            );
+            const requestNumber = req.requestNumber ||
+              req.id.slice(-4).toUpperCase();
             const statusConfig = getStatusConfig(req);
             const isHidden = req.isPublic === false;
-            const lastUpdated = req.updatedAt ? new Date(req.updatedAt) : new Date(req.createdAt);
+            const lastUpdated = req.updatedAt
+              ? new Date(req.updatedAt)
+              : new Date(req.createdAt);
             const sixHoursMs = 6 * 60 * 60 * 1000;
             const elapsedSinceUpdate = Date.now() - lastUpdated.getTime();
             const canBump = elapsedSinceUpdate >= sixHoursMs;
-            const bumpHoursLeft = Math.max(0, Math.ceil((sixHoursMs - elapsedSinceUpdate) / (60 * 60 * 1000)));
+            const bumpHoursLeft = Math.max(
+              0,
+              Math.ceil((sixHoursMs - elapsedSinceUpdate) / (60 * 60 * 1000)),
+            );
+            const unreadCount = unreadMessagesPerRequest?.get(req.id) || 0;
 
             return (
               <motion.div
@@ -888,7 +1016,59 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                 initial={false}
                 animate={{ opacity: 1, y: 0 }}
                 whileHover={{ y: -8, scale: 1.02 }}
-                onClick={() => onSelectRequest(req)}
+                onClick={(e) => {
+                  // Prevent click if pull-to-refresh was active
+                  if (preventClickAfterPullRef.current) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                  }
+                  // Don't handle click if clicking on menu button or inside menu
+                  const target = e.target as HTMLElement;
+                  if (
+                    target.closest('button[title="خيارات الطلب"]') ||
+                    target.closest(".absolute.left-0.top-7")
+                  ) {
+                    return; // Let menu button handle its own events
+                  }
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSelectRequest(req);
+                }}
+                onTouchStart={(e) => {
+                  // Don't prevent if clicking on menu button
+                  const target = e.target as HTMLElement;
+                  if (
+                    target.closest('button[title="خيارات الطلب"]') ||
+                    target.closest(".absolute.left-0.top-7")
+                  ) {
+                    return; // Let menu button handle its own events
+                  }
+                  // Prevent scroll interference
+                  e.stopPropagation();
+                }}
+                onTouchEnd={(e) => {
+                  // Prevent click if pull-to-refresh was active
+                  if (preventClickAfterPullRef.current) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                  }
+                  // Don't prevent if clicking on menu button
+                  const target = e.target as HTMLElement;
+                  if (
+                    target.closest('button[title="خيارات الطلب"]') ||
+                    target.closest(".absolute.left-0.top-7")
+                  ) {
+                    return; // Let menu button handle its own events
+                  }
+                  e.preventDefault();
+                  e.stopPropagation();
+                  // Force state update to ensure request opens
+                  setTimeout(() => {
+                    onSelectRequest(req);
+                  }, 0);
+                }}
                 className="bg-card border border-border rounded-2xl p-4 pt-5 transition-colors cursor-pointer relative shadow-sm group text-right"
               >
                 {/* Floating Label */}
@@ -896,14 +1076,28 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                   <FaHandPointUp size={12} className="text-primary" />
                   طلبي ({requestNumber})
                 </span>
-                
+
+                {/* Badge for unread messages */}
+                {unreadCount > 0 && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute top-3 left-3 z-20 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow-lg border-2 border-white dark:border-card"
+                    title={`${unreadCount} رسالة غير مقروءة`}
+                  >
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </motion.div>
+                )}
+
                 {/* Title & Status */}
                 <div className="flex items-start justify-between mb-2">
                   <span className="font-bold text-base truncate text-primary max-w-[70%]">
                     {req.title}
                   </span>
                   <div className="flex items-center gap-1.5 relative">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusConfig.color}`}>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusConfig.color}`}
+                    >
                       {statusConfig.text}
                     </span>
                     {isHidden && (
@@ -913,74 +1107,121 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                     )}
                     <button
                       onClick={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
+                        if (navigator.vibrate) navigator.vibrate(10);
                         setOpenMenuId(openMenuId === req.id ? null : req.id);
                       }}
-                      className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onTouchEnd={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // Small delay to ensure menu opens after touch ends
+                        setTimeout(() => {
+                          if (navigator.vibrate) navigator.vibrate(10);
+                          setOpenMenuId((prev) =>
+                            prev === req.id ? null : req.id
+                          );
+                        }, 0);
+                      }}
+                      className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground relative z-[100]"
+                      style={{
+                        pointerEvents: "auto",
+                        touchAction: "manipulation",
+                      }}
                       title="خيارات الطلب"
+                      type="button"
                     >
                       <MoreVertical size={16} />
                     </button>
                     {openMenuId === req.id && (
-                      <div
-                        className="absolute left-0 top-7 w-48 bg-card border border-border rounded-lg shadow-lg z-20 text-sm overflow-hidden"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          className="w-full text-right px-3 py-2 hover:bg-secondary flex items-center gap-2"
-                          onClick={() => {
+                      <>
+                        {/* Backdrop to close menu when clicking outside */}
+                        <div
+                          className="fixed inset-0 z-[90]"
+                          onClick={() => setOpenMenuId(null)}
+                          onTouchStart={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
                             setOpenMenuId(null);
-                            if (isHidden) {
-                              onUnhideRequest && onUnhideRequest(req.id);
-                            } else {
-                              onHideRequest && onHideRequest(req.id);
-                            }
                           }}
+                        />
+                        <div
+                          className="absolute left-0 top-7 w-48 bg-card border border-border rounded-lg shadow-lg z-[100] text-sm overflow-hidden"
+                          onClick={(e) => e.stopPropagation()}
+                          onTouchStart={(e) => e.stopPropagation()}
                         >
-                          {isHidden ? <Eye size={14} /> : <EyeOff size={14} />}
-                          <span>{isHidden ? "إظهار في السوق" : "إخفاء من السوق"}</span>
-                        </button>
-                        {onArchiveRequest && req.status !== 'archived' && (
                           <button
                             className="w-full text-right px-3 py-2 hover:bg-secondary flex items-center gap-2"
                             onClick={() => {
                               setOpenMenuId(null);
-                              onArchiveRequest(req.id);
+                              if (isHidden) {
+                                onUnhideRequest && onUnhideRequest(req.id);
+                              } else {
+                                onHideRequest && onHideRequest(req.id);
+                              }
                             }}
                           >
-                            <Archive size={14} />
-                            <span>أرشفة الطلب</span>
+                            {isHidden
+                              ? <Eye size={14} />
+                              : <EyeOff size={14} />}
+                            <span>
+                              {isHidden ? "إظهار في السوق" : "إخفاء من السوق"}
+                            </span>
                           </button>
-                        )}
-                        {onUnarchiveRequest && req.status === 'archived' && (
+                          {onArchiveRequest && req.status !== "archived" && (
+                            <button
+                              className="w-full text-right px-3 py-2 hover:bg-secondary flex items-center gap-2"
+                              onClick={() => {
+                                setOpenMenuId(null);
+                                onArchiveRequest(req.id);
+                              }}
+                            >
+                              <Archive size={14} />
+                              <span>أرشفة الطلب</span>
+                            </button>
+                          )}
+                          {onUnarchiveRequest && req.status === "archived" && (
+                            <button
+                              className="w-full text-right px-3 py-2 hover:bg-secondary flex items-center gap-2"
+                              onClick={() => {
+                                setOpenMenuId(null);
+                                onUnarchiveRequest(req.id);
+                              }}
+                            >
+                              <ArchiveRestore size={14} />
+                              <span>إلغاء الأرشفة</span>
+                            </button>
+                          )}
                           <button
-                            className="w-full text-right px-3 py-2 hover:bg-secondary flex items-center gap-2"
+                            disabled={!canBump || req.status === "archived"}
+                            className={`w-full text-right px-3 py-2 flex items-center gap-2 ${
+                              canBump && req.status !== "archived"
+                                ? "hover:bg-secondary"
+                                : "opacity-50 cursor-not-allowed"
+                            }`}
                             onClick={() => {
+                              if (!canBump || req.status === "archived") return;
                               setOpenMenuId(null);
-                              onUnarchiveRequest(req.id);
+                              onBumpRequest && onBumpRequest(req.id);
                             }}
                           >
-                            <ArchiveRestore size={14} />
-                            <span>إلغاء الأرشفة</span>
+                            <RefreshCw size={14} />
+                            <span>
+                              {canBump
+                                ? "تحديث ورفع الطلب"
+                                : `متاح بعد ${bumpHoursLeft} س`}
+                            </span>
                           </button>
-                        )}
-                        <button
-                          disabled={!canBump || req.status === 'archived'}
-                          className={`w-full text-right px-3 py-2 flex items-center gap-2 ${canBump && req.status !== 'archived' ? "hover:bg-secondary" : "opacity-50 cursor-not-allowed"}`}
-                          onClick={() => {
-                            if (!canBump || req.status === 'archived') return;
-                            setOpenMenuId(null);
-                            onBumpRequest && onBumpRequest(req.id);
-                          }}
-                        >
-                          <RefreshCw size={14} />
-                          <span>{canBump ? "تحديث ورفع الطلب" : `متاح بعد ${bumpHoursLeft} س`}</span>
-                        </button>
-                      </div>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
-                
+
                 {/* Location & Date */}
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 flex-wrap">
                   {req.location && (
@@ -992,13 +1233,18 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                   {req.createdAt && (
                     <span className="flex items-center gap-1">
                       <Calendar size={14} />
-                      {format(new Date(req.createdAt), "dd MMM", { locale: ar })}
+                      {format(new Date(req.createdAt), "dd MMM", {
+                        locale: ar,
+                      })}
                     </span>
                   )}
                   {req.updatedAt && req.updatedAt !== req.createdAt && (
                     <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-foreground">
                       <Clock size={12} />
-                      محدث بتاريخ {format(new Date(req.updatedAt), "dd MMM", { locale: ar })}
+                      محدث بتاريخ{" "}
+                      {format(new Date(req.updatedAt), "dd MMM", {
+                        locale: ar,
+                      })}
                     </span>
                   )}
                   {req.categories && req.categories.length > 0 && (
@@ -1006,35 +1252,36 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                       <Briefcase size={14} />
                       {(() => {
                         const catLabel = req.categories[0];
-                        const categoryObj = AVAILABLE_CATEGORIES.find(c => c.label === catLabel || c.id === catLabel);
+                        const categoryObj = AVAILABLE_CATEGORIES.find((c) =>
+                          c.label === catLabel || c.id === catLabel
+                        );
                         return categoryObj?.label || catLabel;
                       })()}
                     </span>
                   )}
                 </div>
-                
+
                 {/* Budget */}
                 {(req.budgetMin || req.budgetMax) && (
                   <div className="flex items-center gap-2 text-sm mb-2 flex-wrap">
                     <span className="text-muted-foreground">الميزانية:</span>
                     <span className="font-bold text-foreground">
-                      {req.budgetMin && req.budgetMax 
+                      {req.budgetMin && req.budgetMax
                         ? `${req.budgetMin} - ${req.budgetMax} ر.س`
-                        : req.budgetMax 
-                          ? `حتى ${req.budgetMax} ر.س`
-                          : `من ${req.budgetMin} ر.س`
-                      }
+                        : req.budgetMax
+                        ? `حتى ${req.budgetMax} ر.س`
+                        : `من ${req.budgetMin} ر.س`}
                     </span>
                   </div>
                 )}
-                
+
                 {/* Offers Summary Box */}
                 {requestOffers.length > 0 && (
                   <div className="mt-3 p-2.5 pt-3 rounded-lg bg-secondary/50 border border-border/50 space-y-1.5 relative">
                     <span className="absolute -top-2.5 right-3 bg-card px-2 text-[11px] font-bold text-muted-foreground">
                       العروض المستلمة ({requestOffers.length})
                     </span>
-                    
+
                     <div className="flex flex-wrap gap-2 text-xs">
                       {pendingOffers.length > 0 && (
                         <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400">
@@ -1047,12 +1294,16 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                         </span>
                       )}
                     </div>
-                    
+
                     {acceptedOffer && (
                       <div className="mt-2 pt-2 border-t border-border/50">
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">العرض المعتمد:</span>
-                          <span className="font-bold text-primary">{acceptedOffer.price} ر.س</span>
+                          <span className="text-muted-foreground">
+                            العرض المعتمد:
+                          </span>
+                          <span className="font-bold text-primary">
+                            {acceptedOffer.price} ر.س
+                          </span>
                         </div>
                         {acceptedOffer.providerName && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
@@ -1060,38 +1311,44 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                             <span>{acceptedOffer.providerName}</span>
                           </div>
                         )}
-                        {onOpenChat && (req.contactMethod === 'chat' || req.contactMethod === 'both' || !req.contactMethod) && (
-                          <div className="flex items-center gap-1.5 mt-2 justify-end">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onOpenChat(req.id, acceptedOffer);
-                              }}
-                              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-primary hover:bg-primary/90 active:scale-95 text-primary-foreground transition-all shadow-sm"
-                              title="فتح المحادثة"
-                            >
-                              <MessageCircle size={12} />
-                              محادثة
-                            </button>
-                          </div>
-                        )}
+                        {onOpenChat &&
+                          (req.contactMethod === "chat" ||
+                            req.contactMethod === "both" ||
+                            !req.contactMethod) &&
+                          (
+                            <div className="flex items-center gap-1.5 mt-2 justify-end">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenChat(req.id, acceptedOffer);
+                                }}
+                                className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-primary hover:bg-primary/90 active:scale-95 text-primary-foreground transition-all shadow-sm"
+                                title="فتح المحادثة"
+                              >
+                                <MessageCircle size={12} />
+                                محادثة
+                              </button>
+                            </div>
+                          )}
                       </div>
                     )}
-                    
+
                     {!acceptedOffer && pendingOffers.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-border/50">
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>أقل عرض:</span>
                           <span className="font-bold text-foreground">
-                            {Math.min(...pendingOffers.map(o => parseFloat(o.price) || 0))} ر.س
+                            {Math.min(...pendingOffers.map((o) =>
+                              parseFloat(o.price) || 0
+                            ))} ر.س
                           </span>
                         </div>
                       </div>
                     )}
                   </div>
                 )}
-                
-                {requestOffers.length === 0 && req.status === 'active' && (
+
+                {requestOffers.length === 0 && req.status === "active" && (
                   <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
                     <span className="text-accent">⏳</span>
                     <span>بانتظار العروض...</span>
