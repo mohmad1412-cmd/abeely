@@ -5,6 +5,36 @@ import { getCategoryIdsByLabels, OTHER_CATEGORY } from "./categoriesService";
 import { logger } from "../utils/logger";
 import { deleteFile } from "./storageService";
 
+/**
+ * إرسال Push Notifications للمستخدمين المهتمين بطلب جديد
+ */
+async function sendPushNotificationForNewRequest(params: {
+  requestId: string;
+  requestTitle: string;
+  requestDescription?: string;
+  categories?: string[];
+  city?: string;
+  authorId: string;
+}): Promise<void> {
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      "send-push-notification",
+      {
+        body: params,
+      },
+    );
+
+    if (error) {
+      logger.warn("Edge Function error:", error);
+      return;
+    }
+
+    logger.log("📱 Push notifications sent:", data);
+  } catch (err) {
+    logger.warn("Failed to call send-push-notification:", err);
+  }
+}
+
 type RequestInsert = {
   author_id?: string;
   title: string;
@@ -163,6 +193,21 @@ export async function createRequestFromChat(
       try {
         await linkCategories(data.id, ["other"]);
       } catch (_) {}
+    }
+
+    // إرسال Push Notifications للمستخدمين المهتمين
+    try {
+      await sendPushNotificationForNewRequest({
+        requestId: data.id,
+        requestTitle: payload.title,
+        requestDescription: payload.description,
+        categories: draftData.categories || [],
+        city: payload.location,
+        authorId: userId,
+      });
+    } catch (pushErr) {
+      logger.warn("Failed to send push notifications:", pushErr);
+      // لا نفشل إنشاء الطلب بسبب خطأ في الإشعارات
     }
 
     return data;
@@ -1250,6 +1295,7 @@ function transformRequest(req: any, offersCount?: number): Request {
     description: req.description,
     author: req.author_id || "مستخدم",
     createdAt: new Date(req.created_at),
+    updatedAt: req.updated_at ? new Date(req.updated_at) : undefined,
     status: req.status,
     isPublic: req.is_public,
     budgetType: req.budget_type || "negotiable",

@@ -20,6 +20,8 @@ import {
   DollarSign,
   ExternalLink,
   Eye,
+  EyeOff,
+  Archive,
   FileText,
   ImageIcon,
   Info,
@@ -136,6 +138,9 @@ interface RequestDetailProps {
   onNavigateToProfile?: () => void;
   onNavigateToSettings?: () => void;
   onCancelOffer?: (offerId: string) => Promise<void>; // Callback to cancel an offer
+  onBumpRequest?: (id: string) => void; // Callback to refresh/bump the request
+  onHideRequest?: (id: string) => void; // Callback to hide the request
+  onUnhideRequest?: (id: string) => void; // Callback to unhide/show the request
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
@@ -160,7 +165,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     onEditRequest,
     onNavigateToProfile,
     onNavigateToSettings,
-    onCancelOffer
+    onCancelOffer,
+    onBumpRequest,
+    onHideRequest,
+    onUnhideRequest
   },
 ) => {
   const [negotiationOpen, setNegotiationOpen] = useState(false);
@@ -1156,7 +1164,55 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     }
   };
 
+  const [isBumping, setIsBumping] = useState(false);
+  const [isHiding, setIsHiding] = useState(false);
+  const [isUnhiding, setIsUnhiding] = useState(false);
+
+  const handleBumpRequest = async () => {
+    if (!onBumpRequest) return;
+    setIsBumping(true);
+    try {
+      await onBumpRequest(request.id);
+      // سيتم تحديث request من خلال App.tsx
+    } catch (error) {
+      logger.error('Failed to bump request:', error, 'service');
+    } finally {
+      setIsBumping(false);
+    }
+  };
+
+  const handleHideRequest = async () => {
+    if (!onHideRequest) return;
+    setIsHiding(true);
+    try {
+      await onHideRequest(request.id);
+    } catch (error) {
+      logger.error('Failed to hide request:', error, 'service');
+    } finally {
+      setIsHiding(false);
+    }
+  };
+
+  const handleUnhideRequest = async () => {
+    if (!onUnhideRequest) return;
+    setIsUnhiding(true);
+    try {
+      await onUnhideRequest(request.id);
+    } catch (error) {
+      logger.error('Failed to unhide request:', error, 'service');
+    } finally {
+      setIsUnhiding(false);
+    }
+  };
+
   const dropdownItems: DropdownMenuItem[] = isMyRequest ? [
+    {
+      id: 'refresh',
+      label: isBumping ? 'جاري التحديث...' : 'تحديث الطلب',
+      icon: <RefreshCw size={16} className={isBumping ? "animate-spin" : ""} />,
+      onClick: handleBumpRequest,
+      disabled: isBumping,
+    },
     {
       id: 'edit',
       label: 'تعديل الطلب',
@@ -1164,9 +1220,20 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       onClick: handleEditRequest,
     },
     {
+      id: request.isPublic === false ? 'unhide' : 'hide',
+      label: request.isPublic === false 
+        ? (isUnhiding ? 'جاري الإظهار...' : 'إظهار الطلب')
+        : (isHiding ? 'جاري الإخفاء...' : 'إخفاء الطلب'),
+      icon: request.isPublic === false 
+        ? <Eye size={16} />
+        : <EyeOff size={16} />,
+      onClick: request.isPublic === false ? handleUnhideRequest : handleHideRequest,
+      disabled: isHiding || isUnhiding,
+    },
+    {
       id: 'archive',
-      label: isArchiving ? 'جاري الحذف...' : 'حذف الطلب',
-      icon: <Trash2 size={16} />,
+      label: isArchiving ? 'جاري الأرشفة...' : 'أرشفة الطلب',
+      icon: <Archive size={16} />,
       onClick: handleArchiveClick,
       variant: 'danger',
       disabled: isArchiving,
@@ -1576,14 +1643,27 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   </span>
                 </div>
 
-                {/* Published Date - Second Row */}
+                {/* Published Date / Last Updated - Second Row */}
                 <div className="flex flex-col gap-1.5 w-full">
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                    <Calendar size={18} /> النشر/ آخر تحديث
+                    <Calendar size={18} /> {request.updatedAt ? 'آخر تحديث' : 'تاريخ النشر'}
                   </span>
-                  <span className="font-bold text-sm">
-                    {formatTimeAgo(request.createdAt, false)}
-                  </span>
+                  <div className="flex flex-col gap-1">
+                    {request.updatedAt ? (
+                      <>
+                        <span className="font-bold text-sm">
+                          {formatTimeAgo(request.updatedAt, false)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          النشر: {formatTimeAgo(request.createdAt, false)}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="font-bold text-sm">
+                        {formatTimeAgo(request.createdAt, false)}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Budget - Third Row */}

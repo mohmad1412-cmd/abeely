@@ -118,6 +118,9 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   const pullDistanceRef = useRef<number>(0);
   const isPullingActiveRef = useRef<boolean>(false);
 
+  // تتبع موقع اللمس للتفريق بين السكرول والضغط
+  const cardTouchStartRef = useRef<{ x: number; y: number } | null>(null);
+
   // Filter & Sort States
   const [reqFilter, setReqFilter] = useState<RequestFilter>(
     defaultFilter || "active",
@@ -706,7 +709,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                                   <>
                                     {/* Backdrop */}
                                     <div
-                                      className="fixed inset-0 z-40 touch-none"
+                                      className="fixed inset-0 z-[110] touch-none"
                                       onClick={() =>
                                         setOpenFilterDropdownId(null)}
                                       onWheel={(e) => e.preventDefault()}
@@ -724,7 +727,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                                         duration: 0.2,
                                         ease: "easeOut",
                                       }}
-                                      className="absolute w-64 bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden right-0 mt-2"
+                                      className="absolute w-64 bg-card border border-border rounded-2xl shadow-2xl z-[120] overflow-hidden right-0 mt-2"
                                       style={{
                                         maxHeight: "calc(100vh - 120px)",
                                         overflowY: "auto",
@@ -986,7 +989,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
           {filteredRequests.map((req, index) => {
             // استثناء العروض المؤرشفة
             const requestOffers = (receivedOffersMap.get(req.id) || []).filter(
-              (o) => o.status !== "archived"
+              (o) => o.status !== "archived",
             );
             const acceptedOffer = requestOffers.find((o) =>
               o.status === "accepted"
@@ -1044,14 +1047,18 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                   ) {
                     return; // Let menu button handle its own events
                   }
-                  // Prevent scroll interference
-                  e.stopPropagation();
+                  // حفظ موقع اللمس للتفريق بين السكرول والضغط
+                  cardTouchStartRef.current = {
+                    x: e.touches[0].clientX,
+                    y: e.touches[0].clientY,
+                  };
                 }}
                 onTouchEnd={(e) => {
                   // Prevent click if pull-to-refresh was active
                   if (preventClickAfterPullRef.current) {
                     e.preventDefault();
                     e.stopPropagation();
+                    cardTouchStartRef.current = null;
                     return;
                   }
                   // Don't prevent if clicking on menu button
@@ -1060,8 +1067,26 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                     target.closest('button[title="خيارات الطلب"]') ||
                     target.closest(".absolute.left-0.top-7")
                   ) {
+                    cardTouchStartRef.current = null;
                     return; // Let menu button handle its own events
                   }
+
+                  // التحقق من أن هذا ضغط وليس سكرول (الفرق أقل من 15 بكسل)
+                  if (cardTouchStartRef.current && e.changedTouches[0]) {
+                    const deltaX = Math.abs(
+                      e.changedTouches[0].clientX - cardTouchStartRef.current.x,
+                    );
+                    const deltaY = Math.abs(
+                      e.changedTouches[0].clientY - cardTouchStartRef.current.y,
+                    );
+                    if (deltaX > 15 || deltaY > 15) {
+                      // هذا سكرول - لا نفتح التفاصيل
+                      cardTouchStartRef.current = null;
+                      return;
+                    }
+                  }
+                  cardTouchStartRef.current = null;
+
                   e.preventDefault();
                   e.stopPropagation();
                   // Force state update to ensure request opens
@@ -1241,8 +1266,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                   {req.updatedAt && req.updatedAt !== req.createdAt && (
                     <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-foreground">
                       <Clock size={12} />
-                      محدث بتاريخ{" "}
-                      {format(new Date(req.updatedAt), "dd MMM", {
+                      محدث بتاريخ {format(new Date(req.updatedAt), "dd MMM", {
                         locale: ar,
                       })}
                     </span>

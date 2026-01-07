@@ -108,6 +108,11 @@ import {
   updateUrl,
 } from "./services/routingService";
 import { App as CapacitorApp } from "@capacitor/app";
+import {
+  initPushNotifications,
+  refreshPushToken,
+  removePushToken,
+} from "./services/pushNotificationService";
 
 // Auth Views
 type AppView = "splash" | "auth" | "onboarding" | "main" | "connection-error";
@@ -1063,6 +1068,19 @@ const App: React.FC = () => {
   }, []);
 
   // ==========================================
+  // Push Notifications Initialization
+  // ==========================================
+  useEffect(() => {
+    // تهيئة Push Notifications فقط للمستخدمين المسجلين
+    if (appView === "main" && user?.id) {
+      initPushNotifications().then(() => {
+        // تحديث token بعد التهيئة (في حالة تسجيل الدخول)
+        refreshPushToken();
+      });
+    }
+  }, [appView, user?.id]);
+
+  // ==========================================
   // Splash Screen Complete Handler
   // ==========================================
   const handleSplashComplete = useCallback(() => {
@@ -1632,11 +1650,13 @@ const App: React.FC = () => {
   // Auto-mark notifications as read when opening My Requests tab
   // ==========================================
   useEffect(() => {
-    if (appView !== "main" || !user?.id || activeBottomTab !== "my-requests") return;
+    if (appView !== "main" || !user?.id || activeBottomTab !== "my-requests") {
+      return;
+    }
     if (myRequests.length === 0) return;
 
     const myRequestIds = new Set(myRequests.map((r) => r.id));
-    
+
     // Mark all notifications related to my requests as read
     const markNotificationsAsRead = async () => {
       const notificationsToMark = notifications.filter((n) =>
@@ -2344,7 +2364,9 @@ const App: React.FC = () => {
         setMyOffers((prev) => {
           // If reloadData somehow brought back the deleted offer, remove it again
           if (prev.some((o) => o.id === deletedOfferId)) {
-            console.log("⚠️ Deleted offer reappeared after reload, removing again");
+            console.log(
+              "⚠️ Deleted offer reappeared after reload, removing again",
+            );
             return prev.filter((o) => o.id !== deletedOfferId);
           }
           return prev;
@@ -2376,6 +2398,10 @@ const App: React.FC = () => {
         );
         // إزالة الطلب المخفي من allRequests مباشرة
         setAllRequests((prev) => prev.filter((r) => r.id !== requestId));
+        // تحديث selectedRequest أيضاً إذا كان نفس الطلب
+        setSelectedRequest((prev) =>
+          prev && prev.id === requestId ? { ...prev, isPublic: false } : prev
+        );
       }
     } catch (error) {
       console.error("Error hiding request:", error);
@@ -2421,6 +2447,10 @@ const App: React.FC = () => {
         );
         setAllRequests((prev) =>
           prev.map((r) => r.id === requestId ? { ...r, isPublic: true } : r)
+        );
+        // تحديث selectedRequest أيضاً إذا كان نفس الطلب
+        setSelectedRequest((prev) =>
+          prev && prev.id === requestId ? { ...prev, isPublic: true } : prev
         );
       }
     } catch (error) {
@@ -2470,11 +2500,16 @@ const App: React.FC = () => {
         r.id === requestId
       );
       if (requestToUnarchive) {
+        // تحديد الـ status الصحيح: إذا كان للطلب عرض معتمد، يكون assigned وإلا active
+        const correctStatus = requestToUnarchive.acceptedOfferId
+          ? "assigned" as const
+          : "active" as const;
+
         setArchivedRequests((prev) => prev.filter((r) => r.id !== requestId));
         setMyRequests((prev) => {
           const unarchivedRequest = {
             ...requestToUnarchive,
-            status: "active" as const,
+            status: correctStatus,
             isPublic: true,
             updatedAt: willBump ? new Date() : requestToUnarchive.updatedAt,
           };
@@ -2483,7 +2518,7 @@ const App: React.FC = () => {
         setAllRequests((prev) =>
           prev.map((r) =>
             r.id === requestId
-              ? { ...r, status: "active" as const, isPublic: true }
+              ? { ...r, status: correctStatus, isPublic: true }
               : r
           )
         );
@@ -2513,6 +2548,10 @@ const App: React.FC = () => {
         );
         setAllRequests((prev) =>
           prev.map((r) => r.id === requestId ? { ...r, updatedAt: now } : r)
+        );
+        // تحديث selectedRequest أيضاً إذا كان نفس الطلب
+        setSelectedRequest((prev) =>
+          prev && prev.id === requestId ? { ...prev, updatedAt: now } : prev
         );
       }
     } catch (error) {
@@ -3603,17 +3642,25 @@ const App: React.FC = () => {
                     // ثم نحدث selectedRequest
                     try {
                       // انتظار قصير لضمان انتهاء reloadData()
-                      await new Promise(resolve => setTimeout(resolve, 100));
-                      const updatedRequest = await fetchRequestById(selectedRequest.id);
+                      await new Promise((resolve) => setTimeout(resolve, 100));
+                      const updatedRequest = await fetchRequestById(
+                        selectedRequest.id,
+                      );
                       if (updatedRequest) {
                         setSelectedRequest(updatedRequest);
                       }
                     } catch (error) {
-                      console.error("Error reloading request after offer deletion:", error);
+                      console.error(
+                        "Error reloading request after offer deletion:",
+                        error,
+                      );
                       // حتى لو فشل التحديث، نبقى في الصفحة
                     }
                   }
                 }}
+                onBumpRequest={handleBumpRequest}
+                onHideRequest={handleHideRequest}
+                onUnhideRequest={handleUnhideRequest}
               />
             </SwipeBackWrapper>
           )

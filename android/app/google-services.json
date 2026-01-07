@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "987862860240",
+    "project_id": "abeely-85504",
+    "storage_bucket": "abeely-85504.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:987862860240:android:e0c8be6780385f4e5f39d5",
+        "android_client_info": {
+          "package_name": "com.servicelink.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBE2Z5bdoNxIXqpIx3D4b0zPRvopMaT4Ys"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

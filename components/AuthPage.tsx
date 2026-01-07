@@ -110,6 +110,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
   // Refs للتركيز التلقائي
   const phoneInputRef = React.useRef<HTMLInputElement>(null);
   const otpFirstInputRef = React.useRef<HTMLInputElement>(null);
+  const successTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   // Auto-dismiss toast after 4 seconds
   useEffect(() => {
@@ -120,6 +121,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
       return () => clearTimeout(timer);
     }
   }, [toastMessage]);
+
+  // تنظيف timeout عند إلغاء المكون
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+        successTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Auto-focus على الحقول عند فتح الصفحة
   useEffect(() => {
@@ -172,26 +183,71 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
       return;
     }
 
+    // إلغاء أي timeout سابق
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
+      successTimeoutRef.current = null;
+    }
+
     setIsLoading(true);
     setError('');
     setShowSuccess(false);
 
-    const result = await verifyOTP(phone, otpToVerify);
-    
-    setIsLoading(false);
-    
-    if (result.success) {
-      // إظهار ومضة النجاح
-      setShowSuccess(true);
+    try {
+      const result = await verifyOTP(phone, otpToVerify);
       
-      // الانتقال بعد ثانية واحدة
-      setTimeout(() => {
-        onAuthenticated();
-      }, 1000);
-    } else {
-      // ترجمة رسالة الخطأ للعربية
-      const translatedError = translateAuthError(result.error || 'رمز التحقق غير صحيح');
-      setError(translatedError);
+      setIsLoading(false);
+      
+      if (result.success) {
+        // إظهار ومضة النجاح
+        setShowSuccess(true);
+        
+        // الانتقال بعد ثانية واحدة مع معالجة الأخطاء
+        console.log('✅ OTP verified successfully, scheduling transition...');
+        successTimeoutRef.current = setTimeout(async () => {
+          console.log('🔄 Calling onAuthenticated...');
+          try {
+            // استدعاء onAuthenticated مع timeout احتياطي
+            const authPromise = Promise.resolve(onAuthenticated());
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Authentication timeout')), 5000)
+            );
+            
+            await Promise.race([authPromise, timeoutPromise]);
+            console.log('✅ onAuthenticated completed successfully');
+          } catch (error) {
+            console.error('❌ Error in onAuthenticated:', error);
+            // محاولة الانتقال مرة أخرى بعد تأخير قصير (حتى لو فشل)
+            setTimeout(() => {
+              console.log('🔄 Retrying onAuthenticated...');
+              try {
+                onAuthenticated();
+              } catch (retryError) {
+                console.error('❌ Retry failed:', retryError);
+                // حتى لو فشل، نحاول مرة أخرى بعد تأخير
+                setTimeout(() => {
+                  console.log('🔄 Final retry of onAuthenticated...');
+                  try {
+                    onAuthenticated();
+                  } catch (finalError) {
+                    console.error('❌ Final retry failed:', finalError);
+                  }
+                }, 1000);
+              }
+            }, 500);
+          } finally {
+            successTimeoutRef.current = null;
+          }
+        }, 1000);
+      } else {
+        // ترجمة رسالة الخطأ للعربية
+        const translatedError = translateAuthError(result.error || 'رمز التحقق غير صحيح');
+        setError(translatedError);
+      }
+    } catch (error) {
+      setIsLoading(false);
+      console.error('Error verifying OTP:', error);
+      setError('حدث خطأ أثناء التحقق. يرجى المحاولة مرة أخرى.');
     }
   };
 
@@ -306,9 +362,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
       {/* Header */}
       <div className="pt-[env(safe-area-inset-top,0px)]" />
       
-      {/* Back Button */}
+      {/* Back Button - إخفاء عند النجاح في OTP */}
       <AnimatePresence>
-        {step !== 'welcome' && (
+        {step !== 'welcome' && !(step === 'otp' && showSuccess) && (
           <motion.button
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -356,34 +412,39 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
         </motion.div>
 
         {/* Title */}
-        <motion.div
-          layout
-          className="text-center mb-5 sm:mb-8"
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ 
-            delay: 0.1,
-            layout: { type: "spring", stiffness: 300, damping: 30 }
-          }}
-        >
-          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-4 sm:mb-5">
-            {step === 'welcome' && 'مرحباً بك في أبيلي'}
-            {step === 'otp' && 'أدخل رمز التحقق'}
-            {step === 'email' && 'الدخول بالبريد الإلكتروني'}
-            {step === 'email-sent' && 'تفقد بريدك 📧'}
-          </h1>
-          <div className="text-white/70 text-sm px-2 space-y-3">
-            {step === 'welcome' && (
-              <>
-                <p>السوق العكسي الذكي</p>
-                <p className="text-white/50">أنت تطلب والعروض تجيك ✨</p>
-              </>
-            )}
-            {step === 'otp' && <p>{`أرسلنا رمز التحقق إلى ${phone}`}</p>}
-            {step === 'email' && <p>سنرسل لك رابط دخول على بريدك</p>}
-            {step === 'email-sent' && <p>{`أرسلنا رابط الدخول إلى ${email}`}</p>}
-          </div>
-        </motion.div>
+        <AnimatePresence>
+          {!(step === 'otp' && showSuccess) && (
+            <motion.div
+              layout
+              className="text-center mb-5 sm:mb-8"
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ 
+                delay: 0.1,
+                layout: { type: "spring", stiffness: 300, damping: 30 }
+              }}
+            >
+              <h1 className="text-2xl sm:text-3xl font-bold text-white mb-4 sm:mb-5">
+                {step === 'welcome' && 'مرحباً بك في أبيلي'}
+                {step === 'otp' && 'أدخل رمز التحقق'}
+                {step === 'email' && 'الدخول بالبريد الإلكتروني'}
+                {step === 'email-sent' && 'تفقد بريدك 📧'}
+              </h1>
+              <div className="text-white/70 text-sm px-2 space-y-3">
+                {step === 'welcome' && (
+                  <>
+                    <p>السوق العكسي الذكي</p>
+                    <p className="text-white/50">أنت تطلب والعروض تجيك ✨</p>
+                  </>
+                )}
+                {step === 'otp' && <p>{`أرسلنا رمز التحقق إلى ${phone}`}</p>}
+                {step === 'email' && <p>سنرسل لك رابط دخول على بريدك</p>}
+                {step === 'email-sent' && <p>{`أرسلنا رابط الدخول إلى ${email}`}</p>}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Content Area */}
         <motion.div
@@ -622,102 +683,119 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 transition={{ type: "spring", stiffness: 400, damping: 35 }}
                 className="space-y-4 sm:space-y-6 relative"
               >
-                {/* OTP Boxes Container */}
-                <div className="relative">
-                  {/* Glow effect behind inputs */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-teal-400/20 via-cyan-400/30 to-teal-400/20 blur-2xl rounded-3xl" />
-                  
-                  <div className="relative flex justify-center gap-2.5 sm:gap-4" dir="ltr">
-                    {[0, 1, 2, 3].map((i) => (
+                {/* OTP Boxes Container - إخفاء عند النجاح */}
+                <AnimatePresence>
+                  {!showSuccess && (
+                    <>
                       <motion.div
-                        key={i}
-                        initial={{ opacity: 0, y: 20, scale: 0.8 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        transition={{ delay: i * 0.08, type: "spring", stiffness: 300 }}
+                        initial={{ opacity: 1 }}
+                        exit={{ opacity: 0, scale: 0.9, y: -20 }}
+                        transition={{ duration: 0.3 }}
                         className="relative"
                       >
-                        <input
-                          ref={i === 0 ? otpFirstInputRef : undefined}
-                          type="text"
-                          inputMode="numeric"
-                          maxLength={1}
-                          value={otp[i] || ''}
-                          data-testid={`otp-input-${i}`}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, '');
-                            const newOtp = otp.split('');
-                            newOtp[i] = val;
-                            const updatedOtp = newOtp.join('');
-                            setOtp(updatedOtp);
-                            
-                            // مسح الخطأ عند الكتابة
-                            if (error) setError('');
-                            
-                            // Auto-focus next input
-                            if (val && i < 3) {
-                              const next = document.querySelector(`input[data-index="${i + 1}"]`) as HTMLInputElement;
-                              next?.focus();
-                            }
-                            
-                            // Auto-verify when complete - استخدام updatedOtp مباشرة لتجنب مشاكل الـ closure
-                            if (updatedOtp.length === 4 && !isLoading && !showSuccess) {
-                              setTimeout(() => handleOTPVerify(updatedOtp), 100);
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Backspace' && !otp[i] && i > 0) {
-                              const prev = document.querySelector(`input[data-index="${i - 1}"]`) as HTMLInputElement;
-                              prev?.focus();
-                              if (error) setError('');
-                            } else if (e.key === 'Enter') {
-                              // تفعيل Enter عند اكتمال الرقم (4 أرقام)
-                              const currentOtp = otp.split('');
-                              currentOtp[i] = e.currentTarget.value.replace(/\D/g, '');
-                              const fullOtp = currentOtp.join('');
-                              
-                              if (fullOtp.length === 4 && !isLoading && !showSuccess) {
-                                e.preventDefault();
-                                setOtp(fullOtp);
-                                handleOTPVerify(fullOtp);
-                              }
-                            }
-                          }}
-                          onFocus={(e) => e.target.select()}
-                          data-index={i}
-                          className={`w-14 h-16 sm:w-16 sm:h-20 rounded-xl sm:rounded-2xl text-center text-2xl sm:text-3xl font-black outline-none transition-all duration-300 ${
-                            otp[i] 
-                              ? 'bg-white text-[#153659] shadow-xl shadow-white/30 border-2 border-white' 
-                              : 'bg-white/15 text-white border-2 border-white/30 hover:border-white/50 focus:border-white focus:bg-white/25'
-                          } ${showSuccess ? 'bg-primary border-primary text-white' : ''}`}
-                          style={{
-                            caretColor: 'transparent'
-                          }}
-                        />
-                        {/* Dot indicator under each box */}
-                        <motion.div
-                          className={`absolute -bottom-2 sm:-bottom-3 left-1/2 -translate-x-1/2 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full transition-all duration-300 ${
-                            otp[i] ? 'bg-teal-400 shadow-lg shadow-teal-400/50' : 'bg-white/30'
-                          }`}
-                          animate={otp[i] ? { scale: [1, 1.3, 1] } : {}}
-                          transition={{ duration: 0.3 }}
-                        />
+                        {/* Glow effect behind inputs */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-teal-400/20 via-cyan-400/30 to-teal-400/20 blur-2xl rounded-3xl" />
+                        
+                        <div className="relative flex justify-center gap-2.5 sm:gap-4" dir="ltr">
+                          {[0, 1, 2, 3].map((i) => (
+                            <motion.div
+                              key={i}
+                              initial={{ opacity: 0, y: 20, scale: 0.8 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.8 }}
+                              transition={{ delay: i * 0.08, type: "spring", stiffness: 300 }}
+                              className="relative"
+                            >
+                              <input
+                                ref={i === 0 ? otpFirstInputRef : undefined}
+                                type="text"
+                                inputMode="numeric"
+                                maxLength={1}
+                                value={otp[i] || ''}
+                                data-testid={`otp-input-${i}`}
+                                onChange={(e) => {
+                                  const val = e.target.value.replace(/\D/g, '');
+                                  const newOtp = otp.split('');
+                                  newOtp[i] = val;
+                                  const updatedOtp = newOtp.join('');
+                                  setOtp(updatedOtp);
+                                  
+                                  // مسح الخطأ عند الكتابة
+                                  if (error) setError('');
+                                  
+                                  // Auto-focus next input
+                                  if (val && i < 3) {
+                                    const next = document.querySelector(`input[data-index="${i + 1}"]`) as HTMLInputElement;
+                                    next?.focus();
+                                  }
+                                  
+                                  // Auto-verify when complete - استخدام updatedOtp مباشرة لتجنب مشاكل الـ closure
+                                  if (updatedOtp.length === 4 && !isLoading && !showSuccess) {
+                                    setTimeout(() => handleOTPVerify(updatedOtp), 100);
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Backspace' && !otp[i] && i > 0) {
+                                    const prev = document.querySelector(`input[data-index="${i - 1}"]`) as HTMLInputElement;
+                                    prev?.focus();
+                                    if (error) setError('');
+                                  } else if (e.key === 'Enter') {
+                                    // تفعيل Enter عند اكتمال الرقم (4 أرقام)
+                                    const currentOtp = otp.split('');
+                                    currentOtp[i] = e.currentTarget.value.replace(/\D/g, '');
+                                    const fullOtp = currentOtp.join('');
+                                    
+                                    if (fullOtp.length === 4 && !isLoading && !showSuccess) {
+                                      e.preventDefault();
+                                      setOtp(fullOtp);
+                                      handleOTPVerify(fullOtp);
+                                    }
+                                  }
+                                }}
+                                onFocus={(e) => e.target.select()}
+                                data-index={i}
+                                className={`w-14 h-16 sm:w-16 sm:h-20 rounded-xl sm:rounded-2xl text-center text-2xl sm:text-3xl font-black outline-none transition-all duration-300 ${
+                                  otp[i] 
+                                    ? 'bg-white text-[#153659] shadow-xl shadow-white/30 border-2 border-white' 
+                                    : 'bg-white/15 text-white border-2 border-white/30 hover:border-white/50 focus:border-white focus:bg-white/25'
+                                }`}
+                                style={{
+                                  caretColor: 'transparent'
+                                }}
+                              />
+                              {/* Dot indicator under each box */}
+                              <motion.div
+                                className={`absolute -bottom-2 sm:-bottom-3 left-1/2 -translate-x-1/2 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full transition-all duration-300 ${
+                                  otp[i] ? 'bg-teal-400 shadow-lg shadow-teal-400/50' : 'bg-white/30'
+                                }`}
+                                animate={otp[i] ? { scale: [1, 1.3, 1] } : {}}
+                                transition={{ duration: 0.3 }}
+                              />
+                            </motion.div>
+                          ))}
+                        </div>
                       </motion.div>
-                    ))}
-                  </div>
-                </div>
 
-                {/* Progress bar */}
-                <div className="flex justify-center gap-1 mt-5 sm:mt-8">
-                  {[0, 1, 2, 3].map((i) => (
-                    <motion.div
-                      key={i}
-                      className={`h-0.5 sm:h-1 rounded-full transition-all duration-300 ${
-                        i < otp.length ? 'w-6 sm:w-8 bg-teal-400' : 'w-3 sm:w-4 bg-white/20'
-                      }`}
-                      animate={i < otp.length ? { opacity: [0.5, 1] } : {}}
-                    />
-                  ))}
-                </div>
+                      {/* Progress bar */}
+                      <motion.div
+                        initial={{ opacity: 1 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.3 }}
+                        className="flex justify-center gap-1 mt-5 sm:mt-8"
+                      >
+                        {[0, 1, 2, 3].map((i) => (
+                          <motion.div
+                            key={i}
+                            className={`h-0.5 sm:h-1 rounded-full transition-all duration-300 ${
+                              i < otp.length ? 'w-6 sm:w-8 bg-teal-400' : 'w-3 sm:w-4 bg-white/20'
+                            }`}
+                            animate={i < otp.length ? { opacity: [0.5, 1] } : {}}
+                          />
+                        ))}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
 
                 {/* Success Flash Animation */}
                 <AnimatePresence>
@@ -767,6 +845,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   </motion.div>
                 )}
 
+                {/* زر التأكيد - يظهر دائماً */}
                 <motion.button
                   onClick={handleOTPVerify}
                   disabled={isLoading || otp.length !== 4 || showSuccess}
@@ -794,23 +873,33 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                   )}
                 </motion.button>
 
-                <div className="flex items-center justify-center gap-1.5 sm:gap-2">
-                  <button
-                    onClick={() => handlePhoneSubmit()}
-                    disabled={isLoading}
-                    className="py-1.5 px-3 sm:py-2 sm:px-4 text-white/60 hover:text-white text-xs sm:text-sm transition-colors disabled:opacity-50 hover:underline"
-                  >
-                    إعادة الإرسال
-                  </button>
-                  <span className="text-white/30">•</span>
-                  <button
-                    onClick={goBack}
-                    disabled={isLoading}
-                    className="py-1.5 px-3 sm:py-2 sm:px-4 text-white/60 hover:text-white text-xs sm:text-sm transition-colors disabled:opacity-50 hover:underline"
-                  >
-                    تغيير الرقم
-                  </button>
-                </div>
+                {/* أزرار إعادة الإرسال وتغيير الرقم - إخفاء عند النجاح */}
+                <AnimatePresence>
+                  {!showSuccess && (
+                    <motion.div
+                      initial={{ opacity: 1 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      transition={{ duration: 0.3 }}
+                      className="flex items-center justify-center gap-1.5 sm:gap-2"
+                    >
+                      <button
+                        onClick={() => handlePhoneSubmit()}
+                        disabled={isLoading}
+                        className="py-1.5 px-3 sm:py-2 sm:px-4 text-white/60 hover:text-white text-xs sm:text-sm transition-colors disabled:opacity-50 hover:underline"
+                      >
+                        إعادة الإرسال
+                      </button>
+                      <span className="text-white/30">•</span>
+                      <button
+                        onClick={goBack}
+                        disabled={isLoading}
+                        className="py-1.5 px-3 sm:py-2 sm:px-4 text-white/60 hover:text-white text-xs sm:text-sm transition-colors disabled:opacity-50 hover:underline"
+                      >
+                        تغيير الرقم
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             )}
 
