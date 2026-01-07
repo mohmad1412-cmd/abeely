@@ -12,7 +12,10 @@ import { UnifiedHeader } from "./components/ui/UnifiedHeader.tsx";
 // Components
 import { Marketplace } from "./components/Marketplace.tsx";
 import { RequestDetail } from "./components/RequestDetail.tsx";
-import { BottomNavigation, BottomNavTab } from "./components/BottomNavigation.tsx";
+import {
+  BottomNavigation,
+  BottomNavTab,
+} from "./components/BottomNavigation.tsx";
 import { MyRequests } from "./components/MyRequests.tsx";
 import { MyOffers } from "./components/MyOffers.tsx";
 import { Settings } from "./components/Settings.tsx";
@@ -26,7 +29,10 @@ import {
   GlobalFloatingOrb,
   VoiceProcessingStatus,
 } from "./components/GlobalFloatingOrb.tsx";
-import { InterestToast, useInterestToast } from "./components/ui/InterestToast.tsx";
+import {
+  InterestToast,
+  useInterestToast,
+} from "./components/ui/InterestToast.tsx";
 import { UnarchiveToast } from "./components/ui/UnarchiveToast.tsx";
 import { notificationSound } from "./services/notificationSoundService.ts";
 import { OnboardingScreen } from "./components/OnboardingScreen.tsx";
@@ -3526,7 +3532,6 @@ const App: React.FC = () => {
           // نستخدم setTimeout لضمان تنفيذ هذا بعد render الجديد
           setTimeout(() => {
             setSelectedRequest(null);
-            setOfferToEdit(null);
             setScrollToOfferSection(false);
             setNavigatedFromSidebar(false);
             setPreviousView(null);

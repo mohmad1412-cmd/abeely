@@ -319,6 +319,7 @@ export const Settings: React.FC<SettingsProps> = ({
                           autoFocus
                         />
                         <button
+                          type="button"
                           onClick={async () => {
                             if (onUpdateProfile && editedName.trim()) {
                               setIsSavingName(true);
@@ -396,6 +397,7 @@ export const Settings: React.FC<SettingsProps> = ({
                           autoFocus
                         />
                         <button
+                          type="button"
                           onClick={async () => {
                             if (onUpdateProfile && editedEmail.trim() && editedEmail !== user?.email) {
                               setIsSavingEmail(true);
@@ -1152,6 +1154,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     )}
                     <div className="flex gap-3">
                       <button
+                        type="button"
                         onClick={() => {
                           setPhoneVerificationStep('phone');
                           setPhoneOTP('');
@@ -1162,6 +1165,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         الرجوع
                       </button>
                       <button
+                        type="button"
                         onClick={handleVerifyPhoneOTP}
                         disabled={isVerifyingOTP || phoneOTP.length < 4}
                         className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"

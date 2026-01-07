@@ -22,7 +22,8 @@ export type BottomNavTab =
   | "my-requests"
   | "create"
   | "my-offers"
-  | "profile";
+  | "profile"
+  | "messages";
 
 interface BottomNavigationProps {
   activeTab: BottomNavTab;
@@ -46,6 +47,7 @@ interface BottomNavigationProps {
   unreadNotificationsForMyRequests?: number;
   unreadNotificationsForMyOffers?: number;
   unreadNotificationsCount?: number;
+  unreadMessagesCount?: number;
   // نقطة إشعار على زر "أنت" عندما يحتاج المستخدم لإكمال ملفه الشخصي
   needsProfileSetup?: boolean;
   // إخفاء الـ bottom navigation في وضع الجوال (مثلاً عند فتح صفحة create-request أو request-detail)
@@ -98,6 +100,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
       (unreadMessagesForMyOffers || 0) + (unreadNotificationsForMyOffers || 0),
     ),
     profile: 0, // لا نعرض badge على زر "أنت"
+    messages: 0, // Placeholder for messages tab
   };
 
   const renderBadge = (count?: number) => {
@@ -234,259 +237,322 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
     <>
       {/* Mobile: Bottom Navigation */}
       {!hideOnMobile && (
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border shadow-lg safe-area-bottom md:hidden">
-        <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-1">
-          <LayoutGroup id="bottom-nav">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              const isCreate = tab.isCreate;
-              const isProfile = tab.isProfile;
-              const badgeCount = badgeCounts[tab.id];
+        <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border shadow-lg safe-area-bottom md:hidden">
+          <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-1">
+            <LayoutGroup id="bottom-nav">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                const isCreate = tab.isCreate;
+                const isProfile = tab.isProfile;
+                const badgeCount = badgeCounts[tab.id];
 
-              // زر إنشاء طلب المميز - في المنتصف
-              if (isCreate) {
-                return (
-                  <motion.button
-                    key={tab.id}
-                    onClick={() => handleTabClick(tab.id)}
-                    data-testid={`nav-tab-create`}
-                    className="relative flex items-center justify-center h-full px-3"
-                    whileTap={{ scale: 0.9 }}
-                  >
-                    {/* فقاعة التوجيه المتحركة - مباشرة فوق الزر */}
-                    <motion.div
-                      className="absolute bottom-full mb-2 inset-x-0 z-20 flex flex-col items-center"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{
-                        opacity: [0, 1, 1, 0],
-                        y: [10, 0, 0, -5],
-                      }}
-                      transition={{
-                        duration: 4,
-                        repeat: Infinity,
-                        repeatDelay: 8,
-                        times: [0, 0.1, 0.9, 1],
-                        ease: "easeInOut",
-                      }}
+                // زر إنشاء طلب المميز - في المنتصف
+                if (isCreate) {
+                  return (
+                    <motion.button
+                      key={tab.id}
+                      onClick={() => handleTabClick(tab.id)}
+                      data-testid={`nav-tab-create`}
+                      className="relative flex items-center justify-center h-full px-3"
+                      whileTap={{ scale: 0.9 }}
                     >
-                      {/* الفقاعة */}
-                      <div className="relative bg-gradient-to-br from-primary to-teal-600 text-white text-[10px] font-bold px-3 py-2 rounded-xl shadow-lg shadow-primary/30 whitespace-nowrap">
-                        <motion.span
-                          animate={{ opacity: [0.7, 1, 0.7] }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                        >
-                          ✨ أنشئ طلبك من هنا
-                        </motion.span>
-                      </div>
-                      {/* سهم متحرك يؤشر للأسفل */}
+                      {/* فقاعة التوجيه المتحركة - مباشرة فوق الزر */}
                       <motion.div
-                        className="text-primary mt-1"
-                        animate={{ y: [0, 4, 0] }}
+                        className="absolute bottom-full mb-2 inset-x-0 z-20 flex flex-col items-center"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{
+                          opacity: [0, 1, 1, 0],
+                          y: [10, 0, 0, -5],
+                        }}
                         transition={{
-                          duration: 0.8,
+                          duration: 4,
                           repeat: Infinity,
+                          repeatDelay: 8,
+                          times: [0, 0.1, 0.9, 1],
                           ease: "easeInOut",
                         }}
                       >
-                        <svg
-                          width="16"
-                          height="12"
-                          viewBox="0 0 16 12"
-                          fill="currentColor"
+                        {/* الفقاعة */}
+                        <div className="relative bg-gradient-to-br from-primary to-teal-600 text-white text-[10px] font-bold px-3 py-2 rounded-xl shadow-lg shadow-primary/30 whitespace-nowrap">
+                          <motion.span
+                            animate={{ opacity: [0.7, 1, 0.7] }}
+                            transition={{ duration: 2, repeat: Infinity }}
+                          >
+                            ✨ أنشئ طلبك من هنا
+                          </motion.span>
+                        </div>
+                        {/* سهم متحرك يؤشر للأسفل */}
+                        <motion.div
+                          className="text-primary mt-1"
+                          animate={{ y: [0, 4, 0] }}
+                          transition={{
+                            duration: 0.8,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                          }}
                         >
-                          <path d="M8 12L0 0h16L8 12z" />
-                        </svg>
+                          <svg
+                            width="16"
+                            height="12"
+                            viewBox="0 0 16 12"
+                            fill="currentColor"
+                          >
+                            <path d="M8 12L0 0h16L8 12z" />
+                          </svg>
+                        </motion.div>
                       </motion.div>
-                    </motion.div>
 
-                    {/* الزر المميز الفخم - بوسط الشريط */}
-                    <motion.div
-                      className="relative w-12 h-12 rounded-2xl bg-[linear-gradient(135deg,rgba(var(--foreground-rgb),0.42)_0%,rgba(var(--foreground-rgb),0.28)_55%,rgba(var(--foreground-rgb),0.18)_100%)] shadow-xl shadow-primary/20 flex items-center justify-center z-10 mx-auto"
-                      whileHover={{ scale: 1.08, y: -3 }}
-                      whileTap={{ scale: 0.95 }}
-                      animate={{
-                        boxShadow: [
-                          "0 10px 40px -10px rgba(var(--foreground-rgb), 0.18)",
-                          "0 15px 50px -10px rgba(var(--foreground-rgb), 0.26)",
-                          "0 10px 40px -10px rgba(var(--foreground-rgb), 0.18)",
-                        ],
-                      }}
-                      transition={{
-                        boxShadow: {
-                          duration: 2,
-                          repeat: Infinity,
-                          ease: "easeInOut",
-                        },
-                      }}
-                    >
-                      {renderBadge(badgeCount)}
-                      {/* External Pulsing Glow */}
+                      {/* الزر المميز الفخم - بوسط الشريط */}
                       <motion.div
-                        className="absolute -inset-2 rounded-3xl bg-[rgba(var(--foreground-rgb),0.18)] blur-xl -z-10"
+                        className="relative w-12 h-12 rounded-2xl bg-[linear-gradient(135deg,rgba(var(--foreground-rgb),0.42)_0%,rgba(var(--foreground-rgb),0.28)_55%,rgba(var(--foreground-rgb),0.18)_100%)] shadow-xl shadow-primary/20 flex items-center justify-center z-10 mx-auto"
+                        whileHover={{ scale: 1.08, y: -3 }}
+                        whileTap={{ scale: 0.95 }}
                         animate={{
-                          opacity: [0.3, 0.6, 0.3],
-                          scale: [1, 1.1, 1],
+                          boxShadow: [
+                            "0 10px 40px -10px rgba(var(--foreground-rgb), 0.18)",
+                            "0 15px 50px -10px rgba(var(--foreground-rgb), 0.26)",
+                            "0 10px 40px -10px rgba(var(--foreground-rgb), 0.18)",
+                          ],
                         }}
                         transition={{
-                          duration: 2,
-                          repeat: Infinity,
-                          ease: "easeInOut",
-                        }}
-                      />
-
-                      {/* Internal Effects Container */}
-                      <div className="absolute inset-0 rounded-2xl overflow-hidden">
-                        {/* Subtle Glass Gradient - أقل إضاءة */}
-                        <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-black/20" />
-
-                        {/* Premium Border Highlight - نفس لون العنوان */}
-                        <div className="absolute inset-0 rounded-2xl border border-[rgba(var(--foreground-rgb),0.8)]" />
-
-                        {/* Moving Shine Effect - أخف */}
-                        <motion.div
-                          className="absolute top-0 bottom-0 w-[200%] bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[-25deg]"
-                          animate={{ x: ["-100%", "100%"] }}
-                          transition={{
+                          boxShadow: {
+                            duration: 2,
                             repeat: Infinity,
-                            repeatDelay: 3,
-                            duration: 1.2,
+                            ease: "easeInOut",
+                          },
+                        }}
+                      >
+                        {renderBadge(badgeCount)}
+                        {/* External Pulsing Glow */}
+                        <motion.div
+                          className="absolute -inset-2 rounded-3xl bg-[rgba(var(--foreground-rgb),0.18)] blur-xl -z-10"
+                          animate={{
+                            opacity: [0.3, 0.6, 0.3],
+                            scale: [1, 1.1, 1],
+                          }}
+                          transition={{
+                            duration: 2,
+                            repeat: Infinity,
                             ease: "easeInOut",
                           }}
                         />
-                      </div>
 
-                      {/* Plus Icon with Glow */}
-                      <motion.div
-                        animate={{ rotate: [0, 90, 0] }}
-                        transition={{
-                          duration: 8,
-                          repeat: Infinity,
-                          ease: "easeInOut",
-                        }}
-                      >
-                        <Plus
-                          size={24}
-                          strokeWidth={2.5}
-                          className="text-white relative z-10 drop-shadow-lg"
-                        />
+                        {/* Internal Effects Container */}
+                        <div className="absolute inset-0 rounded-2xl overflow-hidden">
+                          {/* Subtle Glass Gradient - أقل إضاءة */}
+                          <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-black/20" />
+
+                          {/* Premium Border Highlight - نفس لون العنوان */}
+                          <div className="absolute inset-0 rounded-2xl border border-[rgba(var(--foreground-rgb),0.8)]" />
+
+                          {/* Moving Shine Effect - أخف */}
+                          <motion.div
+                            className="absolute top-0 bottom-0 w-[200%] bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[-25deg]"
+                            animate={{ x: ["-100%", "100%"] }}
+                            transition={{
+                              repeat: Infinity,
+                              repeatDelay: 3,
+                              duration: 1.2,
+                              ease: "easeInOut",
+                            }}
+                          />
+                        </div>
+
+                        {/* Plus Icon with Glow */}
+                        <motion.div
+                          animate={{ rotate: [0, 90, 0] }}
+                          transition={{
+                            duration: 8,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                          }}
+                        >
+                          <Plus
+                            size={24}
+                            strokeWidth={2.5}
+                            className="text-white relative z-10 drop-shadow-lg"
+                          />
+                        </motion.div>
                       </motion.div>
-                    </motion.div>
-                  </motion.button>
-                );
-              }
+                    </motion.button>
+                  );
+                }
 
-              // زر أنت (الملف الشخصي)
-              if (isProfile) {
+                // زر أنت (الملف الشخصي)
+                if (isProfile) {
+                  return (
+                    <motion.button
+                      key={tab.id}
+                      ref={profileButtonRef}
+                      onClick={() => handleTabClick(tab.id)}
+                      data-testid={`nav-tab-profile`}
+                      className="relative flex flex-col items-center justify-center flex-1 h-full gap-1.5"
+                      whileTap={{ scale: 0.94 }}
+                    >
+                      {/* أيقونة الملف الشخصي */}
+                      <motion.div
+                        animate={{
+                          y: isProfileDropdownOpen ? -1 : 0,
+                          scale: isProfileDropdownOpen ? 1.05 : 1,
+                        }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 25,
+                        }}
+                        className="relative flex items-center justify-center h-5"
+                      >
+                        {renderBadge(badgeCount)}
+                        {isGuest
+                          ? (
+                            // للزائر - أيقونة الدخول تتحول للأخضر فقط عند فتح الدروب داون
+                            <div className="relative flex items-center justify-center">
+                              <LogIn
+                                size={18.5}
+                                className={`transition-colors duration-300 ${
+                                  isProfileDropdownOpen
+                                    ? "text-primary"
+                                    : "text-muted-foreground/40"
+                                }`}
+                                strokeWidth={isProfileDropdownOpen ? 2 : 1.5}
+                                fill={isProfileDropdownOpen
+                                  ? "currentColor"
+                                  : "none"}
+                              />
+                              {/* Badge صغير جداً ومبسط مع سهم دخول - تم إزاحته لليمين أكثر لتوضيح الباب */}
+                              <motion.div
+                                className="absolute -top-1.5 -right-3 w-3 h-3 rounded-full bg-white border border-primary/20 shadow-sm flex items-center justify-center"
+                                animate={{ scale: [1, 1.1, 1] }}
+                                transition={{
+                                  repeat: Infinity,
+                                  duration: 2,
+                                  ease: "easeInOut",
+                                }}
+                              >
+                                <ChevronUp
+                                  size={7}
+                                  className="text-primary"
+                                  strokeWidth={3}
+                                />
+                              </motion.div>
+                            </div>
+                          )
+                          : (
+                            // لمسجل الدخول - صورة الملف الشخصي
+                            <div className="relative w-8 h-8 rounded-full bg-primary/10 border-2 border-primary/30 overflow-hidden flex items-center justify-center">
+                              {user?.avatar_url
+                                ? (
+                                  <img
+                                    src={user.avatar_url}
+                                    alt={user?.display_name || "User"}
+                                    className="w-full h-full object-cover"
+                                  />
+                                )
+                                : (
+                                  <span className="text-xs font-bold text-primary">
+                                    {user?.display_name?.charAt(0) || "م"}
+                                  </span>
+                                )}
+                              {/* نقطة إشعار حمراء على الأيقونة نفسها */}
+                              {needsProfileSetup && (
+                                <motion.div
+                                  className="absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-card shadow-md"
+                                  animate={{ scale: [1, 1.2, 1] }}
+                                  transition={{
+                                    repeat: Infinity,
+                                    duration: 1.5,
+                                    ease: "easeInOut",
+                                  }}
+                                />
+                              )}
+                            </div>
+                          )}
+                        {/* Dropdown arrow indicator - فقط للمستخدمين المسجلين */}
+                        {!isGuest && (
+                          <motion.div
+                            className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-card border border-border shadow-sm flex items-center justify-center"
+                            animate={{
+                              rotate: isProfileDropdownOpen ? 180 : 0,
+                            }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <ChevronUp
+                              size={10}
+                              strokeWidth={2.5}
+                              className="text-muted-foreground"
+                            />
+                          </motion.div>
+                        )}
+                      </motion.div>
+
+                      {/* Label - على نفس مستوى الأزرار الأخرى */}
+                      <div className="relative h-[22px] flex items-center">
+                        <span
+                          className={`text-[10px] tracking-tight transition-all duration-300 ${
+                            isProfileDropdownOpen
+                              ? "text-primary font-medium"
+                              : "text-muted-foreground/40 font-medium"
+                          }`}
+                        >
+                          {tab.label}
+                        </span>
+                      </div>
+                    </motion.button>
+                  );
+                }
+
+                // الأزرار العادية
                 return (
                   <motion.button
                     key={tab.id}
-                    ref={profileButtonRef}
                     onClick={() => handleTabClick(tab.id)}
-                    data-testid={`nav-tab-profile`}
+                    data-testid={`nav-tab-${tab.id}`}
                     className="relative flex flex-col items-center justify-center flex-1 h-full gap-1.5"
                     whileTap={{ scale: 0.94 }}
                   >
-                    {/* أيقونة الملف الشخصي */}
+                    {/* Icon */}
                     <motion.div
                       animate={{
-                        y: isProfileDropdownOpen ? -1 : 0,
-                        scale: isProfileDropdownOpen ? 1.05 : 1,
+                        y: isActive ? -1 : 0,
+                        scale: isActive ? 1.05 : 1,
                       }}
                       transition={{
                         type: "spring",
                         stiffness: 400,
                         damping: 25,
                       }}
-                      className="relative flex items-center justify-center h-5"
+                      className={`relative flex items-center justify-center transition-colors duration-300 ${
+                        isActive ? "text-primary" : "text-muted-foreground/40"
+                      }`}
                     >
                       {renderBadge(badgeCount)}
-                      {isGuest
-                        ? (
-                          // للزائر - أيقونة الدخول تتحول للأخضر فقط عند فتح الدروب داون
-                          <div className="relative flex items-center justify-center">
-                            <LogIn
-                              size={18.5}
-                              className={`transition-colors duration-300 ${
-                                isProfileDropdownOpen
-                                  ? "text-primary"
-                                  : "text-muted-foreground/40"
-                              }`}
-                              strokeWidth={isProfileDropdownOpen ? 2 : 1.5}
-                              fill={isProfileDropdownOpen
-                                ? "currentColor"
-                                : "none"}
-                            />
-                            {/* Badge صغير جداً ومبسط مع سهم دخول - تم إزاحته لليمين أكثر لتوضيح الباب */}
-                            <motion.div
-                              className="absolute -top-1.5 -right-3 w-3 h-3 rounded-full bg-white border border-primary/20 shadow-sm flex items-center justify-center"
-                              animate={{ scale: [1, 1.1, 1] }}
-                              transition={{
-                                repeat: Infinity,
-                                duration: 2,
-                                ease: "easeInOut",
-                              }}
-                            >
-                              <ChevronUp
-                                size={7}
-                                className="text-primary"
-                                strokeWidth={3}
-                              />
-                            </motion.div>
-                          </div>
-                        )
-                        : (
-                          // لمسجل الدخول - صورة الملف الشخصي
-                          <div className="relative w-8 h-8 rounded-full bg-primary/10 border-2 border-primary/30 overflow-hidden flex items-center justify-center">
-                            {user?.avatar_url
-                              ? (
-                                <img
-                                  src={user.avatar_url}
-                                  alt={user?.display_name || "User"}
-                                  className="w-full h-full object-cover"
-                                />
-                              )
-                              : (
-                                <span className="text-xs font-bold text-primary">
-                                  {user?.display_name?.charAt(0) || "م"}
-                                </span>
-                              )}
-                            {/* نقطة إشعار حمراء على الأيقونة نفسها */}
-                            {needsProfileSetup && (
-                              <motion.div
-                                className="absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-card shadow-md"
-                                animate={{ scale: [1, 1.2, 1] }}
-                                transition={{
-                                  repeat: Infinity,
-                                  duration: 1.5,
-                                  ease: "easeInOut",
-                                }}
-                              />
-                            )}
-                          </div>
-                        )}
-                      {/* Dropdown arrow indicator - فقط للمستخدمين المسجلين */}
-                      {!isGuest && (
-                        <motion.div
-                          className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-card border border-border shadow-sm flex items-center justify-center"
-                          animate={{ rotate: isProfileDropdownOpen ? 180 : 0 }}
-                          transition={{ duration: 0.2 }}
-                        >
-                          <ChevronUp
-                            size={10}
-                            strokeWidth={2.5}
-                            className="text-muted-foreground"
-                          />
-                        </motion.div>
-                      )}
+                      <Icon
+                        size={20}
+                        strokeWidth={isActive ? 2.2 : 1.5}
+                        fill={isActive ? "currentColor" : "none"}
+                        className="transition-all duration-300"
+                      />
                     </motion.div>
 
-                    {/* Label - على نفس مستوى الأزرار الأخرى */}
+                    {/* Label with animated pill background */}
                     <div className="relative h-[22px] flex items-center">
+                      {isActive && (
+                        <motion.div
+                          layoutId="bottom-nav-pill"
+                          className="absolute inset-0 bg-primary rounded-full"
+                          transition={{
+                            type: "spring",
+                            stiffness: 400,
+                            damping: 30,
+                            mass: 0.8,
+                          }}
+                        />
+                      )}
                       <span
-                        className={`text-[10px] tracking-tight transition-all duration-300 ${
-                          isProfileDropdownOpen
-                            ? "text-primary font-medium"
+                        className={`relative z-10 block text-[10px] tracking-tight px-2.5 py-0.5 rounded-full transition-all duration-300 ${
+                          isActive
+                            ? "text-white font-medium"
                             : "text-muted-foreground/40 font-medium"
                         }`}
                       >
@@ -495,67 +561,10 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                     </div>
                   </motion.button>
                 );
-              }
-
-              // الأزرار العادية
-              return (
-                <motion.button
-                  key={tab.id}
-                  onClick={() => handleTabClick(tab.id)}
-                  data-testid={`nav-tab-${tab.id}`}
-                  className="relative flex flex-col items-center justify-center flex-1 h-full gap-1.5"
-                  whileTap={{ scale: 0.94 }}
-                >
-                  {/* Icon */}
-                  <motion.div
-                    animate={{
-                      y: isActive ? -1 : 0,
-                      scale: isActive ? 1.05 : 1,
-                    }}
-                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                    className={`relative flex items-center justify-center transition-colors duration-300 ${
-                      isActive ? "text-primary" : "text-muted-foreground/40"
-                    }`}
-                  >
-                    {renderBadge(badgeCount)}
-                    <Icon
-                      size={20}
-                      strokeWidth={isActive ? 2.2 : 1.5}
-                      fill={isActive ? "currentColor" : "none"}
-                      className="transition-all duration-300"
-                    />
-                  </motion.div>
-
-                  {/* Label with animated pill background */}
-                  <div className="relative h-[22px] flex items-center">
-                    {isActive && (
-                      <motion.div
-                        layoutId="bottom-nav-pill"
-                        className="absolute inset-0 bg-primary rounded-full"
-                        transition={{
-                          type: "spring",
-                          stiffness: 400,
-                          damping: 30,
-                          mass: 0.8,
-                        }}
-                      />
-                    )}
-                    <span
-                      className={`relative z-10 block text-[10px] tracking-tight px-2.5 py-0.5 rounded-full transition-all duration-300 ${
-                        isActive
-                          ? "text-white font-medium"
-                          : "text-muted-foreground/40 font-medium"
-                      }`}
-                    >
-                      {tab.label}
-                    </span>
-                  </div>
-                </motion.button>
-              );
-            })}
-          </LayoutGroup>
-        </div>
-      </nav>
+              })}
+            </LayoutGroup>
+          </div>
+        </nav>
       )}
 
       {/* Tablet/Desktop: Right Sidebar Navigation */}

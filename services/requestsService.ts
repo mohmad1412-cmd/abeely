@@ -1,9 +1,9 @@
 import { supabase } from "./supabaseClient";
 import { AIDraft, classifyAndDraft } from "./aiService";
 import { Offer, Request } from "../types";
-import { getCategoryIdsByLabels, OTHER_CATEGORY } from "./categoriesService";
+import { getCategoryIdsByLabels } from "./categoriesService";
 import { logger } from "../utils/logger";
-import { deleteFile } from "./storageService";
+import { storageService as _storageService } from "./storageService";
 
 /**
  * إرسال Push Notifications للمستخدمين المهتمين بطلب جديد
@@ -20,7 +20,7 @@ async function sendPushNotificationForNewRequest(params: {
     const { data, error } = await supabase.functions.invoke(
       "send-push-notification",
       {
-        body: params,
+        body: { ...params, notificationType: "new_request" },
       },
     );
 
@@ -29,13 +29,110 @@ async function sendPushNotificationForNewRequest(params: {
       return;
     }
 
-    logger.log("📱 Push notifications sent:", data);
+    logger.log("📱 Push notifications sent for request:", data);
   } catch (err) {
     logger.warn("Failed to call send-push-notification:", err);
   }
 }
 
-type RequestInsert = {
+/**
+ * إرسال Push Notification لصاحب الطلب عند وصول عرض جديد
+ */
+async function sendPushNotificationForNewOffer(params: {
+  requestId: string;
+  requestTitle: string;
+  recipientId: string;
+  authorId: string; // مقدم العرض
+  offerId: string;
+  offerTitle: string;
+  offerDescription?: string;
+  providerName?: string;
+}): Promise<void> {
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      "send-push-notification",
+      {
+        body: { ...params, notificationType: "new_offer" },
+      },
+    );
+
+    if (error) {
+      logger.warn("Edge Function error (new_offer):", error);
+      return;
+    }
+
+    logger.log("📱 Push notification sent for offer:", data);
+  } catch (err) {
+    logger.warn("Failed to call send-push-notification for offer:", err);
+  }
+}
+
+/**
+ * إرسال Push Notification للمزود عند قبول عرضه
+ */
+async function sendPushNotificationForOfferAccepted(params: {
+  requestId: string;
+  requestTitle: string;
+  recipientId: string; // مقدم العرض
+  authorId: string; // صاحب الطلب
+  offerId: string;
+}): Promise<void> {
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      "send-push-notification",
+      {
+        body: { ...params, notificationType: "offer_accepted" },
+      },
+    );
+
+    if (error) {
+      logger.warn("Edge Function error (offer_accepted):", error);
+      return;
+    }
+
+    logger.log("📱 Push notification sent for offer acceptance:", data);
+  } catch (err) {
+    logger.warn(
+      "Failed to call send-push-notification for offer acceptance:",
+      err,
+    );
+  }
+}
+
+/**
+ * إرسال Push Notification للمزود عند بدء التفاوض
+ */
+async function sendPushNotificationForNegotiationStarted(params: {
+  requestId: string;
+  requestTitle: string;
+  recipientId: string; // مقدم العرض
+  senderName: string; // صاحب الطلب
+  offerId: string;
+}): Promise<void> {
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      "send-push-notification",
+      {
+        body: { ...params, notificationType: "negotiation_started" },
+      },
+    );
+
+    if (error) {
+      logger.warn("Edge Function error (negotiation_started):", error);
+      return;
+    }
+
+    logger.log("📱 Push notification sent for negotiation start:", data);
+  } catch (err) {
+    logger.warn(
+      "Failed to call send-push-notification for negotiation start:",
+      err,
+    );
+  }
+}
+
+export type RequestInsert = {
+  id?: string;
   author_id?: string;
   title: string;
   description: string;
@@ -49,6 +146,27 @@ type RequestInsert = {
   delivery_from?: string;
   delivery_to?: string;
   seriousness?: number;
+};
+
+export type OfferInsert = {
+  id?: string;
+  request_id: string;
+  provider_id: string;
+  provider_name: string;
+  title: string;
+  description: string;
+  price?: string;
+  delivery_time?: string;
+  status:
+    | "pending"
+    | "accepted"
+    | "rejected"
+    | "negotiating"
+    | "cancelled"
+    | "completed";
+  is_negotiable: boolean;
+  location?: string;
+  images?: string[];
 };
 
 /**
@@ -68,7 +186,7 @@ const linkCategoriesByLabels = async (
     }
 
     // ربط التصنيفات بالطلب
-    const links = categoryIds.map((id) => ({
+    const links = categoryIds.map((id: string) => ({
       request_id: requestId,
       category_id: id,
     }));
@@ -91,13 +209,15 @@ const linkCategoriesByLabels = async (
         .upsert([{ request_id: requestId, category_id: "other" }], {
           onConflict: "request_id,category_id",
         });
-    } catch (_) {}
+    } catch (_) {
+      // Fallback ignored
+    }
     return ["other"];
   }
 };
 
-// دالة قديمة للتوافق (لا نستخدمها لإنشاء تصنيفات جديدة)
-const upsertCategories = async (labels: string[] = []) => {
+// دالة قديمة للتوافق (إضافة بادئة _ لأنها غير مستخدمة حالياً)
+const _upsertCategories = async (labels: string[] = []) => {
   if (!labels.length) return [];
   // لم نعد نُنشئ تصنيفات جديدة تلقائياً - نستخدم فقط التصنيفات الموجودة
   const { data, error } = await supabase
@@ -146,7 +266,7 @@ export async function createRequestFromChat(
     is_public: true,
     budget_min: draftData.budgetMin,
     budget_max: draftData.budgetMax,
-    budget_type: (draftData.budgetType as any) ||
+    budget_type: (draftData.budgetType as RequestInsert["budget_type"]) ||
       ((draftData.budgetMin || draftData.budgetMax) ? "fixed" : "negotiable"),
     location: draftData.location,
     delivery_type: "range",
@@ -163,8 +283,8 @@ export async function createRequestFromChat(
   try {
     const attemptInsert = async (
       p: RequestInsert,
-      runId: string,
-      hypothesisId: string,
+      _runId: string,
+      _hypothesisId: string,
     ) => {
       const { data, error } = await supabase.from("requests").insert(p)
         .select("id").single();
@@ -178,7 +298,7 @@ export async function createRequestFromChat(
     };
 
     // Primary attempt (active, public) - may fail if DB missing columns in triggers
-    let data = await attemptInsert(payload, "run2", "G");
+    const data = await attemptInsert(payload, "run2", "G");
 
     // ربط التصنيفات بالطلب (يضمن وجود "غير محدد" إذا لم يكن هناك تصنيفات)
     try {
@@ -192,7 +312,9 @@ export async function createRequestFromChat(
       // نحاول إضافة "أخرى" على الأقل
       try {
         await linkCategories(data.id, ["other"]);
-      } catch (_) {}
+      } catch (_) {
+        // Fallback ignored
+      }
     }
 
     // إرسال Push Notifications للمستخدمين المهتمين
@@ -275,7 +397,9 @@ export async function createRequestFromChat(
         // نحاول إضافة "أخرى" على الأقل
         try {
           await linkCategories(insertedData.id, ["other"]);
-        } catch (_) {}
+        } catch (_) {
+          // Fallback ignored
+        }
       }
 
       return insertedData;
@@ -311,6 +435,31 @@ export async function createOfferFromChat(
     .single();
 
   if (error) throw error;
+
+  // إرسال إشعار لصاحب الطلب
+  if (data?.id) {
+    // جلب عنوان الطلب وصاحبه لإرسال الإشعار
+    supabase.from("requests").select("title, author_id").eq("id", requestId)
+      .single().then(
+        (
+          { data: req }: { data: { title: string; author_id: string } | null },
+        ) => {
+          if (req && req.author_id) {
+            sendPushNotificationForNewOffer({
+              requestId,
+              requestTitle: req.title,
+              recipientId: req.author_id,
+              authorId: providerId,
+              offerId: data.id,
+              offerTitle: ai.title || "عرض جديد",
+              offerDescription: ai.description || text,
+              providerName: "مزود خدمة",
+            });
+          }
+        },
+      );
+  }
+
   return data;
 }
 
@@ -512,16 +661,43 @@ export async function createOffer(
     }
 
     logger.log("✅ Offer created successfully:", data);
+
+    // إرسال إشعار لصاحب الطلب (استخدام البيانات التي جلبناها مسبقاً في التحقق)
+    if (data && data.id) {
+      // نعيد جلب معلومات الطلب لضمان الدقة إذا لم تكن موجودة (رغم أننا جلبناها في سطر 360)
+      const { data: requestData } = await supabase
+        .from("requests")
+        .select("title, author_id")
+        .eq("id", input.requestId.trim())
+        .single();
+
+      if (requestData && requestData.author_id) {
+        sendPushNotificationForNewOffer({
+          requestId: input.requestId.trim(),
+          requestTitle: requestData.title,
+          recipientId: requestData.author_id,
+          authorId: input.providerId.trim(),
+          offerId: data.id,
+          offerTitle: input.title.trim(),
+          offerDescription: input.description,
+          providerName: input.providerId.trim() === "مزود خدمة"
+            ? "خبير"
+            : (input as { providerName?: string; providerId: string })
+              .providerName || "مزود خدمة",
+        });
+      }
+    }
+
     return data;
   } catch (err: unknown) {
-    const error = err as Error;
+    const error = err as Error & { code?: string };
     logger.error("Create offer failed", {
       message: error.message,
       stack: error.stack,
     }, "createOffer");
 
     // محاولة الـ fallback
-    if (err?.message?.includes("notifications") || err?.code === "42703") {
+    if (error.message?.includes("notifications") || error.code === "42703") {
       logger.log("⚠️ Trying fallback method...");
       return await createOfferWithoutTrigger(payload);
     }
@@ -535,7 +711,7 @@ export async function createOffer(
  * ملاحظة: RPC function غير موجودة حالياً، لذا نعيد null
  */
 async function createOfferWithoutTrigger(
-  payload: any,
+  payload: Record<string, any>,
 ): Promise<{ id: string } | null> {
   try {
     // RPC function غير موجودة حالياً
@@ -548,16 +724,16 @@ async function createOfferWithoutTrigger(
     );
 
     // محاولة إدراج مباشر بدون select (لتجنب trigger errors)
-    const { data, error } = await supabase
+    const { error: insertError } = await supabase
       .from("offers")
       .insert(payload);
 
-    if (error) {
+    if (insertError) {
       logger.error("RPC fallback failed:", {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
+        code: insertError.code,
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
       }, "createOfferWithoutTrigger");
       return null;
     }
@@ -582,7 +758,7 @@ async function createOfferWithoutTrigger(
 
     // إذا الـ RPC غير موجود، نحاول تعطيل الـ trigger مؤقتاً (لن يعمل في معظم الحالات بسبب الصلاحيات)
     // كحل أخير، نعيد الخطأ للمستخدم
-    logger.error("❌ RPC fallback failed:", rpcError);
+    logger.error("❌ RPC fallback failed:", insertError);
 
     // محاولة أخيرة: إنشاء العرض بدون الحقول التي قد تسبب مشاكل
     const minimalPayload = {
@@ -625,8 +801,10 @@ export async function fetchRequestsPaginated(
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
-  let data: any;
-  let error: any;
+  let data: Record<string, any>[] | null;
+  let error:
+    | { message: string; code?: string; details?: string; hint?: string }
+    | null;
   let count: number | null = null;
   try {
     const res = await supabase
@@ -724,7 +902,9 @@ export async function checkSupabaseConnection(): Promise<
     );
 
     const queryPromise = (async () => {
-      const { data, error } = await supabase.from("requests").select("id")
+      const { data: _data, error } = await supabase.from("requests").select(
+        "id",
+      )
         .limit(1);
 
       if (error) {
@@ -833,7 +1013,7 @@ export async function fetchMyOffers(providerId: string): Promise<Offer[]> {
     return [];
   }
 
-  return (data || []).map((offer: any) => ({
+  return (data || []).map((offer: Record<string, any>) => ({
     id: offer.id,
     requestId: offer.request_id,
     providerId: offer.provider_id,
@@ -868,7 +1048,7 @@ export async function fetchOffersForRequest(
     throw error;
   }
 
-  return (data || []).map((offer: any) => ({
+  return (data || []).map((offer: Record<string, any>) => ({
     id: offer.id,
     requestId: offer.request_id,
     providerId: offer.provider_id,
@@ -911,7 +1091,7 @@ export async function fetchOffersForUserRequests(
     return new Map();
   }
 
-  const requestIds = (requests || []).map((r) => r.id);
+  const requestIds = (requests || []).map((r: { id: string }) => r.id);
   if (requestIds.length === 0) return new Map();
 
   // Fetch all offers for these requests (excluding archived ones)
@@ -929,7 +1109,7 @@ export async function fetchOffersForUserRequests(
 
   // Group offers by request ID
   const offersMap = new Map<string, Offer[]>();
-  (offers || []).forEach((offer: any) => {
+  (offers || []).forEach((offer: Record<string, any>) => {
     const transformed: Offer = {
       id: offer.id,
       requestId: offer.request_id,
@@ -939,7 +1119,7 @@ export async function fetchOffersForUserRequests(
       description: offer.description || "",
       price: offer.price || "",
       deliveryTime: offer.delivery_time || "",
-      status: offer.status,
+      status: offer.status as Offer["status"],
       createdAt: new Date(offer.created_at),
       isNegotiable: offer.is_negotiable ?? true,
       location: offer.location || "",
@@ -1018,7 +1198,7 @@ export async function updateOffer(input: UpdateOfferInput): Promise<boolean> {
     hasImages: input.images?.length || 0,
   });
 
-  const updateData: any = {
+  const updateData: Partial<OfferInsert> & { updated_at: string } = {
     updated_at: new Date().toISOString(),
   };
 
@@ -1240,7 +1420,7 @@ export async function fetchArchivedRequests(
     throw error;
   }
 
-  return (data || []).map((req: any) => ({
+  return (data || []).map((req: Record<string, any>) => ({
     id: req.id,
     title: req.title,
     description: req.description,
@@ -1254,9 +1434,12 @@ export async function fetchArchivedRequests(
     budgetMax: req.budget_max || "",
     location: req.location || "",
     categories:
-      req.request_categories?.map((rc: any) => rc.categories?.label).filter(
-        Boolean,
-      ) || [],
+      (req.request_categories as Record<string, any>[])?.map((rc) =>
+        rc.categories?.label
+      )
+        .filter(
+          Boolean,
+        ) || [],
     deliveryTimeType: req.delivery_type || "not-specified",
     deliveryTimeFrom: req.delivery_from || "",
     deliveryTimeTo: req.delivery_to || "",
@@ -1283,7 +1466,10 @@ export function calculateSeriousness(offersCount: number): number {
 /**
  * Transform Supabase request to app Request format
  */
-function transformRequest(req: any, offersCount?: number): Request {
+function transformRequest(
+  req: Record<string, any>,
+  offersCount?: number,
+): Request {
   // Calculate seriousness based on offers count if provided, otherwise use stored value
   const seriousness = offersCount !== undefined
     ? calculateSeriousness(offersCount)
@@ -1303,9 +1489,12 @@ function transformRequest(req: any, offersCount?: number): Request {
     budgetMax: req.budget_max || "",
     location: req.location || "",
     categories:
-      req.request_categories?.map((rc: any) => rc.categories?.label).filter(
-        Boolean,
-      ) || [],
+      (req.request_categories as Record<string, any>[])?.map((rc) =>
+        rc.categories?.label
+      )
+        .filter(
+          Boolean,
+        ) || [],
     deliveryTimeType: req.delivery_type || "not-specified",
     deliveryTimeFrom: req.delivery_from || "",
     deliveryTimeTo: req.delivery_to || "",
@@ -1367,7 +1556,7 @@ async function matchesUserInterests(
     // Check categories match
     if (interestedCategories.length > 0) {
       const requestCategories = request.categories || [];
-      const hasMatchingCategory = requestCategories.some((cat) =>
+      const hasMatchingCategory = requestCategories.some((cat: string) =>
         interestedCategories.some((interest) =>
           cat.toLowerCase().includes(interest.toLowerCase()) ||
           interest.toLowerCase().includes(cat.toLowerCase())
@@ -1381,7 +1570,7 @@ async function matchesUserInterests(
     if (actualCities.length > 0 && request.location) {
       const requestCity = request.location.split("،").pop()?.trim() ||
         request.location;
-      const hasMatchingCity = actualCities.some((city) =>
+      const hasMatchingCity = actualCities.some((city: string) =>
         requestCity.includes(city) || city.includes(requestCity)
       );
       if (!hasMatchingCity) return false;
@@ -1391,7 +1580,7 @@ async function matchesUserInterests(
     if (radarWords.length > 0) {
       const searchText = `${request.title} ${request.description || ""}`
         .toLowerCase();
-      const hasRadarMatch = radarWords.some((word) =>
+      const hasRadarMatch = radarWords.some((word: string) =>
         searchText.includes(word.toLowerCase())
       );
       if (!hasRadarMatch) return false;
@@ -1423,8 +1612,8 @@ export function subscribeToNewRequests(
         table: "requests",
         filter: "is_public=eq.true",
       },
-      async (payload) => {
-        const newRequest = payload.new as any;
+      async (payload: any) => {
+        const newRequest = payload.new as Record<string, any>;
 
         // Only process active requests
         if (newRequest.status !== "active") return;
@@ -1481,8 +1670,8 @@ export function subscribeToAllNewRequests(
         table: "requests",
         filter: "is_public=eq.true",
       },
-      async (payload) => {
-        const newRequest = payload.new as any;
+      async (payload: any) => {
+        const newRequest = payload.new as Record<string, any>;
 
         // Only process active requests
         if (newRequest.status !== "active") return;
@@ -1676,12 +1865,12 @@ export async function updateRequest(
       !existingRequest.accepted_offer_id;
 
     // 6. تحديث بيانات الطلب
-    const updatePayload: any = {
+    const updatePayload: Partial<RequestInsert> & { updated_at?: string } = {
       title: (draftData.title || draftData.summary || "طلب جديد").slice(0, 120),
       description: draftData.description || draftData.summary || "",
       budget_min: draftData.budgetMin,
       budget_max: draftData.budgetMax,
-      budget_type: (draftData.budgetType as any) ||
+      budget_type: (draftData.budgetType as RequestInsert["budget_type"]) ||
         ((draftData.budgetMin || draftData.budgetMax) ? "fixed" : "negotiable"),
       location: draftData.location,
       delivery_from: draftData.deliveryTime,
@@ -1748,7 +1937,9 @@ export async function updateRequest(
       // نحاول إضافة "أخرى" على الأقل
       try {
         await linkCategories(requestId, ["other"]);
-      } catch (_) {}
+      } catch (_) {
+        // Fallback ignored
+      }
     }
 
     return { id: requestId, wasArchived };
@@ -1820,6 +2011,34 @@ export async function acceptOffer(
 
     if (updateRequestError) {
       logger.warn("تحذير: فشل في تحديث حالة الطلب:", updateRequestError);
+    }
+
+    // 5. إرسال إشعار للمزود بقبول عرضه
+    try {
+      // جلب معرف مقدم العرض وعنوان الطلب
+      const { data: offerData } = await supabase
+        .from("offers")
+        .select("provider_id, title")
+        .eq("id", offerId)
+        .single();
+
+      const { data: reqData } = await supabase
+        .from("requests")
+        .select("title")
+        .eq("id", requestId)
+        .single();
+
+      if (offerData?.provider_id && reqData?.title) {
+        sendPushNotificationForOfferAccepted({
+          requestId,
+          requestTitle: reqData.title,
+          recipientId: offerData.provider_id,
+          authorId: userId,
+          offerId: offerId,
+        });
+      }
+    } catch (pushErr) {
+      logger.warn("فشل في إرسال إشعار قبول العرض:", pushErr);
     }
 
     return { success: true };
@@ -1963,6 +2182,19 @@ export async function startNegotiation(
         // لا نعيد false لأن التفاوض نجح، فقط الإشعار فشل
       } else {
         logger.log("✅ تم إرسال إشعار بدء التفاوض بنجاح");
+
+        // إرسال إشعار Push للمزود ببدء التفاوض
+        try {
+          sendPushNotificationForNegotiationStarted({
+            requestId,
+            requestTitle: request.title,
+            recipientId: offer.provider_id,
+            senderName: requesterName,
+            offerId: offerId,
+          });
+        } catch (pushErr) {
+          logger.warn("فشل في إرسال إشعار Push لبدء التفاوض:", pushErr);
+        }
       }
     } catch (notifErr) {
       logger.error("خطأ غير متوقع في إرسال الإشعار:", notifErr);
