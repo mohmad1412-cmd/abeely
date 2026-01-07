@@ -1629,6 +1629,39 @@ const App: React.FC = () => {
   }, [appView, user?.id, view, receivedOffersMap, notifications]);
 
   // ==========================================
+  // Auto-mark notifications as read when opening My Requests tab
+  // ==========================================
+  useEffect(() => {
+    if (appView !== "main" || !user?.id || activeBottomTab !== "my-requests") return;
+    if (myRequests.length === 0) return;
+
+    const myRequestIds = new Set(myRequests.map((r) => r.id));
+    
+    // Mark all notifications related to my requests as read
+    const markNotificationsAsRead = async () => {
+      const notificationsToMark = notifications.filter((n) =>
+        !n.isRead &&
+        n.relatedRequest &&
+        myRequestIds.has(n.relatedRequest.id)
+      );
+
+      if (notificationsToMark.length > 0) {
+        for (const notif of notificationsToMark) {
+          await markNotificationAsRead(notif.id);
+          setNotifications((prev) =>
+            prev.map((n) => (n.id === notif.id ? { ...n, isRead: true } : n))
+          );
+        }
+      }
+    };
+
+    // Delay slightly to ensure page is fully loaded
+    const timeoutId = setTimeout(markNotificationsAsRead, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [appView, user?.id, activeBottomTab, myRequests, notifications]);
+
+  // ==========================================
   // Fetch and refresh received offers when opening My Requests page
   // ==========================================
   useEffect(() => {
