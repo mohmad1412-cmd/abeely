@@ -723,11 +723,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                 <AnimatePresence>
                   {showSuccess && (
                     <motion.div
-                      initial={{ opacity: 0, scale: 0.5 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.5 }}
-                      transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
-                      className="absolute inset-0 flex flex-col items-center justify-center z-50 pointer-events-none"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 20 }}
+                      transition={{ duration: 0.4, type: "spring", stiffness: 200 }}
+                      className="flex flex-col items-center justify-center mt-6 sm:mt-8"
                     >
                       <motion.div
                         initial={{ scale: 0, rotate: -180 }}
@@ -750,7 +750,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, onGuestMode
                         transition={{ delay: 0.4 }}
                         className="mt-3 sm:mt-4 text-white font-bold text-lg sm:text-xl"
                       >
-                        ✅ تم التحقق بنجاح
+                        تم التحقق بنجاح
                       </motion.p>
                     </motion.div>
                   )}
