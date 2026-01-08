@@ -106,7 +106,15 @@ BEGIN
   LEFT JOIN request_views rv ON rv.request_id = r.id AND rv.user_id = current_user_id
   WHERE r.is_public = TRUE
     AND r.status = 'active'
+    AND r.author_id != current_user_id  -- استبعاد طلبات المستخدم نفسه
     AND (rv.id IS NULL OR rv.is_read = FALSE)
+    AND NOT EXISTS (
+      -- استبعاد الطلبات التي قدم عليها المستخدم عروض نشطة (غير مرفوضة)
+      SELECT 1 FROM offers o
+      WHERE o.request_id = r.id
+        AND o.provider_id = current_user_id
+        AND o.status != 'rejected'
+    )
     AND (
       (user_categories IS NULL OR array_length(user_categories, 1) IS NULL OR
        EXISTS (

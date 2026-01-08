@@ -54,6 +54,7 @@ import {
   verifyGuestPhone,
 } from "../services/authService";
 import { supabase } from "../services/supabaseClient";
+import { uploadRequestAttachments } from "../services/storageService";
 
 // ============================================
 // Submit Button with Shake Effect
@@ -68,6 +69,7 @@ interface SubmitButtonWithShakeProps {
   onGuestVerification: () => void;
   onSubmit: () => Promise<void>;
   onGoToRequest?: (requestId?: string) => void;
+  isUploadingFiles?: boolean;
 }
 
 const SubmitButtonWithShake: React.FC<SubmitButtonWithShakeProps> = ({
@@ -80,6 +82,7 @@ const SubmitButtonWithShake: React.FC<SubmitButtonWithShakeProps> = ({
   onGuestVerification,
   onSubmit,
   onGoToRequest,
+  isUploadingFiles = false,
 }) => {
   const [isShaking, setIsShaking] = useState(false);
 
@@ -109,7 +112,8 @@ const SubmitButtonWithShake: React.FC<SubmitButtonWithShakeProps> = ({
     <motion.button
       layout
       onClick={handleClick}
-      disabled={!canSubmit || isSubmitting || isGeneratingTitle}
+      disabled={!canSubmit || isSubmitting || isGeneratingTitle ||
+        isUploadingFiles}
       animate={isShaking
         ? {
           x: [0, -10, 10, -10, 10, 0],
@@ -131,6 +135,13 @@ const SubmitButtonWithShake: React.FC<SubmitButtonWithShakeProps> = ({
           <>
             <Loader2 size={20} className="animate-spin" />
             <span>جاري تحليل الوصف وإنشاء العنوان...</span>
+          </>
+        )
+        : isUploadingFiles
+        ? (
+          <>
+            <Loader2 size={20} className="animate-spin" />
+            <span>جاري رفع الصور...</span>
           </>
         )
         : isSubmitting
@@ -1102,6 +1113,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const descriptionResizeStartY = useRef(0);
   const descriptionResizeStartHeight = useRef(0);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Attachment preview state
@@ -2459,91 +2471,69 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // Handle publish (internal function - called after guest verification if needed)
   const handlePublishInternal = async (): Promise<string | null> => {
     // Get current user (in case user just logged in via guest verification)
-    // Try multiple times with delay to ensure auth state is updated after login
     let currentUserId = user?.id;
     if (!currentUserId) {
-      // Wait a bit for auth state to update after login
       await new Promise((resolve) => setTimeout(resolve, 200));
       const currentUser = await getCurrentUser();
       currentUserId = currentUser?.id || null;
     }
 
-    // If still no user, try one more time after another delay
-    if (!currentUserId) {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      const currentUser = await getCurrentUser();
-      currentUserId = currentUser?.id || null;
-    }
-
-    // Final safety: refresh session once to avoid false logouts during submit
-    if (!currentUserId) {
-      try {
-        const { data: refreshed, error } = await supabase.auth.refreshSession();
-        if (error) {
-          logger.warn("Refresh session before publish failed:", error.message);
-        }
-        currentUserId = refreshed?.session?.user?.id || null;
-      } catch (refreshErr) {
-        logger.warn("Refresh session threw:", refreshErr);
-      }
-    }
-
-    // Try anonymous session (useful for dev test numbers 0555/0000)
     if (!currentUserId) {
       const anonId = await ensureGuestSession();
-      if (anonId) {
-        currentUserId = anonId;
-      }
+      if (anonId) currentUserId = anonId;
     }
 
     // Only require auth if we're absolutely sure there's no user
-    // Check for test phone numbers - allow them to proceed
     if (!currentUserId) {
-      // التحقق من الأرقام الوهمية - محاولة الحصول على user ID من session
       const testPhone = localStorage.getItem("dev_test_phone");
       let testUserId = localStorage.getItem("dev_test_user_id");
 
-      // محاولة الحصول على user ID من Supabase session
       if (!testUserId) {
-        try {
-          const { data: sessionData } = await supabase.auth.getSession();
-          if (sessionData?.session?.user?.id) {
-            testUserId = sessionData.session.user.id;
-            localStorage.setItem("dev_test_user_id", testUserId);
-            logger.log("🔧 DEV MODE: Found user ID from session:", testUserId);
-          }
-        } catch (err) {
-          logger.warn("🔧 DEV MODE: Could not get session:", err);
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.user?.id) {
+          testUserId = sessionData.session.user.id;
         }
       }
 
       if (testPhone && testUserId) {
-        // للأرقام الوهمية، نستخدم user ID من Supabase
-        logger.log(
-          "🔧 DEV MODE: Using test user ID for request creation:",
-          testUserId,
-        );
         currentUserId = testUserId;
       } else {
-        // للأرقام الحقيقية، نطلب تسجيل الدخول
-        logger.warn(
-          "No user found in handlePublishInternal, saving draft and showing auth alert",
-        );
         saveFormDataForGuest();
-        // Show alert with options instead of forcing redirect
         setShowAuthAlert(true);
         return null;
       }
     }
 
-    // Extract budget values - use direct state values first, then additionalFields
+    // --- Image Upload Logic ---
+    let uploadedImageUrls: string[] = [];
+    const isEditing = !!editingRequestId;
+    // Generate a fixed ID if it's a new request, so we can use it for storage prefix
+    const requestId = editingRequestId || crypto.randomUUID();
+
+    if (attachedFiles.length > 0) {
+      try {
+        setIsUploadingFiles(true);
+        logger.log("Uploading attachments for request:", requestId);
+        uploadedImageUrls = await uploadRequestAttachments(
+          attachedFiles,
+          requestId,
+        );
+        logger.log("Uploaded successfully:", uploadedImageUrls);
+      } catch (uploadError) {
+        logger.error("Failed to upload attachments:", uploadError);
+        // We might want to show a toast here, but for now we continue without images
+      } finally {
+        setIsUploadingFiles(false);
+      }
+    }
+
+    // Extract budget values
     const budgetField = additionalFields.find((f) =>
       f.id === "budget" && f.enabled
     );
     let finalBudgetMin: string | undefined = budgetMin.trim() || undefined;
     let finalBudgetMax: string | undefined = budgetMax.trim() || undefined;
 
-    // Fallback to additionalFields if state is empty
     if (!finalBudgetMin && !finalBudgetMax && budgetField?.value) {
       const rawBudget = budgetField.value.replace(/[^\d-]/g, "");
       if (rawBudget.includes("-")) {
@@ -2555,35 +2545,28 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       }
     }
 
-    // Extract delivery time - use preset or custom value
     const deliveryField = additionalFields.find((f) =>
       f.id === "deliveryTime" && f.enabled
     );
     const finalDeliveryTime = customDeliveryValue.trim() ||
       deliveryValue.trim() || deliveryField?.value || "";
 
-    // توليد عنوان ذكي من الوصف إذا لم يكن هناك عنوان
     let finalTitle = title.trim();
     if (!finalTitle && description.trim()) {
-      // استخراج عنوان من أول جملة أو أول 50 حرف
       const desc = description.trim();
       const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
       finalTitle = firstSentence.length > 50
         ? firstSentence.slice(0, 47) + "..."
         : firstSentence;
-
-      // إذا كان العنوان قصيراً جداً، نستخدم الوصف كاملاً مع قص
       if (finalTitle.length < 10) {
         finalTitle = desc.length > 50 ? desc.slice(0, 47) + "..." : desc;
       }
     }
 
-    // إذا لا زال فارغاً، نستخدم رسالة افتراضية
-    if (!finalTitle) {
-      finalTitle = "طلب جديد";
-    }
+    if (!finalTitle) finalTitle = "طلب جديد";
 
     const request: Partial<Request> = {
+      id: requestId, // Use the generated or existing ID
       title: finalTitle,
       description: description.trim(),
       location: location.trim(),
@@ -2593,43 +2576,31 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         const categoryField = additionalFields.find((f) =>
           f.id === "category" && f.enabled
         );
-        // إذا كان التصنيف "أخرى" أو غير موجود، نستخدم undefined (سيتم تصنيفه في "أخرى" تلقائياً)
         if (
           !categoryField || categoryField.value === "أخرى" ||
           categoryField.value === "other"
-        ) {
-          return undefined; // سيتم تصنيفه في "أخرى" تلقائياً
-        }
-        return [categoryField.value]; // value is label, getCategoryIdsByLabels will convert it
+        ) return undefined;
+        return [categoryField.value];
       })(),
       deliveryTimeFrom: finalDeliveryTime || undefined,
       seriousness: seriousness,
+      images: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
     };
 
-    // تحديد ما إذا كان تعديل أو إنشاء جديد
-    const isEditing = !!editingRequestId;
     logger.log(
       isEditing ? "Updating request:" : "Publishing request:",
       request,
     );
-    logger.log("editingRequestId:", editingRequestId);
-    logger.log("currentUserId:", currentUserId);
 
-    // تمرير معلومات التعديل إذا كنا في وضع التعديل
-    // Note: onPublish will use user?.id from App.tsx, but we ensure we have currentUserId here
     const result = await onPublish(
       request,
       isEditing,
       editingRequestId || undefined,
     );
 
-    // تحديث حالة الحفظ
-    if (result) {
-      if (isEditing) {
-        // تم الحفظ بنجاح - تحديث القيم المحفوظة
-        setSavedValues(getCurrentValues());
-        setHasSavedOnce(true);
-      }
+    if (result && isEditing) {
+      setSavedValues(getCurrentValues());
+      setHasSavedOnce(true);
     }
 
     return result;
@@ -2746,11 +2717,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
 
                 {/* Answer Input - Styled exactly like وصف الطلب field */}
                 {(() => {
-                  const currentAnswer =
-                    clarificationAnswers[
-                      clarificationPages[currentClarificationPage]?.question ||
-                      ""
-                    ] || "";
+                  const currentAnswer = clarificationAnswers[
+                    clarificationPages[currentClarificationPage]?.question ||
+                    ""
+                  ] || "";
                   const hasAnswer = currentAnswer.trim().length > 0;
                   return (
                     <motion.div
@@ -2846,22 +2816,20 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       ""
                     ]?.trim() || isAiLoading}
                     whileHover={{
-                      scale:
-                        (clarificationAnswers[
-                            clarificationPages[currentClarificationPage]
-                              ?.question || ""
-                          ]?.trim() && !isAiLoading)
-                          ? 1.02
-                          : 1,
+                      scale: (clarificationAnswers[
+                          clarificationPages[currentClarificationPage]
+                            ?.question || ""
+                        ]?.trim() && !isAiLoading)
+                        ? 1.02
+                        : 1,
                     }}
                     whileTap={{
-                      scale:
-                        (clarificationAnswers[
-                            clarificationPages[currentClarificationPage]
-                              ?.question || ""
-                          ]?.trim() && !isAiLoading)
-                          ? 0.98
-                          : 1,
+                      scale: (clarificationAnswers[
+                          clarificationPages[currentClarificationPage]
+                            ?.question || ""
+                        ]?.trim() && !isAiLoading)
+                        ? 0.98
+                        : 1,
                     }}
                     className={`flex-1 flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-base transition-all ${
                       clarificationAnswers[
@@ -3060,12 +3028,21 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       }
                     }, 200);
                   }}
+                  disabled={isSubmitting || isUploadingFiles}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className="flex-[2] flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary text-white font-medium hover:bg-primary/90 transition-colors"
+                  className="flex-[2] flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary text-white font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Check size={18} />
-                  <span>تأكيد وإرسال</span>
+                  {isSubmitting || isUploadingFiles
+                    ? <Loader2 size={18} className="animate-spin" />
+                    : <Check size={18} />}
+                  <span>
+                    {isUploadingFiles
+                      ? "جاري الرفع..."
+                      : isSubmitting
+                      ? "جاري الإرسال..."
+                      : "تأكيد وإرسال"}
+                  </span>
                 </motion.button>
               </div>
             </motion.div>
@@ -3249,11 +3226,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               : {}}
             transition={{
               duration: 0.5,
-              repeat:
-                (glowingFields.has("description") ||
-                    glowingFields.has("location"))
-                  ? 2
-                  : 0,
+              repeat: (glowingFields.has("description") ||
+                  glowingFields.has("location"))
+                ? 2
+                : 0,
             }}
           >
             {/* Description Label */}
@@ -3773,16 +3749,23 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                       {/* Upload Buttons */}
                       <div className="flex gap-3">
                         {/* Upload Box */}
-                        <button
+                        <motion.button
                           type="button"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
                           onClick={() => fileInputRef.current?.click()}
-                          className="flex-1 flex flex-col items-center justify-center h-24 bg-background border border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                          className="flex-1 flex flex-col items-center justify-center h-28 bg-gradient-to-br from-background to-secondary/30 border border-border rounded-2xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all group shadow-sm"
                         >
-                          <Upload size={28} className="text-primary mb-2" />
-                          <span className="text-xs text-muted-foreground">
-                            رفع ملف/صورة
+                          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform mb-2">
+                            <Upload size={24} className="text-primary" />
+                          </div>
+                          <span className="text-xs font-bold text-foreground">
+                            إضافة صور أو ملفات
                           </span>
-                        </button>
+                          <span className="text-[10px] text-muted-foreground mt-1">
+                            يمكنك اختيار صور متعددة
+                          </span>
+                        </motion.button>
                       </div>
                     </div>
                   </motion.div>
@@ -4051,6 +4034,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               }
             }}
             onGoToRequest={onGoToRequest}
+            isUploadingFiles={isUploadingFiles}
           />
         </motion.div>
       )}
@@ -4458,10 +4442,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                                 .eq("id", userProfile.id)
                                 .single();
 
-                              const hasInterests =
-                                Array.isArray(
-                                  profileData?.interested_categories,
-                                ) &&
+                              const hasInterests = Array.isArray(
+                                profileData?.interested_categories,
+                              ) &&
                                 profileData.interested_categories.length > 0;
                               const hasCities =
                                 Array.isArray(profileData?.interested_cities) &&
@@ -4471,10 +4454,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                               const alreadyOnboarded =
                                 profileData?.has_onboarded === true;
 
-                              needsOnboarding =
-                                !(alreadyOnboarded ||
-                                  (hasProfileName &&
-                                    (hasInterests || hasCities)));
+                              needsOnboarding = !(alreadyOnboarded ||
+                                (hasProfileName &&
+                                  (hasInterests || hasCities)));
                             } catch (err) {
                               logger.error(
                                 "Error checking onboarding status:",
@@ -4679,10 +4661,20 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                         setIsSubmitting(false);
                       }
                     }}
-                    disabled={!termsAccepted || isSubmitting}
-                    className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={!termsAccepted || isSubmitting ||
+                      isUploadingFiles}
+                    className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    موافق وإنشاء الطلب
+                    {isSubmitting || isUploadingFiles
+                      ? <Loader2 size={20} className="animate-spin" />
+                      : <Check size={20} />}
+                    <span>
+                      {isUploadingFiles
+                        ? "جاري الرفع..."
+                        : isSubmitting
+                        ? "جاري الإرسال..."
+                        : "موافق وإنشاء الطلب"}
+                    </span>
                   </button>
                   <button
                     onClick={() => {

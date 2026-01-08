@@ -141,6 +141,16 @@ export interface Review {
   role: "provider" | "requester";
 }
 
+export type HomePageConfig =
+  | "marketplace:all"           // السوق (كل الطلبات)
+  | "marketplace:interests"     // السوق (اهتماماتي)
+  | "my-requests:all"           // طلباتي (كل طلباتي)
+  | "my-requests:active"        // طلباتي (الطلبات النشطة)
+  | "my-requests:approved"      // طلباتي (الطلبات المعتمدة)
+  | "my-offers:all"             // عروضي (كل عروضي)
+  | "my-offers:pending"         // عروضي (عروضي قيد الانتظار)
+  | "my-offers:accepted";       // عروضي (عروضي المقبولة)
+
 export interface UserPreferences {
   interestedCategories: string[];
   interestedCities: string[];
@@ -148,6 +158,7 @@ export interface UserPreferences {
   notifyOnInterest: boolean;
   roleMode: "requester" | "provider"; // Profile toggle
   showNameToApprovedProvider: boolean; // إظهار الاسم لمقدم العرض المعتمد
+  homePage?: HomePageConfig; // صفحة البداية المخصصة
 }
 
 export type AppMode = "requests" | "offers";

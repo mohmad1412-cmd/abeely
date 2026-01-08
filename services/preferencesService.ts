@@ -23,7 +23,8 @@ export const getUserPreferences = async (userId: string): Promise<UserPreference
         radarWords: [],
         notifyOnInterest: true,
         roleMode: 'requester',
-        showNameToApprovedProvider: true
+        showNameToApprovedProvider: true,
+        homePage: "marketplace:all"
       };
     }
 
@@ -33,7 +34,8 @@ export const getUserPreferences = async (userId: string): Promise<UserPreference
       radarWords: data.radar_words || [],
       notifyOnInterest: data.notify_on_interest ?? true,
       roleMode: data.role_mode || 'requester',
-      showNameToApprovedProvider: data.show_name_to_approved_provider ?? true
+      showNameToApprovedProvider: data.show_name_to_approved_provider ?? true,
+      homePage: (data.home_page as any) || undefined
     };
   } catch (err) {
     console.error('Error in getUserPreferences:', err);
@@ -140,6 +142,9 @@ export const updatePreferencesDirect = async (
     // if (preferences.showNameToApprovedProvider !== undefined) {
     //   updateData.show_name_to_approved_provider = preferences.showNameToApprovedProvider;
     // }
+    if (preferences.homePage !== undefined) {
+      updateData.home_page = preferences.homePage;
+    }
     
     updateData.updated_at = new Date().toISOString();
 
@@ -165,7 +170,7 @@ export const getPreferencesDirect = async (userId: string): Promise<UserPreferen
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('interested_categories, interested_cities, radar_words, notify_on_interest, role_mode')
+      .select('interested_categories, interested_cities, radar_words, notify_on_interest, role_mode, home_page')
       .eq('id', userId)
       .single();
 
@@ -184,7 +189,8 @@ export const getPreferencesDirect = async (userId: string): Promise<UserPreferen
       radarWords: data.radar_words || [],
       notifyOnInterest: data.notify_on_interest ?? true,
       roleMode: data.role_mode || 'requester',
-      showNameToApprovedProvider: data.show_name_to_approved_provider ?? true
+      showNameToApprovedProvider: data.show_name_to_approved_provider ?? true,
+      homePage: (data.home_page as any) || undefined
     };
   } catch (err) {
     console.error('Error in getPreferencesDirect:', err);

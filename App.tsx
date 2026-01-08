@@ -82,6 +82,7 @@ import {
   migrateUserDraftRequests,
   subscribeToAllNewRequests,
   subscribeToNewRequests,
+  subscribeToRequestUpdates,
   unarchiveRequest,
   unhideRequest,
   updateRequest,
@@ -841,11 +842,26 @@ const App: React.FC = () => {
         // انتظر قليلاً للسماح لـ Supabase بمعالجة أي OAuth callback
         await new Promise((resolve) => setTimeout(resolve, 100));
 
-        // تحقق من وجود session
-        const { data: { session }, error } = await supabase.auth.getSession();
+        // تحقق من وجود session - التحقق الأول
+        let { data: { session }, error } = await supabase.auth.getSession();
 
         if (error) {
           console.error("❌ getSession error:", error);
+        }
+
+        // إذا لم نجد session فوراً، ننتظر قليلاً للسماح لـ Supabase بمعالجة الـ session
+        // هذا مهم عند إعادة التحميل عندما يكون هناك token محفوظ
+        if (!session?.user) {
+          console.log("⏳ No session found immediately, waiting for Supabase to process...");
+          // ننتظر 500ms للسماح لـ Supabase بمعالجة الـ session
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          
+          // التحقق مرة أخرى من session
+          const { data: { session: retrySession }, error: retryError } = await supabase.auth.getSession();
+          if (!retryError && retrySession?.user) {
+            session = retrySession;
+            console.log("✅ Session found after retry!");
+          }
         }
 
         if (session?.user && isMounted) {
@@ -894,8 +910,51 @@ const App: React.FC = () => {
           setIsGuest(true);
           localStorage.setItem("abeely_guest_mode", "true");
           setAppView("main");
+          setAuthLoading(false);
         } else if (isMounted) {
-          setAppView("auth");
+          // 🚀 FIX: نبقى على splash وننتظر onAuthStateChange
+          // لا نعرض صفحة auth إلا بعد التأكد التام أنه لا يوجد session
+          // هذا يمنع الوميض عند إعادة التحميل
+          console.log("⏳ No session found, waiting for onAuthStateChange event...");
+          // نبقى على splash وننتظر حدث onAuthStateChange
+          // سيتم تغيير appView في onAuthStateChange إذا لم يكن هناك session
+          // نعطي فرصة أكبر (2 ثانية) للسماح لـ Supabase بمعالجة الـ session
+          setTimeout(() => {
+            if (isMounted && !userRef.current && appView === "splash") {
+              // التحقق مرة أخيرة من session قبل عرض صفحة auth
+              supabase.auth.getSession().then(({ data: { session: finalSession } }) => {
+                if (isMounted && !finalSession?.user && appView === "splash") {
+                  // التحقق من guest mode قبل عرض auth
+                  const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
+                  if (isGuestSaved) {
+                    setIsGuest(true);
+                    setAppView("main");
+                    setAuthLoading(false);
+                  } else {
+                    const route = parseRoute();
+                    const isPublicRoute = route.type === "request" ||
+                      route.type === "marketplace" ||
+                      route.type === "home" ||
+                      route.type === "create";
+                    
+                    if (isPublicRoute) {
+                      setIsGuest(true);
+                      localStorage.setItem("abeely_guest_mode", "true");
+                      setAppView("main");
+                      setAuthLoading(false);
+                    } else {
+                      console.log("⚠️ No session after waiting, showing auth page");
+                      setAppView("auth");
+                      setAuthLoading(false);
+                    }
+                  }
+                } else if (isMounted && finalSession?.user && appView === "splash") {
+                  console.log("✅ Session found in final check!");
+                  // سيتم التعامل معها في onAuthStateChange
+                }
+              });
+            }
+          }, 2000);
         }
       } catch (err) {
         console.error("Auth init error:", err);
@@ -905,7 +964,9 @@ const App: React.FC = () => {
         }
       } finally {
         if (isMounted) {
-          setAuthLoading(false);
+          // لا نعطل authLoading هنا إلا إذا اتخذنا قراراً نهائياً
+          // نترك authLoading = true حتى يأتي onAuthStateChange
+          // هذا يضمن عدم عرض صفحة auth قبل التأكد التام
           setIsProcessingOAuth(false);
         }
       }
@@ -1061,6 +1122,56 @@ const App: React.FC = () => {
           if (profile && isMounted) {
             setUser(profile);
           }
+        } else if (event === "INITIAL_SESSION" && !session?.user && isMounted) {
+          // 🚀 FIX: معالجة INITIAL_SESSION بدون session
+          // هذا مهم عند إعادة التحميل عندما لا يوجد session
+          // نتحقق مرة أخرى للتأكد التام قبل عرض صفحة auth
+          console.log("⏳ INITIAL_SESSION without session, verifying...");
+          
+          // انتظر قليلاً للسماح لـ Supabase بمعالجة أي session محفوظة
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          
+          // التحقق النهائي من session
+          const { data: { session: finalSession } } = await supabase.auth.getSession();
+          
+          if (finalSession?.user && isMounted) {
+            // Session موجود! تحميل profile
+            console.log("✅ Session found in INITIAL_SESSION handler!");
+            const profile = await getCurrentUser();
+            if (profile && isMounted) {
+              setUser(profile);
+              setIsGuest(false);
+              localStorage.removeItem("abeely_guest_mode");
+              setAppView("main");
+              setAuthLoading(false);
+            }
+          } else if (isMounted) {
+            // لا يوجد session فعلاً - تحقق من guest mode أو route
+            const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
+            if (isGuestSaved) {
+              setIsGuest(true);
+              setAppView("main");
+              setAuthLoading(false);
+            } else {
+              const route = parseRoute();
+              const isPublicRoute = route.type === "request" ||
+                route.type === "marketplace" ||
+                route.type === "home" ||
+                route.type === "create";
+              
+              if (isPublicRoute) {
+                setIsGuest(true);
+                localStorage.setItem("abeely_guest_mode", "true");
+                setAppView("main");
+                setAuthLoading(false);
+              } else {
+                // لا يوجد session ولا guest mode - عرض صفحة auth
+                console.log("⚠️ No session confirmed, showing auth page");
+                setAppView("auth");
+                setAuthLoading(false);
+              }
+            }
+          }
         }
       },
     );
@@ -1201,7 +1312,7 @@ const App: React.FC = () => {
     // إذا كان OAuth، انتظر وقتاً أطول (10 ثواني)
     const timeout = hasOAuthCode ? 10000 : 5000;
 
-    const failsafeTimer = setTimeout(() => {
+    const failsafeTimer = setTimeout(async () => {
       console.warn(
         "⚠️ Splash failsafe triggered - forcing exit after",
         timeout,
@@ -1216,7 +1327,21 @@ const App: React.FC = () => {
         } else if (isGuest) {
           setAppView("main");
         } else {
-          // نظف URL أولاً
+          // 🚀 FIX: التحقق النهائي من session قبل عرض صفحة auth
+          const { data: { session: finalSession } } = await supabase.auth.getSession();
+          if (finalSession?.user) {
+            console.log("✅ Session found in failsafe!");
+            const profile = await getCurrentUser();
+            if (profile) {
+              setUser(profile);
+              setIsGuest(false);
+              localStorage.removeItem("abeely_guest_mode");
+              setAppView("main");
+              return;
+            }
+          }
+          
+          // لا يوجد session - نظف URL أولاً
           if (window.location.search.includes("code=")) {
             window.history.replaceState(
               {},
@@ -1224,7 +1349,27 @@ const App: React.FC = () => {
               window.location.pathname || "/",
             );
           }
-          setAppView("auth");
+          
+          // التحقق من guest mode قبل عرض auth
+          const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
+          if (isGuestSaved) {
+            setIsGuest(true);
+            setAppView("main");
+          } else {
+            const route = parseRoute();
+            const isPublicRoute = route.type === "request" ||
+              route.type === "marketplace" ||
+              route.type === "home" ||
+              route.type === "create";
+            
+            if (isPublicRoute) {
+              setIsGuest(true);
+              localStorage.setItem("abeely_guest_mode", "true");
+              setAppView("main");
+            } else {
+              setAppView("auth");
+            }
+          }
         }
       }
     }, timeout);
@@ -1289,6 +1434,60 @@ const App: React.FC = () => {
     });
   }, []);
 
+  // Track if we've already set the initial home page (to prevent resetting on preferences update)
+  const hasSetInitialHomePage = useRef(false);
+
+  // State for default offer filter (used when opening my-offers page)
+  const [defaultOfferFilter, setDefaultOfferFilter] = useState<"all" | "accepted" | "pending" | "completed" | undefined>(undefined);
+
+  // Apply home page preference when entering main view
+  useEffect(() => {
+    if (appView === "main" && !hasSetInitialHomePage.current && (userPreferences as any).homePage) {
+      const homePage = (userPreferences as any).homePage as string;
+      
+      // Only apply if current view is still the default (marketplace)
+      if (view === "marketplace") {
+        hasSetInitialHomePage.current = true;
+        
+        // Parse home page config and apply settings
+        if (homePage.startsWith("marketplace:")) {
+          const [, viewMode] = homePage.split(":");
+          setView("marketplace");
+          setMode("offers");
+          setActiveBottomTab("marketplace");
+          if (viewMode === "interests") {
+            setCurrentMarketplaceViewMode("interests");
+          } else {
+            setCurrentMarketplaceViewMode("all");
+          }
+        } else if (homePage.startsWith("my-requests:")) {
+          const [, filter] = homePage.split(":");
+          setView("dashboard");
+          setMode("requests");
+          setActiveBottomTab("requests");
+          // Set filter for my requests
+          if (filter === "all" || filter === "active" || filter === "approved" || filter === "completed") {
+            setMyRequestsFilter(filter as "all" | "active" | "approved" | "completed");
+          }
+        } else if (homePage.startsWith("my-offers:")) {
+          const [, filter] = homePage.split(":");
+          setView("dashboard");
+          setMode("offers");
+          setActiveBottomTab("offers");
+          // Set default filter for offers
+          if (filter === "all" || filter === "accepted" || filter === "pending" || filter === "completed") {
+            setDefaultOfferFilter(filter as "all" | "accepted" | "pending" | "completed");
+            // Reset filter after component applies it (one-time use)
+            setTimeout(() => setDefaultOfferFilter(undefined), 500);
+          } else {
+            setDefaultOfferFilter("all");
+            setTimeout(() => setDefaultOfferFilter(undefined), 500);
+          }
+        }
+      }
+    }
+  }, [appView, (userPreferences as any).homePage, view]);
+
   // Separate effect for user-specific data
   useEffect(() => {
     if (!user?.id) {
@@ -1303,7 +1502,9 @@ const App: React.FC = () => {
         notifyOnInterest: true,
         roleMode: "requester",
         showNameToApprovedProvider: true,
+        homePage: undefined,
       });
+      hasSetInitialHomePage.current = false;
       return;
     }
 
@@ -1346,7 +1547,7 @@ const App: React.FC = () => {
     };
 
     loadUserData();
-  }, [user?.id]);
+  }, [user?.id, appView]);
 
   // ==========================================
   // Load Viewed Requests from Backend
@@ -1382,6 +1583,51 @@ const App: React.FC = () => {
       unsubscribe();
     };
   }, [user?.id, isGuest]);
+
+  // ==========================================
+  // Reload unreadInterestsCount when app comes back from background
+  // ==========================================
+  useEffect(() => {
+    if (!user?.id || isGuest || appView !== "main") {
+      return;
+    }
+
+    const handleVisibilityChange = async () => {
+      // When app becomes visible again (user comes back from background or refresh)
+      if (document.visibilityState === "visible") {
+        try {
+          const count = await getUnreadInterestsCount();
+          setUnreadInterestsCount(count);
+        } catch (error) {
+          console.error(
+            "Error reloading unread interests count on visibility change:",
+            error,
+          );
+        }
+      }
+    };
+
+    // Also reload on window focus (for browser tabs)
+    const handleFocus = async () => {
+      try {
+        const count = await getUnreadInterestsCount();
+        setUnreadInterestsCount(count);
+      } catch (error) {
+        console.error(
+          "Error reloading unread interests count on focus:",
+          error,
+        );
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [user?.id, isGuest, appView]);
 
   // ==========================================
   // Reload Data When Opening Marketplace
@@ -2001,8 +2247,26 @@ const App: React.FC = () => {
       },
     );
 
+    // Subscribe to request visibility updates (hide/show)
+    const unsubscribeUpdates = subscribeToRequestUpdates(
+      // onHide - إزالة الطلب من القائمة عند الإخفاء
+      (requestId) => {
+        setAllRequests((prev) => prev.filter((r) => r.id !== requestId));
+        // أيضاً تحديث interestsRequests
+        setInterestsRequests((prev) => prev.filter((r) => r.id !== requestId));
+      },
+      // onShow - إضافة الطلب للقائمة عند الإظهار
+      (request) => {
+        setAllRequests((prev) => {
+          if (prev.some((r) => r.id === request.id)) return prev;
+          return [request, ...prev];
+        });
+      },
+    );
+
     return () => {
       unsubscribe();
+      unsubscribeUpdates();
     };
   }, [appView]);
 
@@ -2093,6 +2357,37 @@ const App: React.FC = () => {
     setTimeout(() => {
       setIsModeSwitching(false);
     }, 600);
+  };
+
+  // Handle tab change from sidebar navigation
+  const handleTabChange = (tab: BottomNavTab) => {
+    setActiveBottomTab(tab);
+
+    // If we're in create-request or request-detail, navigate to the appropriate view
+    if (view === "create-request" || view === "request-detail") {
+      switch (tab) {
+        case "marketplace":
+          handleNavigate("marketplace");
+          break;
+        case "my-requests":
+          handleNavigate("marketplace");
+          // The marketplace view will show my-requests based on activeBottomTab
+          break;
+        case "my-offers":
+          handleNavigate("marketplace");
+          // The marketplace view will show my-offers based on activeBottomTab
+          break;
+        case "create":
+          // Already in create-request, no need to navigate
+          break;
+        case "profile":
+          handleNavigate("profile");
+          break;
+        case "messages":
+          handleNavigate("messages");
+          break;
+      }
+    }
   };
 
   const handleNavigate = (newView: any) => {
@@ -2219,7 +2514,12 @@ const App: React.FC = () => {
   };
 
   // معالجة النقر على إشعار للتنقل للعرض/الطلب
-  const handleNotificationClick = (notification: Notification) => {
+  const handleNotificationClick = async (notification: Notification) => {
+    // تأكد من تحديث الإشعار كمقروء عند النقر عليه
+    if (!notification.isRead) {
+      await handleMarkAsRead(notification.id);
+    }
+
     // إذا كان الإشعار من نوع عرض جديد
     if (notification.type === "offer" && notification.relatedRequest) {
       // البحث عن الطلب المرتبط
@@ -2252,8 +2552,19 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRequestRead = (requestId: string) => {
-    setUnreadInterestsCount((prev) => Math.max(0, prev - 1));
+  const handleRequestRead = async (requestId: string) => {
+    // Reload unread count from database to ensure sync
+    // The count is based on is_read in database, not local state
+    if (user?.id && !isGuest) {
+      try {
+        const count = await getUnreadInterestsCount();
+        setUnreadInterestsCount(count);
+      } catch (error) {
+        console.error("Error reloading unread interests count:", error);
+        // Fallback: decrement locally if database call fails
+        setUnreadInterestsCount((prev) => Math.max(0, prev - 1));
+      }
+    }
   };
 
   const handleClearNotifications = async () => {
@@ -2304,6 +2615,17 @@ const App: React.FC = () => {
       if (user?.id) {
         const archivedReqs = await fetchArchivedRequests(user.id);
         setArchivedRequests(archivedReqs);
+
+        // إعادة تحميل unreadInterestsCount من قاعدة البيانات بعد التحديث
+        try {
+          const count = await getUnreadInterestsCount();
+          setUnreadInterestsCount(count);
+        } catch (error) {
+          console.error(
+            "Error reloading unread interests count after refresh:",
+            error,
+          );
+        }
       }
     } catch (error) {
       console.error("Error reloading data:", error);
@@ -2362,22 +2684,11 @@ const App: React.FC = () => {
           });
           return filtered;
         });
-        // Reload data to sync with backend, but preserve local deletion
-        // Use a flag to ensure we don't overwrite the local deletion
-        const deletedOfferId = offerId;
-        await reloadData();
-        // Double-check: ensure the deleted offer is still removed after reload
-        setMyOffers((prev) => {
-          // If reloadData somehow brought back the deleted offer, remove it again
-          if (prev.some((o) => o.id === deletedOfferId)) {
-            console.log(
-              "⚠️ Deleted offer reappeared after reload, removing again",
-            );
-            return prev.filter((o) => o.id !== deletedOfferId);
-          }
-          return prev;
-        });
-        console.log("✅ Offer deleted and data reloaded");
+        console.log("✅ Offer deleted successfully");
+        // Background sync without blocking - don't await
+        reloadData().catch((err) =>
+          console.error("Background sync error:", err)
+        );
         return true;
       } else {
         console.error("❌ Failed to delete offer");
@@ -2920,8 +3231,9 @@ const App: React.FC = () => {
                       currentUserId,
                       draftData,
                       {
-                        seriousness: request.seriousness,
-                      },
+                        ...request, // Pass all fields (images, seriousness, etc.)
+                        id: request.id, // Explicitly pass id if present
+                      } as RequestInsert,
                     );
                     resultId = createdRequest?.id || null;
                   }
@@ -3059,6 +3371,7 @@ const App: React.FC = () => {
               voiceSendHandlerRef={voiceSendHandlerRef}
               setVoiceProcessingStatus={setVoiceProcessingStatus}
             />
+            {/* Bottom Navigation - مخفي في صفحة إنشاء الطلب (يتم استبداله بزر إرسال الطلب) */}
           </SwipeBackWrapper>
         );
       case "marketplace":
@@ -3332,6 +3645,7 @@ const App: React.FC = () => {
                   userId={user?.id}
                   viewedRequestIds={viewedRequestIds}
                   isActive={activeBottomTab === "my-offers"}
+                  defaultFilter={defaultOfferFilter}
                   onRefresh={async () => {
                     if (!user?.id) return;
                     try {
@@ -3396,6 +3710,26 @@ const App: React.FC = () => {
                       onScrollPositionChange={setMarketplaceScrollPos}
                       viewedRequestIds={viewedRequestIds}
                       isLoadingViewedRequests={isLoadingViewedRequests}
+                      onRequestViewed={async (requestId: string) => {
+                        // Update viewedRequestIds locally
+                        setViewedRequestIds((prev) => {
+                          const newSet = new Set(prev);
+                          newSet.add(requestId);
+                          return newSet;
+                        });
+                        // Reload unread count from database (based on viewed, not read)
+                        if (user?.id && !isGuest) {
+                          try {
+                            const count = await getUnreadInterestsCount();
+                            setUnreadInterestsCount(count);
+                          } catch (error) {
+                            console.error(
+                              "Error reloading unread interests count after view:",
+                              error,
+                            );
+                          }
+                        }
+                      }}
                       mode={mode}
                       toggleMode={toggleMode}
                       isModeSwitching={isModeSwitching}
@@ -3441,34 +3775,7 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {/* Bottom Navigation - shared across all tabs */}
-            <BottomNavigation
-              activeTab={activeBottomTab}
-              onTabChange={setActiveBottomTab}
-              onCreateRequest={() => handleNavigate("create-request")}
-              user={user}
-              isGuest={isGuest}
-              onSignOut={isGuest ? handleGoToLogin : handleSignOut}
-              onNavigateToProfile={() => {
-                setPreviousView(view);
-                setView("profile");
-              }}
-              onNavigateToSettings={() => {
-                setPreviousView(view);
-                setView("settings");
-              }}
-              isDarkMode={isDarkMode}
-              toggleTheme={() => setIsDarkMode(!isDarkMode)}
-              onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
-              unreadMessagesCount={unreadMessagesCount}
-              unreadMessagesForMyRequests={unreadMessagesForMyRequests}
-              unreadMessagesForMyOffers={unreadMessagesForMyOffers}
-              unreadInterestsCount={unreadInterestsCount}
-              unreadNotificationsForMyRequests={unreadNotificationsForMyRequests}
-              unreadNotificationsForMyOffers={unreadNotificationsForMyOffers}
-              unreadNotificationsCount={unreadNotificationsForProfile}
-              needsProfileSetup={!isGuest && !user?.display_name?.trim()}
-            />
+            {/* Bottom Navigation - يظهر في نهاية الملف بشكل مشروط */}
           </div>
         );
       case "request-detail":
@@ -3667,6 +3974,7 @@ const App: React.FC = () => {
                 onHideRequest={handleHideRequest}
                 onUnhideRequest={handleUnhideRequest}
               />
+              {/* Bottom Navigation - مخفي في صفحة تفاصيل الطلب (يتم استبداله بزر تقديم العرض) */}
             </SwipeBackWrapper>
           )
           : (() => {
@@ -3720,6 +4028,7 @@ const App: React.FC = () => {
                   await updatePreferencesDirect(user.id, {
                     interestedCategories: prefs.interestedCategories,
                     interestedCities: prefs.interestedCities,
+                    homePage: prefs.homePage,
                     notifyOnInterest: prefs.notifyOnInterest,
                     radarWords: prefs.radarWords,
                     roleMode: prefs.roleMode,
@@ -3988,7 +4297,13 @@ const App: React.FC = () => {
   // حساب الإشعارات غير المقروءة بشكل منفصل
   const unreadNotifications = (notifications || []).filter((n) => !n.isRead);
 
+  // Note: unreadInterestsCount is loaded from database (getUnreadInterestsCount)
+  // which is based on is_read (actual request opening), not is_viewed (just seeing the card)
+  // This ensures the badge count persists correctly after refresh and only decreases
+  // when user actually opens and reads the request (scrolling 50%+ in RequestDetail)
+
   // الإشعارات المرتبطة بطلباتي
+
   const myRequestIds = new Set(myRequests.map((r) => r.id));
   const unreadNotificationsForMyRequests =
     unreadNotifications.filter((n) =>
@@ -4216,6 +4531,36 @@ const App: React.FC = () => {
           </LayoutGroup>
         </div>
       </main>
+
+      {/* Bottom Navigation - يظهر فقط في الصفحات الرئيسية (يتم استبداله بأزرار إرسال الطلب/تقديم العرض في create-request و request-detail) */}
+      <BottomNavigation
+        activeTab={activeBottomTab}
+        onTabChange={handleTabChange}
+        onCreateRequest={() => handleNavigate("create-request")}
+        user={user}
+        isGuest={isGuest}
+        onSignOut={isGuest ? handleGoToLogin : handleSignOut}
+        onNavigateToProfile={() => {
+          setPreviousView(view);
+          setView("profile");
+        }}
+        onNavigateToSettings={() => {
+          setPreviousView(view);
+          setView("settings");
+        }}
+        isDarkMode={isDarkMode}
+        toggleTheme={() => setIsDarkMode(!isDarkMode)}
+        onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
+        unreadMessagesCount={unreadMessagesCount}
+        unreadMessagesForMyRequests={unreadMessagesForMyRequests}
+        unreadMessagesForMyOffers={unreadMessagesForMyOffers}
+        unreadInterestsCount={unreadInterestsCount}
+        unreadNotificationsForMyRequests={unreadNotificationsForMyRequests}
+        unreadNotificationsForMyOffers={unreadNotificationsForMyOffers}
+        unreadNotificationsCount={unreadNotificationsForProfile}
+        needsProfileSetup={!isGuest && !user?.display_name?.trim()}
+        hideOnMobile={view === "create-request" || view === "request-detail" || view === "settings" || view === "profile"}
+      />
 
       {/* Language Popup */}
       <AnimatePresence>

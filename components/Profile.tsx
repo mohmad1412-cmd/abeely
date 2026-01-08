@@ -938,7 +938,12 @@ export const Profile: React.FC<ProfileProps> = ({
                             }`}
                           >
                             <MapPin size={16} />
-                            <span>جميع المدن</span>
+                            <div className="flex flex-col items-center">
+                              <span>جميع المدن</span>
+                              <span className="text-[10px] opacity-75">
+                                يشمل عن بُعد
+                              </span>
+                            </div>
                           </button>
                           <button
                             onClick={() => {

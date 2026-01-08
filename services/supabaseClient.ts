@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { logger } from "../utils/logger";
+import { capacitorStorage } from "./capacitorStorage";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -57,9 +58,8 @@ export const supabase = (() => {
         persistSession: true,
         detectSessionInUrl: true,
         flowType: "pkce",
-        storage: typeof window !== "undefined"
-          ? window.localStorage
-          : undefined,
+        // استخدام capacitorStorage للتخزين الدائم على Android
+        storage: capacitorStorage,
         storageKey: "sb-iwfvlrtmbixequntufjr-auth-token",
       },
       realtime: {

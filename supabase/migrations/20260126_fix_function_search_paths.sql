@@ -1,18 +1,16 @@
--- ==========================================
--- تحسين الإشعارات مع أسماء حقيقية وعناوين احترافية
--- ==========================================
+-- ==============================================================================
+-- إصلاح تحذيرات Linter: Function Search Path Mutable
+-- Fixes: notify_on_new_offer, notify_on_offer_accepted, notify_on_new_message, notify_on_new_interest_request
+-- Explicitly setting search_path = public to prevent potential security issues.
+-- ==============================================================================
 
--- Drop existing functions
-DROP FUNCTION IF EXISTS notify_on_new_offer() CASCADE;
-DROP FUNCTION IF EXISTS notify_on_offer_accepted() CASCADE;
-DROP FUNCTION IF EXISTS notify_on_new_message() CASCADE;
-DROP FUNCTION IF EXISTS notify_on_new_interest_request() CASCADE;
-
--- ==========================================
--- Function: إشعار عند عرض جديد (مع اسم المزود وعنوان الطلب)
--- ==========================================
+-- 1. notify_on_new_offer
 CREATE OR REPLACE FUNCTION notify_on_new_offer()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   request_owner_id UUID;
   request_title TEXT;
@@ -51,13 +49,15 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
--- ==========================================
--- Function: إشعار عند قبول عرض (مع عنوان الطلب)
--- ==========================================
+-- 2. notify_on_offer_accepted
 CREATE OR REPLACE FUNCTION notify_on_offer_accepted()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   offer_provider_id UUID;
   request_title TEXT;
@@ -91,13 +91,15 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
--- ==========================================
--- Function: إشعار عند رسالة جديدة (مع اسم المرسل وعنوان الطلب)
--- ==========================================
+-- 3. notify_on_new_message
 CREATE OR REPLACE FUNCTION notify_on_new_message()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   conversation_record conversations%ROWTYPE;
   recipient_id UUID;
@@ -158,13 +160,15 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
--- ==========================================
--- Function: إشعار عند طلب جديد يطابق اهتمامات المستخدم
--- ==========================================
+-- 4. notify_on_new_interest_request
 CREATE OR REPLACE FUNCTION notify_on_new_interest_request()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   request_categories TEXT[];
   request_city TEXT;
@@ -246,14 +250,4 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
-
--- ==========================================
--- Create trigger for interest notifications
--- ==========================================
-DROP TRIGGER IF EXISTS trigger_notify_on_new_interest_request ON requests;
-CREATE TRIGGER trigger_notify_on_new_interest_request
-AFTER INSERT ON requests
-FOR EACH ROW
-EXECUTE FUNCTION notify_on_new_interest_request();
-
+$$;

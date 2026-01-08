@@ -73,6 +73,7 @@ import {
   searchCities as searchCitiesAPI,
 } from "../services/placesService";
 import { calculateSeriousness } from "../services/requestsService";
+import { markRequestAsViewed } from "../services/requestViewsService";
 type ViewMode = "grid" | "text";
 
 interface MarketplaceProps {
@@ -101,6 +102,7 @@ interface MarketplaceProps {
   // Viewed requests from Backend - الطلبات المشاهدة من قاعدة البيانات
   viewedRequestIds?: Set<string>;
   isLoadingViewedRequests?: boolean; // هل يتم تحميل viewedRequestIds حالياً؟
+  onRequestViewed?: (requestId: string) => void; // Callback لتحديث viewedRequestIds في App.tsx
   // Main Header Props
   mode: "requests" | "offers";
   toggleMode: () => void;
@@ -159,6 +161,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   // Viewed requests from Backend
   viewedRequestIds: backendViewedIds,
   isLoadingViewedRequests = false,
+  onRequestViewed,
   // Main Header Props
   mode,
   toggleMode,
@@ -198,13 +201,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       </div>
     );
   }
-  
+
   console.log("🏪 Marketplace rendered:", {
     requestsCount: requests.length,
     hasOnSelectRequest: !!onSelectRequest,
     onSelectRequestType: typeof onSelectRequest,
   });
-  
+
   // View mode state - "all" or "interests"
   const [viewMode, setViewMode] = useState<"all" | "interests">("all");
 
@@ -253,6 +256,80 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   useEffect(() => {
     onViewModeChange?.(viewMode);
   }, [viewMode, onViewModeChange]);
+
+  // Track viewed requests when they become visible on screen (in interests mode)
+  // This decreases the badge count when user sees the card (50%+ visible)
+  // but the green dot remains until user actually opens the request (is_read = true)
+  useEffect(() => {
+    // Only track views in interests mode and when not a guest
+    if (viewMode !== "interests" || isGuest || !userId || !onRequestViewed) {
+      return;
+    }
+
+    // Wait until viewedRequestIds are loaded
+    if (isLoadingViewedRequests) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const requestId = entry.target.getAttribute("data-request-id");
+            if (
+              requestId &&
+              backendViewedIds &&
+              !backendViewedIds.has(requestId)
+            ) {
+              // Mark as viewed in backend (viewed only, not read)
+              markRequestAsViewed(requestId).then((success) => {
+                if (success) {
+                  // Notify parent to update viewedRequestIds locally
+                  onRequestViewed(requestId);
+                  logger.log(`✅ Request ${requestId} marked as viewed`);
+                } else {
+                  logger.warn(
+                    `❌ Failed to mark request ${requestId} as viewed`,
+                  );
+                }
+              });
+            }
+          }
+        });
+      },
+      {
+        // Trigger when at least 50% of the card is visible
+        threshold: 0.5,
+        rootMargin: "0px",
+      },
+    );
+
+    // Observe all request cards - use setTimeout to ensure DOM is ready
+    const observeCards = () => {
+      const cards = document.querySelectorAll("[data-request-id]");
+      logger.log(
+        `👁️ Observing ${cards.length} request cards for view tracking`,
+      );
+      cards.forEach((card) => observer.observe(card));
+    };
+
+    // Use setTimeout to ensure cards are rendered
+    const timeoutId = setTimeout(observeCards, 300);
+
+    return () => {
+      clearTimeout(timeoutId);
+      observer.disconnect();
+    };
+  }, [
+    viewMode,
+    isGuest,
+    userId,
+    onRequestViewed,
+    isLoadingViewedRequests,
+    backendViewedIds,
+    interestsRequests.length, // Re-observe when interests requests change
+    requests.length, // Re-observe when requests change
+  ]);
 
   // Display Mode (Grid / Text)
   const [displayMode, setDisplayMode] = useState<ViewMode>("text");
@@ -993,10 +1070,6 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     });
   };
 
-  const filteredCities = CITIES.filter((city) =>
-    city.toLowerCase().includes(tempCitySearch.toLowerCase())
-  );
-
   const filteredCategories = categories.filter((cat) =>
     cat.label.toLowerCase().includes(tempCatSearch.toLowerCase())
   );
@@ -1082,11 +1155,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
   // حساب عدد الطلبات غير المقروءة في اهتماماتي
   // لا نحسب الطلبات غير المقروءة أثناء التحميل لتجنب إظهار عدد خاطئ
-  const unreadInterestsRequestsCount = isLoadingViewedRequests
-    ? 0
-    : interestsRequests.filter(
-      (req) => !viewedRequestIds.has(req.id),
-    ).length;
+  // استخدام العدد الممرر مباشرة من App.tsx لضمان توافقه مع الـ badge السفلي
+  const unreadInterestsRequestsCount = unreadInterestsCount || 0;
 
   // استخدام useMemo لضمان تحديث الفلترة عند تحديث myOffers
   // هذا يمنع ظهور الطلبات مؤقتاً ثم اختفائها عند تحميل العروض
@@ -1222,290 +1292,449 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
   return (
     <div
+      ref={marketplaceScrollRef}
       id="marketplace-container"
-      className="h-full flex flex-col overflow-hidden container mx-auto max-w-6xl relative pt-20"
+      className="h-full overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar overflow-y-auto"
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col items-center z-20">
-        <div className="pointer-events-auto px-4 pt-4 bg-transparent relative z-10">
-          <UnifiedFilterIsland
-            hasActiveFilters={hasActiveFilters}
-            isActive={typeof isActive === "boolean"
-              ? isActive
-              : Boolean(isActive)}
-            isSearchOpen={isSearchInputOpen || !!searchTerm}
-          >
-            {/* Filter Button - Always visible on the right (RTL) */}
-            <motion.button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsFiltersPopupOpen(true);
-              }}
-              className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-all shrink-0 ${
-                (searchCategories.length > 0 || searchCities.length > 0 ||
-                    searchBudgetMin || searchBudgetMax)
-                  ? "bg-primary text-white"
-                  : "text-muted-foreground hover:text-primary hover:bg-secondary/50"
-              }`}
-              whileTap={{ scale: 0.96 }}
+      {/* Sticky Header Wrapper - Unified with main header - same structure as MyRequests/MyOffers */}
+      <div className="sticky top-0 z-[60] overflow-visible">
+        {/* طبقة متدرجة خلف عناصر الهيدر - تعزل الكروت */}
+        <div
+          className="absolute left-0 right-0 pointer-events-none"
+          style={{
+            top: "-50px",
+            height: "calc(100% + 100px)",
+            background: `linear-gradient(to bottom,
+              rgba(var(--background-rgb), 1) 0%,
+              rgba(var(--background-rgb), 1) 60%,
+              rgba(var(--background-rgb), 0.8) 75%,
+              rgba(var(--background-rgb), 0) 100%
+            )`,
+            zIndex: -1,
+          }}
+        />
+        {/* Gradient separator between filters and cards */}
+        <div
+          className="absolute left-0 right-0 bottom-0 h-16 pointer-events-none"
+          style={{
+            background:
+              "linear-gradient(to bottom, rgba(var(--background-rgb), 0), rgba(var(--background-rgb), 0.6), rgba(var(--background-rgb), 1))",
+          }}
+        />
+        {/* Container for header and filter island - fixed compact size */}
+        <div
+          className="flex flex-col overflow-visible origin-top"
+          style={{
+            transform: "scale(0.92) translateY(4px)",
+          }}
+        >
+          {/* Unified Filter Island with Search - inside scaled container */}
+          <div className="px-4 pt-4 bg-transparent relative z-10">
+            <UnifiedFilterIsland
+              hasActiveFilters={hasActiveFilters}
+              isActive={typeof isActive === "boolean"
+                ? isActive
+                : Boolean(isActive)}
+              isSearchOpen={isSearchInputOpen || !!searchTerm}
             >
-              <Filter size={15} strokeWidth={2.5} />
-              {(searchCategories.length + searchCities.length +
-                    (searchBudgetMin || searchBudgetMax ? 1 : 0)) > 0 && (
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="absolute -top-1 -left-1 min-w-[16px] h-[16px] px-1 rounded-full bg-white text-primary text-[9px] font-bold flex items-center justify-center shadow-md border border-primary/20"
-                >
-                  {searchCategories.length + searchCities.length +
-                    (searchBudgetMin || searchBudgetMax ? 1 : 0)}
-                </motion.span>
-              )}
-            </motion.button>
+              {/* Filter Button - Always visible on the right (RTL) */}
+              <motion.button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsFiltersPopupOpen(true);
+                }}
+                className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-all shrink-0 ${
+                  (searchCategories.length > 0 || searchCities.length > 0 ||
+                      searchBudgetMin || searchBudgetMax)
+                    ? "bg-primary text-white"
+                    : "text-muted-foreground hover:text-primary hover:bg-secondary/50"
+                }`}
+                whileTap={{ scale: 0.96 }}
+              >
+                <Filter size={15} strokeWidth={2.5} />
+                {(searchCategories.length + searchCities.length +
+                      (searchBudgetMin || searchBudgetMax ? 1 : 0)) > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -top-1 -left-1 min-w-[16px] h-[16px] px-1 rounded-full bg-white text-primary text-[9px] font-bold flex items-center justify-center shadow-md border border-primary/20"
+                  >
+                    {searchCategories.length + searchCities.length +
+                      (searchBudgetMin || searchBudgetMax ? 1 : 0)}
+                  </motion.span>
+                )}
+              </motion.button>
 
-            {/* Center Content - Tabs or Search Input */}
-            <div className="flex-1 flex items-center relative min-w-0 overflow-visible">
-              <AnimatePresence mode="popLayout">
-                {isSearchInputOpen || searchTerm
-                  ? (
-                    /* Search Input Mode */
-                    <motion.div
-                      key="search-input"
-                      initial={{ x: 100, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: 100, opacity: 0 }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 400,
-                        damping: 30,
-                      }}
-                      className="flex items-center gap-1.5 flex-1 px-2 min-w-0 overflow-hidden relative"
-                      dir="rtl"
-                    >
-                      {/* Animated Placeholder - يظهر فقط عندما يكون الحقل فارغاً */}
-                      {!searchTerm && (() => {
-                        const placeholder = getSearchPlaceholder();
-                        const shouldAnimate = placeholder.isCategories &&
-                          Array.isArray(placeholder.animated) &&
-                          placeholder.animated.length > 0;
-                        return (
-                          <div className="absolute inset-0 flex items-center pointer-events-none pl-20 pr-2 overflow-hidden rtl">
-                            <span className="text-sm font-medium text-muted-foreground whitespace-nowrap flex items-center gap-1 w-full">
-                              <span className="shrink-0">
-                                {placeholder.static}
-                              </span>
-                              {shouldAnimate
-                                ? (
-                                  <span className="inline-block overflow-hidden flex-1 min-w-0 relative">
-                                    <span
-                                      className="inline-flex items-center gap-1.5 animate-marquee-placeholder"
-                                      style={{ paddingLeft: "0.25rem" }}
-                                    >
-                                      {/* First set of badges */}
-                                      <span className="inline-flex items-center gap-1.5">
-                                        {Array.isArray(placeholder.animated) &&
-                                          placeholder.animated.map((
-                                            label,
-                                            idx,
-                                          ) => (
-                                            <span
-                                              key={`first-${idx}`}
-                                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/5 text-primary border border-primary/20 text-xs font-medium shrink-0"
-                                            >
-                                              {label}
-                                            </span>
-                                          ))}
-                                      </span>
-                                      {/* Second set of badges for seamless loop - تبدأ من اليسار */}
+              {/* Center Content - Tabs or Search Input */}
+              <div className="flex-1 flex items-center relative min-w-0 overflow-visible">
+                <AnimatePresence mode="popLayout">
+                  {isSearchInputOpen || searchTerm
+                    ? (
+                      /* Search Input Mode */
+                      <motion.div
+                        key="search-input"
+                        initial={{ x: 100, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: 100, opacity: 0 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 30,
+                        }}
+                        className="flex items-center gap-1.5 flex-1 px-2 min-w-0 overflow-hidden relative"
+                        dir="rtl"
+                      >
+                        {/* Animated Placeholder - يظهر فقط عندما يكون الحقل فارغاً */}
+                        {!searchTerm && (() => {
+                          const placeholder = getSearchPlaceholder();
+                          const shouldAnimate = placeholder.isCategories &&
+                            Array.isArray(placeholder.animated) &&
+                            placeholder.animated.length > 0;
+                          return (
+                            <div className="absolute inset-0 flex items-center pointer-events-none pl-20 pr-2 overflow-hidden rtl">
+                              <span className="text-sm font-medium text-muted-foreground whitespace-nowrap flex items-center gap-1 w-full">
+                                <span className="shrink-0">
+                                  {placeholder.static}
+                                </span>
+                                {shouldAnimate
+                                  ? (
+                                    <span className="inline-block overflow-hidden flex-1 min-w-0 relative">
                                       <span
-                                        className="inline-flex items-center gap-1.5"
-                                        style={{ marginLeft: "0.5rem" }}
+                                        className="inline-flex items-center gap-1.5 animate-marquee-placeholder"
+                                        style={{ paddingLeft: "0.25rem" }}
                                       >
-                                        {Array.isArray(placeholder.animated) &&
-                                          placeholder.animated.map((
-                                            label,
-                                            idx,
-                                          ) => (
-                                            <span
-                                              key={`second-${idx}`}
-                                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/5 text-primary border border-primary/20 text-xs font-medium shrink-0"
-                                            >
-                                              {label}
-                                            </span>
-                                          ))}
+                                        {/* First set of badges */}
+                                        <span className="inline-flex items-center gap-1.5">
+                                          {Array.isArray(
+                                            placeholder.animated,
+                                          ) &&
+                                            placeholder.animated.map((
+                                              label,
+                                              idx,
+                                            ) => (
+                                              <span
+                                                key={`first-${idx}`}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/5 text-primary border border-primary/20 text-xs font-medium shrink-0"
+                                              >
+                                                {label}
+                                              </span>
+                                            ))}
+                                        </span>
+                                        {/* Second set of badges for seamless loop - تبدأ من اليسار */}
+                                        <span
+                                          className="inline-flex items-center gap-1.5"
+                                          style={{ marginLeft: "0.5rem" }}
+                                        >
+                                          {Array.isArray(
+                                            placeholder.animated,
+                                          ) &&
+                                            placeholder.animated.map((
+                                              label,
+                                              idx,
+                                            ) => (
+                                              <span
+                                                key={`second-${idx}`}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/5 text-primary border border-primary/20 text-xs font-medium shrink-0"
+                                              >
+                                                {label}
+                                              </span>
+                                            ))}
+                                        </span>
                                       </span>
                                     </span>
-                                  </span>
-                                )
-                                : (
-                                  <span
-                                    className="inline-block"
-                                    style={{ paddingLeft: "0.25rem" }}
-                                  >
-                                    {typeof placeholder.animated === "string"
-                                      ? placeholder.animated
-                                      : ""}
-                                  </span>
-                                )}
-                            </span>
-                          </div>
-                        );
-                      })()}
-                      <input
-                        ref={searchInputRef}
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder=""
-                        dir="rtl"
-                        className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-foreground py-2 text-right min-w-0 relative z-10 pl-20"
-                        autoFocus
-                        onBlur={() => {
-                          // Delay to allow click events on other buttons to fire first
-                          setTimeout(() => {
-                            if (!searchTerm) {
+                                  )
+                                  : (
+                                    <span
+                                      className="inline-block"
+                                      style={{ paddingLeft: "0.25rem" }}
+                                    >
+                                      {typeof placeholder.animated === "string"
+                                        ? placeholder.animated
+                                        : ""}
+                                    </span>
+                                  )}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                        <input
+                          ref={searchInputRef}
+                          type="text"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          placeholder=""
+                          dir="rtl"
+                          className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-foreground py-2 text-right min-w-0 relative z-10 pl-20"
+                          autoFocus
+                          onBlur={() => {
+                            // Delay to allow click events on other buttons to fire first
+                            setTimeout(() => {
+                              if (!searchTerm) {
+                                setIsSearchInputOpen(false);
+                              }
+                            }, 150);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              setSearchTerm("");
                               setIsSearchInputOpen(false);
                             }
-                          }, 150);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Escape") {
-                            setSearchTerm("");
-                            setIsSearchInputOpen(false);
-                          }
-                        }}
-                      />
-                      {searchTerm && (
+                          }}
+                        />
+                        {searchTerm && (
+                          <motion.button
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            onClick={() => {
+                              setSearchTerm("");
+                              searchInputRef.current?.focus();
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors shrink-0"
+                          >
+                            <X size={14} strokeWidth={2.5} />
+                          </motion.button>
+                        )}
                         <motion.button
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
+                          transition={{ delay: 0.15 }}
                           onClick={() => {
                             setSearchTerm("");
-                            searchInputRef.current?.focus();
+                            setIsSearchInputOpen(false);
                           }}
-                          className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors shrink-0"
+                          className="text-[11px] font-medium text-primary/70 hover:text-primary px-2 py-1 rounded-lg hover:bg-primary/10 transition-colors shrink-0"
                         >
-                          <X size={14} strokeWidth={2.5} />
+                          إلغاء
                         </motion.button>
-                      )}
-                      <motion.button
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: 0.15 }}
-                        onClick={() => {
-                          setSearchTerm("");
-                          setIsSearchInputOpen(false);
+                      </motion.div>
+                    )
+                    : (
+                      /* Normal Tabs Mode */
+                      <motion.div
+                        key="tabs"
+                        initial={{ y: 40, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: 40, opacity: 0 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 30,
                         }}
-                        className="text-[11px] font-medium text-primary/70 hover:text-primary px-2 py-1 rounded-lg hover:bg-primary/10 transition-colors shrink-0"
+                        className="flex items-center justify-center flex-1 relative min-w-0"
                       >
-                        إلغاء
-                      </motion.button>
-                    </motion.div>
-                  )
-                  : (
-                    /* Normal Tabs Mode */
-                    <motion.div
-                      key="tabs"
-                      initial={{ y: 40, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      exit={{ y: 40, opacity: 0 }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 400,
-                        damping: 30,
-                      }}
-                      className="flex items-center justify-center flex-1 relative min-w-0"
-                    >
-                      {/* Animated capsule indicator */}
-                      {!hasActiveFilters && (
-                        <motion.div
-                          className="absolute inset-y-0 rounded-full bg-primary shadow-md z-0"
-                          animate={{
-                            left: viewMode === "all" ? "50%" : "0%",
+                        {/* Animated capsule indicator */}
+                        {!hasActiveFilters && (
+                          <motion.div
+                            className="absolute inset-y-0 rounded-full bg-primary shadow-md z-0"
+                            animate={{
+                              left: viewMode === "all" ? "50%" : "0%",
+                            }}
+                            style={{ width: "50%" }}
+                            transition={{ duration: 0.2, ease: "easeOut" }}
+                          />
+                        )}
+                        <button
+                          onClick={() => {
+                            if (navigator.vibrate) navigator.vibrate(15);
+                            if (
+                              searchCategories.length > 0 ||
+                              searchCities.length > 0 || searchBudgetMin ||
+                              searchBudgetMax
+                            ) {
+                              handleResetSearch();
+                            }
+                            setViewMode("all");
                           }}
-                          style={{ width: "50%" }}
-                          transition={{ duration: 0.2, ease: "easeOut" }}
-                        />
-                      )}
-                      <button
-                        onClick={() => {
-                          if (navigator.vibrate) navigator.vibrate(15);
-                          if (
-                            searchCategories.length > 0 ||
-                            searchCities.length > 0 || searchBudgetMin ||
-                            searchBudgetMax
-                          ) {
-                            handleResetSearch();
-                          }
-                          setViewMode("all");
-                        }}
-                        className={`flex-1 py-3 px-5 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
-                          viewMode === "all" && !hasActiveFilters
-                            ? "text-white"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        <span className="relative z-10 text-center">
-                          كل الطلبات
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (navigator.vibrate) navigator.vibrate(15);
-                          if (
-                            searchCategories.length > 0 ||
-                            searchCities.length > 0 || searchBudgetMin ||
-                            searchBudgetMax
-                          ) {
-                            handleResetSearch();
-                          }
-                          setViewMode("interests");
-                        }}
-                        className={`flex-1 py-3 px-5 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
-                          viewMode === "interests" && !hasActiveFilters
-                            ? "text-white"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        <span className="relative z-10 flex items-center justify-center gap-1.5">
-                          اهتماماتي
-                          {unreadInterestsRequestsCount > 0 && (
-                            <span
-                              className={`inline-flex items-center justify-center min-w-[1.2rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-all animate-pulse ${
-                                viewMode === "interests" && !hasActiveFilters
-                                  ? "bg-white text-primary shadow-sm"
-                                  : "bg-primary text-white shadow-lg shadow-primary/30"
-                              }`}
-                            >
-                              {unreadInterestsRequestsCount}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                    </motion.div>
-                  )}
-              </AnimatePresence>
-            </div>
+                          className={`flex-1 py-3 px-5 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
+                            viewMode === "all" && !hasActiveFilters
+                              ? "text-white"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="relative z-10 text-center">
+                            كل الطلبات
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (navigator.vibrate) navigator.vibrate(15);
+                            if (
+                              searchCategories.length > 0 ||
+                              searchCities.length > 0 || searchBudgetMin ||
+                              searchBudgetMax
+                            ) {
+                              handleResetSearch();
+                            }
+                            setViewMode("interests");
+                          }}
+                          className={`flex-1 py-3 px-5 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
+                            viewMode === "interests" && !hasActiveFilters
+                              ? "text-white"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="relative z-10 flex items-center justify-center gap-1.5">
+                            اهتماماتي
+                            {unreadInterestsRequestsCount > 0 && (
+                              <span
+                                className={`inline-flex items-center justify-center min-w-[1.2rem] h-5 rounded-full px-1.5 text-[11px] font-bold transition-all animate-pulse ${
+                                  viewMode === "interests" && !hasActiveFilters
+                                    ? "bg-white text-primary shadow-sm"
+                                    : "bg-primary text-white shadow-lg shadow-primary/30"
+                                }`}
+                              >
+                                {unreadInterestsRequestsCount}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      </motion.div>
+                    )}
+                </AnimatePresence>
+              </div>
 
-            {/* Search Button - Moves from right to left when clicked */}
-            <button
-              onClick={() => {
-                if (navigator.vibrate) navigator.vibrate(10);
-                if (!isSearchInputOpen && !searchTerm) {
-                  setIsSearchInputOpen(true);
-                  setTimeout(() => searchInputRef.current?.focus(), 100);
-                }
-              }}
-              className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-colors shrink-0 bg-transparent active:scale-95 ${
-                isSearchInputOpen || searchTerm
-                  ? "text-primary"
-                  : "text-muted-foreground hover:text-primary"
-              }`}
-            >
-              <Search size={15} strokeWidth={2.5} />
-            </button>
-          </UnifiedFilterIsland>
+              {/* Search Button - Moves from right to left when clicked */}
+              <button
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(10);
+                  if (!isSearchInputOpen && !searchTerm) {
+                    setIsSearchInputOpen(true);
+                    setTimeout(() => searchInputRef.current?.focus(), 100);
+                  }
+                }}
+                className={`relative w-10 h-10 flex items-center justify-center rounded-full transition-colors shrink-0 bg-transparent active:scale-95 ${
+                  isSearchInputOpen || searchTerm
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-primary"
+                }`}
+              >
+                <Search size={15} strokeWidth={2.5} />
+              </button>
+            </UnifiedFilterIsland>
+          </div>
         </div>
       </div>
+
+      {/* Pull-to-Refresh Indicator - بعد الجزيرة مباشرة */}
+      <AnimatePresence>
+        {(pullToRefreshState.isPulling || pullToRefreshState.isRefreshing) && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{
+              height: pullToRefreshState.isRefreshing
+                ? 70
+                : Math.min(pullToRefreshState.pullDistance, 90),
+              opacity: 1,
+            }}
+            exit={{ height: 0, opacity: 0 }}
+            className="flex items-center justify-center overflow-hidden z-[70]"
+          >
+            <motion.div
+              initial={{ y: -20 }}
+              animate={{ y: 0 }}
+              className="flex flex-col items-center py-2"
+            >
+              <div className="relative w-10 h-10 flex items-center justify-center">
+                {/* Background Progress Circle */}
+                <svg
+                  className="absolute inset-0 w-full h-full transform -rotate-90"
+                  viewBox="0 0 40 40"
+                >
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="16"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    fill="transparent"
+                    className="text-primary/10"
+                  />
+                  {!pullToRefreshState.isRefreshing && (
+                    <motion.circle
+                      cx="20"
+                      cy="20"
+                      r="16"
+                      stroke="url(#pull-gradient-marketplace)"
+                      strokeWidth="2.5"
+                      fill="transparent"
+                      strokeDasharray={100.5}
+                      strokeDashoffset={100.5 -
+                        (Math.min(pullToRefreshState.pullDistance / 60, 1) *
+                          100.5)}
+                      strokeLinecap="round"
+                      className="opacity-60"
+                    />
+                  )}
+                  <defs>
+                    <linearGradient
+                      id="pull-gradient-marketplace"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="100%"
+                    >
+                      <stop offset="0%" stopColor="#1E968C" />
+                      <stop offset="100%" stopColor="#153659" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+
+                {/* Icon Container */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <AnimatePresence mode="wait">
+                    {pullToRefreshState.isRefreshing
+                      ? (
+                        <motion.div
+                          key="refreshing-icon"
+                          initial={{ opacity: 0, rotate: 0 }}
+                          animate={{ opacity: 1, rotate: 360 }}
+                          exit={{ opacity: 0 }}
+                          transition={{
+                            rotate: {
+                              duration: 1,
+                              repeat: Infinity,
+                              ease: "linear",
+                            },
+                            opacity: { duration: 0.2 },
+                          }}
+                          className="text-primary"
+                        >
+                          <Loader2 size={20} strokeWidth={2.5} />
+                        </motion.div>
+                      )
+                      : (
+                        <motion.div
+                          key="pulling-icon"
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{
+                            opacity: 1,
+                            scale: pullToRefreshState.pullDistance >= 60
+                              ? 1.1
+                              : 1,
+                            rotate: (pullToRefreshState.pullDistance / 60) *
+                              180,
+                          }}
+                          exit={{ opacity: 0, scale: 0.5 }}
+                          transition={{
+                            type: "spring",
+                            stiffness: 300,
+                            damping: 25,
+                          }}
+                          className={pullToRefreshState.pullDistance >= 60
+                            ? "text-primary"
+                            : "text-primary/50"}
+                        >
+                          <RotateCw size={16} strokeWidth={2.5} />
+                        </motion.div>
+                      )}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Active Filters Display - Second Row */}
       {(searchCategories.length > 0 || searchCities.length > 0 ||
         searchBudgetMin || searchBudgetMax) && (
@@ -1608,136 +1837,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         </div>
       )}
 
-      {/* Scrollable Content Area - السكرول الوحيد هنا */}
-      <div
-        ref={marketplaceScrollRef}
-        className={`flex-1 overflow-x-hidden relative no-scrollbar ${
-          filteredRequests.length === 0 && !isLoading
-            ? "overflow-hidden"
-            : "overflow-y-auto"
-        }`}
-      >
-        {/* Pull-to-Refresh Indicator */}
-        <AnimatePresence>
-          {(pullToRefreshState.isPulling || pullToRefreshState.isRefreshing) &&
-            (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{
-                  height: pullToRefreshState.isRefreshing
-                    ? 70
-                    : Math.min(pullToRefreshState.pullDistance, 90),
-                  opacity: 1,
-                }}
-                exit={{ height: 0, opacity: 0 }}
-                className="flex items-center justify-center overflow-hidden z-[70]"
-              >
-                <motion.div
-                  initial={{ y: -20 }}
-                  animate={{ y: 0 }}
-                  className="flex flex-col items-center py-2"
-                >
-                  <div className="relative w-10 h-10 flex items-center justify-center">
-                    {/* Background Progress Circle - Minimal & Discrete */}
-                    <svg
-                      className="absolute inset-0 w-full h-full transform -rotate-90"
-                      viewBox="0 0 40 40"
-                    >
-                      <circle
-                        cx="20"
-                        cy="20"
-                        r="16"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        fill="transparent"
-                        className="text-primary/10"
-                      />
-                      {!pullToRefreshState.isRefreshing && (
-                        <motion.circle
-                          cx="20"
-                          cy="20"
-                          r="16"
-                          stroke="url(#pull-gradient-hero)"
-                          strokeWidth="2.5"
-                          fill="transparent"
-                          strokeDasharray={100.5}
-                          strokeDashoffset={100.5 -
-                            (Math.min(pullToRefreshState.pullDistance / 60, 1) *
-                              100.5)}
-                          strokeLinecap="round"
-                          className="opacity-60"
-                        />
-                      )}
-                      <defs>
-                        <linearGradient
-                          id="pull-gradient-hero"
-                          x1="0%"
-                          y1="0%"
-                          x2="100%"
-                          y2="100%"
-                        >
-                          <stop offset="0%" stopColor="#1E968C" />
-                          <stop offset="100%" stopColor="#153659" />
-                        </linearGradient>
-                      </defs>
-                    </svg>
-
-                    {/* Icon Container - Centered */}
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <AnimatePresence mode="wait">
-                        {pullToRefreshState.isRefreshing
-                          ? (
-                            <motion.div
-                              key="refreshing-icon"
-                              initial={{ opacity: 0, rotate: 0 }}
-                              animate={{ opacity: 1, rotate: 360 }}
-                              exit={{ opacity: 0 }}
-                              transition={{
-                                rotate: {
-                                  duration: 1,
-                                  repeat: Infinity,
-                                  ease: "linear",
-                                },
-                                opacity: { duration: 0.2 },
-                              }}
-                              className="text-primary"
-                            >
-                              <Loader2 size={20} strokeWidth={2.5} />
-                            </motion.div>
-                          )
-                          : (
-                            <motion.div
-                              key="pulling-icon"
-                              initial={{ opacity: 0, scale: 0.8 }}
-                              animate={{
-                                opacity: 1,
-                                scale: pullToRefreshState.pullDistance >= 60
-                                  ? 1.1
-                                  : 1,
-                                rotate: (pullToRefreshState.pullDistance / 60) *
-                                  180,
-                              }}
-                              exit={{ opacity: 0, scale: 0.5 }}
-                              transition={{
-                                type: "spring",
-                                stiffness: 300,
-                                damping: 25,
-                              }}
-                              className={pullToRefreshState.pullDistance >= 60
-                                ? "text-primary"
-                                : "text-primary/50"}
-                            >
-                              <RotateCw size={16} strokeWidth={2.5} />
-                            </motion.div>
-                          )}
-                      </AnimatePresence>
-                    </div>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-        </AnimatePresence>
-
+      {/* Content - الكروت تبدأ من هنا مباشرة بعد pull-to-refresh */}
+      <div className="px-4 pb-24">
         {/* Floating Scroll to Top Button - Same position as the orb */}
         {/* يظهر فقط إذا كان هناك أكثر من 9 طلبات وتم السكرول للأسفل */}
         <AnimatePresence>
@@ -2636,12 +2737,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               </div>
 
               <h3 className="text-xl font-bold text-foreground mb-3">
-                {loadError.includes("timeout") || loadError.includes("Connection timeout")
+                {loadError.includes("timeout") ||
+                    loadError.includes("Connection timeout")
                   ? "انتهت مهلة الاتصال"
                   : "لم نتمكن من التحميل"}
               </h3>
               <div className="text-muted-foreground max-w-xs mx-auto leading-relaxed mb-8 text-sm space-y-2">
-                {loadError.includes("timeout") || loadError.includes("Connection timeout")
+                {loadError.includes("timeout") ||
+                    loadError.includes("Connection timeout")
                   ? (
                     <>
                       <p>لا يمكن الاتصال بخادم Supabase. تأكد من:</p>
@@ -2653,7 +2756,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     </>
                   )
                   : (
-                    <p>{loadError || "قد يكون هناك مشكلة مؤقتة في الاتصال. لا تقلق، جرب مرة أخرى!"}</p>
+                    <p>
+                      {loadError ||
+                        "قد يكون هناك مشكلة مؤقتة في الاتصال. لا تقلق، جرب مرة أخرى!"}
+                    </p>
                   )}
               </div>
 
@@ -2868,8 +2974,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   </div>
 
                   {/* Categories - Collapsible */}
-                  <div className="space-y-3">
-                    <button
+                  <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
+                    <div 
                       onClick={() => {
                         const newState = !isCategoriesExpanded;
                         setIsCategoriesExpanded(newState);
@@ -2878,31 +2984,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           setIsRadarWordsExpanded(false);
                         }
                       }}
-                      className="flex items-center justify-between w-full"
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
                     >
-                      <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
-                        <Filter
-                          size={16}
-                          strokeWidth={2.5}
-                          className="text-primary"
-                        />
-                        التصنيفات والمهام
-                        {tempInterests.length > 0 && (
-                          <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-primary text-white px-1.5 text-[10px] font-bold">
-                            {tempInterests.length}
-                          </span>
-                        )}
-                      </h3>
-                      <motion.div
-                        animate={{ rotate: isCategoriesExpanded ? 180 : 0 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <ChevronDown
-                          size={18}
-                          className="text-muted-foreground"
-                        />
-                      </motion.div>
-                    </button>
+                      <h4 className="font-bold text-sm">التصنيفات والمهام</h4>
+                      <ChevronDown 
+                        size={18} 
+                        className={`text-muted-foreground transition-transform duration-200 ${isCategoriesExpanded ? "rotate-180" : ""}`} 
+                      />
+                    </div>
                     <AnimatePresence>
                       {isCategoriesExpanded && (
                         <motion.div
@@ -2910,47 +2999,41 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
                           transition={{ duration: 0.2 }}
-                          className="overflow-hidden space-y-3"
+                          className="overflow-hidden border-t border-border"
                         >
-                          <div className="relative mt-3">
-                            <Search
-                              size={16}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                            />
+                          <div className="p-3 space-y-3">
                             <input
                               type="text"
-                              placeholder="ابحث عن تصنيف..."
+                              placeholder="بحث..."
                               value={tempCatSearch}
                               onChange={(e) => setTempCatSearch(e.target.value)}
-                              className="w-full pr-10 pl-4 py-2 rounded-xl border-2 border-border bg-card text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-all text-sm"
+                              className="w-full text-xs px-3 py-1.5 rounded-lg border-2 border-[#1E968C]/30 bg-background focus:border-[#178075] focus:outline-none transition-all"
                             />
-                          </div>
-                          <div className="flex flex-wrap justify-start gap-2 max-h-48 overflow-y-auto no-scrollbar w-full">
-                            {filteredCategories.map((cat) => (
-                              <button
-                                key={cat.id}
-                                onClick={() => toggleInterest(cat.id)}
-                                className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${
-                                  tempInterests.includes(cat.id)
-                                    ? "bg-primary text-white shadow-sm"
-                                    : "bg-secondary/60 text-foreground hover:bg-secondary border border-border/50"
-                                }`}
-                              >
-                                {cat.emoji} {cat.label}
-                              </button>
-                            ))}
+                            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar">
+                              {filteredCategories.map((cat) => (
+                                <button
+                                  type="button"
+                                  key={cat.id}
+                                  onClick={() => toggleInterest(cat.id)}
+                                  className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
+                                    tempInterests.includes(cat.id)
+                                      ? 'bg-primary text-white'
+                                      : 'bg-background text-foreground hover:bg-secondary/80 border border-border'
+                                  }`}
+                                >
+                                  {cat.emoji} {cat.label}
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         </motion.div>
                       )}
                     </AnimatePresence>
                   </div>
 
-                  {/* Divider */}
-                  <div className="border-t border-border" />
-
                   {/* Cities - Collapsible */}
-                  <div className="space-y-3">
-                    <button
+                  <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
+                    <div 
                       onClick={() => {
                         const newState = !isCitiesExpanded;
                         setIsCitiesExpanded(newState);
@@ -2959,32 +3042,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           setIsRadarWordsExpanded(false);
                         }
                       }}
-                      className="flex items-center justify-between w-full"
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
                     >
-                      <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
-                        <MapPin
-                          size={16}
-                          strokeWidth={2.5}
-                          className="text-red-500"
-                        />
-                        المدن والمناطق
-                        {tempCities.length > 0 &&
-                          !tempCities.includes("كل المدن") && (
-                          <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-red-500 text-white px-1.5 text-[10px] font-bold">
-                            {tempCities.filter((c) => c !== "عن بعد").length}
-                          </span>
-                        )}
-                      </h3>
-                      <motion.div
-                        animate={{ rotate: isCitiesExpanded ? 180 : 0 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <ChevronDown
-                          size={18}
-                          className="text-muted-foreground"
-                        />
-                      </motion.div>
-                    </button>
+                      <h4 className="font-bold text-sm">المدن والمناطق</h4>
+                      <ChevronDown 
+                        size={18} 
+                        className={`text-muted-foreground transition-transform duration-200 ${isCitiesExpanded ? "rotate-180" : ""}`} 
+                      />
+                    </div>
                     <AnimatePresence>
                       {isCitiesExpanded && (
                         <motion.div
@@ -2992,155 +3057,151 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
                           transition={{ duration: 0.2 }}
-                          className="overflow-hidden space-y-3"
+                          className="overflow-hidden border-t border-border"
                         >
-                          {/* Options: جميع المدن or مدن محددة */}
-                          <div className="flex gap-2 mt-3 w-full">
-                            <button
-                              onClick={() => {
-                                if (navigator.vibrate) navigator.vibrate(10);
-                                // إذا تم الضغط على "جميع المدن"، نضيف "كل المدن" ونزيل المدن الأخرى
-                                setTempCities([
-                                  ...tempCities.filter((c) => c === "عن بعد"),
-                                  "كل المدن",
-                                ]);
-                              }}
-                              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                                (tempCities.length === 0 ||
-                                    tempCities.includes("كل المدن")) &&
-                                  tempCities.filter((c) =>
-                                      c !== "كل المدن" && c !== "عن بعد"
-                                    ).length === 0
-                                  ? "bg-primary text-white shadow-sm"
-                                  : "bg-secondary/60 text-foreground hover:bg-secondary border border-border/50"
-                              }`}
-                            >
-                              <MapPin size={16} />
-                              <span>جميع المدن</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (navigator.vibrate) navigator.vibrate(10);
-                                // إذا تم الضغط على "مدن محددة"، نزيل "كل المدن" إذا كانت موجودة
-                                if (tempCities.includes("كل المدن")) {
-                                  setTempCities(
-                                    tempCities.filter((c) => c !== "كل المدن"),
-                                  );
-                                }
-                              }}
-                              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                                tempCities.length > 0 &&
-                                  !tempCities.includes("كل المدن") &&
-                                  tempCities.filter((c) => c !== "عن بعد")
-                                      .length > 0
-                                  ? "bg-primary text-white shadow-sm"
-                                  : "bg-secondary/60 text-foreground hover:bg-secondary border border-border/50"
-                              }`}
-                            >
-                              <MapPin size={16} />
-                              <span>مدن محددة</span>
-                            </button>
-                          </div>
+                          <div className="p-3 space-y-3">
+                            {/* Options: جميع المدن or مدن محددة */}
+                            <div className="flex gap-2 w-full">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (navigator.vibrate) navigator.vibrate(10);
+                                  // اختيار "جميع المدن" = نزيل كل المدن المحددة ونضيف "كل المدن"
+                                  setTempCities(["كل المدن"]);
+                                }}
+                                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                                  tempCities.includes("كل المدن")
+                                    ? "bg-primary text-white shadow-sm"
+                                    : "bg-background text-foreground hover:bg-secondary/80 border border-border"
+                                }`}
+                              >
+                                <MapPin size={16} />
+                                <div className="flex flex-col items-center">
+                                  <span>جميع المدن</span>
+                                  <span className="text-[10px] opacity-75">
+                                    يشمل عن بُعد
+                                  </span>
+                                </div>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (navigator.vibrate) navigator.vibrate(10);
+                                  // اختيار "مدن محددة" = نزيل "كل المدن" ونبقي على أي مدن موجودة
+                                  const filtered = tempCities.filter((c) => c !== "كل المدن");
+                                  // إذا ما فيه مدن بعد الفلترة، نحط مصفوفة فارغة (يعني waiting for user to select)
+                                  setTempCities(filtered);
+                                }}
+                                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                                  !tempCities.includes("كل المدن")
+                                    ? "bg-primary text-white shadow-sm"
+                                    : "bg-background text-foreground hover:bg-secondary/80 border border-border"
+                                }`}
+                              >
+                                <MapPin size={16} />
+                                <span>مدن محددة</span>
+                              </button>
+                            </div>
 
-                          {/* Selected Cities Chips - فقط عندما تكون "مدن محددة" */}
-                          {tempCities.length > 0 &&
-                            !tempCities.includes("كل المدن") &&
-                            tempCities.filter((c) => c !== "عن بعد").length >
-                              0 &&
-                            (
-                              <div className="flex flex-wrap justify-start gap-1.5 w-full">
-                                {tempCities.filter((c) => c !== "عن بعد").map((
-                                  city,
-                                ) => (
-                                  <motion.span
-                                    key={city}
-                                    initial={{ scale: 0.8, opacity: 0 }}
-                                    animate={{ scale: 1, opacity: 1 }}
-                                    exit={{ scale: 0.8, opacity: 0 }}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm border border-primary/30"
-                                  >
-                                    <MapPin size={12} />
-                                    <span>{city}</span>
-                                    <button
-                                      onClick={() => {
-                                        if (navigator.vibrate) {
-                                          navigator.vibrate(10);
-                                        }
-                                        toggleCity(city);
-                                      }}
-                                      className="p-0.5 hover:bg-primary/20 rounded-full transition-colors"
+                            {/* Selected Cities Chips - فقط عندما تكون "مدن محددة" */}
+                            {tempCities.length > 0 &&
+                              !tempCities.includes("كل المدن") &&
+                              tempCities.filter((c) => c !== "عن بعد").length >
+                                0 &&
+                              (
+                                <div className="flex flex-wrap justify-start gap-1.5 w-full">
+                                  {tempCities.filter((c) => c !== "عن بعد").map((
+                                    city,
+                                  ) => (
+                                    <motion.span
+                                      key={city}
+                                      initial={{ scale: 0.8, opacity: 0 }}
+                                      animate={{ scale: 1, opacity: 1 }}
+                                      exit={{ scale: 0.8, opacity: 0 }}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm border border-primary/30"
                                     >
-                                      <X size={12} />
-                                    </button>
-                                  </motion.span>
-                                ))}
-                                {tempCities.includes("عن بعد") && (
-                                  <motion.span
-                                    initial={{ scale: 0.8, opacity: 0 }}
-                                    animate={{ scale: 1, opacity: 1 }}
-                                    exit={{ scale: 0.8, opacity: 0 }}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm border border-primary/30"
-                                  >
-                                    <Globe size={12} />
-                                    <span>عن بعد</span>
-                                    <button
-                                      onClick={() => {
-                                        if (navigator.vibrate) {
-                                          navigator.vibrate(10);
-                                        }
-                                        toggleCity("عن بعد");
-                                      }}
-                                      className="p-0.5 hover:bg-primary/20 rounded-full transition-colors"
+                                      <MapPin size={12} />
+                                      <span>{city}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (navigator.vibrate) {
+                                            navigator.vibrate(10);
+                                          }
+                                          toggleCity(city);
+                                        }}
+                                        className="p-0.5 hover:bg-primary/20 rounded-full transition-colors"
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    </motion.span>
+                                  ))}
+                                  {tempCities.includes("عن بعد") && (
+                                    <motion.span
+                                      initial={{ scale: 0.8, opacity: 0 }}
+                                      animate={{ scale: 1, opacity: 1 }}
+                                      exit={{ scale: 0.8, opacity: 0 }}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm border border-primary/30"
                                     >
-                                      <X size={12} />
-                                    </button>
-                                  </motion.span>
-                                )}
-                              </div>
+                                      <Globe size={12} />
+                                      <span>عن بعد</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (navigator.vibrate) {
+                                            navigator.vibrate(10);
+                                          }
+                                          toggleCity("عن بعد");
+                                        }}
+                                        className="p-0.5 hover:bg-primary/20 rounded-full transition-colors"
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    </motion.span>
+                                  )}
+                                </div>
+                              )}
+
+                            {/* City Autocomplete - فقط عندما تكون "مدن محددة" */}
+                            {!tempCities.includes("كل المدن") && (
+                              <CityAutocomplete
+                                value=""
+                                onChange={() => {}}
+                                placeholder="ابحث عن مدن، معالم، أو محلات..."
+                                multiSelect={true}
+                                showAllCitiesOption={true}
+                                selectedCities={tempCities}
+                                onSelectCity={(city) => {
+                                  if (navigator.vibrate) navigator.vibrate(10);
+                                  toggleCity(city);
+                                }}
+                                onRemoveCity={(city) => {
+                                  if (navigator.vibrate) navigator.vibrate(10);
+                                  toggleCity(city);
+                                }}
+                                showRemoteOption={true}
+                                showGPSOption={true}
+                                showMapOption={true}
+                                onOpenMap={() => {
+                                  if (navigator.vibrate) navigator.vibrate(10);
+                                  // فتح Google Maps في نافذة جديدة
+                                  const mapsUrl =
+                                    `https://www.google.com/maps/search/?api=1&query=المملكة+العربية+السعودية`;
+                                  window.open(mapsUrl, "_blank");
+                                }}
+                                hideChips={true}
+                                dropdownDirection="up"
+                              />
                             )}
-
-                          {/* City Autocomplete - فقط عندما تكون "مدن محددة" */}
-                          {!tempCities.includes("كل المدن") && (
-                            <CityAutocomplete
-                              value=""
-                              onChange={() => {}}
-                              placeholder="ابحث عن مدن، معالم، أو محلات..."
-                              multiSelect={true}
-                              showAllCitiesOption={true}
-                              selectedCities={tempCities}
-                              onSelectCity={(city) => {
-                                if (navigator.vibrate) navigator.vibrate(10);
-                                toggleCity(city);
-                              }}
-                              onRemoveCity={(city) => {
-                                if (navigator.vibrate) navigator.vibrate(10);
-                                toggleCity(city);
-                              }}
-                              showRemoteOption={true}
-                              showGPSOption={true}
-                              showMapOption={true}
-                              onOpenMap={() => {
-                                if (navigator.vibrate) navigator.vibrate(10);
-                                // فتح Google Maps في نافذة جديدة
-                                const mapsUrl =
-                                  `https://www.google.com/maps/search/?api=1&query=المملكة+العربية+السعودية`;
-                                window.open(mapsUrl, "_blank");
-                              }}
-                              hideChips={true}
-                              dropdownDirection="up"
-                            />
-                          )}
+                          </div>
                         </motion.div>
                       )}
                     </AnimatePresence>
                   </div>
 
-                  {/* Divider */}
-                  <div className="border-t border-border" />
-
                   {/* Radar Words - Collapsible */}
-                  <div className="space-y-3">
-                    <button
+                  <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
+                    <div 
                       onClick={() => {
                         const newState = !isRadarWordsExpanded;
                         setIsRadarWordsExpanded(newState);
@@ -3149,31 +3210,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           setIsCitiesExpanded(false);
                         }
                       }}
-                      className="flex items-center justify-between w-full"
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
                     >
-                      <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
-                        <Search
-                          size={16}
-                          strokeWidth={2.5}
-                          className="text-primary"
-                        />
-                        رادار الكلمات
-                        {tempRadarWords.length > 0 && (
-                          <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-primary text-white px-1.5 text-[10px] font-bold">
-                            {tempRadarWords.length}
-                          </span>
-                        )}
-                      </h3>
-                      <motion.div
-                        animate={{ rotate: isRadarWordsExpanded ? 180 : 0 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <ChevronDown
-                          size={18}
-                          className="text-muted-foreground"
-                        />
-                      </motion.div>
-                    </button>
+                      <h4 className="font-bold text-sm">رادار الكلمات</h4>
+                      <ChevronDown 
+                        size={18} 
+                        className={`text-muted-foreground transition-transform duration-200 ${isRadarWordsExpanded ? "rotate-180" : ""}`} 
+                      />
+                    </div>
                     <AnimatePresence>
                       {isRadarWordsExpanded && (
                         <motion.div
@@ -3181,51 +3225,55 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
                           transition={{ duration: 0.2 }}
-                          className="overflow-hidden space-y-3"
+                          className="overflow-hidden border-t border-border"
                         >
-                          <p className="text-xs text-muted-foreground mt-2">
-                            إذا كان الطلب يتضمن إحدى هذه الكلمات، سيتم إشعارك
-                          </p>
-                          <div className="flex gap-2 min-w-0">
-                            <input
-                              type="text"
-                              placeholder="اكتب الكلمة..."
-                              value={newRadarWord}
-                              onChange={(e) => setNewRadarWord(e.target.value)}
-                              onKeyPress={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  addRadarWord();
-                                }
-                              }}
-                              className="flex-1 min-w-0 px-3 py-2 rounded-xl border-2 border-border bg-card text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-all text-sm"
-                            />
-                            <button
-                              onClick={addRadarWord}
-                              disabled={!newRadarWord.trim()}
-                              className="shrink-0 px-4 py-2.5 rounded-xl bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                            >
-                              <Plus size={16} />
-                            </button>
-                          </div>
-                          {tempRadarWords.length > 0 && (
-                            <div className="flex flex-wrap justify-start gap-2 w-full">
-                              {tempRadarWords.map((word) => (
-                                <div
-                                  key={word}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 text-primary border border-primary/30 text-sm"
-                                >
-                                  <span>{word}</span>
-                                  <button
-                                    onClick={() => removeRadarWord(word)}
-                                    className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
-                                  >
-                                    <X size={14} />
-                                  </button>
-                                </div>
-                              ))}
+                          <div className="p-3 space-y-3">
+                            <p className="text-xs text-muted-foreground">
+                              إذا كان الطلب يتضمن إحدى هذه الكلمات، سيتم إشعارك
+                            </p>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="اكتب الكلمة..."
+                                value={newRadarWord}
+                                onChange={(e) => setNewRadarWord(e.target.value)}
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    addRadarWord();
+                                  }
+                                }}
+                                className="flex-1 text-xs px-3 py-1.5 rounded-lg border-2 border-[#1E968C]/30 bg-background focus:border-[#178075] focus:outline-none transition-all"
+                              />
+                              <button
+                                type="button"
+                                onClick={addRadarWord}
+                                disabled={!newRadarWord.trim()}
+                                className="px-3 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                              >
+                                <Plus size={14} />
+                              </button>
                             </div>
-                          )}
+                            {tempRadarWords.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {tempRadarWords.map((word) => (
+                                  <div
+                                    key={word}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 text-primary border border-primary/30 text-sm"
+                                  >
+                                    <span>{word}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeRadarWord(word)}
+                                      className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -3279,7 +3327,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       isLoadingViewedRequests={isLoadingViewedRequests}
                       newRequestIds={newRequestIds}
                       onSelectRequest={(req) => {
-                        console.log("🛒 Marketplace: ServiceCard clicked, calling onSelectRequest:", req.id);
+                        console.log(
+                          "🛒 Marketplace: ServiceCard clicked, calling onSelectRequest:",
+                          req.id,
+                        );
                         if (isGuest) {
                           setGuestViewedIds((prev) => {
                             const newSet = new Set(prev);
@@ -3298,9 +3349,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             return newSet;
                           });
                         }
-                        console.log("📞 Marketplace: Calling parent onSelectRequest:", req.id);
+                        console.log(
+                          "📞 Marketplace: Calling parent onSelectRequest:",
+                          req.id,
+                        );
                         onSelectRequest(req);
-                        console.log("✅ Marketplace: onSelectRequest called successfully");
+                        console.log(
+                          "✅ Marketplace: onSelectRequest called successfully",
+                        );
                       }}
                       onLoadMore={onLoadMore}
                       hasMore={hasMore}
@@ -3754,218 +3810,271 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                     </div>
                                   </div>
 
-                                  <div className="mt-auto pt-4 pb-4 px-5 border-t border-border flex items-center justify-center">
+                                  <div className="mt-auto pt-4 pb-4 px-5 border-t border-border">
                                     {/* Action Area */}
-                                    {req.status === "assigned" ||
-                                        req.status === "completed"
-                                      ? (
-                                        <div className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-muted text-muted-foreground">
-                                          <Lock size={14} />
-                                          منتهي
-                                        </div>
-                                      )
-                                      : isMyRequest
-                                      ? (
-                                        (() => {
-                                          const receivedOffers =
-                                            (receivedOffersMap.get(req.id) ||
-                                              []).filter((o) =>
-                                                o.status !== "archived"
+                                    <div className="flex flex-col gap-3">
+                                      <div className="flex items-center justify-center">
+                                        {req.status === "assigned" ||
+                                            req.status === "completed"
+                                          ? (
+                                            <div className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-muted text-muted-foreground">
+                                              <Lock size={14} />
+                                              منتهي
+                                            </div>
+                                          )
+                                          : isMyRequest
+                                          ? (
+                                            (() => {
+                                              const receivedOffers =
+                                                (receivedOffersMap.get(req.id) ||
+                                                  []).filter((o) =>
+                                                    o.status !== "archived"
+                                                  );
+                                              const offersCount =
+                                                receivedOffers.length;
+                                              return (
+                                                <motion.button
+                                                  whileHover={{ scale: 1.02 }}
+                                                  whileTap={{ scale: 0.96 }}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (
+                                                      navigator.vibrate
+                                                    ) {
+                                                      navigator.vibrate([
+                                                        10,
+                                                        30,
+                                                        10,
+                                                      ]);
+                                                    }
+                                                    onSelectRequest(req, false); // Open request without scrolling to offer section
+                                                  }}
+                                                  onPointerDown={(e) =>
+                                                    e.stopPropagation()}
+                                                  onTouchStart={(e) =>
+                                                    e.stopPropagation()}
+                                                  className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800 text-primary border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all relative overflow-visible"
+                                                >
+                                                  <User
+                                                    size={14}
+                                                    className="text-primary"
+                                                  />
+                                                  <span className="flex items-center gap-1">
+                                                    طلبي
+                                                    {offersCount > 0 && (
+                                                      <span className="text-primary/70 font-bold text-[10px] animate-pulse whitespace-nowrap">
+                                                        ({offersCount}{" "}
+                                                        {offersCount === 1
+                                                          ? "عرض"
+                                                          : "عروض"})
+                                                      </span>
+                                                    )}
+                                                  </span>
+                                                  {/* Notification badge for offers count */}
+                                                  {offersCount > 0 && (
+                                                    <motion.span
+                                                      initial={{ scale: 0 }}
+                                                      animate={{ scale: 1 }}
+                                                      className="absolute -top-2.5 -left-2.5 min-w-[20px] h-[20px] px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg z-30 border-2 border-white dark:border-gray-900"
+                                                    >
+                                                      {offersCount}
+                                                    </motion.span>
+                                                  )}
+                                                </motion.button>
                                               );
-                                          const offersCount =
-                                            receivedOffers.length;
-                                          return (
+                                            })()
+                                          )
+                                          : myOffer
+                                          ? (
+                                            <motion.div
+                                              initial={{ scale: 0.9, opacity: 0 }}
+                                              animate={{ scale: 1, opacity: 1 }}
+                                              className={`w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 ${
+                                                myOffer.status === "accepted"
+                                                  ? "bg-primary/15 text-primary"
+                                                  : myOffer.status === "negotiating"
+                                                  ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                                                  : "bg-primary/15 text-primary"
+                                              }`}
+                                            >
+                                              {myOffer.status === "accepted"
+                                                ? <CheckCircle size={16} />
+                                                : myOffer.status === "negotiating"
+                                                ? <MessageCircle size={16} />
+                                                : <CheckCircle size={16} />}
+
+                                              {myOffer.status === "accepted"
+                                                ? "تم قبول عرضك"
+                                                : myOffer.status === "negotiating"
+                                                ? "قيد التفاوض"
+                                                : "تم التقديم"}
+                                            </motion.div>
+                                          )
+                                          : (
                                             <motion.button
-                                              whileHover={{ scale: 1.02 }}
-                                              whileTap={{ scale: 0.96 }}
+                                              initial={false}
+                                              whileHover={{
+                                                scale: 1.02,
+                                              }}
+                                              whileTap={{
+                                                scale: 0.98,
+                                              }}
+                                              animate={isTouchHovered
+                                                ? {
+                                                  scale: 1.02,
+                                                }
+                                                : {}}
+                                              transition={{
+                                                type: "spring",
+                                                stiffness: 800,
+                                                damping: 15,
+                                                mass: 0.5,
+                                              }}
                                               onClick={(e) => {
                                                 e.stopPropagation();
-                                                if (
-                                                  navigator.vibrate
-                                                ) {
-                                                  navigator.vibrate([
-                                                    10,
-                                                    30,
-                                                    10,
-                                                  ]);
+                                                // Quick haptic
+                                                if (navigator.vibrate) {
+                                                  navigator.vibrate(10);
                                                 }
-                                                onSelectRequest(req, false); // Open request without scrolling to offer section
+                                                onSelectRequest(req, true);
                                               }}
                                               onPointerDown={(e) =>
                                                 e.stopPropagation()}
+                                              onPointerUp={(e) =>
+                                                e.stopPropagation()}
                                               onTouchStart={(e) =>
                                                 e.stopPropagation()}
-                                              className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800 text-primary border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all relative overflow-visible"
+                                              onTouchEnd={(e) =>
+                                                e.stopPropagation()}
+                                              className="w-full h-9 px-4 text-xs font-bold rounded-xl bg-primary text-white relative overflow-hidden animate-button-breathe"
                                             >
-                                              <User
-                                                size={14}
-                                                className="text-primary"
+                                              {/* Ping Ring - Pulsing border effect */}
+                                              <motion.span
+                                                className="absolute -inset-1 rounded-xl border-[3px] border-primary pointer-events-none"
+                                                animate={{
+                                                  scale: [1, 1.2, 1.35],
+                                                  opacity: [0.7, 0.3, 0],
+                                                }}
+                                                transition={{
+                                                  duration: 1.8,
+                                                  repeat: Infinity,
+                                                  ease: "easeOut",
+                                                }}
                                               />
-                                              <span className="flex items-center gap-1">
-                                                طلبي
-                                                {offersCount > 0 && (
-                                                  <span className="text-primary/70 font-bold text-[10px] animate-pulse whitespace-nowrap">
-                                                    ({offersCount}{" "}
-                                                    {offersCount === 1
-                                                      ? "عرض"
-                                                      : "عروض"})
-                                                  </span>
-                                                )}
+                                              <motion.span
+                                                className="absolute -inset-0.5 rounded-xl border-2 border-primary/80 pointer-events-none"
+                                                animate={{
+                                                  scale: [1, 1.1, 1.18],
+                                                  opacity: [0.8, 0.4, 0],
+                                                }}
+                                                transition={{
+                                                  duration: 1.8,
+                                                  repeat: Infinity,
+                                                  ease: "easeOut",
+                                                  delay: 0.3,
+                                                }}
+                                              />
+                                              {/* Always-on diagonal shimmer - from NE (top-right) to SW (bottom-left) */}
+                                              {/* Light mode shimmer - more visible */}
+                                              <span
+                                                className="absolute inset-0 pointer-events-none animate-shimmer-diagonal dark:hidden"
+                                                style={{
+                                                  background:
+                                                    "linear-gradient(315deg, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.12) 50%, transparent 65%, transparent 100%)",
+                                                  backgroundSize: "200% 200%",
+                                                }}
+                                              />
+                                              {/* Dark mode shimmer - lighter */}
+                                              <span
+                                                className="absolute inset-0 pointer-events-none animate-shimmer-diagonal hidden dark:block"
+                                                style={{
+                                                  background:
+                                                    "linear-gradient(315deg, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.05) 50%, transparent 65%, transparent 100%)",
+                                                  backgroundSize: "200% 200%",
+                                                }}
+                                              />
+                                              {/* Intensified shimmer on hover/touch - Light mode */}
+                                              <span
+                                                className={`absolute inset-0 pointer-events-none opacity-0 dark:hidden ${
+                                                  isTouchHovered
+                                                    ? "opacity-100 animate-shimmer-diagonal-hover"
+                                                    : "group-hover:opacity-100 group-hover:animate-shimmer-diagonal-hover"
+                                                }`}
+                                                style={{
+                                                  background:
+                                                    "linear-gradient(315deg, transparent 0%, transparent 30%, rgba(255, 255, 255, 0.3) 50%, transparent 70%, transparent 100%)",
+                                                  backgroundSize: "200% 200%",
+                                                }}
+                                              />
+                                              {/* Intensified shimmer on hover/touch - Dark mode */}
+                                              <span
+                                                className={`absolute inset-0 pointer-events-none opacity-0 hidden dark:block ${
+                                                  isTouchHovered
+                                                    ? "opacity-100 animate-shimmer-diagonal-hover"
+                                                    : "group-hover:opacity-100 group-hover:animate-shimmer-diagonal-hover"
+                                                }`}
+                                                style={{
+                                                  background:
+                                                    "linear-gradient(315deg, transparent 0%, transparent 30%, rgba(255, 255, 255, 0.12) 50%, transparent 70%, transparent 100%)",
+                                                  backgroundSize: "200% 200%",
+                                                }}
+                                              />
+                                              <span className="relative z-10">
+                                                تقديم عرض
                                               </span>
-                                              {/* Notification badge for offers count */}
-                                              {offersCount > 0 && (
-                                                <motion.span
-                                                  initial={{ scale: 0 }}
-                                                  animate={{ scale: 1 }}
-                                                  className="absolute -top-2.5 -left-2.5 min-w-[20px] h-[20px] px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg z-30 border-2 border-white dark:border-gray-900"
-                                                >
-                                                  {offersCount}
-                                                </motion.span>
-                                              )}
                                             </motion.button>
-                                          );
-                                        })()
-                                      )
-                                      : myOffer
-                                      ? (
-                                        <motion.div
-                                          initial={{ scale: 0.9, opacity: 0 }}
-                                          animate={{ scale: 1, opacity: 1 }}
-                                          className={`w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 ${
-                                            myOffer.status === "accepted"
-                                              ? "bg-primary/15 text-primary"
-                                              : myOffer.status === "negotiating"
-                                              ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
-                                              : "bg-primary/15 text-primary"
-                                          }`}
-                                        >
-                                          {myOffer.status === "accepted"
-                                            ? <CheckCircle size={16} />
-                                            : myOffer.status === "negotiating"
-                                            ? <MessageCircle size={16} />
-                                            : <CheckCircle size={16} />}
+                                          )}
+                                      </div>
 
-                                          {myOffer.status === "accepted"
-                                            ? "تم قبول عرضك"
-                                            : myOffer.status === "negotiating"
-                                            ? "قيد التفاوض"
-                                            : "تم التقديم"}
-                                        </motion.div>
-                                      )
-                                      : (
-                                        <motion.button
-                                          initial={false}
-                                          whileHover={{
-                                            scale: 1.02,
-                                          }}
-                                          whileTap={{
-                                            scale: 0.98,
-                                          }}
-                                          animate={isTouchHovered
-                                            ? {
-                                              scale: 1.02,
-                                            }
-                                            : {}}
-                                          transition={{
-                                            type: "spring",
-                                            stiffness: 800,
-                                            damping: 15,
-                                            mass: 0.5,
-                                          }}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            // Quick haptic
-                                            if (navigator.vibrate) {
-                                              navigator.vibrate(10);
-                                            }
-                                            onSelectRequest(req, true);
-                                          }}
-                                          onPointerDown={(e) =>
-                                            e.stopPropagation()}
-                                          onPointerUp={(e) =>
-                                            e.stopPropagation()}
-                                          onTouchStart={(e) =>
-                                            e.stopPropagation()}
-                                          onTouchEnd={(e) =>
-                                            e.stopPropagation()}
-                                          className="w-full h-9 px-4 text-xs font-bold rounded-xl bg-primary text-white relative overflow-hidden animate-button-breathe"
-                                        >
-                                          {/* Ping Ring - Pulsing border effect */}
-                                          <motion.span
-                                            className="absolute -inset-1 rounded-xl border-[3px] border-primary pointer-events-none"
-                                            animate={{
-                                              scale: [1, 1.2, 1.35],
-                                              opacity: [0.7, 0.3, 0],
-                                            }}
-                                            transition={{
-                                              duration: 1.8,
-                                              repeat: Infinity,
-                                              ease: "easeOut",
-                                            }}
-                                          />
-                                          <motion.span
-                                            className="absolute -inset-0.5 rounded-xl border-2 border-primary/80 pointer-events-none"
-                                            animate={{
-                                              scale: [1, 1.1, 1.18],
-                                              opacity: [0.8, 0.4, 0],
-                                            }}
-                                            transition={{
-                                              duration: 1.8,
-                                              repeat: Infinity,
-                                              ease: "easeOut",
-                                              delay: 0.3,
-                                            }}
-                                          />
-                                          {/* Always-on diagonal shimmer - from NE (top-right) to SW (bottom-left) */}
-                                          {/* Light mode shimmer - more visible */}
-                                          <span
-                                            className="absolute inset-0 pointer-events-none animate-shimmer-diagonal dark:hidden"
-                                            style={{
-                                              background:
-                                                "linear-gradient(315deg, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.12) 50%, transparent 65%, transparent 100%)",
-                                              backgroundSize: "200% 200%",
-                                            }}
-                                          />
-                                          {/* Dark mode shimmer - lighter */}
-                                          <span
-                                            className="absolute inset-0 pointer-events-none animate-shimmer-diagonal hidden dark:block"
-                                            style={{
-                                              background:
-                                                "linear-gradient(315deg, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.05) 50%, transparent 65%, transparent 100%)",
-                                              backgroundSize: "200% 200%",
-                                            }}
-                                          />
-                                          {/* Intensified shimmer on hover/touch - Light mode */}
-                                          <span
-                                            className={`absolute inset-0 pointer-events-none opacity-0 dark:hidden ${
-                                              isTouchHovered
-                                                ? "opacity-100 animate-shimmer-diagonal-hover"
-                                                : "group-hover:opacity-100 group-hover:animate-shimmer-diagonal-hover"
-                                            }`}
-                                            style={{
-                                              background:
-                                                "linear-gradient(315deg, transparent 0%, transparent 30%, rgba(255, 255, 255, 0.3) 50%, transparent 70%, transparent 100%)",
-                                              backgroundSize: "200% 200%",
-                                            }}
-                                          />
-                                          {/* Intensified shimmer on hover/touch - Dark mode */}
-                                          <span
-                                            className={`absolute inset-0 pointer-events-none opacity-0 hidden dark:block ${
-                                              isTouchHovered
-                                                ? "opacity-100 animate-shimmer-diagonal-hover"
-                                                : "group-hover:opacity-100 group-hover:animate-shimmer-diagonal-hover"
-                                            }`}
-                                            style={{
-                                              background:
-                                                "linear-gradient(315deg, transparent 0%, transparent 30%, rgba(255, 255, 255, 0.12) 50%, transparent 70%, transparent 100%)",
-                                              backgroundSize: "200% 200%",
-                                            }}
-                                          />
-                                          <span className="relative z-10">
-                                            تقديم عرض
-                                          </span>
-                                        </motion.button>
-                                      )}
+                                      {/* Status Dots - Display at bottom like RequestDetail */}
+                                      <div className="flex justify-center gap-1.5">
+                                        <div
+                                          className={`w-1.5 h-1.5 rounded-full transition-all ${
+                                            req.status === "active"
+                                              ? "bg-primary"
+                                              : req.status === "assigned"
+                                              ? "bg-blue-500"
+                                              : req.status === "completed"
+                                              ? "bg-green-500"
+                                              : req.status === "archived"
+                                              ? "bg-red-500"
+                                              : "bg-muted-foreground"
+                                          }`}
+                                          title={
+                                            req.status === "active"
+                                              ? "نشط"
+                                              : req.status === "assigned"
+                                              ? "تم التعيين"
+                                              : req.status === "completed"
+                                              ? "مكتمل"
+                                              : req.status === "archived"
+                                              ? "مؤرشف"
+                                              : "غير محدد"
+                                          }
+                                        />
+                                        <div
+                                          className={`w-1.5 h-1.5 rounded-full transition-all ${
+                                            req.status === "assigned"
+                                              ? "bg-blue-500"
+                                              : "bg-transparent"
+                                          }`}
+                                        />
+                                        <div
+                                          className={`w-1.5 h-1.5 rounded-full transition-all ${
+                                            req.status === "completed"
+                                              ? "bg-green-500"
+                                              : "bg-transparent"
+                                          }`}
+                                        />
+                                        <div
+                                          className={`w-1.5 h-1.5 rounded-full transition-all ${
+                                            req.status === "archived"
+                                              ? "bg-red-500"
+                                              : "bg-transparent"
+                                          }`}
+                                        />
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
                               </motion.div>
@@ -3979,215 +4088,214 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   </motion.div>
                 )}
             </AnimatePresence>
+          </div>
 
-            {/* Load more sentinel + indicator - Only show when we have data */}
-            {filteredRequests.length > 0 && (
-              <>
-                <div ref={loadMoreTriggerRef} className="h-4 w-full" />
-                <div
-                  className={`pb-32 flex flex-col justify-start ${
-                    isLoadingMore ||
-                      (hasMore && filteredRequests.length >= 9) ||
-                      (!hasMore && filteredRequests.length > 0)
-                      ? "min-h-[200px]"
-                      : ""
-                  }`}
-                >
-                  <AnimatePresence mode="wait">
-                    {isLoadingMore
-                      ? (
-                        <motion.div
-                          key="loading-more"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          className="space-y-8 w-full"
-                        >
-                          <CardsGridSkeleton count={3} showLogo={false} />
-                          <div className="flex flex-col items-center gap-3 py-4">
-                            <div className="relative w-10 h-10">
-                              <div className="absolute inset-0 rounded-full border-2 border-primary/10" />
-                              <div className="absolute inset-0 rounded-full border-2 border-t-primary animate-spin" />
-                            </div>
-                            <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.3em] animate-pulse">
-                              جاري جلب المزيد...
-                            </span>
+          {/* Load more sentinel + indicator - Only show when we have data */}
+          {filteredRequests.length > 0 && (
+            <>
+              <div ref={loadMoreTriggerRef} className="h-4 w-full" />
+              <div
+                className={`pb-32 flex flex-col justify-start ${
+                  isLoadingMore ||
+                    (hasMore && filteredRequests.length >= 9) ||
+                    (!hasMore && filteredRequests.length > 0)
+                    ? "min-h-[200px]"
+                    : ""
+                }`}
+              >
+                <AnimatePresence mode="wait">
+                  {isLoadingMore
+                    ? (
+                      <motion.div
+                        key="loading-more"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="space-y-8 w-full"
+                      >
+                        <CardsGridSkeleton count={3} showLogo={false} />
+                        <div className="flex flex-col items-center gap-3 py-4">
+                          <div className="relative w-10 h-10">
+                            <div className="absolute inset-0 rounded-full border-2 border-primary/10" />
+                            <div className="absolute inset-0 rounded-full border-2 border-t-primary animate-spin" />
                           </div>
-                        </motion.div>
-                      )
-                      : hasMore && !pullToRefreshState.isRefreshing &&
-                          filteredRequests.length >= 9
-                      ? (
-                        <motion.div
-                          key="load-more-button"
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                          className="flex flex-col items-center gap-4 py-2 w-full"
-                        >
-                          <motion.button
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
-                            animate={{
-                              y: [0, 8, 0],
-                            }}
-                            transition={{
-                              y: {
-                                repeat: Infinity,
-                                duration: 2,
-                                ease: "easeInOut",
-                              },
-                            }}
-                            onClick={() => {
-                              if (onLoadMore) {
-                                onLoadMore();
-                                // Haptic feedback
-                                if (navigator.vibrate) {
-                                  navigator.vibrate(10);
-                                }
+                          <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.3em] animate-pulse">
+                            جاري جلب المزيد...
+                          </span>
+                        </div>
+                      </motion.div>
+                    )
+                    : hasMore && !pullToRefreshState.isRefreshing &&
+                        filteredRequests.length >= 9
+                    ? (
+                      <motion.div
+                        key="load-more-button"
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="flex flex-col items-center gap-4 py-2 w-full"
+                      >
+                        <motion.button
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          animate={{
+                            y: [0, 8, 0],
+                          }}
+                          transition={{
+                            y: {
+                              repeat: Infinity,
+                              duration: 2,
+                              ease: "easeInOut",
+                            },
+                          }}
+                          onClick={() => {
+                            if (onLoadMore) {
+                              onLoadMore();
+                              // Haptic feedback
+                              if (navigator.vibrate) {
+                                navigator.vibrate(10);
                               }
-                            }}
-                            className="relative w-14 h-14 flex items-center justify-center group"
-                          >
-                            {/* Background Progress Circle - Matching pull-to-refresh style */}
-                            <svg className="absolute inset-0 w-full h-full transform -rotate-90">
-                              <circle
-                                cx="28"
-                                cy="28"
-                                r="24"
-                                stroke="currentColor"
-                                strokeWidth="1.5"
-                                fill="transparent"
-                                className="text-primary/10 group-hover:text-primary/20 transition-colors"
-                              />
-                              <circle
-                                cx="28"
-                                cy="28"
-                                r="24"
-                                stroke="url(#load-more-gradient-v3)"
-                                strokeWidth="3"
-                                fill="transparent"
-                                strokeDasharray={150.7}
-                                strokeDashoffset={150.7 * 0.4}
-                                strokeLinecap="round"
-                                className="opacity-40 group-hover:opacity-100 transition-opacity"
-                              />
-                              <defs>
-                                <linearGradient
-                                  id="load-more-gradient-v3"
-                                  x1="0%"
-                                  y1="0%"
-                                  x2="100%"
-                                  y2="100%"
-                                >
-                                  <stop offset="0%" stopColor="#1E968C" />
-                                  <stop offset="100%" stopColor="#153659" />
-                                </linearGradient>
-                              </defs>
-                            </svg>
-
-                            {/* Inner Circle with Arrow */}
-                            <div className="w-10 h-10 rounded-full bg-card flex items-center justify-center text-primary shadow-xl border border-primary/10 group-hover:border-primary/30 transition-all">
-                              <motion.div
-                                animate={{ y: [0, 3, 0] }}
-                                transition={{
-                                  repeat: Infinity,
-                                  duration: 1.5,
-                                  ease: "easeInOut",
-                                }}
-                              >
-                                <ArrowDown size={22} strokeWidth={2.5} />
-                              </motion.div>
-                            </div>
-                          </motion.button>
-                          <div className="text-center text-[11px] font-extrabold text-muted-foreground/50 uppercase tracking-[0.2em]">
-                            اضغط للتحميل اليدوي أو مرر للأسفل
-                          </div>
-                        </motion.div>
-                      )
-                      : !hasMore && filteredRequests.length > 0
-                      ? (
-                        <motion.div
-                          key="end-of-content"
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 20 }}
-                          className="relative overflow-hidden p-8 rounded-[2.5rem] bg-gradient-to-b from-secondary/20 to-transparent border border-border/40 text-center group max-w-md mx-auto mt-8"
+                            }
+                          }}
+                          className="relative w-14 h-14 flex items-center justify-center group"
                         >
-                          {/* Decorative background elements */}
-                          <div className="absolute -top-12 -right-12 w-40 h-40 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/8 transition-colors" />
-                          <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/8 transition-colors" />
+                          {/* Background Progress Circle - Matching pull-to-refresh style */}
+                          <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                            <circle
+                              cx="28"
+                              cy="28"
+                              r="24"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              fill="transparent"
+                              className="text-primary/10 group-hover:text-primary/20 transition-colors"
+                            />
+                            <circle
+                              cx="28"
+                              cy="28"
+                              r="24"
+                              stroke="url(#load-more-gradient-v3)"
+                              strokeWidth="3"
+                              fill="transparent"
+                              strokeDasharray={150.7}
+                              strokeDashoffset={150.7 * 0.4}
+                              strokeLinecap="round"
+                              className="opacity-40 group-hover:opacity-100 transition-opacity"
+                            />
+                            <defs>
+                              <linearGradient
+                                id="load-more-gradient-v3"
+                                x1="0%"
+                                y1="0%"
+                                x2="100%"
+                                y2="100%"
+                              >
+                                <stop offset="0%" stopColor="#1E968C" />
+                                <stop offset="100%" stopColor="#153659" />
+                              </linearGradient>
+                            </defs>
+                          </svg>
 
-                          <div className="relative z-10 space-y-5">
-                            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 text-primary mb-2 shadow-inner">
-                              <Check size={28} strokeWidth={3} />
-                            </div>
-                            <div className="space-y-2">
-                              <h3 className="text-lg font-black text-foreground">
-                                لقد وصلت للنهاية!
-                              </h3>
-                              <p className="text-sm text-muted-foreground max-w-[260px] mx-auto leading-relaxed font-medium">
-                                تم عرض كافة الطلبات المتاحة حالياً. تأكد من تحديث
-                                الصفحة باستمرار لرؤية العروض الجديدة فور وصولها.
-                              </p>
-                            </div>
+                          {/* Inner Circle with Arrow */}
+                          <div className="w-10 h-10 rounded-full bg-card flex items-center justify-center text-primary shadow-xl border border-primary/10 group-hover:border-primary/30 transition-all">
+                            <motion.div
+                              animate={{ y: [0, 3, 0] }}
+                              transition={{
+                                repeat: Infinity,
+                                duration: 1.5,
+                                ease: "easeInOut",
+                              }}
+                            >
+                              <ArrowDown size={22} strokeWidth={2.5} />
+                            </motion.div>
+                          </div>
+                        </motion.button>
+                        <div className="text-center text-[11px] font-extrabold text-muted-foreground/50 uppercase tracking-[0.2em]">
+                          اضغط للتحميل اليدوي أو مرر للأسفل
+                        </div>
+                      </motion.div>
+                    )
+                    : !hasMore && filteredRequests.length > 0
+                    ? (
+                      <motion.div
+                        key="end-of-content"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 20 }}
+                        className="relative overflow-hidden p-8 rounded-[2.5rem] bg-gradient-to-b from-secondary/20 to-transparent border border-border/40 text-center group max-w-md mx-auto mt-8"
+                      >
+                        {/* Decorative background elements */}
+                        <div className="absolute -top-12 -right-12 w-40 h-40 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/8 transition-colors" />
+                        <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/8 transition-colors" />
 
-                            {/* زر العودة للأعلى والتحديث */}
-                            <div className="pt-4 flex flex-col items-center gap-3">
-                              <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() => {
-                                  // Haptic feedback
-                                  if (navigator.vibrate) navigator.vibrate(15);
+                        <div className="relative z-10 space-y-5">
+                          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 text-primary mb-2 shadow-inner">
+                            <Check size={28} strokeWidth={3} />
+                          </div>
+                          <div className="space-y-2">
+                            <h3 className="text-lg font-black text-foreground">
+                              لقد وصلت للنهاية!
+                            </h3>
+                            <p className="text-sm text-muted-foreground max-w-[260px] mx-auto leading-relaxed font-medium">
+                              تم عرض كافة الطلبات المتاحة حالياً. تأكد من تحديث
+                              الصفحة باستمرار لرؤية العروض الجديدة فور وصولها.
+                            </p>
+                          </div>
 
-                                  // Scroll to top first
-                                  if (marketplaceScrollRef.current) {
-                                    marketplaceScrollRef.current.scrollTo({
-                                      top: 0,
-                                      behavior: "smooth",
-                                    });
-                                  }
+                          {/* زر العودة للأعلى والتحديث */}
+                          <div className="pt-4 flex flex-col items-center gap-3">
+                            <motion.button
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => {
+                                // Haptic feedback
+                                if (navigator.vibrate) navigator.vibrate(15);
 
-                                  // Show refresh indicator and trigger refresh
+                                // Scroll to top first
+                                if (marketplaceScrollRef.current) {
+                                  marketplaceScrollRef.current.scrollTo({
+                                    top: 0,
+                                    behavior: "smooth",
+                                  });
+                                }
+
+                                // Show refresh indicator and trigger refresh
+                                setPullToRefreshState({
+                                  isPulling: false,
+                                  pullDistance: 0,
+                                  isRefreshing: true,
+                                });
+
+                                // Trigger actual refresh
+                                if (onRefresh) {
+                                  onRefresh();
+                                }
+
+                                // Keep the spinner for at least 1.5s for visual feedback
+                                setTimeout(() => {
                                   setPullToRefreshState({
                                     isPulling: false,
                                     pullDistance: 0,
-                                    isRefreshing: true,
+                                    isRefreshing: false,
                                   });
-
-                                  // Trigger actual refresh
-                                  if (onRefresh) {
-                                    onRefresh();
-                                  }
-
-                                  // Keep the spinner for at least 1.5s for visual feedback
-                                  setTimeout(() => {
-                                    setPullToRefreshState({
-                                      isPulling: false,
-                                      pullDistance: 0,
-                                      isRefreshing: false,
-                                    });
-                                  }, 1500);
-                                }}
-                                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white font-bold text-sm shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
-                              >
-                                <RotateCw size={16} strokeWidth={2.5} />
-                                <span>تحديث والعودة للأعلى</span>
-                                <ChevronUp size={16} strokeWidth={2.5} />
-                              </motion.button>
-                            </div>
+                                }, 1500);
+                              }}
+                              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white font-bold text-sm shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
+                            >
+                              <RotateCw size={16} strokeWidth={2.5} />
+                              <span>تحديث والعودة للأعلى</span>
+                              <ChevronUp size={16} strokeWidth={2.5} />
+                            </motion.button>
                           </div>
-                        </motion.div>
-                      )
-                      : null}
-                  </AnimatePresence>
-                </div>
-              </>
-            )}
-          </div>
+                        </div>
+                      </motion.div>
+                    )
+                    : null}
+                </AnimatePresence>
+              </div>
+            </>
+          )}
         </div>
-        {/* نهاية Scrollable Content Area */}
       </div>
     </div>
   );

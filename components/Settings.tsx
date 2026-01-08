@@ -1,12 +1,23 @@
 import React, { useState } from 'react';
 import { logger } from '../utils/logger.ts';
-import { Bell, User, X, ChevronDown, Plus, Filter } from 'lucide-react';
+import { Bell, User, X, ChevronDown, Plus, Filter, Edit, Home } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AVAILABLE_CATEGORIES } from '../data.ts';
 import { UserPreferences } from '../types.ts';
+
+type HomePageConfig = 
+  | "marketplace:all"
+  | "marketplace:interests"
+  | "my-requests:all"
+  | "my-requests:active"
+  | "my-requests:approved"
+  | "my-offers:all"
+  | "my-offers:pending"
+  | "my-offers:accepted";
 import { UserProfile, sendOTP, verifyOTP } from '../services/authService.ts';
 import { supabase } from '../services/supabaseClient.ts';
 import { UnifiedHeader } from './ui/UnifiedHeader.tsx';
+import { Button } from './ui/Button.tsx';
 import { hapticService } from '../services/hapticService.ts';
 
 interface SettingsProps {
@@ -51,7 +62,8 @@ export const Settings: React.FC<SettingsProps> = ({
     notifyOnInterest: true,
     roleMode: 'requester',
     showNameToApprovedProvider: true,
-    radarWords: []
+    radarWords: [],
+    homePage: "marketplace:all" as HomePageConfig
   },
   onUpdatePreferences,
   user = null,
@@ -117,6 +129,13 @@ export const Settings: React.FC<SettingsProps> = ({
   const [isRadarWordsExpanded, setIsRadarWordsExpanded] = useState(false);
   const [newRadarWord, setNewRadarWord] = useState("");
   const [isInterestsPreviewExpanded, setIsInterestsPreviewExpanded] = useState(false);
+  const [selectedHomePage, setSelectedHomePage] = useState<HomePageConfig>((userPreferences as any).homePage || "marketplace:all");
+  const [isHomePageDropdownOpen, setIsHomePageDropdownOpen] = useState(false);
+
+  // Update selectedHomePage when userPreferences change
+  React.useEffect(() => {
+    setSelectedHomePage((userPreferences as any).homePage || "marketplace:all");
+  }, [(userPreferences as any).homePage]);
 
   const handleSaveInterests = async () => {
     setIsSavingPreferences(true);
@@ -586,6 +605,227 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
             </div>
 
+            {/* Home Page Customization Section */}
+            <div className="p-4 bg-secondary/50 rounded-lg border border-border">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-full bg-primary/10 text-primary">
+                  <Home size={20} />
+                </div>
+                <h3 className="font-bold text-base">تخصيص صفحة البداية</h3>
+              </div>
+              
+              <div className="space-y-3">
+                <div>
+                  <p className="font-medium text-sm mb-2">اختر الصفحة التي تريد أن تبدأ بها عندما تفتح التطبيق</p>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        hapticService.tap();
+                        setIsHomePageDropdownOpen(!isHomePageDropdownOpen);
+                      }}
+                      className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg border border-border bg-background hover:bg-secondary/50 transition-colors text-sm"
+                    >
+                      <span className="text-foreground">
+                        {selectedHomePage === "marketplace:all" && "السوق (كل الطلبات)"}
+                        {selectedHomePage === "marketplace:interests" && "السوق (اهتماماتي)"}
+                        {selectedHomePage === "my-requests:all" && "طلباتي (كل طلباتي)"}
+                        {selectedHomePage === "my-requests:active" && "طلباتي (الطلبات النشطة)"}
+                        {selectedHomePage === "my-requests:approved" && "طلباتي (الطلبات المعتمدة)"}
+                        {selectedHomePage === "my-offers:all" && "عروضي (كل عروضي)"}
+                        {selectedHomePage === "my-offers:pending" && "عروضي (عروضي قيد الانتظار)"}
+                        {selectedHomePage === "my-offers:accepted" && "عروضي (عروضي المقبولة)"}
+                      </span>
+                      <ChevronDown 
+                        size={18} 
+                        className={`text-muted-foreground transition-transform duration-200 ${isHomePageDropdownOpen ? "rotate-180" : ""}`} 
+                      />
+                    </button>
+                    
+                    <AnimatePresence>
+                      {isHomePageDropdownOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                          className="absolute z-10 w-full mt-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden max-h-80 overflow-y-auto"
+                        >
+                          {/* السوق */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              hapticService.tap();
+                              const newHomePage: HomePageConfig = "marketplace:all";
+                              setSelectedHomePage(newHomePage);
+                              setIsHomePageDropdownOpen(false);
+                              if (onUpdatePreferences) {
+                                onUpdatePreferences({
+                                  ...userPreferences,
+                                  homePage: newHomePage
+                                } as any);
+                              }
+                            }}
+                            className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
+                              selectedHomePage === "marketplace:all" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                            }`}
+                          >
+                            السوق (كل الطلبات)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              hapticService.tap();
+                              const newHomePage: HomePageConfig = "marketplace:interests";
+                              setSelectedHomePage(newHomePage);
+                              setIsHomePageDropdownOpen(false);
+                              if (onUpdatePreferences) {
+                                onUpdatePreferences({
+                                  ...userPreferences,
+                                  homePage: newHomePage
+                                } as any);
+                              }
+                            }}
+                            className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
+                              selectedHomePage === "marketplace:interests" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                            }`}
+                          >
+                            السوق (اهتماماتي)
+                          </button>
+                          
+                          {/* طلباتي */}
+                          <div className="border-t border-border my-1"></div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              hapticService.tap();
+                              const newHomePage: HomePageConfig = "my-requests:all";
+                              setSelectedHomePage(newHomePage);
+                              setIsHomePageDropdownOpen(false);
+                              if (onUpdatePreferences) {
+                                onUpdatePreferences({
+                                  ...userPreferences,
+                                  homePage: newHomePage
+                                } as any);
+                              }
+                            }}
+                            className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
+                              selectedHomePage === "my-requests:all" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                            }`}
+                          >
+                            طلباتي (كل طلباتي)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              hapticService.tap();
+                              const newHomePage: HomePageConfig = "my-requests:active";
+                              setSelectedHomePage(newHomePage);
+                              setIsHomePageDropdownOpen(false);
+                              if (onUpdatePreferences) {
+                                onUpdatePreferences({
+                                  ...userPreferences,
+                                  homePage: newHomePage
+                                } as any);
+                              }
+                            }}
+                            className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
+                              selectedHomePage === "my-requests:active" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                            }`}
+                          >
+                            طلباتي (الطلبات النشطة)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              hapticService.tap();
+                              const newHomePage: HomePageConfig = "my-requests:approved";
+                              setSelectedHomePage(newHomePage);
+                              setIsHomePageDropdownOpen(false);
+                              if (onUpdatePreferences) {
+                                onUpdatePreferences({
+                                  ...userPreferences,
+                                  homePage: newHomePage
+                                } as any);
+                              }
+                            }}
+                            className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
+                              selectedHomePage === "my-requests:approved" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                            }`}
+                          >
+                            طلباتي (الطلبات المعتمدة)
+                          </button>
+                          
+                          {/* عروضي */}
+                          <div className="border-t border-border my-1"></div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              hapticService.tap();
+                              const newHomePage: HomePageConfig = "my-offers:all";
+                              setSelectedHomePage(newHomePage);
+                              setIsHomePageDropdownOpen(false);
+                              if (onUpdatePreferences) {
+                                onUpdatePreferences({
+                                  ...userPreferences,
+                                  homePage: newHomePage
+                                } as any);
+                              }
+                            }}
+                            className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
+                              selectedHomePage === "my-offers:all" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                            }`}
+                          >
+                            عروضي (كل عروضي)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              hapticService.tap();
+                              const newHomePage: HomePageConfig = "my-offers:pending";
+                              setSelectedHomePage(newHomePage);
+                              setIsHomePageDropdownOpen(false);
+                              if (onUpdatePreferences) {
+                                onUpdatePreferences({
+                                  ...userPreferences,
+                                  homePage: newHomePage
+                                } as any);
+                              }
+                            }}
+                            className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
+                              selectedHomePage === "my-offers:pending" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                            }`}
+                          >
+                            عروضي (عروضي قيد الانتظار)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              hapticService.tap();
+                              const newHomePage: HomePageConfig = "my-offers:accepted";
+                              setSelectedHomePage(newHomePage);
+                              setIsHomePageDropdownOpen(false);
+                              if (onUpdatePreferences) {
+                                onUpdatePreferences({
+                                  ...userPreferences,
+                                  homePage: newHomePage
+                                } as any);
+                              }
+                            }}
+                            className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
+                              selectedHomePage === "my-offers:accepted" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                            }`}
+                          >
+                            عروضي (عروضي المقبولة)
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Notifications Section */}
             <div className="p-4 bg-secondary/50 rounded-lg border border-border">
               <div className="flex items-center gap-3 mb-4">
@@ -693,8 +933,9 @@ export const Settings: React.FC<SettingsProps> = ({
                     </p>
                   </div>
                 </div>
-                <button
-                  type="button"
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() => {
                     setTempCategories(selectedCategories);
                     setTempCities(selectedCities);
@@ -704,10 +945,11 @@ export const Settings: React.FC<SettingsProps> = ({
                     setNewRadarWord("");
                     setIsManageInterestsOpen(true);
                   }}
-                  className="px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors text-sm font-medium shrink-0"
+                  className="gap-2 h-9 rounded-xl border-primary/20 hover:bg-primary/5 text-primary text-xs font-bold shrink-0"
                 >
-                  إدارة
-                </button>
+                  <Edit size={14} />
+                  تعديل الاهتمامات
+                </Button>
               </div>
 
               {/* Preview Section - Collapsible */}

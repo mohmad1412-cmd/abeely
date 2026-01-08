@@ -67,7 +67,7 @@ export const NotificationsPopover: React.FC<NotificationsPopoverProps> = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.95 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="absolute top-16 left-4 z-[200] w-80 md:w-96 bg-card/95 backdrop-blur-xl rounded-2xl border border-border shadow-2xl overflow-hidden"
+            className="absolute top-16 right-4 z-[200] w-80 md:w-96 bg-card/95 backdrop-blur-xl rounded-2xl border border-border shadow-2xl overflow-hidden"
           >
           {/* Header */}
           <div className="p-4 border-b border-border flex justify-between items-center bg-gradient-to-r from-primary/10 to-transparent">
@@ -138,11 +138,13 @@ export const NotificationsPopover: React.FC<NotificationsPopoverProps> = ({
                       layout
                       whileHover={{ backgroundColor: "rgba(var(--primary-rgb), 0.05)" }}
                       className={`p-4 cursor-pointer transition-colors ${!notification.isRead ? 'bg-primary/5' : ''}`}
-                      onClick={() => {
-                        onMarkAsRead(notification.id);
-                        // إذا كان هناك callback للنقر على الإشعار، استخدمه
+                      onClick={async () => {
+                        // إذا كان هناك callback للنقر على الإشعار، استخدمه (وسيتولى تحديث الإشعار)
                         if (onNotificationClick) {
-                          onNotificationClick(notification);
+                          await onNotificationClick(notification);
+                        } else {
+                          // إذا لم يكن هناك callback، قم بتحديث الإشعار فقط
+                          onMarkAsRead(notification.id);
                         }
                       }}
                     >

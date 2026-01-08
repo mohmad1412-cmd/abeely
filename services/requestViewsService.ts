@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient';
+import { supabase } from './supabaseClient.ts';
 
 // ==========================================
 // Request Views Service
@@ -92,7 +92,7 @@ export async function getUnreadRequestIds(): Promise<string[]> {
       .eq('is_read', false);
 
     if (error) throw error;
-    return (data || []).map(r => r.request_id);
+    return (data || []).map((r: { request_id: string }) => r.request_id);
   } catch (error) {
     console.error('Error getting unread request IDs:', error);
     return [];
@@ -100,8 +100,9 @@ export async function getUnreadRequestIds(): Promise<string[]> {
 }
 
 /**
- * Get all viewed request IDs for current user (requests they actually opened)
- * Returns set of request IDs that the user has viewed
+ * Get all viewed request IDs for current user (requests they actually opened and read)
+ * Returns set of request IDs that the user has read (is_read = true)
+ * Note: Green dot indicator depends on this - it only disappears when request is actually opened
  */
 export async function getViewedRequestIds(): Promise<Set<string>> {
   try {
@@ -111,10 +112,11 @@ export async function getViewedRequestIds(): Promise<Set<string>> {
     const { data, error } = await supabase
       .from('request_views')
       .select('request_id')
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .eq('is_read', true); // Only requests that were actually opened (read)
 
     if (error) throw error;
-    return new Set((data || []).map(r => r.request_id));
+    return new Set((data || []).map((r: { request_id: string }) => r.request_id));
   } catch (error) {
     console.error('Error getting viewed request IDs:', error);
     return new Set();

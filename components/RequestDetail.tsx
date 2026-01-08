@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { logger } from "../utils/logger";
-import { AppMode, Message as LocalMessage, Offer, Request } from "../types";
-import { Button } from "./ui/Button";
-import { Badge } from "./ui/Badge";
+import { logger } from "../utils/logger.ts";
+import { AppMode, Message as LocalMessage, Offer, Request } from "../types.ts";
+import { Button } from "./ui/Button.tsx";
+import { Badge } from "./ui/Badge.tsx";
 import {
   AlertCircle,
   AlertTriangle,
@@ -49,29 +49,32 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
-import { formatTimeAgo } from "../utils/timeFormat";
+import { formatTimeAgo } from "../utils/timeFormat.ts";
 import { AnimatePresence, motion } from "framer-motion";
-import { AVAILABLE_CATEGORIES } from "../data";
+import { AVAILABLE_CATEGORIES } from "../data.ts";
 import {
   confirmGuestPhone,
   getCurrentUser,
   verifyGuestPhone,
-} from "../services/authService";
+} from "../services/authService.ts";
 import {
   incrementRequestViews,
   markRequestAsRead,
   markRequestAsViewed,
-} from "../services/requestViewsService";
-import { copyShareUrl, getRequestShareUrl } from "../services/routingService";
+} from "../services/requestViewsService.ts";
+import {
+  copyShareUrl,
+  getRequestShareUrl,
+} from "../services/routingService.ts";
 import {
   createReport,
   REPORT_REASONS,
   ReportReason,
-} from "../services/reportsService";
+} from "../services/reportsService.ts";
 import ReactDOM from "react-dom";
 import html2canvas from "html2canvas";
-import { UnifiedHeader } from "./ui/UnifiedHeader";
-import { DropdownMenu, DropdownMenuItem } from "./ui/DropdownMenu";
+import { UnifiedHeader } from "./ui/UnifiedHeader.tsx";
+import { DropdownMenu, DropdownMenuItem } from "./ui/DropdownMenu.tsx";
 import {
   closeConversationsForRequest,
   Conversation,
@@ -82,21 +85,21 @@ import {
   Message as ChatMessage,
   sendMessage,
   subscribeToMessages,
-} from "../services/messagesService";
+} from "../services/messagesService.ts";
 import {
   acceptOffer,
   createOffer,
   startNegotiation,
-} from "../services/requestsService";
+} from "../services/requestsService.ts";
 import {
   formatFileSize,
   isImageFile,
   uploadOfferAttachments,
   validateFile,
-} from "../services/storageService";
-import { supabase } from "../services/supabaseClient";
-import { DEFAULT_SAUDI_CITIES } from "../services/placesService";
-import { CityAutocomplete } from "./ui/CityAutocomplete";
+} from "../services/storageService.ts";
+import { supabase } from "../services/supabaseClient.ts";
+import { DEFAULT_SAUDI_CITIES } from "../services/placesService.ts";
+import { CityAutocomplete } from "./ui/CityAutocomplete.tsx";
 
 interface RequestDetailProps {
   request: Request;
@@ -217,6 +220,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   },
 ) => {
   const [negotiationOpen, setNegotiationOpen] = useState(false);
+  const [activeOfferId, setActiveOfferId] = useState<string | null>(null); // العرض المحدد للمحادثة
+  const [localOfferStatuses, setLocalOfferStatuses] = useState<
+    Record<string, string>
+  >({}); // track local status changes
   const [chatMessage, setChatMessage] = useState("");
   const [isShared, setIsShared] = useState(false);
   const [isIdCopied, setIsIdCopied] = useState(false);
@@ -574,6 +581,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     return false;
   };
 
+  // دالة مساعدة للحصول على الحالة الفعلية للعرض (تأخذ التحديثات المحلية في الاعتبار)
+  const getEffectiveOfferStatus = (offer: Offer): string => {
+    return localOfferStatuses[offer.id] || offer.status;
+  };
+
   // State لقبول العرض
   const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
   const [acceptOfferError, setAcceptOfferError] = useState<string | null>(null);
@@ -606,9 +618,24 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       // 2. إغلاق المحادثات مع العارضين الآخرين
       await closeConversationsForRequest(request.id, offerId);
 
-      // 3. إعادة تحميل الصفحة لعرض التغييرات
-      // يمكن استبدال هذا بتحديث الـ state مباشرة
-      window.location.reload();
+      // 3. تحديث حالة العرض محلياً بدلاً من إعادة التحميل
+      setLocalOfferStatuses((prev) => {
+        const updated: Record<string, string> = {};
+        // رفض جميع العروض الأخرى
+        request.offers.forEach((offer) => {
+          if (offer.id === offerId) {
+            updated[offer.id] = "accepted";
+          } else if (
+            offer.status === "pending" || offer.status === "negotiating"
+          ) {
+            updated[offer.id] = "rejected";
+          }
+        });
+        return { ...prev, ...updated };
+      });
+
+      // تعيين العرض النشط وفتح المحادثة
+      setActiveOfferId(offerId);
     } catch (error) {
       logger.error("خطأ في قبول العرض:", error, "service");
       setAcceptOfferError("حدث خطأ غير متوقع");
@@ -635,11 +662,17 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         return;
       }
 
-      // فتح نافذة المحادثة بعد بدء التفاوض
-      setNegotiationOpen(true);
+      // تحديث حالة العرض محلياً بدلاً من إعادة التحميل
+      setLocalOfferStatuses((prev) => ({
+        ...prev,
+        [offerId]: "negotiating",
+      }));
 
-      // إعادة تحميل الصفحة لعرض التغييرات
-      window.location.reload();
+      // تعيين العرض النشط للمحادثة
+      setActiveOfferId(offerId);
+
+      // فتح نافذة المحادثة مباشرة بعد بدء التفاوض
+      setNegotiationOpen(true);
     } catch (error) {
       logger.error("خطأ في بدء التفاوض:", error, "service");
       setStartNegotiationError("حدث خطأ غير متوقع");
@@ -1081,31 +1114,17 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     }
   }, [request?.id]);
 
-  // Mark request as read when user scrolls down (reads the content)
+  // Mark request as read when user opens it (immediately on mount)
   useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container || !request?.id) return;
+    if (!request?.id || !user?.id || isGuest) return;
 
-    let hasScrolledDown = false;
-    const handleScroll = () => {
-      // If user scrolled more than 50% of the content, mark as read
-      const scrollPercentage =
-        (container.scrollTop /
-          (container.scrollHeight - container.clientHeight)) * 100;
-      if (scrollPercentage > 50 && !hasScrolledDown) {
-        hasScrolledDown = true;
-        markRequestAsRead(request.id);
-        if (onMarkRequestAsRead) {
-          onMarkRequestAsRead(request.id);
-        }
+    // Mark as read immediately when request detail is opened
+    markRequestAsRead(request.id).then((success) => {
+      if (success && onMarkRequestAsRead) {
+        onMarkRequestAsRead(request.id);
       }
-    };
-
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      container.removeEventListener("scroll", handleScroll);
-    };
-  }, [request?.id]);
+    });
+  }, [request?.id, user?.id, isGuest, onMarkRequestAsRead]);
 
   // Handler to submit offer from header button
   const handleSubmitOfferFromHeader = useCallback(async () => {
@@ -1609,35 +1628,20 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       {request.title}
                     </h1>
 
-                    {/* Edit Button for owner, Menu for others */}
-                    {isMyRequest
-                      ? (
-                        <button
-                          onClick={handleEditRequest}
-                          className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 -ml-1"
-                        >
-                          <Edit
+                    {/* Menu button for all users */}
+                    <DropdownMenu
+                      trigger={
+                        <button className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 -ml-1">
+                          <MoreVertical
                             size={20}
                             strokeWidth={2.5}
                             className="text-muted-foreground"
                           />
                         </button>
-                      )
-                      : (
-                        <DropdownMenu
-                          trigger={
-                            <button className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 -ml-1">
-                              <MoreVertical
-                                size={20}
-                                strokeWidth={2.5}
-                                className="text-muted-foreground"
-                              />
-                            </button>
-                          }
-                          items={dropdownItems}
-                          align="left"
-                        />
-                      )}
+                      }
+                      items={dropdownItems}
+                      align="left"
+                    />
                   </motion.div>
 
                   {/* Translation Toggle - Below Title */}
@@ -1775,35 +1779,20 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       {request.title}
                     </h1>
 
-                    {/* Edit Button for owner, Menu for others */}
-                    {isMyRequest
-                      ? (
-                        <button
-                          onClick={handleEditRequest}
-                          className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 -ml-1"
-                        >
-                          <Edit
+                    {/* Menu button for all users */}
+                    <DropdownMenu
+                      trigger={
+                        <button className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 -ml-1">
+                          <MoreVertical
                             size={20}
                             strokeWidth={2.5}
                             className="text-muted-foreground"
                           />
                         </button>
-                      )
-                      : (
-                        <DropdownMenu
-                          trigger={
-                            <button className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 -ml-1">
-                              <MoreVertical
-                                size={20}
-                                strokeWidth={2.5}
-                                className="text-muted-foreground"
-                              />
-                            </button>
-                          }
-                          items={dropdownItems}
-                          align="left"
-                        />
-                      )}
+                      }
+                      items={dropdownItems}
+                      align="left"
+                    />
                   </motion.div>
 
                   {/* Translation Toggle - Below Title (No Images State) */}
@@ -1880,7 +1869,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       ? (() => {
                         // Parse location: "حي النرجس، الرياض" or "الرياض"
                         const locationParts = request.location.split("،").map(
-                          (s) => s.trim()
+                          (s) => s.trim(),
                         );
                         const city = locationParts.length > 1
                           ? locationParts[locationParts.length - 1]
@@ -2002,7 +1991,85 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     </span>
                   </div>
                 )}
+
+                {/* Available After - Fifth Row (only for my requests) */}
+                {isMyRequest && request.status === "active" && (() => {
+                  const lastUpdated = request.updatedAt
+                    ? new Date(request.updatedAt)
+                    : new Date(request.createdAt);
+                  const sixHoursMs = 6 * 60 * 60 * 1000;
+                  const elapsedSinceUpdate = Date.now() - lastUpdated.getTime();
+                  const canBump = elapsedSinceUpdate >= sixHoursMs;
+                  const bumpHoursLeft = Math.max(
+                    0,
+                    Math.ceil((sixHoursMs - elapsedSinceUpdate) / (60 * 60 * 1000)),
+                  );
+
+                  if (!canBump) {
+                    return (
+                      <div className="flex flex-col gap-1.5 w-full">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                          <RefreshCw size={18} className="text-primary" />{" "}
+                          متاح بعد
+                        </span>
+                        <span className="font-bold text-sm text-muted-foreground">
+                          {bumpHoursLeft} س
+                        </span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </motion.div>
+
+              {/* Status Dots - Display at bottom of request info */}
+              <div className="flex justify-center gap-1.5 mt-4 pt-4 border-t border-border">
+                <div
+                  className={`w-1.5 h-1.5 rounded-full transition-all ${
+                    request.status === "active"
+                      ? "bg-primary"
+                      : request.status === "assigned"
+                      ? "bg-blue-500"
+                      : request.status === "completed"
+                      ? "bg-green-500"
+                      : request.status === "archived"
+                      ? "bg-red-500"
+                      : "bg-muted-foreground"
+                  }`}
+                  title={
+                    request.status === "active"
+                      ? "نشط"
+                      : request.status === "assigned"
+                      ? "تم التعيين"
+                      : request.status === "completed"
+                      ? "مكتمل"
+                      : request.status === "archived"
+                      ? "مؤرشف"
+                      : "غير محدد"
+                  }
+                />
+                <div
+                  className={`w-1.5 h-1.5 rounded-full transition-all ${
+                    request.status === "assigned"
+                      ? "bg-blue-500"
+                      : "bg-transparent"
+                  }`}
+                />
+                <div
+                  className={`w-1.5 h-1.5 rounded-full transition-all ${
+                    request.status === "completed"
+                      ? "bg-green-500"
+                      : "bg-transparent"
+                  }`}
+                />
+                <div
+                  className={`w-1.5 h-1.5 rounded-full transition-all ${
+                    request.status === "archived"
+                      ? "bg-red-500"
+                      : "bg-transparent"
+                  }`}
+                />
+              </div>
 
               <motion.div
                 initial={{ opacity: 0 }}
@@ -2179,7 +2246,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
                           <div className="flex gap-3">
                             {/* PENDING ACTIONS */}
-                            {offer.status === "pending" && (
+                            {getEffectiveOfferStatus(offer) === "pending" && (
                               <>
                                 {/* 1. Accept Button (Appears Right in RTL because it's first) */}
                                 <Button
@@ -2199,29 +2266,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                   قبول العرض
                                 </Button>
 
-                                {/* 2. Message Button */}
-                                {onNavigateToMessages && !isGuest && (
-                                  <Button
-                                    size="sm"
-                                    className="bg-primary/15 text-primary hover:bg-primary/25 border-transparent h-10 text-sm font-bold shadow-sm"
-                                    onClick={async () => {
-                                      const targetUserId = offer.providerId ||
-                                        request.author;
-                                      onNavigateToMessages?.(
-                                        undefined,
-                                        targetUserId,
-                                        request.id,
-                                        offer.id,
-                                      );
-                                    }}
-                                  >
-                                    <MessageSquare size={18} className="ml-2" />
-                                    {" "}
-                                    إرسال رسالة
-                                  </Button>
-                                )}
-
-                                {/* 3. Negotiation Button/Badge (Appears Left in RTL) */}
+                                {/* Negotiation Button/Badge */}
                                 {offer.isNegotiable
                                   ? (
                                     <Button
@@ -2275,40 +2320,41 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                             )}
 
                             {/* NEGOTIATING ACTIONS */}
-                            {offer.status === "negotiating" && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  className="flex-1 border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 h-10"
-                                  onClick={() => setNegotiationOpen(true)}
-                                >
-                                  <MessageSquare size={18} className="ml-2" />
-                                  {" "}
-                                  متابعة التفاوض
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="success"
-                                  className="flex-1 shadow-sm h-10 disabled:opacity-50"
-                                  onClick={() => handleAcceptOffer(offer.id)}
-                                  disabled={isAcceptingOffer || isGuest}
-                                >
-                                  {isAcceptingOffer
-                                    ? (
-                                      <Loader2
-                                        size={18}
-                                        className="animate-spin ml-2"
-                                      />
-                                    )
-                                    : null}
-                                  قبول العرض
-                                </Button>
-                              </>
-                            )}
+                            {getEffectiveOfferStatus(offer) === "negotiating" &&
+                              (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    className="flex-1 border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 h-10"
+                                    onClick={() => setNegotiationOpen(true)}
+                                  >
+                                    <MessageSquare size={18} className="ml-2" />
+                                    {" "}
+                                    متابعة التفاوض
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="success"
+                                    className="flex-1 shadow-sm h-10 disabled:opacity-50"
+                                    onClick={() => handleAcceptOffer(offer.id)}
+                                    disabled={isAcceptingOffer || isGuest}
+                                  >
+                                    {isAcceptingOffer
+                                      ? (
+                                        <Loader2
+                                          size={18}
+                                          className="animate-spin ml-2"
+                                        />
+                                      )
+                                      : null}
+                                    قبول العرض
+                                  </Button>
+                                </>
+                              )}
 
                             {/* ACCEPTED STATUS - Enhanced with contact options */}
-                            {offer.status === "accepted" && (
+                            {getEffectiveOfferStatus(offer) === "accepted" && (
                               <div className="w-full space-y-3">
                                 {/* Status Badge */}
                                 <div className="bg-primary/10 text-primary rounded-lg text-sm font-bold flex items-center justify-center gap-2 border border-primary/20 px-4 py-2.5">
@@ -3101,7 +3147,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                             )}
                           </span>
                           {offerAttachments.length > 0 && (
-                            <span className="text-xs text-muted-foreground bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                            <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
                               {offerAttachments.length} ملف
                             </span>
                           )}
@@ -3109,10 +3155,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         <motion.span
                           animate={{ rotate: isAttachmentsExpanded ? 180 : 0 }}
                           transition={{ duration: 0.2, ease: "easeInOut" }}
-                          className={`transition-colors ${
-                            offerAttachments.length > 0
-                              ? "text-primary"
-                              : "text-muted-foreground group-hover:text-foreground"
+                          className={`transition-colors text-muted-foreground group-hover:text-foreground ${
+                            offerAttachments.length > 0 ? "!text-primary" : ""
                           }`}
                         >
                           <ChevronDown size={16} />
@@ -3235,7 +3279,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                       }
                                       if (validFiles.length > 0) {
                                         setOfferAttachments(
-                                          (prev) => [...prev, ...validFiles]
+                                          (prev) => [...prev, ...validFiles],
                                         );
                                       }
                                     }
@@ -3610,24 +3654,21 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                   .eq("id", userProfile.id)
                                   .single();
 
-                                const hasInterests =
-                                  Array.isArray(
-                                    profileData?.interested_categories,
-                                  ) &&
+                                const hasInterests = Array.isArray(
+                                  profileData?.interested_categories,
+                                ) &&
                                   profileData.interested_categories.length > 0;
-                                const hasCities =
-                                  Array.isArray(
-                                    profileData?.interested_cities,
-                                  ) && profileData.interested_cities.length > 0;
+                                const hasCities = Array.isArray(
+                                  profileData?.interested_cities,
+                                ) && profileData.interested_cities.length > 0;
                                 const hasProfileName = !!profileData
                                   ?.display_name?.trim();
                                 const alreadyOnboarded =
                                   profileData?.has_onboarded === true;
 
-                                needsOnboarding =
-                                  !(alreadyOnboarded ||
-                                    (hasProfileName &&
-                                      (hasInterests || hasCities)));
+                                needsOnboarding = !(alreadyOnboarded ||
+                                  (hasProfileName &&
+                                    (hasInterests || hasCities)));
                               } catch (err) {
                                 logger.error(
                                   "Error checking onboarding status:",

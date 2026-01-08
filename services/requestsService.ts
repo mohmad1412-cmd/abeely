@@ -4,9 +4,11 @@ import { Offer, Request } from "../types";
 import { getCategoryIdsByLabels } from "./categoriesService";
 import { logger } from "../utils/logger";
 import { storageService as _storageService } from "./storageService";
+import { createNotification } from "./notificationsService";
 
 /**
  * إرسال Push Notifications للمستخدمين المهتمين بطلب جديد
+ * ملاحظة: الإشعارات داخل التطبيق للطلبات الجديدة تُنشأ من Edge Function
  */
 async function sendPushNotificationForNewRequest(params: {
   requestId: string;
@@ -37,6 +39,7 @@ async function sendPushNotificationForNewRequest(params: {
 
 /**
  * إرسال Push Notification لصاحب الطلب عند وصول عرض جديد
+ * + إنشاء إشعار داخل التطبيق
  */
 async function sendPushNotificationForNewOffer(params: {
   requestId: string;
@@ -49,6 +52,18 @@ async function sendPushNotificationForNewOffer(params: {
   providerName?: string;
 }): Promise<void> {
   try {
+    // إنشاء إشعار داخل التطبيق
+    await createNotification(
+      params.recipientId,
+      "offer",
+      `🎁 عرض جديد من ${params.providerName || "مقدم خدمة"}`,
+      `وصلك عرض على طلبك: ${params.requestTitle}`,
+      `/request/${params.requestId}`,
+      params.requestId,
+      params.offerId,
+    );
+
+    // إرسال Push Notification
     const { data, error } = await supabase.functions.invoke(
       "send-push-notification",
       {
@@ -69,6 +84,7 @@ async function sendPushNotificationForNewOffer(params: {
 
 /**
  * إرسال Push Notification للمزود عند قبول عرضه
+ * + إنشاء إشعار داخل التطبيق
  */
 async function sendPushNotificationForOfferAccepted(params: {
   requestId: string;
@@ -78,6 +94,18 @@ async function sendPushNotificationForOfferAccepted(params: {
   offerId: string;
 }): Promise<void> {
   try {
+    // إنشاء إشعار داخل التطبيق
+    await createNotification(
+      params.recipientId,
+      "offer_accepted",
+      "🎉 تم قبول عرضك!",
+      `مبروك! تم قبول عرضك للطلب: ${params.requestTitle}`,
+      `/request/${params.requestId}`,
+      params.requestId,
+      params.offerId,
+    );
+
+    // إرسال Push Notification
     const { data, error } = await supabase.functions.invoke(
       "send-push-notification",
       {
@@ -101,15 +129,29 @@ async function sendPushNotificationForOfferAccepted(params: {
 
 /**
  * إرسال Push Notification للمزود عند بدء التفاوض
+ * + إنشاء إشعار داخل التطبيق
  */
 async function sendPushNotificationForNegotiationStarted(params: {
   requestId: string;
   requestTitle: string;
   recipientId: string; // مقدم العرض
-  senderName: string; // صاحب الطلب
+  authorId: string; // صاحب الطلب
+  senderName: string; // اسم صاحب الطلب
   offerId: string;
 }): Promise<void> {
   try {
+    // إنشاء إشعار داخل التطبيق
+    await createNotification(
+      params.recipientId,
+      "negotiation",
+      `🤝 ${params.senderName} يريد التفاوض معك`,
+      `بخصوص عرضك على الطلب: ${params.requestTitle}`,
+      `/request/${params.requestId}`,
+      params.requestId,
+      params.offerId,
+    );
+
+    // إرسال Push Notification
     const { data, error } = await supabase.functions.invoke(
       "send-push-notification",
       {
@@ -146,6 +188,7 @@ export type RequestInsert = {
   delivery_from?: string;
   delivery_to?: string;
   seriousness?: number;
+  images?: string[]; // صور الطلب
 };
 
 export type OfferInsert = {
@@ -1703,6 +1746,68 @@ export function subscribeToAllNewRequests(
 }
 
 /**
+ * Subscribe to request visibility updates (hide/show changes)
+ * Listens for UPDATE events where is_public changes
+ */
+export function subscribeToRequestUpdates(
+  onHide: (requestId: string) => void,
+  onShow: (request: Request) => void,
+): () => void {
+  const channel = supabase
+    .channel("request-visibility-updates")
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "requests",
+      },
+      async (payload: any) => {
+        const oldRecord = payload.old as Record<string, any>;
+        const newRecord = payload.new as Record<string, any>;
+
+        // Skip if is_public didn't change
+        if (oldRecord.is_public === newRecord.is_public) return;
+
+        // Request was hidden (is_public: true -> false)
+        if (oldRecord.is_public === true && newRecord.is_public === false) {
+          onHide(newRecord.id);
+          return;
+        }
+
+        // Request was shown (is_public: false -> true) AND is active
+        if (
+          oldRecord.is_public === false &&
+          newRecord.is_public === true &&
+          newRecord.status === "active"
+        ) {
+          // Fetch full request data with categories
+          const { data, error } = await supabase
+            .from("requests")
+            .select(`
+              *,
+              request_categories (
+                category_id,
+                categories (id, label)
+              )
+            `)
+            .eq("id", newRecord.id)
+            .single();
+
+          if (!error && data) {
+            onShow(transformRequest(data));
+          }
+        }
+      },
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+/**
  * إخفاء الطلب من السوق (is_public = false)
  */
 export async function hideRequest(
@@ -2153,7 +2258,7 @@ export async function startNegotiation(
       logger.warn("تحذير: فشل في إنشاء المحادثة:", convErr);
     }
 
-    // 5. إرسال إشعار للعارض
+    // 5. إرسال إشعار للعارض (in-app + Push)
     try {
       // Get requester name for notification
       const { data: requesterProfile } = await supabase
@@ -2164,40 +2269,19 @@ export async function startNegotiation(
 
       const requesterName = requesterProfile?.display_name || "صاحب الطلب";
 
-      const { error: notifError } = await supabase
-        .from("notifications")
-        .insert({
-          user_id: offer.provider_id,
-          type: "status",
-          title: "🤝 بدأ التفاوض على عرضك!",
-          message:
-            `${requesterName} يريد التفاوض معك على عرضك في طلب "${request.title}"`,
-          link_to: `/request/${requestId}`,
-          related_request_id: requestId,
-          related_offer_id: offerId,
-        });
+      // هذه الدالة تنشئ إشعار داخل التطبيق + تُرسل Push Notification
+      sendPushNotificationForNegotiationStarted({
+        requestId,
+        requestTitle: request.title,
+        recipientId: offer.provider_id,
+        authorId: userId,
+        senderName: requesterName,
+        offerId: offerId,
+      });
 
-      if (notifError) {
-        logger.error("خطأ في إرسال الإشعار عند بدء التفاوض:", notifError);
-        // لا نعيد false لأن التفاوض نجح، فقط الإشعار فشل
-      } else {
-        logger.log("✅ تم إرسال إشعار بدء التفاوض بنجاح");
-
-        // إرسال إشعار Push للمزود ببدء التفاوض
-        try {
-          sendPushNotificationForNegotiationStarted({
-            requestId,
-            requestTitle: request.title,
-            recipientId: offer.provider_id,
-            senderName: requesterName,
-            offerId: offerId,
-          });
-        } catch (pushErr) {
-          logger.warn("فشل في إرسال إشعار Push لبدء التفاوض:", pushErr);
-        }
-      }
+      logger.log("✅ تم إرسال إشعار بدء التفاوض بنجاح");
     } catch (notifErr) {
-      logger.error("خطأ غير متوقع في إرسال الإشعار:", notifErr);
+      logger.warn("فشل في إرسال إشعار بدء التفاوض:", notifErr);
       // لا نعيد false لأن التفاوض نجح، فقط الإشعار فشل
     }
 

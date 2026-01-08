@@ -54,6 +54,8 @@ interface MyOffersProps {
   isActive?: boolean;
   // Pull-to-refresh callback
   onRefresh?: () => void | Promise<void>;
+  // Default filter to apply on mount
+  defaultFilter?: OfferFilter;
 }
 
 export const MyOffers: React.FC<MyOffersProps> = ({
@@ -78,6 +80,7 @@ export const MyOffers: React.FC<MyOffersProps> = ({
   onCreateRequest,
   isActive = true,
   onRefresh,
+  defaultFilter,
 }) => {
   // Header compression state - for smooth scroll animations
   const [isHeaderCompressed, setIsHeaderCompressed] = useState(false);
@@ -106,9 +109,16 @@ export const MyOffers: React.FC<MyOffersProps> = ({
   const cardTouchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Filter & Sort States
-  const [offerFilter, setOfferFilter] = useState<OfferFilter>("all");
+  const [offerFilter, setOfferFilter] = useState<OfferFilter>(defaultFilter || "all");
   const [sortOrder, setSortOrder] = useState<SortOrder>("createdAt");
   const [hideRejected, setHideRejected] = useState(true);
+
+  // Apply default filter when component mounts or defaultFilter changes
+  useEffect(() => {
+    if (defaultFilter && defaultFilter !== offerFilter) {
+      setOfferFilter(defaultFilter);
+    }
+  }, [defaultFilter]);
 
   // Search state
   const [searchTerm, setSearchTerm] = useState("");
