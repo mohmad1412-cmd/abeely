@@ -10,7 +10,7 @@ const isValidUrl = supabaseUrl && supabaseUrl.trim().length > 0;
 const isValidKey = supabaseAnonKey && supabaseAnonKey.trim().length > 0;
 
 // Log configuration status (without exposing sensitive data)
-console.log("🔧 Supabase Configuration:", {
+/* console.log("🔧 Supabase Configuration:", {
   hasUrl: !!supabaseUrl,
   urlLength: supabaseUrl?.length || 0,
   hasKey: !!supabaseAnonKey,
@@ -18,7 +18,7 @@ console.log("🔧 Supabase Configuration:", {
   isValidUrl,
   isValidKey,
   isConfigured: isValidUrl && isValidKey,
-});
+}); */
 
 if (!isValidUrl || !isValidKey) {
   const errorMsg =
@@ -60,7 +60,7 @@ export const supabase = (() => {
         flowType: "pkce",
         // استخدام capacitorStorage للتخزين الدائم على Android
         storage: capacitorStorage,
-        storageKey: "sb-iwfvlrtmbixequntufjr-auth-token",
+        storageKey: "sb-gfjtyfwwbpjbwafbnfcc-auth-token",
       },
       realtime: {
         // تحسين إعدادات WebSocket

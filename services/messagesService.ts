@@ -124,49 +124,44 @@ export async function getConversations(): Promise<Conversation[]> {
 
     // Error already handled above
 
-    // Transform data to include other_user and unread_count
-    const conversations = await Promise.all(
-      (data || []).map(async (conv) => {
-        const otherUserId = conv.participant1_id === user.id
-          ? conv.participant2_id
-          : conv.participant1_id;
+    // Fetch all unread counts in one query instead of N queries (performance optimization)
+    const conversationIds = (data || []).map((c) => c.id);
+    let unreadCountsMap: Record<string, number> = {};
 
-        const otherUser = conv.participant1_id === user.id
-          ? conv.participant2
-          : conv.participant1;
+    if (conversationIds.length > 0) {
+      try {
+        // Use a single query with grouping to get all unread counts
+        const { data: unreadData, error: unreadError } = await supabase
+          .from("messages")
+          .select("conversation_id")
+          .in("conversation_id", conversationIds)
+          .eq("is_read", false)
+          .neq("sender_id", user.id);
 
-        // Get unread count - with error handling
-        let unreadCount = 0;
-        try {
-          const { count, error: countError } = await supabase
-            .from("messages")
-            .select("*", { count: "exact", head: true })
-            .eq("conversation_id", conv.id)
-            .eq("is_read", false)
-            .neq("sender_id", user.id);
-
-          if (countError) {
-            logger.warn(
-              "Error getting unread count for conversation:",
-              conv.id,
-              countError,
-            );
-            unreadCount = 0;
-          } else {
-            unreadCount = count || 0;
-          }
-        } catch (countErr) {
-          logger.warn("Exception getting unread count:", countErr);
-          unreadCount = 0;
+        if (!unreadError && unreadData) {
+          // Count occurrences per conversation_id
+          unreadData.forEach((msg) => {
+            unreadCountsMap[msg.conversation_id] =
+              (unreadCountsMap[msg.conversation_id] || 0) + 1;
+          });
         }
+      } catch (countErr) {
+        logger.warn("Exception getting unread counts:", countErr);
+      }
+    }
 
-        return {
-          ...conv,
-          other_user: otherUser,
-          unread_count: unreadCount,
-        };
-      }),
-    );
+    // Transform data to include other_user and unread_count (no async needed now!)
+    const conversations = (data || []).map((conv) => {
+      const otherUser = conv.participant1_id === user.id
+        ? conv.participant2
+        : conv.participant1;
+
+      return {
+        ...conv,
+        other_user: otherUser,
+        unread_count: unreadCountsMap[conv.id] || 0,
+      };
+    });
 
     return conversations;
   } catch (error) {
@@ -178,6 +173,7 @@ export async function getConversations(): Promise<Conversation[]> {
 /**
  * Get or create conversation between two users
  */
+
 export async function getOrCreateConversation(
   otherUserId: string,
   requestId?: string,
@@ -187,34 +183,127 @@ export async function getOrCreateConversation(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    // Try to find existing conversation
-    const { data: existing } = await supabase
-      .from("conversations")
-      .select("*")
-      .or(
-        `and(participant1_id.eq.${user.id},participant2_id.eq.${otherUserId}),and(participant1_id.eq.${otherUserId},participant2_id.eq.${user.id})`,
-      )
-      .is("request_id", requestId ?? null)
-      .is("offer_id", offerId ?? null)
-      .single();
+    // Helper to fetch existing conversation with better query
+    const fetchExisting = async (): Promise<any> => {
+      // Determine consistent participant order (same as we use for insert)
+      const participant1Id = user.id < otherUserId ? user.id : otherUserId;
+      const participant2Id = user.id < otherUserId ? otherUserId : user.id;
 
+      // First, try with consistent ordering (new conversations use this)
+      const { data: data1, error: error1 } = await supabase
+        .from("conversations")
+        .select("*")
+        .eq("participant1_id", participant1Id)
+        .eq("participant2_id", participant2Id)
+        .eq("request_id", requestId || null)
+        .eq("offer_id", offerId || null)
+        .maybeSingle();
+
+      if (error1 && error1.code !== "PGRST116") {
+        logger.error(
+          "Error fetching existing conversation (consistent order):",
+          error1,
+          "service",
+        );
+      }
+
+      if (data1) {
+        return data1;
+      }
+
+      // Fallback: check reverse order for old conversations that may not follow consistent ordering
+      // Only do this if the IDs are actually different
+      if (participant1Id !== participant2Id) {
+        const { data: data2, error: error2 } = await supabase
+          .from("conversations")
+          .select("*")
+          .eq("participant1_id", participant2Id)
+          .eq("participant2_id", participant1Id)
+          .eq("request_id", requestId || null)
+          .eq("offer_id", offerId || null)
+          .maybeSingle();
+
+        if (error2 && error2.code !== "PGRST116") {
+          logger.error(
+            "Error fetching existing conversation (reverse order):",
+            error2,
+            "service",
+          );
+        }
+
+        if (data2) {
+          return data2;
+        }
+      }
+
+      return null;
+    };
+
+    // 1. Try to find existing conversation
+    const existing = await fetchExisting();
     if (existing) {
       return existing as Conversation;
     }
 
-    // Create new conversation
+    // 2. Create new conversation
+    // Ensure consistent ordering: smaller ID first for participant1_id to avoid constraint issues
+    const participant1Id = user.id < otherUserId ? user.id : otherUserId;
+    const participant2Id = user.id < otherUserId ? otherUserId : user.id;
+
     const { data: newConv, error } = await supabase
       .from("conversations")
       .insert({
-        participant1_id: user.id,
-        participant2_id: otherUserId,
+        participant1_id: participant1Id,
+        participant2_id: participant2Id,
         request_id: requestId || null,
         offer_id: offerId || null,
       })
       .select()
-      .single();
+      .maybeSingle();
 
-    if (error) throw error;
+    if (error) {
+      // If error is unique constraint violation (code 23505), it means it was created concurrently
+      // Retry fetching with exponential backoff
+      if (error.code === "23505" || error.code === "409") {
+        logger.log(
+          "Race condition detected in getOrCreateConversation, retrying with backoff...",
+        );
+
+        // Retry with exponential backoff (3 attempts: 100ms, 200ms, 400ms)
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const delay = 100 * Math.pow(2, attempt);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+
+          const retryExisting = await fetchExisting();
+          if (retryExisting) {
+            logger.log(
+              `Found conversation after race condition (attempt ${
+                attempt + 1
+              })`,
+            );
+            return retryExisting as Conversation;
+          }
+        }
+
+        // Last attempt: try a broader search
+        logger.log(
+          "Last attempt: searching all conversations between participants...",
+        );
+        const lastRetry = await fetchExisting();
+        if (lastRetry) {
+          return lastRetry as Conversation;
+        }
+
+        logger.error(
+          "Could not find conversation after race condition retries",
+          null,
+          "service",
+        );
+        // Don't throw - return null so the UI can handle gracefully
+        return null;
+      }
+      throw error;
+    }
 
     return newConv as Conversation;
   } catch (error) {
@@ -239,7 +328,7 @@ export async function getConversation(
       .select("*")
       .eq("id", conversationId)
       .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`)
-      .single();
+      .maybeSingle();
 
     if (convError) throw convError;
 
@@ -351,6 +440,7 @@ export async function sendMessage(
     attachments?: MessageAttachment[];
     audioUrl?: string;
     audioDuration?: number;
+    senderProfile?: any;
   },
 ): Promise<Message | null> {
   try {
@@ -406,108 +496,120 @@ export async function sendMessage(
 
     if (insertError) throw insertError;
 
-    // Update conversation's last_message_at and last_message_preview
-    // (This is also done by trigger, but we do it here as backup)
-    const messagePreview = content.trim() ||
-      (options?.audioUrl
-        ? "رسالة صوتية"
-        : options?.attachments && options.attachments.length > 0
-        ? "مرفق"
-        : "رسالة");
-    await supabase
-      .from("conversations")
-      .update({
-        last_message_at: insertedMsg.created_at,
-        last_message_preview: messagePreview.substring(0, 100),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", conversationId);
+    // Use provided profile or fetch if executing on server/unknown context
+    // In most cases, we can return null for sender effectively because
+    // the UI already optimistic-updated it, and Realtime will bring the full object later.
+    // But for completeness:
+    let senderProfile = options?.senderProfile;
 
-    // Fetch sender profile separately
-    const { data: senderProfile } = await supabase
-      .from("profiles")
-      .select("id, display_name, avatar_url")
-      .eq("id", user.id)
-      .single();
+    if (!senderProfile) {
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url")
+        .eq("id", user.id)
+        .maybeSingle();
+      senderProfile = data;
+    }
 
-    // Get conversation to find recipient
-    const { data: conversation } = await supabase
-      .from("conversations")
-      .select("participant1_id, participant2_id, request_id, offer_id")
-      .eq("id", conversationId)
-      .single();
-
-    // Send notification to recipient (backup if trigger doesn't work)
-    if (conversation) {
-      const recipientId = conversation.participant1_id === user.id
-        ? conversation.participant2_id
-        : conversation.participant1_id;
-
-      if (recipientId) {
-        // 1. In-app notification (handled by trigger, but this is a backup/companion)
-        try {
-          const senderName = senderProfile?.display_name || "مستخدم";
-          const notificationMessage = content.trim()
-            ? content.substring(0, 50) + (content.length > 50 ? "..." : "")
-            : options?.audioUrl
+    // Start side effects in background (Fire and Forget)
+    // We don't await these to speed up the UI response
+    (async () => {
+      try {
+        // Update conversation's last_message_at and last_message_preview
+        // (This is also done by trigger, but we do it here as backup)
+        const messagePreview = content.trim() ||
+          (options?.audioUrl
             ? "رسالة صوتية"
             : options?.attachments && options.attachments.length > 0
             ? "مرفق"
-            : "رسالة جديدة";
+            : "رسالة");
 
-          const { error: notifError } = await supabase
-            .from("notifications")
-            .insert({
-              user_id: recipientId,
-              type: "message",
-              title: "رسالة جديدة",
-              message: `${senderName}: ${notificationMessage}`,
-              link_to: `/messages/${conversationId}`,
-              related_message_id: insertedMsg.id,
-              related_request_id: conversation.request_id || null,
-              related_offer_id: conversation.offer_id || null,
-            });
+        // Run independence updates in parallel
+        await Promise.all([
+          // Update conversation
+          supabase
+            .from("conversations")
+            .update({
+              last_message_at: insertedMsg.created_at,
+              last_message_preview: messagePreview.substring(0, 100),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", conversationId),
 
-          if (notifError) {
-            logger.warn(
-              "Failed to create notification (trigger should handle it):",
-              notifError,
-            );
-          }
-        } catch (notifError) {
-          logger.warn(
-            "Exception creating notification (trigger should handle it):",
-            notifError,
-          );
-        }
+          // Handle notifications
+          (async () => {
+            // Use the conversation data we already fetched
+            if (conv) {
+              const recipientId = conv.participant1_id === user.id
+                ? conv.participant2_id
+                : conv.participant1_id;
 
-        // 2. Push Notification (AI-powered)
-        try {
-          // جلب عنوان الطلب إذا كان متاحاً للسياق
-          let requestTitle = "محادثة عامة";
-          if (conversation.request_id) {
-            const { data: request } = await supabase
-              .from("requests")
-              .select("title")
-              .eq("id", conversation.request_id)
-              .single();
-            if (request) requestTitle = request.title;
-          }
+              if (recipientId) {
+                // 1. In-app notification
+                try {
+                  const senderName = senderProfile?.display_name || "مستخدم";
+                  const notificationMessage = content.trim()
+                    ? content.substring(0, 50) +
+                      (content.length > 50 ? "..." : "")
+                    : options?.audioUrl
+                    ? "رسالة صوتية"
+                    : options?.attachments && options.attachments.length > 0
+                    ? "مرفق"
+                    : "رسالة جديدة";
 
-          await sendPushNotificationForNewMessage({
-            conversationId,
-            messageContent: content.trim() ||
-              (options?.audioUrl ? "رسالة صوتية" : "مرفق"),
-            recipientId,
-            senderName: senderProfile?.display_name || "مستخدم",
-            requestTitle,
-            authorId: user.id,
-          });
-        } catch (pushErr) {
-          logger.warn("Failed to send push notification for message:", pushErr);
-        }
+                  const { error: notifError } = await supabase
+                    .from("notifications")
+                    .insert({
+                      user_id: recipientId,
+                      type: "message",
+                      title: "رسالة جديدة",
+                      message: `${senderName}: ${notificationMessage}`,
+                      link_to: `/messages/${conversationId}`,
+                      related_message_id: insertedMsg.id,
+                      related_request_id: conv.request_id || null, // Use data from conv check
+                      related_offer_id: conv.offer_id || null, // Use data from conv check
+                    });
+
+                  if (notifError) {
+                    logger.warn("Failed to create notification:", notifError);
+                  }
+                } catch (e) {
+                  logger.warn("Error creating notification:", e);
+                }
+
+                // 2. Push Notification
+                try {
+                  // Fetch request title if needed
+                  let requestTitle = "محادثة عامة";
+                  if (conv.request_id) {
+                    const { data: reqData } = await supabase
+                      .from("requests")
+                      .select("title")
+                      .eq("id", conv.request_id)
+                      .single();
+                    if (reqData) requestTitle = reqData.title;
+                  }
+
+                  await sendPushNotificationForNewMessage({
+                    conversationId,
+                    messageContent: content.trim() ||
+                      (options?.audioUrl ? "رسالة صوتية" : "مرفق"),
+                    recipientId,
+                    senderName: senderProfile?.display_name || "مستخدم",
+                    requestTitle,
+                    authorId: user.id,
+                  });
+                } catch (e) {
+                  logger.warn("Failed to send push:", e);
+                }
+              }
+            }
+          })(),
+        ]);
+      } catch (err) {
+        logger.error("Error in sendMessage background tasks:", err);
       }
-    }
+    })();
 
     return {
       ...insertedMsg,
@@ -520,7 +622,7 @@ export async function sendMessage(
 }
 
 /**
- * Mark messages as read
+ * Mark messages as read - تحديث فوري
  */
 export async function markMessagesAsRead(
   conversationId: string,
@@ -543,6 +645,7 @@ export async function markMessagesAsRead(
       return false;
     }
 
+    // تحديث فوري - تحديث جميع الرسائل غير المقروءة دفعة واحدة
     const { error } = await supabase
       .from("messages")
       .update({
@@ -555,11 +658,15 @@ export async function markMessagesAsRead(
 
     if (error) throw error;
 
-    // Update conversation's updated_at to trigger realtime subscriptions
+    // تحديث المحادثة لتشغيل الاشتراكات Realtime فوراً
+    // هذا يضمن أن جميع الاشتراكات تتلقى التحديث فوراً
     await supabase
       .from("conversations")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", conversationId);
+
+    // إرسال حدث لتحديث فوري للـ counts
+    window.dispatchEvent(new CustomEvent("refresh-unread-counts"));
 
     return true;
   } catch (error) {
@@ -573,14 +680,19 @@ export async function markMessagesAsRead(
 // ==========================================
 
 /**
- * Subscribe to new messages and updates in a conversation
+ * Subscribe to new messages and updates in a conversation - تحديث فوري
  */
 export function subscribeToMessages(
   conversationId: string,
   callback: (message: Message, eventType: "INSERT" | "UPDATE") => void,
 ) {
   const channel = supabase
-    .channel(`messages:${conversationId}`)
+    .channel(`messages:${conversationId}`, {
+      config: {
+        broadcast: { self: true },
+        presence: { key: conversationId },
+      },
+    })
     .on(
       "postgres_changes",
       {
@@ -591,23 +703,42 @@ export function subscribeToMessages(
       },
       async (payload) => {
         if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
-          // Fetch full message
-          const { data: msgData } = await supabase
-            .from("messages")
-            .select("*")
-            .eq("id", payload.new.id)
-            .single();
+          // تحديث فوري - استخدام البيانات من payload مباشرة
+          const msgData = payload.new as Message;
 
-          if (msgData) {
-            // Fetch sender profile separately
-            const { data: senderProfile } = await supabase
-              .from("profiles")
-              .select("id, display_name, avatar_url")
-              .eq("id", msgData.sender_id)
-              .single();
+          // إذا كانت الرسالة موجودة بالفعل ولدينا المرسل، لا داعي للجلب مرة أخرى
+          // لكن هنا نحن في static context، لذا سنجلب البروفايل فقط
 
-            const data = { ...msgData, sender: senderProfile || null };
-            callback(data as Message, payload.eventType as "INSERT" | "UPDATE");
+          try {
+            // التحقق من وجود sender_id
+            if (msgData.sender_id) {
+              const { data: senderProfile } = await supabase
+                .from("profiles")
+                .select("id, display_name, avatar_url")
+                .eq("id", msgData.sender_id)
+                .maybeSingle();
+
+              const fullMessage = {
+                ...msgData,
+                sender: senderProfile || {
+                  id: msgData.sender_id,
+                  display_name: "مستخدم",
+                  avatar_url: null,
+                },
+              };
+
+              callback(
+                fullMessage as Message,
+                payload.eventType as "INSERT" | "UPDATE",
+              );
+            } else {
+              // في حالة غريبة عدم وجود sender_id
+              callback(msgData, payload.eventType as "INSERT" | "UPDATE");
+            }
+          } catch (err) {
+            logger.error("Error processing realtime message:", err);
+            // Fallback: send partial data
+            callback(msgData, payload.eventType as "INSERT" | "UPDATE");
           }
         }
       },
@@ -620,35 +751,42 @@ export function subscribeToMessages(
 }
 
 /**
- * Subscribe to conversation updates
+ * Subscribe to conversation updates - تحديث فوري
  */
 export function subscribeToConversations(
   userId: string,
   callback: (conversation: Conversation) => void,
 ) {
   const channel = supabase
-    .channel(`conversations:${userId}`)
+    .channel(`conversations:${userId}`, {
+      config: {
+        broadcast: { self: true },
+        presence: { key: userId },
+      },
+    })
     .on(
       "postgres_changes",
       {
-        event: "*",
+        event: "*", // INSERT, UPDATE, DELETE
         schema: "public",
         table: "conversations",
         filter: `participant1_id=eq.${userId}`,
       },
       (payload) => {
+        // تحديث فوري - استدعاء مباشر
         callback(payload.new as Conversation);
       },
     )
     .on(
       "postgres_changes",
       {
-        event: "*",
+        event: "*", // INSERT, UPDATE, DELETE
         schema: "public",
         table: "conversations",
         filter: `participant2_id=eq.${userId}`,
       },
       (payload) => {
+        // تحديث فوري - استدعاء مباشر
         callback(payload.new as Conversation);
       },
     )
@@ -980,7 +1118,7 @@ export async function getTotalUnreadMessagesCount(): Promise<number> {
 }
 
 /**
- * Subscribe to unread messages count changes
+ * Subscribe to unread messages count changes - فوري ومباشر
  */
 export function subscribeToUnreadCount(
   userId: string,
@@ -989,18 +1127,54 @@ export function subscribeToUnreadCount(
   // Initial count
   getTotalUnreadMessagesCount().then(callback);
 
-  // Subscribe to message changes
+  // Subscribe to message changes - تحديث فوري عند أي تغيير
   const channel = supabase
-    .channel(`unread-messages:${userId}`)
+    .channel(`unread-messages:${userId}`, {
+      config: {
+        broadcast: { self: true },
+        presence: { key: userId },
+      },
+    })
     .on(
       "postgres_changes",
       {
-        event: "*",
+        event: "*", // INSERT, UPDATE, DELETE
         schema: "public",
         table: "messages",
+        filter: `sender_id=neq.${userId}`, // فقط الرسائل من الآخرين
       },
       async () => {
-        // Recalculate count on any message change
+        // تحديث فوري - لا تأخير
+        const count = await getTotalUnreadMessagesCount();
+        callback(count);
+      },
+    )
+    // أيضاً اشتراك على conversations للتحديثات - participant1_id
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "conversations",
+        filter: `participant1_id=eq.${userId}`,
+      },
+      async () => {
+        // تحديث فوري عند تحديث المحادثة
+        const count = await getTotalUnreadMessagesCount();
+        callback(count);
+      },
+    )
+    // اشتراك على conversations - participant2_id
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "conversations",
+        filter: `participant2_id=eq.${userId}`,
+      },
+      async () => {
+        // تحديث فوري عند تحديث المحادثة
         const count = await getTotalUnreadMessagesCount();
         callback(count);
       },
@@ -1009,6 +1183,104 @@ export function subscribeToUnreadCount(
 
   return () => {
     supabase.removeChannel(channel);
+  };
+}
+
+/**
+ * Subscribe to unread messages for requests and offers - تحديث فوري للـ badges
+ */
+export function subscribeToUnreadMessagesForRequestsAndOffers(
+  userId: string,
+  requestIds: string[],
+  offerIds: string[],
+  onUpdate: (data: {
+    unreadForRequests: number;
+    unreadForOffers: number;
+    unreadPerRequest: Map<string, number>;
+    unreadPerOffer: Map<string, number>;
+  }) => void,
+) {
+  // حساب أولي
+  const calculateAndUpdate = async () => {
+    const [requestsCount, offersCount, perRequestMap, perOfferMap] =
+      await Promise.all([
+        requestIds.length > 0
+          ? getUnreadMessagesForMyRequests(requestIds)
+          : Promise.resolve(0),
+        offerIds.length > 0
+          ? getUnreadMessagesForMyOffers(offerIds)
+          : Promise.resolve(0),
+        requestIds.length > 0
+          ? getUnreadMessagesPerRequest(requestIds)
+          : Promise.resolve(new Map()),
+        offerIds.length > 0
+          ? getUnreadMessagesPerOffer(offerIds)
+          : Promise.resolve(new Map()),
+      ]);
+
+    onUpdate({
+      unreadForRequests: requestsCount,
+      unreadForOffers: offersCount,
+      unreadPerRequest: perRequestMap,
+      unreadPerOffer: perOfferMap,
+    });
+  };
+
+  calculateAndUpdate();
+
+  // اشتراك فوري على messages table - أي تغيير يحدث تحديث فوري
+  const messagesChannel = supabase
+    .channel(`unread-for-user-items:${userId}`, {
+      config: {
+        broadcast: { self: true },
+        presence: { key: userId },
+      },
+    })
+    .on(
+      "postgres_changes",
+      {
+        event: "*", // INSERT, UPDATE, DELETE
+        schema: "public",
+        table: "messages",
+        filter: `sender_id=neq.${userId}`, // فقط رسائل الآخرين
+      },
+      async () => {
+        // تحديث فوري - لا تأخير
+        calculateAndUpdate();
+      },
+    )
+    // اشتراك على conversations - participant1_id
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "conversations",
+        filter: `participant1_id=eq.${userId}`,
+      },
+      async () => {
+        // تحديث فوري عند أي تغيير في المحادثات
+        calculateAndUpdate();
+      },
+    )
+    // اشتراك على conversations - participant2_id
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "conversations",
+        filter: `participant2_id=eq.${userId}`,
+      },
+      async () => {
+        // تحديث فوري عند أي تغيير في المحادثات
+        calculateAndUpdate();
+      },
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(messagesChannel);
   };
 }
 
@@ -1219,6 +1491,49 @@ export async function getUnreadMessagesPerOffer(
   } catch (error) {
     logger.error("Error getting unread messages per offer:", error, "service");
     return new Map();
+  }
+}
+
+/**
+ * Get unread messages count for a specific conversation (request_id + offer_id)
+ * Returns the number of unread messages for the current user in this conversation
+ */
+export async function getUnreadCountForConversation(
+  requestId: string,
+  offerId?: string,
+): Promise<number> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 0;
+
+    // Find the conversation
+    const { data: conversation, error: convError } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("request_id", requestId)
+      .eq("offer_id", offerId || null)
+      .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`)
+      .maybeSingle();
+
+    if (convError || !conversation) return 0;
+
+    // Count unread messages in this conversation
+    const { count, error: countError } = await supabase
+      .from("messages")
+      .select("*", { count: "exact", head: true })
+      .eq("conversation_id", conversation.id)
+      .eq("is_read", false)
+      .neq("sender_id", user.id);
+
+    if (countError) return 0;
+    return count || 0;
+  } catch (error) {
+    logger.error(
+      "Error getting unread count for conversation:",
+      error,
+      "service",
+    );
+    return 0;
   }
 }
 

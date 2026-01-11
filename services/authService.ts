@@ -1,23 +1,76 @@
-import { supabase } from "./supabaseClient";
-import { logger } from "../utils/logger";
+import { supabase } from "./supabaseClient.ts";
+import { logger } from "../utils/logger.ts";
 
 // ======================================
-// 🔧 Test Phones - أرقام الاختبار (Development Only)
+// 🔧 أرقام الاختبار - Test Phones
 // ======================================
-// أرقام وهمية للتطوير والاختبار - تعمل مع رمز 0000
-// لتفعيل: أي رقم يبدأ بـ 555 مثل 0555555555
-// ملاحظة: تعمل فقط في بيئة التطوير (DEV_MODE)
-const IS_DEV_MODE = import.meta.env.DEV;
-const TEST_PHONE_PREFIX = "555"; // أي رقم يبدأ بـ 555 يعتبر رقم اختبار
+// رقمين فقط للاختبار - يعملان مع رمز 0000:
+// 1. 0551111111 (مستخدم اختبار 1)
+// 2. 0552222222 (مستخدم اختبار 2)
+// ======================================
 const TEST_OTP_CODE = "0000";
+const TEST_PHONES = [
+  "+966551111111", // 0551111111
+  "+966552222222", // 0552222222
+];
 
-function isTestPhone(phone: string): boolean {
-  // Test phones فقط في بيئة التطوير
-  if (!IS_DEV_MODE) return false;
+/**
+ * تنسيق رقم الهاتف للصيغة الدولية
+ * يقبل: 551111111, 0551111111, +966551111111
+ * يخرج: +966551111111
+ */
+function formatPhoneToInternational(phone: string): string {
+  // إذا كان الرقم منسقاً بالفعل (+966...)، ارجعه كما هو
+  if (phone.startsWith("+966")) {
+    return phone;
+  }
 
-  const cleanPhone = phone.replace(/\D/g, "");
-  // يقبل 0555... أو 555...
-  return cleanPhone.startsWith("0555") || cleanPhone.startsWith("555");
+  // تنظيف الرقم من أي أحرف غير رقمية
+  let cleanPhone = phone.replace(/\D/g, "");
+
+  // إذا كان 10 أرقام ويبدأ بـ 0، احذف الـ 0
+  if (cleanPhone.length === 10 && cleanPhone.startsWith("0")) {
+    cleanPhone = cleanPhone.substring(1);
+  }
+
+  // إذا كان 9 أرقام ويبدأ بـ 5، أضف +966
+  if (cleanPhone.length === 9 && cleanPhone.startsWith("5")) {
+    return `+966${cleanPhone}`;
+  }
+
+  // للحالات الأخرى، أضف +966 في المقدمة
+  return `+966${cleanPhone}`;
+}
+
+export function isTestPhone(phone: string): boolean {
+  // تنظيف الرقم أولاً من أي أحرف غير رقمية
+  const cleanPhone = phone.replace(/\D/g, "").trim();
+
+  // إذا كان الرقم منسقاً بالفعل (+966...)، استخدمه مباشرة
+  if (phone.startsWith("+966")) {
+    const result = TEST_PHONES.includes(phone);
+    logger.log("🔧 isTestPhone check (formatted):", {
+      phone,
+      result,
+      TEST_PHONES,
+    });
+    return result;
+  }
+
+  // قم بتنسيقه للصيغة الدولية
+  const formatted = formatPhoneToInternational(phone);
+  const result = TEST_PHONES.includes(formatted);
+
+  // تسجيل للتشخيص
+  logger.log("🔧 isTestPhone check:", {
+    original: phone,
+    clean: cleanPhone,
+    formatted,
+    result,
+    TEST_PHONES,
+  });
+
+  return result;
 }
 
 // Types
@@ -359,6 +412,17 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
 
     if (!user) return null;
 
+    // تأكد من أن session نشط قبل محاولة إنشاء profile
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      logger.warn(
+        "No active session when trying to get/create profile",
+        "service",
+      );
+      // Try to refresh session
+      await supabase.auth.refreshSession();
+    }
+
     // حاول جلب الـ profile
     let { data: profile, error } = await supabase
       .from("profiles")
@@ -368,40 +432,162 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
 
     // إذا لم يوجد profile، أنشئ واحداً سريعاً
     if ((!profile || error) && user.id) {
-      // للمستخدمين الجدد: الاسم فارغ حتى يدخله المستخدم بنفسه
-      // فقط Google/Apple يأتي معهم اسم من user_metadata
-      const displayName =
-        (user.user_metadata?.full_name as string | undefined) ||
-        (user.user_metadata?.name as string | undefined) ||
-        null; // فارغ للمستخدمين الجدد عبر الجوال
-
-      const { data: upserted, error: upsertError } = await supabase
-        .from("profiles")
-        .upsert({
-          id: user.id,
-          phone: user.phone ?? null,
-          email: user.email ?? null,
-          display_name: displayName,
-          role: "user",
-          is_guest: false,
-          is_verified: !!(user.phone || user.email),
-          // ملاحظة: لا نضع has_onboarded هنا لأن العمود قد لا يكون موجوداً
-          // الـ onboarding يعتمد على localStorage + التحقق من الاهتمامات والاسم
-        })
-        .select()
-        .single();
-
-      if (upsertError) {
-        logger.error("Error creating profile:", upsertError, "service");
+      // تأكد مرة أخرى من وجود session قبل الإنشاء
+      const { data: { session: currentSession } } = await supabase.auth
+        .getSession();
+      if (!currentSession) {
+        logger.error("Cannot create profile: No active session", {
+          userId: user.id,
+          hasUser: !!user,
+        }, "service");
         return null;
       }
 
-      profile = upserted as any;
+      logger.log("Creating new profile for user:", {
+        userId: user.id,
+        hasSession: !!currentSession,
+        sessionUserId: currentSession.user?.id,
+      }, "service");
+      // للمستخدمين الجدد: الاسم فارغ حتى يدخله المستخدم بنفسه
+      // فقط Google/Apple يأتي معهم اسم من user_metadata
+      const displayName =
+        ((user as any).user_metadata?.full_name as string | undefined) ||
+        ((user as any).user_metadata?.name as string | undefined) ||
+        null; // فارغ للمستخدمين الجدد عبر الجوال
+
+      // Try insert first (for new users)
+      const profileData = {
+        id: user.id,
+        phone: (user as any).phone ?? null,
+        email: (user as any).email ?? null,
+        display_name: displayName,
+        role: "user",
+        is_guest: false,
+        is_verified: !!((user as any).phone || (user as any).email),
+        // ملاحظة: لا نضع has_onboarded هنا لأن العمود قد لا يكون موجوداً
+        // الـ onboarding يعتمد على localStorage + التحقق من الاهتمامات والاسم
+      };
+
+      // Try INSERT first (for new profiles)
+      const { data: _inserted, error: insertError } = await supabase
+        .from("profiles")
+        .insert(profileData as any)
+        .select()
+        .single();
+
+      // If insert fails (profile might already exist), try UPDATE
+      if (insertError && insertError.code !== "23505") { // 23505 = unique_violation
+        logger.warn("Insert failed, trying update:", insertError, "service");
+
+        // Try UPDATE instead (in case profile exists but wasn't returned)
+        const { data: _updated, error: _updateError } = await supabase
+          .from("profiles")
+          .update(profileData as any)
+          .eq("id", user.id)
+          .select()
+          .single();
+
+        if (_updateError) {
+          logger.error(
+            "Error creating/updating profile:",
+            _updateError,
+            "service",
+          );
+          // Log detailed error for debugging
+          logger.error("Profile creation error details:", {
+            code: _updateError.code,
+            message: _updateError.message,
+            details: _updateError.details,
+            hint: _updateError.hint,
+          }, "service");
+          return null;
+        }
+
+        if (_updated) {
+          profile = _updated as any;
+          logger.log("Profile updated successfully:", {
+            profileId: (profile as any).id,
+          }, "service");
+        }
+      } else if (insertError && insertError.code === "23505") {
+        // Profile already exists, try to fetch it again
+        logger.log("Profile already exists, fetching...", "service");
+        const { data: existing, error: fetchError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+
+        if (fetchError) {
+          logger.warn(
+            "Error fetching existing profile, returning minimal profile:",
+            fetchError,
+            "service",
+          );
+          // Return minimal profile instead of null
+          return {
+            id: user.id,
+            display_name: null,
+            email: user.email || null,
+            phone: user.phone || null,
+            role: "user",
+            is_guest: false,
+            is_verified: false,
+          } as UserProfile;
+        }
+
+        profile = existing as any;
+      } else {
+        // Insert succeeded
+        profile = _inserted;
+      }
+    }
+
+    // If profile still doesn't exist, return minimal profile with user id
+    if (!profile) {
+      logger.warn("No profile found, returning minimal profile", {
+        userId: user.id,
+      }, "service");
+      return {
+        id: user.id,
+        display_name: null,
+        email: user.email || null,
+        phone: user.phone || null,
+        role: "user",
+        is_guest: false,
+        is_verified: false,
+      } as UserProfile;
     }
 
     return profile as UserProfile;
   } catch (err) {
     logger.error("Error getting current user:", err, "service");
+
+    // Try to at least return user id from auth if available
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser?.id) {
+        logger.warn("Returning minimal profile after error", {
+          userId: authUser.id,
+        }, "service");
+        return {
+          id: authUser.id,
+          display_name: null,
+          email: authUser.email || null,
+          phone: authUser.phone || null,
+          role: "user",
+          is_guest: false,
+          is_verified: false,
+        } as UserProfile;
+      }
+    } catch (authErr) {
+      logger.warn(
+        "Could not get user from auth after error:",
+        authErr,
+        "service",
+      );
+    }
+
     return null;
   }
 }
@@ -495,39 +681,6 @@ export function isValidSaudiPhone(phone: string) {
 }
 
 /**
- * تنسيق رقم الهاتف للصيغة الدولية
- * يقبل: 501234567, 0501234567, +966501234567
- * يخرج: +966501234567
- */
-function formatPhoneToInternational(phone: string): string {
-  // إزالة أي مسافات أو أحرف غير رقمية
-  let cleanPhone = phone.replace(/\D/g, "");
-
-  // إذا كان يبدأ بـ +966، أزل + فقط
-  if (phone.startsWith("+966")) {
-    cleanPhone = phone.replace(/\+966/, "").replace(/\D/g, "");
-  }
-
-  // إذا كان 10 أرقام (يبدأ بـ 0)، أزل الـ 0
-  if (cleanPhone.length === 10 && cleanPhone.startsWith("0")) {
-    cleanPhone = cleanPhone.substring(1);
-  }
-
-  // التأكد من أنه 9 أرقام ويبدأ بـ 5
-  if (cleanPhone.length === 9 && cleanPhone.startsWith("5")) {
-    return `+966${cleanPhone}`;
-  }
-
-  // إذا كان بالفعل بصيغة دولية
-  if (phone.startsWith("+966")) {
-    return phone;
-  }
-
-  // افتراضي: أضف +966
-  return `+966${cleanPhone}`;
-}
-
-/**
  * إرسال رمز التحقق عبر Supabase Auth (يستخدم Twilio كـ provider)
  * تأكد من تكوين Twilio في Supabase Dashboard:
  * Authentication → Providers → Phone → Twilio
@@ -546,14 +699,21 @@ export async function sendOTP(
     logger.log("📱 Original phone input:", phone);
 
     // 🔧 وضع التطوير - أرقام الاختبار
-    if (isTestPhone(phone)) {
-      logger.log("🔧 DEV MODE: Test phone detected, skipping real SMS");
+    // نرسل OTP حقيقي لـ Supabase حتى يتم حفظ الرقم في قاعدة البيانات
+    // لكن Supabase سيتعامل معه كرقم اختبار (إذا كان مُعد في config.toml)
+    const isTest = isTestPhone(phone) || isTestPhone(formattedPhone);
+    if (isTest) {
+      logger.log("🔧 DEV MODE: Test phone detected", {
+        original: phone,
+        formatted: formattedPhone,
+      });
       logger.log("🔑 Use OTP code: 0000");
-      return { success: true };
+      // نستمر في إرسال OTP لـ Supabase حتى يتم حفظ الرقم
     }
 
-    // إرسال OTP عبر Supabase Auth (يستخدم Twilio تلقائياً)
+    // إرسال OTP عبر Supabase Auth (يستخدم Twilio تلقائياً أو test_otp من config.toml)
     logger.log("📤 Calling Supabase signInWithOtp with phone:", formattedPhone);
+
     const { data, error } = await supabase.auth.signInWithOtp({
       phone: formattedPhone,
       options: {
@@ -564,17 +724,68 @@ export async function sendOTP(
     });
 
     if (error) {
-      logger.error("❌ Supabase OTP Error:", error, "service");
-      logger.error("❌ Error details:", {
-        message: error.message,
-        status: error.status,
-        name: error.name,
-      });
+      if (isTest) {
+        logger.warn(
+          "⚠️ Supabase OTP Error (Expected for Test Number):",
+          error.message,
+          "service",
+        );
+      } else {
+        logger.error("❌ Supabase OTP Error:", error, "service");
+        logger.error("❌ Error details:", {
+          message: error.message,
+          status: error.status,
+          name: error.name,
+          phone: formattedPhone,
+        });
+      }
+
+      // إذا كان رقم اختبار وفشل (مثلاً في Production بدون test_otp)، نسمح بذلك
+      if (isTest) {
+        logger.log(
+          "🔧 DEV MODE: Test phone OTP send failed (expected in Production), but allowing to continue",
+        );
+        logger.log("🔑 User can still use OTP code: 0000");
+        // نرجع success حتى يتمكن المستخدم من استخدام الرمز 0000
+        return { success: true };
+      }
 
       // تحسين رسائل الخطأ
       let errorMessage = error.message;
 
+      // Twilio Error 20003 - Authentication failure
       if (
+        error.message.includes("20003") ||
+        (error.message.includes("Authenticate") &&
+          error.message.includes("provider"))
+      ) {
+        // معلومات التطوير في Console فقط
+        const isDevMode = import.meta.env.DEV;
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+        const isLocalSupabase = supabaseUrl.includes("localhost") ||
+          supabaseUrl.includes("127.0.0.1") || supabaseUrl.includes("54321");
+
+        logger.error("🔐 Twilio Authentication Error (20003) detected", {
+          hint:
+            "This usually means Verify Service SID is missing or incorrect in Supabase Dashboard",
+          action:
+            "Check Supabase Dashboard → Authentication → Providers → Phone → Twilio",
+          devTip:
+            "For development, use test phone numbers starting with 555 (e.g., 0555555555) with code 0000",
+          isDevMode,
+          isLocalSupabase,
+          supabaseUrl: supabaseUrl
+            ? `${supabaseUrl.substring(0, 30)}...`
+            : "not set",
+          solution: isDevMode || isLocalSupabase
+            ? "Use test phone numbers (555...) with code 0000, or configure Twilio in Supabase Dashboard"
+            : "Configure Twilio Verify Service SID in Supabase Dashboard → Authentication → Providers → Phone → Twilio",
+        }, "service");
+
+        // رسالة عامة للمستخدمين بدون تفاصيل تقنية
+        errorMessage =
+          "عذراً، لا يمكن إرسال رمز التحقق حالياً. يرجى المحاولة مرة أخرى لاحقاً أو التواصل مع الدعم الفني";
+      } else if (
         error.message.includes("Invalid phone number") ||
         error.message.includes("phone")
       ) {
@@ -589,8 +800,17 @@ export async function sendOTP(
       } else if (
         error.message.includes("provider") || error.message.includes("Twilio")
       ) {
+        // معلومات التطوير في Console فقط
+        logger.warn("⚠️ Twilio provider error detected", {
+          error: error.message,
+          devTip:
+            "For development, use test phone numbers starting with 555 (e.g., 0555555555) with code 0000",
+          productionTip:
+            "Check Supabase Dashboard → Authentication → Providers → Phone → Twilio",
+        }, "service");
+        // رسالة عامة للمستخدمين بدون تفاصيل تقنية
         errorMessage =
-          "مشكلة في إعدادات Twilio. يرجى التحقق من إعدادات Supabase Dashboard";
+          "عذراً، لا يمكن إرسال رمز التحقق حالياً. يرجى المحاولة مرة أخرى لاحقاً أو التواصل مع الدعم الفني";
       } else if (
         error.message.includes("network") || error.message.includes("timeout")
       ) {
@@ -620,123 +840,333 @@ export async function sendOTP(
  *
  * 🔧 للتطوير: الأرقام التي تبدأ بـ 555 تقبل الرمز 0000
  */
+/**
+ * Helper function to ensure a profile exists for a test user.
+ */
+async function handleTestProfile(user: { id: string }, phone: string) {
+  try {
+    logger.log("📝 TEST PHONE: Checking profile for user:", user.id);
+    logger.log("📝 TEST PHONE: Phone number:", phone);
+
+    // التحقق من وجود profile
+    const { data: existingProfile, error: profileCheckError } = await supabase
+      .from("profiles")
+      .select("id, phone, display_name, is_verified")
+      .eq("id", user.id)
+      .single();
+
+    if (profileCheckError || !existingProfile) {
+      // إنشاء profile جديد إذا لم يكن موجوداً
+      logger.log(
+        "📝 TEST PHONE: Creating/Upserting profile for user:",
+        user.id,
+      );
+      const displayName = phone.includes("1111111")
+        ? "مستخدم اختبار 1"
+        : phone.includes("2222222")
+        ? "مستخدم اختبار 2"
+        : `Test User ${phone.slice(-4)}`;
+
+      const profileData = {
+        id: user.id,
+        phone: phone,
+        display_name: displayName,
+        is_verified: true,
+        is_guest: false,
+        role: "user" as const,
+      };
+
+      const { error: profileError } = await (supabase.from("profiles") as any)
+        .upsert(profileData, {
+          onConflict: "id",
+        });
+
+      if (profileError) {
+        logger.warn(
+          "⚠️ TEST PHONE: Failed to create/update profile:",
+          profileError,
+        );
+        logger.warn("⚠️ Profile error details:", {
+          code: profileError.code,
+          message: profileError.message,
+          details: profileError.details,
+        });
+      } else {
+        logger.log("✅ TEST PHONE: Profile created/updated successfully");
+      }
+    } else {
+      // تحديث رقم الجوال في profile إذا كان مختلفاً أو غير محدد
+      if (existingProfile.phone !== phone || !existingProfile.phone) {
+        logger.log("📝 TEST PHONE: Updating phone number in profile");
+        const { error: updateError } = await supabase
+          .from("profiles")
+          .update({
+            phone: phone,
+            is_verified: true,
+          })
+          .eq("id", user.id);
+
+        if (updateError) {
+          logger.warn("⚠️ TEST PHONE: Failed to update phone:", updateError);
+        } else {
+          logger.log("✅ TEST PHONE: Phone number updated in profile");
+        }
+      } else {
+        logger.log("✅ TEST PHONE: Profile already exists with correct phone");
+      }
+    }
+  } catch (profileErr) {
+    logger.warn("⚠️ TEST PHONE: Profile check/update exception:", profileErr);
+  }
+}
+
 export async function verifyOTP(
   phone: string,
   token: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // تنسيق الرقم للصيغة الدولية
+    // تنظيف الرمز من أي مسافات أو أحرف غير مرئية
+    const cleanToken = token.trim().replace(/\s/g, "");
+
     const formattedPhone = formatPhoneToInternational(phone);
-
     logger.log("🔐 Verifying OTP for:", formattedPhone);
+    logger.log("🔐 Original phone input:", phone);
+    logger.log("🔐 Token received:", cleanToken);
 
-    // 🔧 وضع التطوير - أرقام الاختبار (Fast path - no Supabase calls)
-    if (isTestPhone(phone)) {
-      logger.log("🔧 DEV MODE: Test phone verification");
+    // للأرقام الاختبارية (0551111111 و 0552222222) مع رمز 0000
+    // نستخدم anonymous sign-in لأن Supabase Cloud لا يدعم test_otp
+    const isTest = isTestPhone(formattedPhone);
+    logger.log(
+      "🔐 Is test phone?",
+      isTest,
+      "Formatted:",
+      formattedPhone,
+      "TEST_PHONES:",
+      TEST_PHONES,
+    );
 
-      if (token === TEST_OTP_CODE) {
-        logger.log("✅ DEV MODE: Test OTP accepted - using instant path");
+    if (isTest) {
+      logger.log("🔧 TEST PHONE: Detected test phone");
 
-        // حفظ الرقم في localStorage
-        localStorage.setItem("dev_test_phone", formattedPhone);
-
-        // Fast path: إنشاء session فوري بدون انتظار Supabase
-        // هذا يمنع التعليق تماماً
-        localStorage.setItem("abeely_guest_mode", "true");
-        localStorage.setItem("dev_test_user_id", `test_${Date.now()}`);
-
-        // محاولة إنشاء session حقيقي في الخلفية (غير متزامن - لا ننتظره)
-        // هذا يحسن التجربة لكن لا يعلق الكود
-        supabase.auth.verifyOtp({
-          phone: formattedPhone,
-          token: TEST_OTP_CODE,
-          type: "sms",
-        }).then(({ data, error }) => {
-          if (data?.user) {
-            logger.log(
-              "✅ DEV MODE: Background session created:",
-              data.user.id,
-            );
-            localStorage.setItem("dev_test_user_id", data.user.id);
-            localStorage.removeItem("abeely_guest_mode");
-          } else if (error) {
-            logger.warn(
-              "⚠️ DEV MODE: Background verifyOtp failed (expected):",
-              error.message,
-            );
-          }
-        }).catch((err) => {
-          logger.warn(
-            "⚠️ DEV MODE: Background verifyOtp exception (expected):",
-            err,
-          );
+      // التحقق من الرمز الصحيح (0000)
+      if (cleanToken !== TEST_OTP_CODE) {
+        logger.error("❌ TEST PHONE: Invalid token", {
+          received: cleanToken,
+          receivedLength: cleanToken.length,
+          expected: TEST_OTP_CODE,
+          expectedLength: TEST_OTP_CODE.length,
         });
-
-        // إرجاع فوري - لا ننتظر Supabase
-        logger.log(
-          "✅ DEV MODE: Guest mode activated instantly for test phone",
-        );
-        return { success: true };
-      } else {
-        logger.log("❌ DEV MODE: Wrong test OTP (expected 0000)");
         return {
           success: false,
-          error: "رمز التحقق غير صحيح (استخدم 0000 للأرقام الوهمية)",
+          error: "رمز التحقق غير صحيح (استخدم 0000 للأرقام الاختبارية)",
         };
+      }
+
+      logger.log("🔧 TEST PHONE: Using persistent email mapping...");
+
+      // Use a consistent email/password for this test phone
+      // This ensures the same User ID is used every time
+      const testEmail = `test_${formattedPhone.replace(/\+/g, "")}@abeely.app`;
+      const testPassword = "TestUser@123456";
+
+      // 1. Try to sign in
+      const { data: signinData, error: signinError } = await supabase.auth
+        .signInWithPassword({
+          email: testEmail,
+          password: testPassword,
+        });
+
+      let userId = signinData?.user?.id;
+      let session = signinData?.session;
+
+      // 2. If sign in fails, create the user
+      if (signinError || !userId || !session) {
+        logger.log(
+          "🔧 TEST PHONE: User not found or sign in failed:",
+          signinError?.message,
+        );
+        logger.log("🔧 TEST PHONE: Creating new user...");
+
+        const { data: signupData, error: signupError } = await supabase.auth
+          .signUp({
+            email: testEmail,
+            password: testPassword,
+            options: {
+              data: {
+                phone: formattedPhone, // Store phone in metadata
+              },
+              // تخطي تأكيد الإيميل للحسابات الاختبارية
+              emailRedirectTo: undefined,
+              // تأكيد تلقائي للحسابات الاختبارية (يحتاج auto_confirm في Supabase)
+              // auto_confirm: true, // غير متاح في client-side
+            },
+          });
+
+        // بعد signUp، تحقق من وجود session
+        if (signupData?.user) {
+          if (signupData.session) {
+            // session موجود مباشرة بعد signUp
+            userId = signupData.user.id;
+            session = signupData.session;
+            logger.log("✅ TEST PHONE: Session obtained directly from signup");
+          } else {
+            // لا توجد session، يجب تسجيل الدخول
+            logger.log(
+              "🔧 TEST PHONE: User created but no session, signing in...",
+            );
+            const { data: loginAfterSignup, error: loginAfterSignupError } =
+              await supabase.auth
+                .signInWithPassword({
+                  email: testEmail,
+                  password: testPassword,
+                });
+
+            if (!loginAfterSignupError && loginAfterSignup?.session) {
+              userId = loginAfterSignup.user.id;
+              session = loginAfterSignup.session;
+              logger.log(
+                "✅ TEST PHONE: Session obtained after signup + login",
+              );
+            } else {
+              logger.error(
+                "❌ TEST PHONE: Failed to get session after signup:",
+                loginAfterSignupError?.message,
+              );
+            }
+          }
+        }
+
+        // إذا كان المستخدم موجود مسبقاً، حاول تسجيل الدخول مرة أخرى
+        if (signupError) {
+          logger.error("❌ Test user creation failed:", signupError.message);
+
+          // إذا كان الخطأ "User already registered"، حاول تسجيل الدخول
+          if (
+            signupError.message.includes("already registered") ||
+            signupError.message.includes("already exists")
+          ) {
+            logger.log(
+              "🔧 TEST PHONE: User exists, trying to sign in again...",
+            );
+
+            // انتظر قليلاً ثم حاول تسجيل الدخول مرة أخرى
+            const { data: retryData, error: retryError } = await supabase.auth
+              .signInWithPassword({
+                email: testEmail,
+                password: testPassword,
+              });
+
+            if (retryError || !retryData?.session) {
+              logger.error(
+                "❌ Retry sign in failed:",
+                retryError?.message || "No session",
+              );
+              return {
+                success: false,
+                error:
+                  "فشل تسجيل الدخول لحساب الاختبار. يرجى المحاولة مرة أخرى.",
+              };
+            }
+
+            userId = retryData?.user?.id;
+            session = retryData?.session;
+          } else {
+            return {
+              success: false,
+              error: "فشل إنشاء مستخدم الاختبار: " + signupError.message,
+            };
+          }
+        } else {
+          userId = signupData?.user?.id;
+
+          // إذا تم إنشاء المستخدم لكن لم يتم تأكيده (identities فارغة)
+          // نحتاج لتسجيل الدخول مرة أخرى
+          if (
+            signupData?.user &&
+            (!signupData.user.identities ||
+              signupData.user.identities.length === 0)
+          ) {
+            logger.log(
+              "🔧 TEST PHONE: User created but not confirmed, trying sign in...",
+            );
+
+            const { data: loginData, error: loginError } = await supabase.auth
+              .signInWithPassword({
+                email: testEmail,
+                password: testPassword,
+              });
+
+            if (!loginError && loginData?.user && loginData?.session) {
+              userId = loginData.user.id;
+              session = loginData.session;
+            }
+          }
+        }
+      }
+
+      if (userId && session) {
+        logger.log("✅ TEST PHONE: Signed in successfully ID:", userId);
+
+        // Update profile using the helper function
+        await handleTestProfile({ id: userId }, formattedPhone);
+
+        return { success: true };
+      } else if (userId && !session) {
+        // إذا كان userId موجود لكن لا توجد session، حاول إعادة تسجيل الدخول مرة واحدة
+        logger.warn(
+          "⚠️ TEST PHONE: User ID exists but no session, retrying...",
+        );
+
+        const { data: retrySignin, error: retryError } = await supabase.auth
+          .signInWithPassword({
+            email: testEmail,
+            password: testPassword,
+          });
+
+        if (retryError || !retrySignin?.session) {
+          logger.error("❌ TEST PHONE: Retry failed:", retryError?.message);
+          return {
+            success: false,
+            error: "فشل في إنشاء الجلسة. يرجى المحاولة مرة أخرى.",
+          };
+        }
+
+        await handleTestProfile({ id: retrySignin.user.id }, formattedPhone);
+        return { success: true };
       }
     }
 
-    // التحقق من الرمز عبر Supabase Auth
-    logger.log(
-      "📤 Calling Supabase verifyOtp with phone:",
-      formattedPhone,
-      "token:",
-      token,
-    );
+    // للأرقام الحقيقية: استخدام Supabase verifyOtp
     const { data, error } = await supabase.auth.verifyOtp({
       phone: formattedPhone,
-      token: token,
+      token: cleanToken,
       type: "sms",
     });
 
     if (error) {
-      logger.error("❌ Supabase Verify Error:", error, "service");
-      logger.error("❌ Error details:", {
-        message: error.message,
-        status: error.status,
-        name: error.name,
-      });
-
-      // تحسين رسائل الخطأ
-      let errorMessage = error.message;
+      logger.error("❌ OTP verification failed:", error.message);
 
       if (
         error.message.includes("Invalid") || error.message.includes("expired")
       ) {
-        errorMessage =
-          "رمز التحقق غير صحيح أو منتهي الصلاحية. يرجى طلب رمز جديد";
-      } else if (
-        error.message.includes("rate limit") ||
-        error.message.includes("too many")
-      ) {
-        errorMessage =
-          "تم تجاوز الحد المسموح. يرجى الانتظار قليلاً ثم المحاولة مرة أخرى";
+        return {
+          success: false,
+          error: "رمز التحقق غير صحيح أو منتهي الصلاحية",
+        };
       }
 
-      return { success: false, error: errorMessage };
+      return { success: false, error: error.message };
     }
 
     if (data?.user) {
-      logger.log("✅ OTP verified, user logged in:", data.user.id);
-      logger.log("✅ Session data:", data);
+      logger.log("✅ OTP verified, user:", data.user.id);
       return { success: true };
     }
 
-    logger.warn("⚠️ No user in verify response:", data);
     return { success: false, error: "رمز التحقق غير صحيح" };
-  } catch (err: unknown) {
-    logger.error("Error verifying OTP", err as Error, "service");
-    return { success: false, error: "رمز التحقق غير صحيح" };
+  } catch (err) {
+    logger.error("❌ Error verifying OTP:", err);
+    return { success: false, error: "حدث خطأ أثناء التحقق" };
   }
 }
 

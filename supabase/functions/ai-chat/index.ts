@@ -1093,27 +1093,284 @@ Deno.serve(async (req) => {
       content: prompt,
     });
 
-    // استدعاء AI (Anthropic أو OpenAI)
-    const { text: rawOutput, provider, model } = await callAI(
-      systemInstruction,
-      claudeMessages,
-    );
-    console.log(`✅ ${provider} (${model}) response received`);
-
-    // محاولة استخراج JSON
+    // معالجة خاصة لوضع draft - تناوب منفصل للعنوان والتصنيف
     let parsed;
-    try {
-      // Try to extract JSON from response
-      const jsonMatch = rawOutput.match(/\{[\s\S]*\}/) ||
-        rawOutput.match(/```json\s*([\s\S]*?)```/);
-      const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawOutput;
-      parsed = JSON.parse(jsonStr.trim());
-    } catch (_e) {
-      console.warn("Failed to parse JSON, using raw output");
+    if (mode === "draft") {
+      // تناوب بين OpenAI و Claude: مرة OpenAI للعنوان و Claude للتصنيف، والعكس
+      requestCounter++;
+      const useOpenAIForTitle = requestCounter % 2 === 0;
+      const useOpenAIForCategories = !useOpenAIForTitle;
+
+      console.log(`🔄 Request #${requestCounter}: Title=${useOpenAIForTitle ? 'OpenAI' : 'Claude'}, Categories=${useOpenAIForCategories ? 'OpenAI' : 'Claude'}`);
+
+      // إنشاء العنوان
+      const titleSystemPrompt = `
+أنت مساعد ذكي متخصص في منصة "أبيلي" - منصة سعودية لربط طالبي الخدمات بمقدميها.
+
+مهمتك: **إنشاء عنوان فقط** من النص المدخل.
+
+═══════════════════════════════════════════════════════════════
+🎯 تعليمات إنشاء العنوان:
+═══════════════════════════════════════════════════════════════
+
+⚠️ **قاعدة ذهبية**: استخدم فقط ما هو موجود في النص - لا تفترض معلومات غير موجودة!
+
+📝 أمثلة:
+- النص: "جيب لكزس 2005" → العنوان: "مطلوب جيب لكزس 2005"
+- النص: "تصميم شعار" → العنوان: "مطلوب تصميم شعار"
+- النص: "صيانة مكيف" → العنوان: "مطلوب صيانة مكيف"
+- النص: "مدرس رياضيات" → العنوان: "مطلوب مدرس رياضيات خصوصي"
+
+🎯 قواعد:
+1. ابدأ بـ "مطلوب" أو "أبغى" أو "ابحث عن"
+2. لا تنسخ النص حرفياً - حوّله لعنوان مختصر واحترافي
+3. لا تفترض معلومات غير موجودة (قطع غيار، سبليت، مدينة، إلخ)
+4. العنوان مختصر: 5-10 كلمات كحد أقصى
+5. استخدم لهجة سعودية بيضاء ودودة
+
+أجب بـ JSON فقط بهذا التنسيق (بدون أي نص آخر):
+{
+  "title": "عنوان مختصر يبدأ بـ 'مطلوب' أو 'أبغى' - لا تنسخ النص المدخل حرفياً!"
+}`;
+
+      // إنشاء التصنيفات
+      const categoriesSystemPrompt = `
+أنت مساعد ذكي متخصص في منصة "أبيلي" - منصة سعودية لربط طالبي الخدمات بمقدميها.
+
+مهمتك: **تصنيف الطلب فقط** بناءً على فهمك العميق للمحتوى ومعرفتك العامة.
+
+═══════════════════════════════════════════════════════════════
+🧠 تعليمات التصنيف الذكي (مهم جداً):
+═══════════════════════════════════════════════════════════════
+
+**استخدم معرفتك العامة وفهمك العميق للمحتوى!**
+
+🔍 **كيف تصنف:**
+1. **افهم المحتوى بعمق**: استخدم معرفتك العامة عن الأطباق، الخدمات، المنتجات، إلخ
+   - مثال: "معصوب يمني" → تعرف أنه طعام يمني → تصنفه "طبخ منزلي"
+   - مثال: "مندي" → تعرف أنه طعام خليجي → تصنفه "طبخ منزلي"
+   - مثال: "كبسة" → تعرف أنه طعام سعودي → تصنفه "طبخ منزلي"
+   - مثال: "شاورما" → تعرف أنه طعام → تصنفه "طبخ منزلي"
+
+2. **استخدم السياق**: لا تعتمد فقط على الكلمات، بل على المعنى
+   - "جيب لكزس" → تعرف أنه سيارة → تصنفه "صيانة سيارات"
+   - "تصميم شعار" → تعرف أنه تصميم جرافيك → تصنفه "تصميم جرافيك" + "شعارات وهوية"
+   - "موقع إلكتروني" → تعرف أنه تطوير ويب → تصنفه "تطوير مواقع"
+
+3. **فهم الثقافة المحلية**: استخدم معرفتك بالثقافة العربية والخليجية
+   - الأطباق اليمنية (معصوب، حنيذ، مظبي) → "طبخ منزلي"
+   - الأطباق السعودية (مندي، كبسة، مطبق) → "طبخ منزلي"
+   - الأطباق الخليجية (مشاكيك، مشكل) → "طبخ منزلي"
+
+4. **التصنيفات المتعددة**: اختر 2-5 تصنيفات عندما يناسب الطلب أكثر من تصنيف
+
+═══════════════════════════════════════════════════════════════
+📋 التصنيفات المتاحة (اختر منها حصرياً):
+═══════════════════════════════════════════════════════════════
+
+🔧 تقنية: "تطوير برمجيات" | "تطوير مواقع" | "تطبيقات جوال" | "دعم تقني" | "تحليل بيانات" | "خدمات ذكاء اصطناعي"
+🎨 تصميم: "تصميم جرافيك" | "تصميم واجهات" | "شعارات وهوية" | "تصميم داخلي" | "تصميم معماري"
+✍️ محتوى: "كتابة محتوى" | "كتابة إعلانية" | "ترجمة" | "تعليق صوتي" | "تدقيق لغوي"
+📈 تسويق: "تسويق رقمي" | "سوشيال ميديا" | "تحسين محركات البحث" | "إعلانات"
+💼 خدمات مهنية: "خدمات قانونية" | "محاسبة" | "استشارات" | "موارد بشرية"
+📚 تعليم: "دروس خصوصية" | "دورات أونلاين" | "تعليم لغات" | "تدريب مهارات"
+🏥 صحة: "استشارات طبية" | "تغذية" | "لياقة بدنية" | "صحة نفسية"
+🔧 صيانة ومنزل: "سباكة" | "كهرباء" | "تكييف" | "إصلاحات منزلية" | "صيانة أجهزة" | "دهانات" | "نجارة"
+🚚 نقل: "نقل عفش" | "شحن" | "توصيل"
+🚗 سيارات: "صيانة سيارات" | "غسيل سيارات" | "تأجير سيارات" | "خدمات سائق"
+🎉 مناسبات: "تنظيم مناسبات" | "تموين" | "تصوير" | "تصوير فيديو" | "ترفيه" | "زهور وتزيين"
+💅 جمال وعناية: "تصفيف شعر" | "مكياج" | "سبا ومساج" | "أظافر"
+🧹 تنظيف: "تنظيف منازل" | "تنظيف مكاتب" | "غسيل وكي" | "مكافحة حشرات"
+🍽️ طعام: "طبخ منزلي" | "مطاعم" | "حلويات ومخبوزات" | "تموين طعام"
+🏘️ عقارات: "عقارات" | "إدارة عقارات"
+🐱 حيوانات: "رعاية حيوانات" | "تجميل حيوانات"
+🛡️ أمن: "خدمات أمنية" | "كاميرات مراقبة"
+📦 أخرى: "أخرى" (فقط إذا لم يناسب أي تصنيف أعلاه)
+
+🚨 قواعد التصنيف:
+1. **يجب اختيار 1-5 تصنيفات حقيقية** - حتى لو لم تكن متأكداً 100%
+2. **استخدم فهمك العميق** - لا تعتمد على مطابقة كلمات حرفية فقط
+3. **اختر فقط من القائمة أعلاه** - لا تختلق تصنيفات جديدة
+4. **"أخرى" تُضاف فقط كتصنيف إضافي** - إذا شككت، أضف "أخرى" بجانب التصنيفات الأساسية
+5. **"أخرى" وحدها = ممنوع!** - لا تستخدم ["أخرى"] وحدها
+
+أجب بـ JSON فقط بهذا التنسيق (بدون أي نص آخر):
+{
+  "categories": ["فئة1", "فئة2", "فئة3", ...]
+}`;
+
+      // استدعاء منفصل للعنوان والتصنيف
+      let titleResult: { title?: string } = {};
+      let categoriesResult: { categories?: string[] } = {};
+
+      try {
+        // استدعاء العنوان
+        if (useOpenAIForTitle && OPENAI_API_KEY) {
+          console.log("🔵 Creating title using OpenAI...");
+          const titleResponse = await callOpenAI(titleSystemPrompt, claudeMessages);
+          const titleJsonMatch = titleResponse.match(/\{[\s\S]*\}/) || titleResponse.match(/```json\s*([\s\S]*?)```/);
+          const titleJsonStr = titleJsonMatch ? (titleJsonMatch[1] || titleJsonMatch[0]) : titleResponse;
+          titleResult = JSON.parse(titleJsonStr.trim());
+          console.log(`✅ Title created by OpenAI: ${titleResult.title}`);
+        } else if (ANTHROPIC_API_KEY) {
+          console.log("🟣 Creating title using Claude...");
+          const titleResponse = await callAnthropic(titleSystemPrompt, claudeMessages);
+          const titleJsonMatch = titleResponse.match(/\{[\s\S]*\}/) || titleResponse.match(/```json\s*([\s\S]*?)```/);
+          const titleJsonStr = titleJsonMatch ? (titleJsonMatch[1] || titleJsonMatch[0]) : titleResponse;
+          titleResult = JSON.parse(titleJsonStr.trim());
+          console.log(`✅ Title created by Claude: ${titleResult.title}`);
+        }
+      } catch (titleError) {
+        console.warn("⚠️ Title generation failed, trying fallback...", titleError);
+        // Fallback: إذا فشل OpenAI، جرب Claude والعكس
+        try {
+          if (useOpenAIForTitle && ANTHROPIC_API_KEY) {
+            console.log("🔄 Falling back to Claude for title...");
+            const titleResponse = await callAnthropic(titleSystemPrompt, claudeMessages);
+            const titleJsonMatch = titleResponse.match(/\{[\s\S]*\}/) || titleResponse.match(/```json\s*([\s\S]*?)```/);
+            const titleJsonStr = titleJsonMatch ? (titleJsonMatch[1] || titleJsonMatch[0]) : titleResponse;
+            titleResult = JSON.parse(titleJsonStr.trim());
+            console.log(`✅ Title created by Claude (fallback): ${titleResult.title}`);
+          } else if (!useOpenAIForTitle && OPENAI_API_KEY) {
+            console.log("🔄 Falling back to OpenAI for title...");
+            const titleResponse = await callOpenAI(titleSystemPrompt, claudeMessages);
+            const titleJsonMatch = titleResponse.match(/\{[\s\S]*\}/) || titleResponse.match(/```json\s*([\s\S]*?)```/);
+            const titleJsonStr = titleJsonMatch ? (titleJsonMatch[1] || titleJsonMatch[0]) : titleResponse;
+            titleResult = JSON.parse(titleJsonStr.trim());
+            console.log(`✅ Title created by OpenAI (fallback): ${titleResult.title}`);
+          }
+        } catch (fallbackError) {
+          console.error("❌ Title generation completely failed:", fallbackError);
+        }
+      }
+
+      try {
+        // استدعاء التصنيفات
+        if (useOpenAIForCategories && OPENAI_API_KEY) {
+          console.log("🔵 Creating categories using OpenAI...");
+          const categoriesResponse = await callOpenAI(categoriesSystemPrompt, claudeMessages);
+          const categoriesJsonMatch = categoriesResponse.match(/\{[\s\S]*\}/) || categoriesResponse.match(/```json\s*([\s\S]*?)```/);
+          const categoriesJsonStr = categoriesJsonMatch ? (categoriesJsonMatch[1] || categoriesJsonMatch[0]) : categoriesResponse;
+          categoriesResult = JSON.parse(categoriesJsonStr.trim());
+          console.log(`✅ Categories created by OpenAI: ${categoriesResult.categories?.join(", ")}`);
+        } else if (ANTHROPIC_API_KEY) {
+          console.log("🟣 Creating categories using Claude...");
+          const categoriesResponse = await callAnthropic(categoriesSystemPrompt, claudeMessages);
+          const categoriesJsonMatch = categoriesResponse.match(/\{[\s\S]*\}/) || categoriesResponse.match(/```json\s*([\s\S]*?)```/);
+          const categoriesJsonStr = categoriesJsonMatch ? (categoriesJsonMatch[1] || categoriesJsonMatch[0]) : categoriesResponse;
+          categoriesResult = JSON.parse(categoriesJsonStr.trim());
+          console.log(`✅ Categories created by Claude: ${categoriesResult.categories?.join(", ")}`);
+        }
+      } catch (categoriesError) {
+        console.warn("⚠️ Categories generation failed, trying fallback...", categoriesError);
+        // Fallback: إذا فشل OpenAI، جرب Claude والعكس
+        try {
+          if (useOpenAIForCategories && ANTHROPIC_API_KEY) {
+            console.log("🔄 Falling back to Claude for categories...");
+            const categoriesResponse = await callAnthropic(categoriesSystemPrompt, claudeMessages);
+            const categoriesJsonMatch = categoriesResponse.match(/\{[\s\S]*\}/) || categoriesResponse.match(/```json\s*([\s\S]*?)```/);
+            const categoriesJsonStr = categoriesJsonMatch ? (categoriesJsonMatch[1] || categoriesJsonMatch[0]) : categoriesResponse;
+            categoriesResult = JSON.parse(categoriesJsonStr.trim());
+            console.log(`✅ Categories created by Claude (fallback): ${categoriesResult.categories?.join(", ")}`);
+          } else if (!useOpenAIForCategories && OPENAI_API_KEY) {
+            console.log("🔄 Falling back to OpenAI for categories...");
+            const categoriesResponse = await callOpenAI(categoriesSystemPrompt, claudeMessages);
+            const categoriesJsonMatch = categoriesResponse.match(/\{[\s\S]*\}/) || categoriesResponse.match(/```json\s*([\s\S]*?)```/);
+            const categoriesJsonStr = categoriesJsonMatch ? (categoriesJsonMatch[1] || categoriesJsonMatch[0]) : categoriesResponse;
+            categoriesResult = JSON.parse(categoriesJsonStr.trim());
+            console.log(`✅ Categories created by OpenAI (fallback): ${categoriesResult.categories?.join(", ")}`);
+          }
+        } catch (fallbackError) {
+          console.error("❌ Categories generation completely failed:", fallbackError);
+        }
+      }
+
+      // دمج النتائج - مع fallback للنصوص الفارغة
+      let finalTitle = titleResult.title || "";
+      let finalCategories = categoriesResult.categories || [];
+
+      // إذا فشل إنشاء العنوان، جرب استخدام التصنيفات كـ fallback أو العكس
+      if (!finalTitle && finalCategories.length > 0) {
+        console.warn("⚠️ Title generation failed but categories succeeded, trying to extract title from prompt...");
+        // يمكن إضافة منطق لاستخراج العنوان من النص مباشرة
+      }
+
+      if (!finalCategories.length && finalTitle) {
+        console.warn("⚠️ Categories generation failed but title succeeded, trying to extract categories from prompt...");
+        // محاولة استخراج التصنيفات من النص مباشرة
+        try {
+          const extractedCategories = findMatchingCategories(prompt);
+          if (extractedCategories.length > 0) {
+            finalCategories = extractedCategories.slice(0, 5);
+            console.log(`✅ Extracted ${finalCategories.length} categories from prompt: ${finalCategories.join(", ")}`);
+          }
+        } catch (extractError) {
+          console.warn("⚠️ Failed to extract categories from prompt:", extractError);
+        }
+      }
+
+      // إذا فشل كلاهما، استخدم استدعاء واحد كـ fallback نهائي
+      if (!finalTitle && !finalCategories.length) {
+        console.warn("⚠️ Both title and categories generation failed, using unified fallback...");
+        try {
+          const { text: rawOutput, provider, model } = await callAI(
+            systemInstruction,
+            claudeMessages,
+          );
+          console.log(`✅ Fallback: ${provider} (${model}) response received`);
+          const jsonMatch = rawOutput.match(/\{[\s\S]*\}/) || rawOutput.match(/```json\s*([\s\S]*?)```/);
+          const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawOutput;
+          const fallbackResult = JSON.parse(jsonStr.trim());
+          finalTitle = fallbackResult.title || finalTitle;
+          finalCategories = fallbackResult.categories || finalCategories;
+          
+          // إذا لم يكن هناك تصنيفات بعد fallback، استخدم استخراج من النص
+          if (!finalCategories.length) {
+            const extractedCategories = findMatchingCategories(prompt);
+            if (extractedCategories.length > 0) {
+              finalCategories = extractedCategories.slice(0, 5);
+            }
+          }
+        } catch (fallbackError) {
+          console.error("❌ Fallback also failed:", fallbackError);
+          // آخر محاولة: استخراج التصنيفات من النص مباشرة
+          const extractedCategories = findMatchingCategories(prompt);
+          if (extractedCategories.length > 0) {
+            finalCategories = extractedCategories.slice(0, 5);
+          }
+        }
+      }
+
       parsed = {
-        aiResponse: rawOutput,
-        isClarification: true,
+        title: finalTitle,
+        categories: finalCategories,
+        aiResponse: finalTitle && finalCategories.length > 0
+          ? `تم إنشاء العنوان والتصنيف باستخدام ${useOpenAIForTitle ? 'OpenAI للعنوان' : 'Claude للعنوان'} و ${useOpenAIForCategories ? 'OpenAI للتصنيف' : 'Claude للتصنيف'}`
+          : "عذراً، حدث خطأ في إنشاء العنوان أو التصنيف. يرجى المحاولة مرة أخرى.",
+        isClarification: !finalTitle || !finalCategories.length,
       };
+    } else {
+      // وضع chat - استخدام الكود الأصلي
+      const { text: rawOutput, provider, model } = await callAI(
+        systemInstruction,
+        claudeMessages,
+      );
+      console.log(`✅ ${provider} (${model}) response received`);
+
+      // محاولة استخراج JSON
+      try {
+        // Try to extract JSON from response
+        const jsonMatch = rawOutput.match(/\{[\s\S]*\}/) ||
+          rawOutput.match(/```json\s*([\s\S]*?)```/);
+        const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawOutput;
+        parsed = JSON.parse(jsonStr.trim());
+      } catch (_e) {
+        console.warn("Failed to parse JSON, using raw output");
+        parsed = {
+          aiResponse: rawOutput,
+          isClarification: true,
+        };
+      }
     }
 
     // معالجة التصنيفات في وضع draft

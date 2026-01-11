@@ -65,6 +65,7 @@ export interface Offer {
   isNegotiable?: boolean;
   location?: string;
   images?: string[];
+  relatedRequest?: Request;
 }
 
 export interface Message {
@@ -85,6 +86,7 @@ export interface Category {
   icon?: string; // اسم أيقونة lucide
   emoji?: string; // fallback للإيموجي
   description?: string;
+  group?: string; // لتقسيم التصنيفات في شاشة البداية
 }
 
 // اللغات المدعومة
@@ -133,23 +135,66 @@ export interface Notification {
 
 export interface Review {
   id: string;
-  authorName: string;
+  requestId: string;
+  reviewerId: string;
+  revieweeId: string;
+  reviewerName: string;
+  reviewerAvatar?: string;
+  rating: number; // 1-5
+  comment?: string;
+  createdAt: Date;
+  updatedAt?: Date;
+  requestTitle?: string;
+  requestStatus?: string;
+  // Legacy fields for compatibility
+  authorName?: string;
   authorAvatar?: string;
-  rating: number;
-  comment: string;
-  date: Date;
-  role: "provider" | "requester";
+  date?: Date;
+  role?: "provider" | "requester";
 }
 
+export interface UserRating {
+  userId: string;
+  averageRating: number; // 0.00 - 5.00
+  totalReviews: number;
+  fiveStarCount: number;
+  fourStarCount: number;
+  threeStarCount: number;
+  twoStarCount: number;
+  oneStarCount: number;
+  updatedAt: Date;
+}
+
+export type CreateReviewInput = {
+  requestId: string;
+  revieweeId: string;
+  rating: number; // 1-5
+  comment?: string; // 10-1000 characters
+};
+
+export type UpdateReviewInput = {
+  rating?: number; // 1-5
+  comment?: string; // 10-1000 characters
+};
+
+export type ReviewFilters = {
+  minRating?: number; // 1-5
+  maxRating?: number; // 1-5
+  searchQuery?: string;
+  sortBy?: "newest" | "oldest" | "highest" | "lowest";
+  page?: number;
+  pageSize?: number; // default: 10
+};
+
 export type HomePageConfig =
-  | "marketplace:all"           // السوق (كل الطلبات)
-  | "marketplace:interests"     // السوق (اهتماماتي)
-  | "my-requests:all"           // طلباتي (كل طلباتي)
-  | "my-requests:active"        // طلباتي (الطلبات النشطة)
-  | "my-requests:approved"      // طلباتي (الطلبات المعتمدة)
-  | "my-offers:all"             // عروضي (كل عروضي)
-  | "my-offers:pending"         // عروضي (عروضي قيد الانتظار)
-  | "my-offers:accepted";       // عروضي (عروضي المقبولة)
+  | "marketplace:all" // السوق (كل الطلبات)
+  | "marketplace:interests" // السوق (اهتماماتي)
+  | "my-requests:all" // طلباتي (كل طلباتي)
+  | "my-requests:active" // طلباتي (الطلبات النشطة)
+  | "my-requests:approved" // طلباتي (الطلبات المعتمدة)
+  | "my-offers:all" // عروضي (كل عروضي)
+  | "my-offers:pending" // عروضي (عروضي قيد الانتظار)
+  | "my-offers:accepted"; // عروضي (عروضي المقبولة)
 
 export interface UserPreferences {
   interestedCategories: string[];

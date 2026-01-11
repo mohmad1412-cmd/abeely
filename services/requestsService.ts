@@ -5,6 +5,7 @@ import { getCategoryIdsByLabels } from "./categoriesService";
 import { logger } from "../utils/logger";
 import { storageService as _storageService } from "./storageService";
 import { createNotification } from "./notificationsService";
+import { AVAILABLE_CATEGORIES } from "../data";
 
 /**
  * إرسال Push Notifications للمستخدمين المهتمين بطلب جديد
@@ -128,6 +129,68 @@ async function sendPushNotificationForOfferAccepted(params: {
 }
 
 /**
+ * إرسال Push Notification عند إكمال الطلب
+ * + إنشاء إشعار داخل التطبيق للطرفين
+ */
+async function sendPushNotificationForRequestCompleted(params: {
+  requestId: string;
+  requestTitle: string;
+  requesterId: string; // صاحب الطلب
+  providerId: string; // مقدم الخدمة
+}): Promise<void> {
+  try {
+    // إشعار لصاحب الطلب
+    await createNotification(
+      params.requesterId,
+      "status",
+      "✅ تم إكمال الطلب",
+      `تم إكمال الطلب: ${params.requestTitle}. يمكنك الآن تقييم مقدم الخدمة`,
+      `/request/${params.requestId}`,
+      params.requestId,
+    );
+
+    // إشعار لمقدم الخدمة
+    await createNotification(
+      params.providerId,
+      "status",
+      "✅ تم إكمال الطلب",
+      `تم إكمال الطلب: ${params.requestTitle}. يمكنك الآن تقييم صاحب الطلب`,
+      `/request/${params.requestId}`,
+      params.requestId,
+    );
+
+    // إرسال Push Notifications
+    try {
+      await supabase.functions.invoke("send-push-notification", {
+        body: {
+          ...params,
+          notificationType: "request_completed",
+          recipientId: params.requesterId,
+        },
+      });
+    } catch (err) {
+      logger.warn("فشل في إرسال push notification لصاحب الطلب:", err);
+    }
+
+    try {
+      await supabase.functions.invoke("send-push-notification", {
+        body: {
+          ...params,
+          notificationType: "request_completed",
+          recipientId: params.providerId,
+        },
+      });
+    } catch (err) {
+      logger.warn("فشل في إرسال push notification لمقدم الخدمة:", err);
+    }
+
+    logger.log("📱 تم إرسال إشعارات إكمال الطلب");
+  } catch (err) {
+    logger.warn("فشل في إرسال إشعارات إكمال الطلب:", err);
+  }
+}
+
+/**
  * إرسال Push Notification للمزود عند بدء التفاوض
  * + إنشاء إشعار داخل التطبيق
  */
@@ -184,7 +247,7 @@ export type RequestInsert = {
   budget_max?: string;
   budget_type?: "not-specified" | "negotiable" | "fixed";
   location?: string;
-  delivery_type?: "immediate" | "range" | "not-specified";
+  delivery_type?: "not-specified" | "pickup" | "delivery" | "both";
   delivery_from?: string;
   delivery_to?: string;
   seriousness?: number;
@@ -302,6 +365,15 @@ export async function createRequestFromChat(
     throw new Error("User ID is required to create a request");
   }
 
+  // Validate required fields
+  if (!draftData.description && !draftData.summary) {
+    throw new Error("Description is required to create a request");
+  }
+
+  if (!draftData.location) {
+    throw new Error("Location is required to create a request");
+  }
+
   const payload: RequestInsert = {
     title: (draftData.title || draftData.summary || "طلب جديد").slice(0, 120),
     description: draftData.description || draftData.summary || "",
@@ -312,7 +384,7 @@ export async function createRequestFromChat(
     budget_type: (draftData.budgetType as RequestInsert["budget_type"]) ||
       ((draftData.budgetMin || draftData.budgetMax) ? "fixed" : "negotiable"),
     location: draftData.location,
-    delivery_type: "range",
+    delivery_type: "not-specified", // Default to not-specified (valid constraint value)
     delivery_from: draftData.deliveryTime,
     seriousness: 3, // Default (medium)
   };
@@ -320,7 +392,51 @@ export async function createRequestFromChat(
   payload.author_id = userId;
 
   if (overrides) {
+    // Merge overrides, ensuring images is properly formatted
     Object.assign(payload, overrides);
+
+    // Ensure images is an array if provided
+    if (overrides.images !== undefined) {
+      if (Array.isArray(overrides.images)) {
+        payload.images = overrides.images;
+      } else if (overrides.images) {
+        // If it's a single string, convert to array
+        payload.images = [overrides.images];
+      } else {
+        // If it's null/undefined/empty, don't include it
+        delete payload.images;
+      }
+    }
+
+    // Validate and map delivery_type to ensure it matches database constraint
+    if (overrides.delivery_type !== undefined) {
+      const validValues = ["not-specified", "pickup", "delivery", "both"];
+      if (!validValues.includes(overrides.delivery_type)) {
+        // Map invalid values to valid ones
+        const oldValue = overrides.delivery_type;
+        if (oldValue === "immediate") {
+          payload.delivery_type = "delivery";
+        } else if (oldValue === "range") {
+          payload.delivery_type = "both";
+        } else {
+          payload.delivery_type = "not-specified";
+        }
+        logger.warn(
+          `Invalid delivery_type "${oldValue}" mapped to "${payload.delivery_type}"`,
+          "requestsService",
+        );
+      }
+    }
+  }
+
+  // Ensure delivery_type is always valid (fallback to default)
+  if (
+    !payload.delivery_type ||
+    !["not-specified", "pickup", "delivery", "both"].includes(
+      payload.delivery_type,
+    )
+  ) {
+    payload.delivery_type = "not-specified";
   }
 
   try {
@@ -329,12 +445,105 @@ export async function createRequestFromChat(
       _runId: string,
       _hypothesisId: string,
     ) => {
-      const { data, error } = await supabase.from("requests").insert(p)
+      // Log the payload for debugging (without sensitive data)
+      logger.log("Attempting to insert request:", {
+        title: p.title?.substring(0, 50),
+        hasDescription: !!p.description,
+        hasLocation: !!p.location,
+        hasImages: !!p.images?.length,
+        imagesCount: p.images?.length || 0,
+        images: p.images, // Log actual image URLs for debugging
+        authorId: p.author_id ? "present" : "missing",
+      });
+
+      // Ensure images is properly formatted as array for Supabase
+      const insertPayload = { ...p };
+      if (insertPayload.images) {
+        // Ensure it's an array
+        if (!Array.isArray(insertPayload.images)) {
+          insertPayload.images = [insertPayload.images];
+        }
+        // Remove empty strings
+        insertPayload.images = insertPayload.images.filter((img: string) =>
+          img && img.trim().length > 0
+        );
+        // If no valid images, remove the field
+        if (insertPayload.images.length === 0) {
+          delete insertPayload.images;
+        }
+      }
+
+      logger.log("Insert payload with images:", {
+        hasImages: !!insertPayload.images,
+        imagesCount: insertPayload.images?.length || 0,
+        images: insertPayload.images,
+      }, "requestsService");
+
+      const { data, error } = await supabase.from("requests").insert(
+        insertPayload,
+      )
         .select("id").single();
 
       if (error || !data?.id) {
-        logger.error("Supabase Insert Error", error, "createRequestFromChat");
-        throw error || new Error("Insert failed: no id returned");
+        const errorInfo = {
+          error,
+          errorMessage: error?.message,
+          errorCode: error?.code,
+          errorDetails: error?.details,
+          errorHint: error?.hint,
+          payload: {
+            title: p.title?.substring(0, 50),
+            hasDescription: !!p.description,
+            hasLocation: !!p.location,
+            hasImages: !!p.images?.length,
+            imagesCount: p.images?.length || 0,
+            hasAuthorId: !!p.author_id,
+            status: p.status,
+            isPublic: p.is_public,
+          },
+        };
+
+        logger.error(
+          "Supabase Insert Error",
+          errorInfo,
+          "createRequestFromChat",
+        );
+
+        // Create a more descriptive error message
+        let errorMessage = "فشل إنشاء الطلب في قاعدة البيانات.";
+        if (error?.message) {
+          if (
+            error.message.includes("duplicate") ||
+            error.message.includes("unique")
+          ) {
+            errorMessage = "الطلب موجود بالفعل. يرجى المحاولة مرة أخرى.";
+          } else if (
+            error.message.includes("permission") ||
+            error.message.includes("policy") ||
+            error.message.includes("RLS") || error.message.includes("row-level")
+          ) {
+            errorMessage =
+              "ليس لديك صلاحية لإنشاء طلب. يرجى التحقق من تسجيل الدخول.";
+          } else if (
+            error.message.includes("network") || error.message.includes("fetch")
+          ) {
+            errorMessage =
+              "مشكلة في الاتصال بالإنترنت. يرجى التحقق من الاتصال والمحاولة مرة أخرى.";
+          } else if (
+            error.message.includes("null value") ||
+            error.message.includes("not null")
+          ) {
+            errorMessage =
+              "بيانات ناقصة. يرجى التأكد من إدخال جميع الحقول المطلوبة.";
+          } else {
+            errorMessage = `فشل إنشاء الطلب: ${error.message}`;
+          }
+        }
+
+        const descriptiveError = new Error(errorMessage);
+        (descriptiveError as any).originalError = error;
+        (descriptiveError as any).errorCode = error?.code;
+        throw descriptiveError;
       }
 
       return data;
@@ -524,14 +733,7 @@ export interface CreateOfferInput {
 export async function createOffer(
   input: CreateOfferInput,
 ): Promise<{ id: string } | null> {
-  logger.log("=== createOffer called ===");
-  logger.log("Input:", {
-    requestId: input.requestId,
-    providerId: input.providerId,
-    title: input.title,
-    price: input.price,
-    hasImages: input.images?.length || 0,
-  });
+  // Create offer initiated
 
   // التحقق من الحقول المطلوبة
   if (!input.requestId || !input.requestId.trim()) {
@@ -597,29 +799,44 @@ export async function createOffer(
       .eq("request_id", input.requestId.trim())
       .eq("provider_id", input.providerId.trim())
       .eq("status", "archived")
-      .single();
+      .eq("status", "archived")
+      .maybeSingle();
 
     if (existingArchivedOffer && !checkError) {
-      logger.log(
-        "Found archived offer, permanently deleting:",
-        existingArchivedOffer.id,
-      );
+      // Found archived offer, removing to allow new offer...
       // حذف العرض المؤرشف نهائياً ليسمح بإنشاء عرض جديد
       await supabase
         .from("offers")
         .delete()
         .eq("id", existingArchivedOffer.id);
-      logger.log("✅ Archived offer deleted successfully");
+      // Archived offer removed
     }
   } catch (archiveCheckError) {
     // تجاهل الأخطاء هنا - فقط لتنظيف العروض المؤرشفة القديمة
-    logger.log("No archived offer found or error checking:", archiveCheckError);
+    // No archived offer found or error suppressed
+  }
+
+  // جلب اسم المزود الحقيقي من ملفه الشخصي
+  let providerName = "مزود خدمة"; // قيمة افتراضية
+  try {
+    const { data: providerProfile } = await supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("id", input.providerId.trim())
+      .single();
+    
+    if (providerProfile?.display_name) {
+      providerName = providerProfile.display_name;
+    }
+  } catch (profileError) {
+    logger.warn("Failed to fetch provider profile name, using default", profileError, "createOffer");
+    // نستخدم القيمة الافتراضية في حالة الخطأ
   }
 
   const payload = {
     request_id: input.requestId.trim(),
     provider_id: input.providerId.trim(),
-    provider_name: "مزود خدمة",
+    provider_name: providerName,
     title: input.title.trim(),
     description: (input.description || "").trim(),
     price: input.price.trim(),
@@ -631,7 +848,7 @@ export async function createOffer(
   };
 
   try {
-    logger.log("Payload to insert:", payload);
+    // Inserting offer payload...
 
     const { data, error } = await supabase
       .from("offers")
@@ -642,10 +859,7 @@ export async function createOffer(
     // إذا كان هناك data حتى مع وجود error، يعتبر العرض تم إنشاؤه بنجاح
     // (بعض الأخطاء في triggers قد تحدث بعد إنشاء العرض)
     if (data && data.id) {
-      logger.log(
-        "✅ Offer created successfully (with potential trigger warning):",
-        data,
-      );
+      // Offer created successfully (with potential trigger warning)
       return data;
     }
 
@@ -703,7 +917,7 @@ export async function createOffer(
       );
     }
 
-    logger.log("✅ Offer created successfully:", data);
+    // Offer created successfully
 
     // إرسال إشعار لصاحب الطلب (استخدام البيانات التي جلبناها مسبقاً في التحقق)
     if (data && data.id) {
@@ -723,10 +937,7 @@ export async function createOffer(
           offerId: data.id,
           offerTitle: input.title.trim(),
           offerDescription: input.description,
-          providerName: input.providerId.trim() === "مزود خدمة"
-            ? "خبير"
-            : (input as { providerName?: string; providerId: string })
-              .providerName || "مزود خدمة",
+          providerName: providerName,
         });
       }
     }
@@ -1012,6 +1223,10 @@ export async function fetchRequestById(
  * Fetch user's own requests
  */
 export async function fetchMyRequests(userId: string): Promise<Request[]> {
+  logger.log(
+    `📥 fetchMyRequests: Fetching requests for user ${userId.slice(-4)}...`,
+  );
+
   const { data, error } = await supabase
     .from("requests")
     .select(`
@@ -1029,7 +1244,18 @@ export async function fetchMyRequests(userId: string): Promise<Request[]> {
     throw error;
   }
 
-  return (data || []).map(transformRequest);
+  const requests = (data || []).map(transformRequest);
+
+  logger.log(`✅ fetchMyRequests: Found ${requests.length} requests`, {
+    userId: userId.slice(-4),
+    requestIds: requests.map((r) => r.id.slice(-4)),
+    requestStatuses: requests.map((r) => ({
+      id: r.id.slice(-4),
+      status: r.status,
+    })),
+  });
+
+  return requests;
 }
 
 /**
@@ -1043,7 +1269,7 @@ export async function fetchMyOffers(providerId: string): Promise<Offer[]> {
 
   const { data, error } = await supabase
     .from("offers")
-    .select("*")
+    .select("*, requests!request_id(*, request_categories(categories(*)))")
     .eq("provider_id", providerId)
     .neq("status", "archived") // استبعاد العروض المؤرشفة (الحذف الناعم)
     .order("created_at", { ascending: false });
@@ -1070,6 +1296,9 @@ export async function fetchMyOffers(providerId: string): Promise<Offer[]> {
     isNegotiable: offer.is_negotiable ?? true,
     location: offer.location || "",
     images: offer.images || [],
+    relatedRequest: offer.requests
+      ? transformRequest(offer.requests, offer.requests.offers_count)
+      : undefined,
   }));
 }
 
@@ -1091,21 +1320,63 @@ export async function fetchOffersForRequest(
     throw error;
   }
 
-  return (data || []).map((offer: Record<string, any>) => ({
-    id: offer.id,
-    requestId: offer.request_id,
-    providerId: offer.provider_id,
-    providerName: offer.provider_name,
-    title: offer.title,
-    description: offer.description || "",
-    price: offer.price || "",
-    deliveryTime: offer.delivery_time || "",
-    status: offer.status,
-    createdAt: new Date(offer.created_at),
-    isNegotiable: offer.is_negotiable ?? true,
-    location: offer.location || "",
-    images: offer.images || [],
-  }));
+  // جلب أسماء المزودين من profiles للأعروض التي لا تحتوي على provider_name
+  const offersWithMissingNames = (data || []).filter(
+    (offer: Record<string, any>) => !offer.provider_name || offer.provider_name === "مزود خدمة"
+  );
+  
+  const providerIds = offersWithMissingNames
+    .map((offer: Record<string, any>) => offer.provider_id)
+    .filter((id: string) => id) as string[];
+
+  let providerNamesMap: Map<string, string> = new Map();
+  if (providerIds.length > 0) {
+    try {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, display_name")
+        .in("id", providerIds);
+      
+      if (profiles) {
+        profiles.forEach((profile: { id: string; display_name: string | null }) => {
+          if (profile.display_name) {
+            providerNamesMap.set(profile.id, profile.display_name);
+          }
+        });
+      }
+    } catch (profileError) {
+      logger.warn("Failed to fetch provider names, using stored values", profileError, "fetchOffersForRequest");
+    }
+  }
+
+  return (data || []).map((offer: Record<string, any>) => {
+    // استخدام اسم المزود من profiles إذا كان provider_name مفقوداً أو هو القيمة الافتراضية
+    let providerName = offer.provider_name;
+    if (!providerName || providerName === "مزود خدمة") {
+      const fetchedName = providerNamesMap.get(offer.provider_id);
+      if (fetchedName) {
+        providerName = fetchedName;
+      } else {
+        providerName = "مزود خدمة"; // قيمة افتراضية
+      }
+    }
+
+    return {
+      id: offer.id,
+      requestId: offer.request_id,
+      providerId: offer.provider_id,
+      providerName: providerName,
+      title: offer.title,
+      description: offer.description || "",
+      price: offer.price || "",
+      deliveryTime: offer.delivery_time || "",
+      status: offer.status,
+      createdAt: new Date(offer.created_at),
+      isNegotiable: offer.is_negotiable ?? true,
+      location: offer.location || "",
+      images: offer.images || [],
+    };
+  });
 }
 
 /**
@@ -1135,9 +1406,17 @@ export async function fetchOffersForUserRequests(
   }
 
   const requestIds = (requests || []).map((r: { id: string }) => r.id);
-  if (requestIds.length === 0) return new Map();
+  logger.log(
+    `📋 fetchOffersForUserRequests: Found ${requestIds.length} requests for user ${userId}`,
+  );
+
+  if (requestIds.length === 0) {
+    logger.log("⚠️ No requests found for user, returning empty offers map");
+    return new Map();
+  }
 
   // Fetch all offers for these requests (excluding archived ones)
+  logger.log(`🔍 Fetching offers for ${requestIds.length} requests...`);
   const { data: offers, error: offersError } = await supabase
     .from("offers")
     .select("*")
@@ -1150,9 +1429,20 @@ export async function fetchOffersForUserRequests(
     return new Map();
   }
 
+  logger.log(`✅ Found ${offers?.length || 0} offers for user requests`);
+
   // Group offers by request ID
   const offersMap = new Map<string, Offer[]>();
   (offers || []).forEach((offer: Record<string, any>) => {
+    // التحقق من أن request_id موجود وصحيح
+    if (!offer.request_id) {
+      logger.error(
+        `❌ Offer ${offer.id?.slice(-4) || "unknown"} has no request_id!`,
+        offer,
+      );
+      return; // تخطي هذا العرض
+    }
+
     const transformed: Offer = {
       id: offer.id,
       requestId: offer.request_id,
@@ -1172,6 +1462,31 @@ export async function fetchOffersForUserRequests(
     const existingOffers = offersMap.get(offer.request_id) || [];
     existingOffers.push(transformed);
     offersMap.set(offer.request_id, existingOffers);
+
+    logger.log(`📝 Adding offer to map:`, {
+      offerId: offer.id?.slice(-4) || "unknown",
+      requestId: offer.request_id?.slice(-4) || "unknown",
+      status: offer.status,
+      title: offer.title,
+      mapSize: offersMap.size,
+    });
+  });
+
+  logger.log(`✅ fetchOffersForUserRequests: Final result`, {
+    requestIdsCount: requestIds.length,
+    requestIdsList: requestIds.map((id) => id.slice(-4)),
+    offersCount: offers?.length || 0,
+    offersMapSize: offersMap.size,
+    mapKeys: Array.from(offersMap.keys()).map((id) => id.slice(-4)),
+    offersPerRequest: Array.from(offersMap.entries()).map(([reqId, offs]) => ({
+      requestId: reqId.slice(-4),
+      offersCount: offs.length,
+      offers: offs.map((o) => ({
+        id: o.id.slice(-4),
+        status: o.status,
+        title: o.title,
+      })),
+    })),
   });
 
   return offersMap;
@@ -1483,7 +1798,15 @@ export async function fetchArchivedRequests(
         .filter(
           Boolean,
         ) || [],
-    deliveryTimeType: req.delivery_type || "not-specified",
+    deliveryTimeType: (() => {
+      // Map database values back to frontend values for compatibility
+      const dbValue = req.delivery_type || "not-specified";
+      if (dbValue === "not-specified") return "not-specified";
+      if (dbValue === "pickup") return "immediate"; // Map back to immediate for UI
+      if (dbValue === "delivery") return "immediate"; // Map back to immediate for UI
+      if (dbValue === "both") return "range"; // Map back to range for UI
+      return "not-specified";
+    })(),
     deliveryTimeFrom: req.delivery_from || "",
     deliveryTimeTo: req.delivery_to || "",
     messages: [],
@@ -1538,7 +1861,15 @@ function transformRequest(
         .filter(
           Boolean,
         ) || [],
-    deliveryTimeType: req.delivery_type || "not-specified",
+    deliveryTimeType: (() => {
+      // Map database values back to frontend values for compatibility
+      const dbValue = req.delivery_type || "not-specified";
+      if (dbValue === "not-specified") return "not-specified";
+      if (dbValue === "pickup") return "immediate"; // Map back to immediate for UI
+      if (dbValue === "delivery") return "immediate"; // Map back to immediate for UI
+      if (dbValue === "both") return "range"; // Map back to range for UI
+      return "not-specified";
+    })(),
     deliveryTimeFrom: req.delivery_from || "",
     deliveryTimeTo: req.delivery_to || "",
     messages: [],
@@ -1564,8 +1895,13 @@ async function matchesUserInterests(
   interestedCities: string[],
   radarWords: string[] = [],
 ): Promise<boolean> {
-  // Filter out "كل المدن" from cities check - it doesn't count as an interest
-  const actualCities = interestedCities.filter((city) => city !== "كل المدن");
+  // Filter out "كل المدن" and "جميع المدن (شامل عن بعد)" from cities check - they don't count as interests
+  // Check if user selected "all cities" (either name format)
+  const hasAllCities = interestedCities.includes("كل المدن") ||
+    interestedCities.includes("جميع المدن (شامل عن بعد)");
+  const actualCities = interestedCities.filter((city) =>
+    city !== "كل المدن" && city !== "جميع المدن (شامل عن بعد)"
+  );
 
   // If no interests specified (no categories and no actual cities), don't match
   // "كل المدن" alone doesn't count as having interests
@@ -1599,18 +1935,68 @@ async function matchesUserInterests(
     // Check categories match
     if (interestedCategories.length > 0) {
       const requestCategories = request.categories || [];
-      const hasMatchingCategory = requestCategories.some((cat: string) =>
-        interestedCategories.some((interest) =>
-          cat.toLowerCase().includes(interest.toLowerCase()) ||
-          interest.toLowerCase().includes(cat.toLowerCase())
-        )
-      );
+      const hasMatchingCategory = requestCategories.some((catLabel: string) => {
+        // البحث عن category object من request category label
+        const requestCategoryObj = AVAILABLE_CATEGORIES.find((c) =>
+          c.label === catLabel || c.label_en === catLabel ||
+          c.label_ur === catLabel
+        );
+        const requestCategoryId = requestCategoryObj?.id;
+
+        return interestedCategories.some((interestId: string) => {
+          // المطابقة المباشرة: ID === ID
+          if (requestCategoryId === interestId) {
+            return true;
+          }
+
+          // المطابقة النصية: البحث عن category object للاهتمام
+          const interestCategoryObj = AVAILABLE_CATEGORIES.find((c) =>
+            c.id === interestId
+          );
+          if (!interestCategoryObj) return false;
+
+          // جمع جميع labels للاهتمام (عربي، إنجليزي، أوردي)
+          const interestLabels = [
+            interestId, // ID نفسه
+            interestCategoryObj.label, // Label العربي
+            interestCategoryObj.label_en,
+            interestCategoryObj.label_ur,
+          ].filter(Boolean);
+
+          // إضافة مصطلحات ذات صلة للتصنيفات المتعلقة بالسيارات
+          if (interestId.startsWith("car-")) {
+            interestLabels.push(
+              "سيارات",
+              "سيارة",
+              "قطع غيار",
+              "قطع الغيار",
+              "صيانة",
+              "ميكانيكي",
+              "مركبة",
+              "عربة",
+            );
+          }
+
+          // المطابقة النصية: البحث في label الطلب
+          const catLabelLower = catLabel.toLowerCase();
+          return interestLabels.some((label) => {
+            if (!label) return false;
+            const labelLower = label.toLowerCase();
+            return (
+              catLabelLower === labelLower ||
+              catLabelLower.includes(labelLower) ||
+              labelLower.includes(catLabelLower)
+            );
+          });
+        });
+      });
       if (!hasMatchingCategory) return false;
     }
 
     // Check city match
-    // إذا تم اختيار "كل المدن" أو لم يتم اختيار أي مدينة، نتخطى الفلترة
-    if (actualCities.length > 0 && request.location) {
+    // إذا تم اختيار "كل المدن" أو "جميع المدن (شامل عن بعد)" أو لم يتم اختيار أي مدينة، نتخطى الفلترة
+    // إذا كان المستخدم اختار "كل المدن"، نعرض جميع الطلبات بغض النظر عن المدينة
+    if (!hasAllCities && actualCities.length > 0 && request.location) {
       const requestCity = request.location.split("،").pop()?.trim() ||
         request.location;
       const hasMatchingCity = actualCities.some((city: string) =>
@@ -2060,31 +2446,81 @@ export async function updateRequest(
  * - يغير حالة الطلب إلى "assigned"
  * - يرفض العروض الأخرى
  */
+/**
+ * قبول عرض معين على طلب
+ * - يتحقق من صلاحيات المستخدم
+ * - يحدث حالة العرض إلى "accepted"
+ * - يرفض العروض الأخرى تلقائياً
+ * - يحدث حالة الطلب إلى "assigned"
+ * - يرسل إشعارات للطرفين
+ */
 export async function acceptOffer(
   requestId: string,
   offerId: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // 1. التحقق من أن المستخدم هو صاحب الطلب
+    // 1. التحقق من صحة المدخلات
+    if (!requestId || !offerId || !userId) {
+      return { success: false, error: "بيانات غير صحيحة" };
+    }
+
+    // 2. التحقق من وجود الطلب وحالته
     const { data: request, error: requestError } = await supabase
       .from("requests")
-      .select("author_id")
+      .select("id, author_id, status, title")
       .eq("id", requestId)
       .single();
 
     if (requestError || !request) {
+      logger.error("خطأ في جلب الطلب:", requestError);
       return { success: false, error: "الطلب غير موجود" };
     }
 
+    // 3. التحقق من أن المستخدم هو صاحب الطلب
     if (request.author_id !== userId) {
+      logger.warn(
+        `محاولة غير مصرح بها: المستخدم ${userId} يحاول قبول عرض على طلب ${requestId}`,
+      );
       return { success: false, error: "غير مصرح لك بقبول هذا العرض" };
     }
 
-    // 2. تحديث حالة العرض المقبول إلى "accepted"
+    // 4. التحقق من أن الطلب في حالة صحيحة (active أو assigned)
+    if (request.status === "completed" || request.status === "archived") {
+      return {
+        success: false,
+        error: "لا يمكن قبول عرض على طلب مكتمل أو مؤرشف",
+      };
+    }
+
+    // 5. التحقق من وجود العرض
+    const { data: offer, error: offerError } = await supabase
+      .from("offers")
+      .select("id, request_id, provider_id, status, title")
+      .eq("id", offerId)
+      .eq("request_id", requestId)
+      .single();
+
+    if (offerError || !offer) {
+      logger.error("خطأ في جلب العرض:", offerError);
+      return { success: false, error: "العرض غير موجود" };
+    }
+
+    // 6. التحقق من أن العرض في حالة يمكن قبولها
+    if (offer.status === "accepted" || offer.status === "rejected") {
+      return {
+        success: false,
+        error: "هذا العرض تم قبوله أو رفضه مسبقاً",
+      };
+    }
+
+    // 7. تحديث حالة العرض المقبول إلى "accepted"
     const { error: acceptError } = await supabase
       .from("offers")
-      .update({ status: "accepted" })
+      .update({
+        status: "accepted",
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", offerId)
       .eq("request_id", requestId);
 
@@ -2093,62 +2529,176 @@ export async function acceptOffer(
       return { success: false, error: "فشل في قبول العرض" };
     }
 
-    // 3. رفض العروض الأخرى على نفس الطلب
+    // 8. رفض العروض الأخرى على نفس الطلب
     const { error: rejectError } = await supabase
       .from("offers")
-      .update({ status: "rejected" })
+      .update({
+        status: "rejected",
+        updated_at: new Date().toISOString(),
+      })
       .eq("request_id", requestId)
       .neq("id", offerId)
       .in("status", ["pending", "negotiating"]);
 
     if (rejectError) {
       logger.warn("تحذير: فشل في رفض العروض الأخرى:", rejectError);
+      // لا نعيد خطأ هنا لأن العملية الأساسية نجحت
     }
 
-    // 4. تحديث حالة الطلب إلى "assigned"
+    // 9. تحديث حالة الطلب إلى "assigned"
     const { error: updateRequestError } = await supabase
       .from("requests")
       .update({
         status: "assigned",
         accepted_offer_id: offerId,
+        updated_at: new Date().toISOString(),
       })
       .eq("id", requestId);
 
     if (updateRequestError) {
-      logger.warn("تحذير: فشل في تحديث حالة الطلب:", updateRequestError);
+      logger.error("خطأ حرج: فشل في تحديث حالة الطلب:", updateRequestError);
+      // محاولة إرجاع حالة العرض إلى ما كانت عليه
+      await supabase
+        .from("offers")
+        .update({ status: offer.status })
+        .eq("id", offerId);
+      return {
+        success: false,
+        error: "فشل في تحديث حالة الطلب. يرجى المحاولة مرة أخرى",
+      };
     }
 
-    // 5. إرسال إشعار للمزود بقبول عرضه
+    // 10. إرسال إشعار للمزود بقبول عرضه
     try {
-      // جلب معرف مقدم العرض وعنوان الطلب
-      const { data: offerData } = await supabase
-        .from("offers")
-        .select("provider_id, title")
-        .eq("id", offerId)
-        .single();
-
-      const { data: reqData } = await supabase
-        .from("requests")
-        .select("title")
-        .eq("id", requestId)
-        .single();
-
-      if (offerData?.provider_id && reqData?.title) {
-        sendPushNotificationForOfferAccepted({
+      if (offer.provider_id) {
+        await sendPushNotificationForOfferAccepted({
           requestId,
-          requestTitle: reqData.title,
-          recipientId: offerData.provider_id,
+          requestTitle: request.title || "طلب",
+          recipientId: offer.provider_id,
           authorId: userId,
           offerId: offerId,
         });
       }
     } catch (pushErr) {
       logger.warn("فشل في إرسال إشعار قبول العرض:", pushErr);
+      // لا نعيد خطأ هنا لأن العملية الأساسية نجحت
     }
 
+    logger.log(
+      `✅ تم قبول العرض ${offerId} على الطلب ${requestId} بنجاح`,
+    );
     return { success: true };
   } catch (error) {
-    logger.error("خطأ في قبول العرض:", error);
+    logger.error("خطأ غير متوقع في قبول العرض:", error);
+    return { success: false, error: "حدث خطأ غير متوقع" };
+  }
+}
+
+/**
+ * إكمال طلب معين
+ * - يتحقق من صلاحيات المستخدم (صاحب الطلب أو مقدم الخدمة المعتمد)
+ * - يحدث حالة الطلب إلى "completed"
+ * - يرسل إشعارات للطرفين
+ * - يسمح للطرفين بتقييم بعضهما البعض بعد الإكمال
+ */
+export async function completeRequest(
+  requestId: string,
+  userId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // 1. التحقق من صحة المدخلات
+    if (!requestId || !userId) {
+      return { success: false, error: "بيانات غير صحيحة" };
+    }
+
+    // 2. جلب بيانات الطلب
+    const { data: request, error: requestError } = await supabase
+      .from("requests")
+      .select("id, author_id, status, title, accepted_offer_id")
+      .eq("id", requestId)
+      .single();
+
+    if (requestError || !request) {
+      logger.error("خطأ في جلب الطلب:", requestError);
+      return { success: false, error: "الطلب غير موجود" };
+    }
+
+    // 3. التحقق من أن الطلب في حالة "assigned"
+    if (request.status !== "assigned") {
+      return {
+        success: false,
+        error: request.status === "completed"
+          ? "الطلب مكتمل بالفعل"
+          : request.status === "archived"
+          ? "الطلب مؤرشف"
+          : "لا يمكن إكمال الطلب إلا بعد قبول عرض",
+      };
+    }
+
+    // 4. التحقق من أن المستخدم هو صاحب الطلب أو مقدم الخدمة المعتمد
+    const isRequester = request.author_id === userId;
+    let isProvider = false;
+
+    if (!isRequester && request.accepted_offer_id) {
+      // التحقق من أن المستخدم هو مقدم الخدمة المعتمد
+      const { data: offer } = await supabase
+        .from("offers")
+        .select("provider_id")
+        .eq("id", request.accepted_offer_id)
+        .eq("request_id", requestId)
+        .single();
+
+      isProvider = offer?.provider_id === userId;
+    }
+
+    if (!isRequester && !isProvider) {
+      logger.warn(
+        `محاولة غير مصرح بها: المستخدم ${userId} يحاول إكمال طلب ${requestId}`,
+      );
+      return { success: false, error: "غير مصرح لك بإكمال هذا الطلب" };
+    }
+
+    // 5. تحديث حالة الطلب إلى "completed"
+    const { error: updateError } = await supabase
+      .from("requests")
+      .update({
+        status: "completed",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", requestId);
+
+    if (updateError) {
+      logger.error("خطأ في إكمال الطلب:", updateError);
+      return { success: false, error: "فشل في إكمال الطلب" };
+    }
+
+    // 6. إرسال إشعارات للطرفين
+    try {
+      if (request.accepted_offer_id) {
+        const { data: offer } = await supabase
+          .from("offers")
+          .select("provider_id")
+          .eq("id", request.accepted_offer_id)
+          .single();
+
+        if (offer?.provider_id) {
+          await sendPushNotificationForRequestCompleted({
+            requestId,
+            requestTitle: request.title || "طلب",
+            requesterId: request.author_id,
+            providerId: offer.provider_id,
+          });
+        }
+      }
+    } catch (pushErr) {
+      logger.warn("فشل في إرسال إشعارات إكمال الطلب:", pushErr);
+      // لا نعيد خطأ هنا لأن العملية الأساسية نجحت
+    }
+
+    logger.log(`✅ تم إكمال الطلب ${requestId} بنجاح`);
+    return { success: true };
+  } catch (error) {
+    logger.error("خطأ غير متوقع في إكمال الطلب:", error);
     return { success: false, error: "حدث خطأ غير متوقع" };
   }
 }
@@ -2270,7 +2820,7 @@ export async function startNegotiation(
       const requesterName = requesterProfile?.display_name || "صاحب الطلب";
 
       // هذه الدالة تنشئ إشعار داخل التطبيق + تُرسل Push Notification
-      sendPushNotificationForNegotiationStarted({
+      await sendPushNotificationForNegotiationStarted({
         requestId,
         requestTitle: request.title,
         recipientId: offer.provider_id,
@@ -2281,7 +2831,7 @@ export async function startNegotiation(
 
       logger.log("✅ تم إرسال إشعار بدء التفاوض بنجاح");
     } catch (notifErr) {
-      logger.warn("فشل في إرسال إشعار بدء التفاوض:", notifErr);
+      logger.warn("تحذير: فشل في إرسال إشعار بدء التفاوض:", notifErr);
       // لا نعيد false لأن التفاوض نجح، فقط الإشعار فشل
     }
 
@@ -2291,4 +2841,64 @@ export async function startNegotiation(
     logger.error("خطأ في بدء التفاوض:", error);
     return { success: false, error: "حدث خطأ غير متوقع" };
   }
+}
+
+/**
+ * الاشتراك في العروض الجديدة لطلبات المستخدم الحالي (Real-time)
+ */
+export function subscribeToNewOffersForUserRequests(
+  userId: string,
+  onNewOffer: (offer: Offer, requestId: string) => void,
+): () => void {
+  if (!userId) return () => {};
+
+  const channel = supabase
+    .channel(`user-offers-realtime-${userId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "offers",
+      },
+      async (payload: any) => {
+        const newOffer = payload.new as Record<string, any>;
+
+        // نتحقق أولاً هل هذا الطلب يخص المستخدم الحالي
+        // (يمكن تحسين هذا بالفلترة في Supabase إذا كانت الجداول تسمح)
+        const { data: request, error: reqError } = await supabase
+          .from("requests")
+          .select("author_id")
+          .eq("id", newOffer.request_id)
+          .single();
+
+        if (reqError || !request || request.author_id !== userId) {
+          return;
+        }
+
+        // تحويل العرض إلى التنسيق المستخدم في التطبيق
+        const transformed: Offer = {
+          id: newOffer.id,
+          requestId: newOffer.request_id,
+          providerId: newOffer.provider_id,
+          providerName: newOffer.provider_name,
+          title: newOffer.title,
+          description: newOffer.description || "",
+          price: newOffer.price || "",
+          deliveryTime: newOffer.delivery_time || "",
+          status: newOffer.status as Offer["status"],
+          createdAt: new Date(newOffer.created_at),
+          isNegotiable: newOffer.is_negotiable ?? true,
+          location: newOffer.location || "",
+          images: newOffer.images || [],
+        };
+
+        onNewOffer(transformed, newOffer.request_id);
+      },
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }

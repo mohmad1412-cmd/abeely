@@ -113,7 +113,7 @@ const SubmitButtonWithShake: React.FC<SubmitButtonWithShakeProps> = ({
       layout
       onClick={handleClick}
       disabled={!canSubmit || isSubmitting || isGeneratingTitle ||
-        isUploadingFiles}
+        isUploadingFiles || submitSuccess}
       animate={isShaking
         ? {
           x: [0, -10, 10, -10, 10, 0],
@@ -1395,6 +1395,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  // حماية من الإرسال المزدوج
+  const isSubmittingRef = useRef(false);
 
   // Guest verification states
   const [guestVerificationStep, setGuestVerificationStep] = useState<
@@ -2469,7 +2472,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   };
 
   // Handle publish (internal function - called after guest verification if needed)
-  const handlePublishInternal = async (): Promise<string | null> => {
+  // Returns: { success: boolean, requestId?: string, error?: string }
+  const handlePublishInternal = async (): Promise<{ success: boolean; requestId?: string | null; error?: string }> => {
     // Get current user (in case user just logged in via guest verification)
     let currentUserId = user?.id;
     if (!currentUserId) {
@@ -2500,7 +2504,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       } else {
         saveFormDataForGuest();
         setShowAuthAlert(true);
-        return null;
+        return { success: false, error: "auth_required" };
       }
     }
 
@@ -2513,18 +2517,78 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     if (attachedFiles.length > 0) {
       try {
         setIsUploadingFiles(true);
-        logger.log("Uploading attachments for request:", requestId);
+        logger.log("📤 Starting file upload process", {
+          requestId,
+          fileCount: attachedFiles.length,
+          fileNames: attachedFiles.map(f => f.name),
+          fileSizes: attachedFiles.map(f => f.size),
+        }, "service");
+        
         uploadedImageUrls = await uploadRequestAttachments(
           attachedFiles,
           requestId,
         );
-        logger.log("Uploaded successfully:", uploadedImageUrls);
-      } catch (uploadError) {
-        logger.error("Failed to upload attachments:", uploadError);
-        // We might want to show a toast here, but for now we continue without images
+        
+        logger.log("✅ Upload process completed", {
+          requestId,
+          uploadedCount: uploadedImageUrls.length,
+          totalFiles: attachedFiles.length,
+          uploadedUrls: uploadedImageUrls,
+        }, "service");
+        
+        if (uploadedImageUrls.length === 0) {
+          logger.warn("⚠️ No files were uploaded successfully", {
+            totalFiles: attachedFiles.length,
+            requestId,
+          }, "service");
+          // Don't block request submission if upload fails - user can submit without attachments
+        } else if (uploadedImageUrls.length < attachedFiles.length) {
+          logger.warn("⚠️ Some files failed to upload", {
+            uploadedCount: uploadedImageUrls.length,
+            totalFiles: attachedFiles.length,
+            requestId,
+          }, "service");
+        }
+      } catch (uploadError: any) {
+        logger.error("❌ Failed to upload attachments:", {
+          error: uploadError,
+          message: uploadError?.message,
+          requestId,
+          fileCount: attachedFiles.length,
+        }, "service");
+        
+        // Check if it's a bucket not found error
+        if (uploadError?.message?.includes("Bucket not found") || 
+            uploadError?.message?.includes("غير موجود")) {
+          logger.error("Storage bucket missing - request will continue without attachments", {
+            error: uploadError.message,
+            requestId,
+          }, "service");
+          // Continue without images - don't block the request
+        } else if (uploadError?.message?.includes("صلاحية") || 
+                   uploadError?.message?.includes("permission")) {
+          logger.error("Permission denied for file upload", {
+            error: uploadError.message,
+            requestId,
+          }, "service");
+          // Continue without images - don't block the request
+        } else {
+          // For other errors, also continue but log the error
+          logger.warn("Upload error occurred, continuing without attachments", {
+            error: uploadError?.message || uploadError,
+            requestId,
+          }, "service");
+        }
+        // Continue without images - the user can still submit the request
       } finally {
         setIsUploadingFiles(false);
+        logger.log("📤 Upload state reset", {
+          requestId,
+          finalUploadedCount: uploadedImageUrls.length,
+        }, "service");
       }
+    } else {
+      logger.log("No files to upload", { requestId }, "service");
     }
 
     // Extract budget values
@@ -2565,11 +2629,28 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
 
     if (!finalTitle) finalTitle = "طلب جديد";
 
+    // Validate required fields before creating request object
+    const trimmedDescription = description.trim();
+    const trimmedLocation = location.trim();
+    
+    if (!trimmedDescription || !trimmedLocation) {
+      logger.error("Missing required fields in handlePublishInternal:", {
+        hasDescription: !!trimmedDescription,
+        hasLocation: !!trimmedLocation,
+      }, "service");
+      let errorMsg = "يرجى التأكد من إدخال";
+      const missing = [];
+      if (!trimmedDescription) missing.push("الوصف");
+      if (!trimmedLocation) missing.push("الموقع");
+      errorMsg += " " + missing.join(" و");
+      return { success: false, error: errorMsg };
+    }
+
     const request: Partial<Request> = {
       id: requestId, // Use the generated or existing ID
       title: finalTitle,
-      description: description.trim(),
-      location: location.trim(),
+      description: trimmedDescription,
+      location: trimmedLocation,
       budgetMin: finalBudgetMin,
       budgetMax: finalBudgetMax,
       categories: (() => {
@@ -2592,11 +2673,98 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       request,
     );
 
-    const result = await onPublish(
-      request,
-      isEditing,
-      editingRequestId || undefined,
-    );
+    try {
+      logger.log("📤 Calling onPublish...", {
+        isEditing,
+        requestId: editingRequestId,
+        hasDescription: !!trimmedDescription,
+        hasLocation: !!trimmedLocation,
+        requestTitle: finalTitle,
+        hasImages: !!uploadedImageUrls.length,
+      }, "service");
+      
+      const result = await onPublish(
+        request,
+        isEditing,
+        editingRequestId || undefined,
+      );
+      
+      logger.log("📥 onPublish returned:", {
+        hasResult: !!result,
+        resultId: result,
+      }, "service");
+      
+      if (!result) {
+        logger.error("❌ onPublish returned null/undefined", {
+          isEditing,
+          requestId: editingRequestId,
+          hasDescription: !!trimmedDescription,
+          hasLocation: !!trimmedLocation,
+          requestTitle: finalTitle,
+          hasImages: !!uploadedImageUrls.length,
+          requestData: {
+            title: finalTitle?.substring(0, 50),
+            descriptionLength: trimmedDescription?.length || 0,
+            locationLength: trimmedLocation?.length || 0,
+          },
+        }, "service");
+        
+        // Try to determine the reason for failure
+        let errorMsg = "فشل إرسال الطلب";
+        if (isEditing) {
+          errorMsg = "فشل تحديث الطلب. قد يكون الطلب غير موجود أو لا تملك صلاحية التعديل.";
+        } else {
+          errorMsg = "فشل إرسال الطلب. يرجى التحقق من الاتصال بالإنترنت والمحاولة مرة أخرى.";
+        }
+        
+        return { success: false, error: errorMsg };
+      }
+      
+      logger.log("✅ Request published successfully:", result, "service");
+      return { success: true, requestId: result };
+    } catch (error: any) {
+      logger.error("Error in onPublish:", error, "service");
+      
+      // Extract error message - prefer user-friendly message if available
+      let errorMsg = error?.message || "حدث خطأ غير متوقع أثناء إرسال الطلب.";
+      
+      // Log full error details for debugging
+      logger.error("Full error details:", {
+        message: errorMsg,
+        name: error?.name,
+        stack: error?.stack?.substring(0, 300),
+        originalError: error?.originalError,
+      }, "service");
+      
+      // If it's a database/network error, provide more specific message
+      if (error?.originalError) {
+        const originalError = error.originalError;
+        if (originalError?.message) {
+          // Use the user-friendly message from createRequestFromChat
+          errorMsg = error.message;
+        }
+      }
+      
+      // Check for specific error types
+      const errorMessageLower = errorMsg.toLowerCase();
+      if (errorMessageLower.includes("network") || errorMessageLower.includes("fetch") || 
+          errorMessageLower.includes("connection") || errorMessageLower.includes("failed to fetch")) {
+        errorMsg = "مشكلة في الاتصال بالإنترنت. يرجى التحقق من الاتصال والمحاولة مرة أخرى.";
+      } else if (errorMessageLower.includes("permission") || errorMessageLower.includes("policy") || 
+                 errorMessageLower.includes("auth") || errorMessageLower.includes("unauthorized")) {
+        errorMsg = "ليس لديك صلاحية لإنشاء طلب. يرجى التحقق من تسجيل الدخول.";
+      } else if (errorMessageLower.includes("duplicate") || errorMessageLower.includes("unique") ||
+                 errorMessageLower.includes("already exists")) {
+        errorMsg = "الطلب موجود بالفعل. يرجى المحاولة مرة أخرى.";
+      } else if (errorMessageLower.includes("required") || errorMessageLower.includes("missing")) {
+        errorMsg = "بيانات ناقصة. يرجى التأكد من إدخال جميع الحقول المطلوبة.";
+      } else if (errorMessageLower.includes("database") || errorMessageLower.includes("sql") ||
+                 errorMessageLower.includes("constraint")) {
+        errorMsg = "خطأ في قاعدة البيانات. يرجى المحاولة مرة أخرى أو الاتصال بالدعم.";
+      }
+      
+      return { success: false, error: errorMsg };
+    }
 
     if (result && isEditing) {
       setSavedValues(getCurrentValues());
@@ -3007,16 +3175,19 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
 
                       try {
                         setIsSubmitting(true);
-                        const requestId = await handlePublishInternal();
-                        if (requestId) {
-                          setCreatedRequestId(requestId);
+                        const result = await handlePublishInternal();
+                        if (result.success && result.requestId) {
+                          setCreatedRequestId(result.requestId);
                           setSubmitSuccess(true);
                           setIsSubmitting(false);
-                          if (onGoToRequest && requestId) {
-                            setTimeout(() => onGoToRequest(requestId), 2000);
+                          if (onGoToRequest && result.requestId) {
+                            setTimeout(() => onGoToRequest(result.requestId), 2000);
                           }
                         } else {
                           setIsSubmitting(false);
+                          if (result.error && result.error !== "auth_required") {
+                            setSubmitError(result.error);
+                          }
                         }
                       } catch (error) {
                         logger.error(
@@ -3025,6 +3196,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                           "service",
                         );
                         setIsSubmitting(false);
+                        setSubmitError("حدث خطأ أثناء إرسال الطلب. يرجى المحاولة مرة أخرى.");
                       }
                     }, 200);
                   }}
@@ -4009,33 +4181,88 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               setGuestVerificationStep("phone");
             }}
             onSubmit={async () => {
+              // حماية من الإرسال المزدوج
+              if (isSubmittingRef.current) {
+                logger.warn("Attempted to submit while already submitting", "service");
+                return;
+              }
+
               if (navigator.vibrate) navigator.vibrate(15);
+              isSubmittingRef.current = true;
               setIsSubmitting(true);
+              setSubmitError(null); // Clear any previous errors
 
               try {
-                const requestId = await handlePublishInternal();
-                if (requestId) {
-                  setCreatedRequestId(requestId);
+                const result = await handlePublishInternal();
+                if (result.success && result.requestId) {
+                  setCreatedRequestId(result.requestId);
                   setSubmitSuccess(true);
                   setShowSuccessNotification(true);
 
                   if (!editingRequestId) {
                     setTimeout(() => {
-                      if (onGoToRequest && requestId) {
-                        onGoToRequest(requestId);
+                      if (onGoToRequest && result.requestId) {
+                        onGoToRequest(result.requestId);
                       }
                     }, 2000);
                   }
+                } else {
+                  // Handle different error types
+                  if (result.error === "auth_required") {
+                    // Auth alert will be shown by handlePublishInternal
+                    // Don't show additional error message
+                  } else if (result.error) {
+                    // Show the specific error message
+                    setSubmitError(result.error);
+                  } else {
+                    // Fallback error message
+                    setSubmitError("فشل إرسال الطلب. يرجى التحقق من البيانات والمحاولة مرة أخرى.");
+                  }
+                  
+                  logger.error("Failed to submit request:", {
+                    success: result.success,
+                    error: result.error,
+                    hasDescription: !!description.trim(),
+                    hasLocation: !!location.trim(),
+                    hasTitle: !!title.trim(),
+                  }, "service");
                 }
-              } catch (error) {
+              } catch (error: any) {
                 logger.error("Error submitting:", error, "service");
+                const errorMsg = error?.message || "حدث خطأ أثناء إرسال الطلب. يرجى المحاولة مرة أخرى.";
+                setSubmitError(errorMsg);
               } finally {
+                isSubmittingRef.current = false;
                 setIsSubmitting(false);
               }
             }}
             onGoToRequest={onGoToRequest}
             isUploadingFiles={isUploadingFiles}
           />
+          
+          {/* Error Message Display */}
+          <AnimatePresence>
+            {submitError && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mt-3 p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm text-center"
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <X size={16} className="shrink-0" />
+                  <span>{submitError}</span>
+                  <button
+                    onClick={() => setSubmitError(null)}
+                    className="ml-auto shrink-0 p-1 hover:bg-destructive/20 rounded transition-colors"
+                    aria-label="إغلاق"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       )}
 
@@ -4621,8 +4848,8 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                           );
                         }
 
-                        const requestId = await handlePublishInternal();
-                        if (requestId) {
+                        const result = await handlePublishInternal();
+                        if (result.success && result.requestId) {
                           // Success - now close modal and clear data
                           setGuestVerificationStep("none");
                           setTermsAccepted(false);
@@ -4640,19 +4867,21 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                             "abeely_pending_request_form",
                           );
 
-                          setCreatedRequestId(requestId);
+                          setCreatedRequestId(result.requestId);
                           setSubmitSuccess(true);
                           setShowSuccessNotification(true);
 
                           if (!editingRequestId) {
                             setTimeout(() => {
-                              if (onGoToRequest && requestId) {
-                                onGoToRequest(requestId);
+                              if (onGoToRequest && result.requestId) {
+                                onGoToRequest(result.requestId);
                               }
                             }, 2000);
                           }
                         } else {
-                          setGuestError("فشل في إنشاء الطلب. حاول مرة أخرى.");
+                          const errorMsg = result.error || "فشل في إنشاء الطلب. حاول مرة أخرى.";
+                          setGuestError(errorMsg);
+                          setSubmitError(errorMsg);
                         }
                       } catch (error) {
                         logger.error("Error submitting:", error, "service");

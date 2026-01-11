@@ -1,43 +1,45 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { logger } from '../utils/logger';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  MessageCircle, 
-  ArrowRight, 
-  Send, 
-  Loader2,
-  User,
-  ChevronLeft,
+import React, { useEffect, useRef, useState } from "react";
+import { logger } from "../utils/logger";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  ArrowRight,
   CheckCheck,
-  Paperclip,
-  Mic,
-  X,
-  Image,
+  ChevronLeft,
   FileText,
-  Play,
+  Image,
+  Loader2,
+  MessageCircle,
+  Mic,
+  Paperclip,
   Pause,
-  Trash2
-} from 'lucide-react';
-import { 
-  getConversations, 
-  getMessages, 
-  sendMessage,
-  markMessagesAsRead,
+  Play,
+  Send,
+  Trash2,
+  User,
+  X,
+} from "lucide-react";
+import {
+  Conversation,
+  getConversations,
+  getMessages,
   getOrCreateConversation,
-  subscribeToMessages,
+  markMessagesAsRead,
+  Message,
+  MessageAttachment,
+  sendMessage,
   subscribeToConversations,
+  subscribeToMessages,
   uploadMessageAttachments,
   uploadVoiceMessage,
-  Conversation,
-  Message,
-  MessageAttachment
-} from '../services/messagesService';
-import { getCurrentUser } from '../services/authService';
-import { ListItemSkeleton, ChatMessageSkeleton } from './ui/LoadingSkeleton';
-import { UnifiedHeader } from './ui/UnifiedHeader';
+} from "../services/messagesService";
+import { getCurrentUser } from "../services/authService";
+import { ChatMessageSkeleton, ListItemSkeleton } from "./ui/LoadingSkeleton";
+import { UnifiedHeader } from "./ui/UnifiedHeader";
 
 // Audio Player Component for Voice Messages
-const AudioPlayer: React.FC<{ url: string; duration?: number }> = ({ url, duration: propDuration }) => {
+const AudioPlayer: React.FC<{ url: string; duration?: number }> = (
+  { url, duration: propDuration },
+) => {
   const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -53,7 +55,7 @@ const AudioPlayer: React.FC<{ url: string; duration?: number }> = ({ url, durati
           setDuration(dur);
         }
       };
-      
+
       const handleTimeUpdate = () => {
         const time = audio.currentTime;
         const dur = audio.duration;
@@ -62,25 +64,25 @@ const AudioPlayer: React.FC<{ url: string; duration?: number }> = ({ url, durati
           setProgressPercent((time / dur) * 100);
         }
       };
-      
+
       const handleEnded = () => {
         setIsPlaying(false);
         setCurrentTime(0);
         setProgressPercent(0);
       };
-      
-      audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.addEventListener('timeupdate', handleTimeUpdate);
-      audio.addEventListener('ended', handleEnded);
-      
+
+      audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.addEventListener("timeupdate", handleTimeUpdate);
+      audio.addEventListener("ended", handleEnded);
+
       if (audio.readyState >= 1 && audio.duration && isFinite(audio.duration)) {
         setDuration(audio.duration);
       }
-      
+
       return () => {
-        audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        audio.removeEventListener('timeupdate', handleTimeUpdate);
-        audio.removeEventListener('ended', handleEnded);
+        audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+        audio.removeEventListener("timeupdate", handleTimeUpdate);
+        audio.removeEventListener("ended", handleEnded);
       };
     }
   }, [audioRef]);
@@ -109,7 +111,7 @@ const AudioPlayer: React.FC<{ url: string; duration?: number }> = ({ url, durati
     if (!isFinite(seconds) || isNaN(seconds)) return "0:00";
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   return (
@@ -119,7 +121,9 @@ const AudioPlayer: React.FC<{ url: string; duration?: number }> = ({ url, durati
           onClick={togglePlay}
           className="w-8 h-8 rounded-full flex items-center justify-center text-current hover:bg-white/20 transition-colors shrink-0"
         >
-          {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+          {isPlaying
+            ? <Pause size={16} fill="currentColor" />
+            : <Play size={16} fill="currentColor" />}
         </button>
         <div className="flex-1 flex items-center gap-2 flex-row-reverse">
           <span className="text-[10px] opacity-70 tabular-nums shrink-0 min-w-[40px] text-right">
@@ -134,26 +138,37 @@ const AudioPlayer: React.FC<{ url: string; duration?: number }> = ({ url, durati
             onChange={handleSeek}
             className="flex-1 h-1 bg-white/20 rounded-full appearance-none cursor-pointer"
             style={{
-              background: `linear-gradient(to left, currentColor 0%, currentColor ${progressPercent}%, rgba(255,255,255,0.2) ${progressPercent}%, rgba(255,255,255,0.2) 100%)`,
+              background:
+                `linear-gradient(to left, currentColor 0%, currentColor ${progressPercent}%, rgba(255,255,255,0.2) ${progressPercent}%, rgba(255,255,255,0.2) 100%)`,
             }}
           />
         </div>
       </div>
-      <audio ref={setAudioRef} src={url} preload="metadata" className="hidden" />
+      <audio
+        ref={setAudioRef}
+        src={url}
+        preload="metadata"
+        className="hidden"
+      />
     </div>
   );
 };
 
 // Attachment Preview Component
-const AttachmentPreview: React.FC<{ 
-  attachment: MessageAttachment; 
+const AttachmentPreview: React.FC<{
+  attachment: MessageAttachment;
   isOwn: boolean;
 }> = ({ attachment, isOwn }) => {
-  if (attachment.file_type === 'image') {
+  if (attachment.file_type === "image") {
     return (
-      <a href={attachment.file_url} target="_blank" rel="noopener noreferrer" className="block">
-        <img 
-          src={attachment.file_url} 
+      <a
+        href={attachment.file_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block"
+      >
+        <img
+          src={attachment.file_url}
           alt={attachment.file_name}
           className="max-w-[200px] max-h-[200px] rounded-lg object-cover"
         />
@@ -162,16 +177,18 @@ const AttachmentPreview: React.FC<{
   }
 
   return (
-    <a 
-      href={attachment.file_url} 
-      target="_blank" 
+    <a
+      href={attachment.file_url}
+      target="_blank"
       rel="noopener noreferrer"
       className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
-        isOwn ? 'bg-white/10' : 'bg-secondary/50'
+        isOwn ? "bg-white/10" : "bg-secondary/50"
       }`}
     >
       <FileText size={18} />
-      <span className="text-xs truncate max-w-[150px]">{attachment.file_name}</span>
+      <span className="text-xs truncate max-w-[150px]">
+        {attachment.file_name}
+      </span>
     </a>
   );
 };
@@ -181,7 +198,7 @@ interface MessagesProps {
   onSelectConversation?: (conversationId: string) => void;
   initialConversationId?: string;
   // Unified Header Props
-  mode: 'requests' | 'offers';
+  mode: "requests" | "offers";
   toggleMode: () => void;
   isModeSwitching: boolean;
   unreadCount: number;
@@ -236,26 +253,32 @@ export const Messages: React.FC<MessagesProps> = ({
     loadUser();
   }, []);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [selectedConversation, setSelectedConversation] = useState<
+    Conversation | null
+  >(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState('');
+  const [newMessage, setNewMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+
   // Attachments state
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(
+    null,
+  );
   const [recordingTime, setRecordingTime] = useState(0);
   const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
-  
+
   // Preview audio player state
-  const [previewAudioRef, setPreviewAudioRef] = useState<HTMLAudioElement | null>(null);
+  const [previewAudioRef, setPreviewAudioRef] = useState<
+    HTMLAudioElement | null
+  >(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
 
   // Load conversations
@@ -267,16 +290,16 @@ export const Messages: React.FC<MessagesProps> = ({
       try {
         const convs = await getConversations();
         setConversations(convs);
-        
+
         // If initial conversation ID provided, select it
         if (initialConversationId) {
-          const conv = convs.find(c => c.id === initialConversationId);
+          const conv = convs.find((c) => c.id === initialConversationId);
           if (conv) {
             setSelectedConversation(conv);
           }
         }
       } catch (error) {
-        logger.error('Error loading conversations:', error, 'service');
+        logger.error("Error loading conversations:", error, "service");
       } finally {
         setIsLoading(false);
       }
@@ -287,13 +310,17 @@ export const Messages: React.FC<MessagesProps> = ({
     // Subscribe to conversation updates
     const unsubscribe = subscribeToConversations(user.id, (updatedConv) => {
       setConversations((prev) => {
-        const index = prev.findIndex(c => c.id === updatedConv.id);
+        const index = prev.findIndex((c) => c.id === updatedConv.id);
         if (index >= 0) {
           const updated = [...prev];
           updated[index] = updatedConv;
           return updated.sort((a, b) => {
-            const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-            const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+            const aTime = a.last_message_at
+              ? new Date(a.last_message_at).getTime()
+              : 0;
+            const bTime = b.last_message_at
+              ? new Date(b.last_message_at).getTime()
+              : 0;
             return bTime - aTime;
           });
         } else {
@@ -317,20 +344,23 @@ export const Messages: React.FC<MessagesProps> = ({
     const loadMessages = async () => {
       setIsLoading(true);
       try {
+        // تحديث فوري: تحديد الرسائل كمقروءة فوراً عند فتح المحادثة
+        // قبل تحميل الرسائل لتحديث الـ badges فوراً
+        markMessagesAsRead(selectedConversation.id).catch((err) => {
+          logger.error("Error marking messages as read:", err, "service");
+        });
+
         const msgs = await getMessages(selectedConversation.id);
         setMessages(msgs);
-        
-        // Mark messages as read
-        await markMessagesAsRead(selectedConversation.id);
-        
-        // Update conversation unread count
+
+        // Update conversation unread count فوراً
         setConversations((prev) =>
           prev.map((c) =>
             c.id === selectedConversation.id ? { ...c, unread_count: 0 } : c
           )
         );
       } catch (error) {
-        logger.error('Error loading messages:', error, 'service');
+        logger.error("Error loading messages:", error, "service");
       } finally {
         setIsLoading(false);
       }
@@ -339,25 +369,35 @@ export const Messages: React.FC<MessagesProps> = ({
     loadMessages();
 
     // Subscribe to new messages
-    const unsubscribe = subscribeToMessages(selectedConversation.id, (newMsg, eventType) => {
-      if (eventType === 'INSERT') {
-        setMessages((prev) => [...prev, newMsg]);
-        
-        // Mark as read if it's not from current user
-        if (newMsg.sender_id !== user?.id) {
-          markMessagesAsRead(selectedConversation.id);
+    const unsubscribe = subscribeToMessages(
+      selectedConversation.id,
+      (newMsg, eventType) => {
+        if (eventType === "INSERT") {
+          setMessages((prev) => {
+            // Avoid duplicates (optimistic update might have already added it)
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+
+          // تحديث فوري: تحديد الرسالة كمقروءة فوراً عند وصولها (إذا كانت المحادثة مفتوحة)
+          if (newMsg.sender_id !== user?.id) {
+            // تحديث فوري بدون انتظار
+            markMessagesAsRead(selectedConversation.id).catch((err) => {
+              logger.error("Error marking new message as read:", err, "service");
+            });
+          }
+
+          // Scroll to bottom
+          setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+          }, 100);
+        } else if (eventType === "UPDATE") {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === newMsg.id ? newMsg : m))
+          );
         }
-        
-        // Scroll to bottom
-        setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
-      } else if (eventType === 'UPDATE') {
-        setMessages((prev) => 
-          prev.map((m) => (m.id === newMsg.id ? newMsg : m))
-        );
-      }
-    });
+      },
+    );
 
     return () => {
       unsubscribe();
@@ -366,7 +406,7 @@ export const Messages: React.FC<MessagesProps> = ({
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   // Recording timer
@@ -390,8 +430,8 @@ export const Messages: React.FC<MessagesProps> = ({
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     setAttachedFiles((prev) => {
-      const existingNames = new Set(prev.map(f => f.name));
-      const newFiles = files.filter(f => !existingNames.has(f.name));
+      const existingNames = new Set(prev.map((f) => f.name));
+      const newFiles = files.filter((f) => !existingNames.has(f.name));
       return [...prev, ...newFiles];
     });
     e.target.value = "";
@@ -432,7 +472,7 @@ export const Messages: React.FC<MessagesProps> = ({
       setMediaRecorder(recorder);
       setIsRecording(true);
     } catch (error) {
-      logger.error("Error starting recording:", error, 'service');
+      logger.error("Error starting recording:", error, "service");
       alert("حدث خطأ في بدء التسجيل");
     }
   };
@@ -477,14 +517,29 @@ export const Messages: React.FC<MessagesProps> = ({
   const formatRecordingTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   const handleSendMessage = async () => {
-    const hasContent = newMessage.trim() || attachedFiles.length > 0 || recordedAudioBlob;
-    if (!hasContent || !selectedConversation || isSending) return;
+    const hasContent = newMessage.trim() || attachedFiles.length > 0 ||
+      recordedAudioBlob;
+    if (!hasContent || !selectedConversation || isSending) {
+      logger.warn("Cannot send message:", {
+        hasContent,
+        hasConversation: !!selectedConversation,
+        isSending,
+      });
+      return;
+    }
 
     setIsSending(true);
+    
+    // Safety timeout: reset isSending after 30 seconds even if operation doesn't complete
+    const timeoutId = setTimeout(() => {
+      logger.warn("Message send timeout - resetting isSending state");
+      setIsSending(false);
+    }, 30000);
+
     try {
       let uploadedAttachments: MessageAttachment[] = [];
       let audioUrl: string | undefined;
@@ -492,32 +547,78 @@ export const Messages: React.FC<MessagesProps> = ({
 
       // Upload attachments if any
       if (attachedFiles.length > 0) {
-        uploadedAttachments = await uploadMessageAttachments(attachedFiles, selectedConversation.id);
+        try {
+          uploadedAttachments = await uploadMessageAttachments(
+            attachedFiles,
+            selectedConversation.id,
+          );
+          if (!uploadedAttachments || uploadedAttachments.length === 0) {
+            logger.warn("Failed to upload some attachments");
+          }
+        } catch (uploadError) {
+          logger.error("Error uploading attachments:", uploadError, "service");
+          clearTimeout(timeoutId);
+          setIsSending(false);
+          alert("فشل رفع المرفقات. يرجى المحاولة مرة أخرى.");
+          return;
+        }
       }
 
       // Upload voice message if any
       if (recordedAudioBlob) {
-        const voiceResult = await uploadVoiceMessage(recordedAudioBlob, selectedConversation.id, recordingTime);
-        if (voiceResult) {
-          audioUrl = voiceResult.url;
-          audioDuration = voiceResult.duration;
+        try {
+          const voiceResult = await uploadVoiceMessage(
+            recordedAudioBlob,
+            selectedConversation.id,
+            recordingTime,
+          );
+          if (voiceResult) {
+            audioUrl = voiceResult.url;
+            audioDuration = voiceResult.duration;
+          } else {
+            logger.warn("Failed to upload voice message");
+            clearTimeout(timeoutId);
+            setIsSending(false);
+            alert("فشل رفع الرسالة الصوتية. يرجى المحاولة مرة أخرى.");
+            return;
+          }
+        } catch (voiceError) {
+          logger.error("Error uploading voice message:", voiceError, "service");
+          clearTimeout(timeoutId);
+          setIsSending(false);
+          alert("فشل رفع الرسالة الصوتية. يرجى المحاولة مرة أخرى.");
+          return;
         }
       }
 
       const sentMsg = await sendMessage(selectedConversation.id, newMessage, {
-        attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
+        attachments: uploadedAttachments.length > 0
+          ? uploadedAttachments
+          : undefined,
         audioUrl,
         audioDuration,
       });
 
+      clearTimeout(timeoutId);
+
       if (sentMsg) {
         setMessages((prev) => [...prev, sentMsg]);
-        setNewMessage('');
+        setNewMessage("");
         clearPendingMedia();
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      } else {
+        // Message was not sent but no error was thrown
+        logger.error(
+          "sendMessage returned null without throwing error",
+          null,
+          "service",
+        );
+        alert("فشل إرسال الرسالة. يرجى المحاولة مرة أخرى.");
       }
     } catch (error) {
-      logger.error('Error sending message:', error, 'service');
+      clearTimeout(timeoutId);
+      logger.error("Error sending message:", error, "service");
+      alert("حدث خطأ أثناء إرسال الرسالة. يرجى المحاولة مرة أخرى.");
     } finally {
       setIsSending(false);
     }
@@ -528,11 +629,11 @@ export const Messages: React.FC<MessagesProps> = ({
     const now = new Date();
     const diff = now.getTime() - d.getTime();
     const minutes = Math.floor(diff / 60000);
-    
-    if (minutes < 1) return 'الآن';
+
+    if (minutes < 1) return "الآن";
     if (minutes < 60) return `منذ ${minutes} دقيقة`;
     if (minutes < 1440) return `منذ ${Math.floor(minutes / 60)} ساعة`;
-    return d.toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' });
+    return d.toLocaleDateString("ar-SA", { day: "numeric", month: "short" });
   };
 
   // Show conversation list
@@ -568,68 +669,80 @@ export const Messages: React.FC<MessagesProps> = ({
 
         {/* Conversations List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {isLoading ? (
-            <>
-              <ListItemSkeleton />
-              <ListItemSkeleton />
-              <ListItemSkeleton />
-              <ListItemSkeleton />
-            </>
-          ) : conversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-6">
-              <MessageCircle size={48} className="text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">لا توجد محادثات بعد</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {conversations.map((conv) => (
-                <motion.button
-                  key={conv.id}
-                  onClick={() => {
-                    setSelectedConversation(conv);
-                    if (onSelectConversation) {
-                      onSelectConversation(conv.id);
-                    }
-                  }}
-                  className="w-full p-4 flex items-center gap-3 hover:bg-secondary/50 transition-colors text-right"
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    {conv.other_user?.avatar_url ? (
-                      <img
-                        src={conv.other_user.avatar_url}
-                        alt={conv.other_user.display_name || 'User'}
-                        className="w-full h-full rounded-full object-cover"
-                      />
-                    ) : (
-                      <User size={24} className="text-primary" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <h3 className="font-bold text-sm truncate">
-                        {conv.other_user?.display_name || 'مستخدم'}
-                      </h3>
-                      {conv.unread_count && conv.unread_count > 0 ? (
-                        <span className="bg-primary text-white text-xs px-2 py-0.5 rounded-full shrink-0">
-                          {conv.unread_count}
-                        </span>
-                      ) : null}
+          {isLoading
+            ? (
+              <>
+                <ListItemSkeleton />
+                <ListItemSkeleton />
+                <ListItemSkeleton />
+                <ListItemSkeleton />
+              </>
+            )
+            : conversations.length === 0
+            ? (
+              <div className="flex flex-col items-center justify-center h-full text-center px-6">
+                <MessageCircle
+                  size={48}
+                  className="text-muted-foreground mb-4"
+                />
+                <p className="text-muted-foreground">لا توجد محادثات بعد</p>
+              </div>
+            )
+            : (
+              <div className="divide-y divide-border">
+                {conversations.map((conv) => (
+                  <motion.button
+                    key={conv.id}
+                    onClick={() => {
+                      setSelectedConversation(conv);
+                      if (onSelectConversation) {
+                        onSelectConversation(conv.id);
+                      }
+                    }}
+                    className="w-full p-4 flex items-center gap-3 hover:bg-secondary/50 transition-colors text-right"
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      {conv.other_user?.avatar_url
+                        ? (
+                          <img
+                            src={conv.other_user.avatar_url}
+                            alt={conv.other_user.display_name || "User"}
+                            className="w-full h-full rounded-full object-cover"
+                          />
+                        )
+                        : <User size={24} className="text-primary" />}
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {conv.last_message_preview || 'لا توجد رسائل'}
-                    </p>
-                    {conv.last_message_at && (
-                      <p className="text-[10px] text-muted-foreground/60 mt-1">
-                        {formatTime(conv.last_message_at)}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <h3 className="font-bold text-sm truncate">
+                          {conv.other_user?.display_name || "مستخدم"}
+                        </h3>
+                        {conv.unread_count && conv.unread_count > 0
+                          ? (
+                            <span className="bg-primary text-white text-xs px-2 py-0.5 rounded-full shrink-0">
+                              {conv.unread_count}
+                            </span>
+                          )
+                          : null}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {conv.last_message_preview || "لا توجد رسائل"}
                       </p>
-                    )}
-                  </div>
-                  <ChevronLeft size={18} className="text-muted-foreground shrink-0" />
-                </motion.button>
-              ))}
-            </div>
-          )}
+                      {conv.last_message_at && (
+                        <p className="text-[10px] text-muted-foreground/60 mt-1">
+                          {formatTime(conv.last_message_at)}
+                        </p>
+                      )}
+                    </div>
+                    <ChevronLeft
+                      size={18}
+                      className="text-muted-foreground shrink-0"
+                    />
+                  </motion.button>
+                ))}
+              </div>
+            )}
         </div>
       </div>
     );
@@ -649,103 +762,133 @@ export const Messages: React.FC<MessagesProps> = ({
           <ArrowRight size={22} strokeWidth={2.5} />
         </motion.button>
         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-          {selectedConversation.other_user?.avatar_url ? (
-            <img
-              src={selectedConversation.other_user.avatar_url}
-              alt={selectedConversation.other_user.display_name || 'User'}
-              className="w-full h-full rounded-full object-cover"
-            />
-          ) : (
-            <User size={20} className="text-primary" />
-          )}
+          {selectedConversation.other_user?.avatar_url
+            ? (
+              <img
+                src={selectedConversation.other_user.avatar_url}
+                alt={selectedConversation.other_user.display_name || "User"}
+                className="w-full h-full rounded-full object-cover"
+              />
+            )
+            : <User size={20} className="text-primary" />}
         </div>
         <h1 className="text-lg font-bold flex-1">
-          {selectedConversation.other_user?.display_name || 'مستخدم'}
+          {selectedConversation.other_user?.display_name || "مستخدم"}
         </h1>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {isLoading ? (
-          <div className="space-y-6">
-            <ChatMessageSkeleton />
-            <ChatMessageSkeleton isUser />
-            <ChatMessageSkeleton />
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <MessageCircle size={48} className="text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">لا توجد رسائل بعد</p>
-          </div>
-        ) : (
-          <>
-            {messages.map((msg) => {
-              const isOwn = msg.sender_id === user?.id;
-              const hasAttachments = msg.attachments && msg.attachments.length > 0;
-              const hasAudio = msg.audio_url;
-              
-              return (
-                <motion.div
-                  key={msg.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[75%] rounded-2xl px-4 py-2 ${
-                      isOwn
-                        ? 'bg-primary text-primary-foreground rounded-tr-none'
-                        : 'bg-secondary text-secondary-foreground rounded-tl-none'
+        {isLoading
+          ? (
+            <div className="space-y-6">
+              <ChatMessageSkeleton />
+              <ChatMessageSkeleton isUser />
+              <ChatMessageSkeleton />
+            </div>
+          )
+          : messages.length === 0
+          ? (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <MessageCircle size={48} className="text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">لا توجد رسائل بعد</p>
+            </div>
+          )
+          : (
+            <>
+              {messages.map((msg) => {
+                const isOwn = msg.sender_id === user?.id;
+                const hasAttachments = msg.attachments &&
+                  msg.attachments.length > 0;
+                const hasAudio = msg.audio_url;
+
+                return (
+                  <motion.div
+                    key={msg.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`flex ${
+                      isOwn ? "justify-end" : "justify-start"
                     }`}
                   >
-                    {/* Voice Message */}
-                    {hasAudio && (
-                      <div className="mb-2">
-                        <AudioPlayer url={msg.audio_url!} duration={msg.audio_duration || undefined} />
-                      </div>
-                    )}
-                    
-                    {/* Attachments */}
-                    {hasAttachments && (
-                      <div className="flex flex-col gap-2 mb-2">
-                        {msg.attachments!.map((att, idx) => (
-                          <AttachmentPreview key={idx} attachment={att} isOwn={isOwn} />
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* Text Content */}
-                    {msg.content && (
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {msg.content}
-                      </p>
-                    )}
-                    
-                    <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                      <p className={`text-[10px] ${
-                        isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                      }`}>
-                        {formatTime(msg.created_at)}
-                      </p>
-                      {isOwn && (
-                        msg.is_read ? (
-                          <CheckCheck size={12} className="text-primary-foreground/60" />
-                        ) : (
-                          <CheckCheck size={12} className="text-primary-foreground/40" />
-                        )
+                    <div
+                      className={`max-w-[75%] rounded-2xl px-4 py-2 ${
+                        isOwn
+                          ? "bg-primary text-primary-foreground rounded-tr-none"
+                          : "bg-secondary text-secondary-foreground rounded-tl-none"
+                      }`}
+                    >
+                      {/* Voice Message */}
+                      {hasAudio && (
+                        <div className="mb-2">
+                          <AudioPlayer
+                            url={msg.audio_url!}
+                            duration={msg.audio_duration || undefined}
+                          />
+                        </div>
                       )}
+
+                      {/* Attachments */}
+                      {hasAttachments && (
+                        <div className="flex flex-col gap-2 mb-2">
+                          {msg.attachments!.map((att, idx) => (
+                            <AttachmentPreview
+                              key={idx}
+                              attachment={att}
+                              isOwn={isOwn}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Text Content */}
+                      {msg.content && (
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {msg.content}
+                        </p>
+                      )}
+
+                      <div
+                        className={`flex items-center gap-1 mt-1 ${
+                          isOwn ? "justify-end" : "justify-start"
+                        }`}
+                      >
+                        <p
+                          className={`text-[10px] ${
+                            isOwn
+                              ? "text-primary-foreground/70"
+                              : "text-muted-foreground"
+                          }`}
+                        >
+                          {formatTime(msg.created_at)}
+                        </p>
+                        {isOwn && (
+                          msg.is_read
+                            ? (
+                              <CheckCheck
+                                size={12}
+                                className="text-primary-foreground/60"
+                              />
+                            )
+                            : (
+                              <CheckCheck
+                                size={12}
+                                className="text-primary-foreground/40"
+                              />
+                            )
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-            <div ref={messagesEndRef} />
-          </>
-        )}
+                  </motion.div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </>
+          )}
       </div>
 
       {/* Input */}
-      <div className="sticky bottom-0 bg-background border-t border-border p-4">
+      <div className="sticky bottom-0 left-0 right-0 z-[100] bg-background border-t border-border p-4 shadow-lg">
         {/* Hidden file input */}
         <input
           type="file"
@@ -755,7 +898,7 @@ export const Messages: React.FC<MessagesProps> = ({
           accept="image/*,video/*,application/pdf,.doc,.docx"
           className="hidden"
         />
-        
+
         {/* Recording indicator */}
         <AnimatePresence>
           {isRecording && (
@@ -772,7 +915,9 @@ export const Messages: React.FC<MessagesProps> = ({
                 <X size={18} className="text-red-500" />
               </button>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{formatRecordingTime(recordingTime)}</span>
+                <span className="text-sm font-medium">
+                  {formatRecordingTime(recordingTime)}
+                </span>
                 <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
               </div>
               <button
@@ -784,7 +929,7 @@ export const Messages: React.FC<MessagesProps> = ({
             </motion.div>
           )}
         </AnimatePresence>
-        
+
         {/* Recorded audio preview */}
         <AnimatePresence>
           {recordedAudioUrl && !isRecording && (
@@ -806,7 +951,7 @@ export const Messages: React.FC<MessagesProps> = ({
             </motion.div>
           )}
         </AnimatePresence>
-        
+
         {/* Attached files preview */}
         <AnimatePresence>
           {attachedFiles.length > 0 && (
@@ -821,12 +966,12 @@ export const Messages: React.FC<MessagesProps> = ({
                   key={file.name}
                   className="flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg"
                 >
-                  {file.type.startsWith('image/') ? (
-                    <Image size={14} className="text-primary" />
-                  ) : (
-                    <FileText size={14} className="text-primary" />
-                  )}
-                  <span className="text-xs truncate max-w-[100px]">{file.name}</span>
+                  {file.type.startsWith("image/")
+                    ? <Image size={14} className="text-primary" />
+                    : <FileText size={14} className="text-primary" />}
+                  <span className="text-xs truncate max-w-[100px]">
+                    {file.name}
+                  </span>
                   <button
                     onClick={() => removeFile(file.name)}
                     className="p-1 hover:bg-destructive/20 rounded-full"
@@ -838,59 +983,78 @@ export const Messages: React.FC<MessagesProps> = ({
             </motion.div>
           )}
         </AnimatePresence>
-        
+
         <div className="flex items-center gap-2">
           {/* Attachment button */}
           <button
             onClick={handleFilePick}
             disabled={isSending || isRecording}
-            className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors disabled:opacity-50"
+            className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label="إرفاق ملف"
           >
             <Paperclip size={18} className="text-muted-foreground" />
           </button>
-          
-          {/* Voice recording button */}
-          <button
-            onClick={isRecording ? stopRecording : startRecording}
-            disabled={isSending || recordedAudioUrl !== null}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors disabled:opacity-50 ${
-              isRecording 
-                ? 'bg-red-500 text-white animate-pulse' 
-                : 'bg-secondary hover:bg-secondary/80'
-            }`}
-          >
-            <Mic size={18} className={isRecording ? 'text-white' : 'text-muted-foreground'} />
-          </button>
-          
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSendMessage();
-              }
-            }}
-            placeholder="اكتب رسالتك..."
-            className="flex-1 py-3 px-4 rounded-xl bg-secondary border border-border focus:outline-none focus:border-primary text-right"
-            dir="rtl"
-            disabled={isRecording}
-          />
-          <button
-            onClick={handleSendMessage}
-            disabled={(!newMessage.trim() && attachedFiles.length === 0 && !recordedAudioBlob) || isSending || isRecording}
-            className="w-12 h-12 rounded-xl bg-primary text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
-          >
-            {isSending ? (
-              <Loader2 size={20} className="animate-spin" />
-            ) : (
-              <Send size={20} />
-            )}
-          </button>
+
+          {/* Input field with recording and send buttons inside */}
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              placeholder="اكتب رسالتك..."
+              className="w-full py-3 pl-20 pr-4 rounded-xl bg-secondary border border-border focus:outline-none focus:border-primary text-right disabled:opacity-50 disabled:cursor-not-allowed"
+              dir="rtl"
+              disabled={isRecording || isSending}
+            />
+            {/* Buttons inside input field (on the left side for RTL) */}
+            <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              {/* Voice recording button */}
+              <button
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={isSending || (recordedAudioUrl !== null && !isRecording)}
+                className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isRecording
+                    ? "bg-red-500 text-white animate-pulse"
+                    : "bg-transparent hover:bg-secondary/80 text-muted-foreground"
+                }`}
+                aria-label={isRecording ? "إيقاف التسجيل" : "تسجيل رسالة صوتية"}
+              >
+                <Mic
+                  size={18}
+                  className={isRecording ? "text-white" : "text-muted-foreground"}
+                />
+              </button>
+
+              {/* Send button */}
+              <motion.button
+                onClick={handleSendMessage}
+                disabled={(!newMessage.trim() && attachedFiles.length === 0 &&
+                  !recordedAudioBlob) || isSending || isRecording}
+                className="w-9 h-9 rounded-lg bg-primary text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
+                whileHover={(!newMessage.trim() && attachedFiles.length === 0 &&
+                  !recordedAudioBlob) || isSending || isRecording
+                  ? {}
+                  : { scale: 1.05 }}
+                whileTap={(!newMessage.trim() && attachedFiles.length === 0 &&
+                  !recordedAudioBlob) || isSending || isRecording
+                  ? {}
+                  : { scale: 0.95 }}
+                aria-label="إرسال الرسالة"
+              >
+                {isSending
+                  ? <Loader2 size={16} className="animate-spin" />
+                  : <Send size={16} />}
+              </motion.button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 };
-

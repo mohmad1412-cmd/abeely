@@ -153,6 +153,41 @@ export function subscribeToViewedRequests(
   };
 }
 
+/**
+ * Subscribe to request views changes to update unread interests count in real-time
+ * This ensures badges disappear immediately when a request is marked as read
+ */
+export function subscribeToUnreadInterestsCount(
+  userId: string,
+  onUpdate: (count: number) => void
+) {
+  const channel = supabase
+    .channel(`unread_interests_count_${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'request_views',
+        filter: `user_id=eq.${userId}`,
+      },
+      async () => {
+        // Refetch unread count from database on any change
+        try {
+          const count = await getUnreadInterestsCount();
+          onUpdate(count);
+        } catch (error) {
+          console.error('Error updating unread interests count via realtime:', error);
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
 // ==========================================
 // View Count System (للجميع - مسجلين وزوار)
 // ==========================================

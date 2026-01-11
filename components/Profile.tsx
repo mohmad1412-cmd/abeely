@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { logger } from "../utils/logger";
 import { Review, UserPreferences } from "../types";
 import { Badge } from "./ui/Badge";
+import { supabase } from "../services/supabaseClient";
 import {
   Bell,
   Calendar,
@@ -14,6 +15,7 @@ import {
   MapPin,
   Plus,
   Search,
+  Star,
   User,
   X,
 } from "lucide-react";
@@ -22,7 +24,7 @@ import { UnifiedHeader } from "./ui/UnifiedHeader";
 import { AnimatePresence, motion } from "framer-motion";
 import { uploadAvatar } from "../services/storageService";
 import { AVAILABLE_CATEGORIES } from "../data";
-import { CityAutocomplete } from "./ui/CityAutocomplete";
+// import { CityAutocomplete } from "./ui/CityAutocomplete";
 import { createPortal } from "react-dom";
 
 interface ProfileProps {
@@ -55,6 +57,7 @@ interface ProfileProps {
   onNavigateToProfile?: () => void;
   onNavigateToSettings?: () => void;
   onSelectRequest?: (req: any) => void; // Added for request navigation
+  viewingUserId?: string | null; // معرف المستخدم المراد عرض ملفه الشخصي (null = الملف الشخصي الحالي)
 }
 
 export const Profile: React.FC<ProfileProps> = ({
@@ -92,6 +95,7 @@ export const Profile: React.FC<ProfileProps> = ({
   isGuest = false,
   onNavigateToProfile,
   onNavigateToSettings,
+  viewingUserId,
 }) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -106,6 +110,102 @@ export const Profile: React.FC<ProfileProps> = ({
   const [isSavingName, setIsSavingName] = useState(false);
   const [isSavingBio, setIsSavingBio] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // State for viewing another user's profile
+  const [viewingUser, setViewingUser] = useState<any>(null);
+  const [isLoadingViewingUser, setIsLoadingViewingUser] = useState(false);
+
+  // Determine if we're viewing another user's profile
+  const isViewingOtherUser = viewingUserId && viewingUserId !== user?.id;
+  const currentUser = isViewingOtherUser ? viewingUser : user;
+  const canEdit = !isViewingOtherUser && !isGuest; // Only can edit own profile and not a guest
+
+  // Show loading state while fetching viewing user
+  if (isViewingOtherUser && isLoadingViewingUser) {
+    return (
+      <div className="h-full flex flex-col">
+        <UnifiedHeader
+          mode={mode}
+          toggleMode={toggleMode}
+          isModeSwitching={isModeSwitching}
+          unreadCount={unreadCount}
+          hasUnreadMessages={hasUnreadMessages}
+          user={user}
+          isDarkMode={isDarkMode}
+          toggleTheme={toggleTheme}
+          onOpenLanguagePopup={onOpenLanguagePopup}
+          setView={setView}
+          setPreviousView={setPreviousView}
+          titleKey={titleKey}
+          notifications={notifications}
+          onMarkAsRead={onMarkAsRead}
+          onNotificationClick={onNotificationClick}
+          onClearAll={onClearAll}
+          onSignOut={onSignOut}
+          backButton
+          onBack={onBack}
+          showBackButtonOnDesktop={true}
+          title="الملف الشخصي"
+          currentView="profile"
+          hideModeToggle={true}
+          isGuest={isGuest}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToSettings={onNavigateToSettings}
+        />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4">
+            </div>
+            <p className="text-muted-foreground">جاري تحميل الملف الشخصي...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if viewing user not found
+  if (isViewingOtherUser && !viewingUser) {
+    return (
+      <div className="h-full flex flex-col">
+        <UnifiedHeader
+          mode={mode}
+          toggleMode={toggleMode}
+          isModeSwitching={isModeSwitching}
+          unreadCount={unreadCount}
+          hasUnreadMessages={hasUnreadMessages}
+          user={user}
+          isDarkMode={isDarkMode}
+          toggleTheme={toggleTheme}
+          onOpenLanguagePopup={onOpenLanguagePopup}
+          setView={setView}
+          setPreviousView={setPreviousView}
+          titleKey={titleKey}
+          notifications={notifications}
+          onMarkAsRead={onMarkAsRead}
+          onNotificationClick={onNotificationClick}
+          onClearAll={onClearAll}
+          onSignOut={onSignOut}
+          backButton
+          onBack={onBack}
+          showBackButtonOnDesktop={true}
+          title="الملف الشخصي"
+          currentView="profile"
+          hideModeToggle={true}
+          isGuest={isGuest}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToSettings={onNavigateToSettings}
+        />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-destructive mb-4">
+              لم يتم العثور على الملف الشخصي
+            </p>
+            <Button onClick={onBack}>العودة</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Interests management state
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
@@ -125,18 +225,61 @@ export const Profile: React.FC<ProfileProps> = ({
   const [isCitiesExpanded, setIsCitiesExpanded] = useState(false);
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
 
-  // Sync displayName and bio with user data when user changes
+  // Fetch viewing user's profile data if viewingUserId is provided
   useEffect(() => {
-    setDisplayName(user?.display_name || "");
-    setBio((user as any)?.bio || "");
-    setAvatarUrl(user?.avatar_url || "");
-  }, [user]);
+    if (isViewingOtherUser && viewingUserId) {
+      setIsLoadingViewingUser(true);
+      const fetchViewingUser = async () => {
+        try {
+          const { data, error } = await supabase
+            .from("profiles")
+            .select(
+              "id, display_name, avatar_url, bio, rating, reviews_count, is_verified",
+            )
+            .eq("id", viewingUserId)
+            .single();
 
-  // Sync interests with userPreferences
+          if (error) {
+            logger.error("Error fetching viewing user profile:", error);
+            setViewingUser(null);
+          } else if (data) {
+            setViewingUser(data);
+            setDisplayName(data.display_name || "");
+            setBio(data.bio || "");
+            setAvatarUrl(data.avatar_url || "");
+          }
+        } catch (err) {
+          logger.error("Error in fetchViewingUser:", err);
+          setViewingUser(null);
+        } finally {
+          setIsLoadingViewingUser(false);
+        }
+      };
+
+      fetchViewingUser();
+    } else {
+      // Reset when not viewing another user
+      setViewingUser(null);
+      setIsLoadingViewingUser(false);
+    }
+  }, [viewingUserId, isViewingOtherUser]);
+
+  // Sync displayName and bio with user data when user changes (only for own profile)
   useEffect(() => {
-    setSelectedCategories(userPreferences.interestedCategories);
-    setSelectedCities(userPreferences.interestedCities);
-  }, [userPreferences]);
+    if (!isViewingOtherUser) {
+      setDisplayName(user?.display_name || "");
+      setBio((user as any)?.bio || "");
+      setAvatarUrl(user?.avatar_url || "");
+    }
+  }, [user, isViewingOtherUser]);
+
+  // Sync interests with userPreferences (only for own profile)
+  useEffect(() => {
+    if (!isViewingOtherUser) {
+      setSelectedCategories(userPreferences.interestedCategories);
+      setSelectedCities(userPreferences.interestedCities);
+    }
+  }, [userPreferences, isViewingOtherUser]);
 
   const handleSaveInterests = async () => {
     setIsSavingPreferences(true);
@@ -204,7 +347,7 @@ export const Profile: React.FC<ProfileProps> = ({
   }, [isManageInterestsOpen]);
 
   const handleSaveName = async () => {
-    if (onUpdateProfile && displayName.trim()) {
+    if (onUpdateProfile && displayName.trim() && canEdit) {
       setIsSavingName(true);
       try {
         await onUpdateProfile({ display_name: displayName.trim() });
@@ -223,7 +366,7 @@ export const Profile: React.FC<ProfileProps> = ({
   };
 
   const handleSaveBio = async () => {
-    if (onUpdateProfile) {
+    if (onUpdateProfile && canEdit) {
       setIsSavingBio(true);
       try {
         const trimmedBio = bio.trim();
@@ -259,13 +402,16 @@ export const Profile: React.FC<ProfileProps> = ({
   };
 
   const handleSaveAvatar = async () => {
-    if (avatarPreview && selectedAvatarFile && onUpdateProfile && user?.id) {
+    if (
+      avatarPreview && selectedAvatarFile && onUpdateProfile &&
+      currentUser?.id && !isViewingOtherUser
+    ) {
       setIsUploadingAvatar(true);
       try {
         // رفع الصورة إلى Supabase Storage
         const uploadedUrl = await uploadAvatar(
           selectedAvatarFile,
-          user.id,
+          currentUser.id,
           avatarUrl,
         );
 
@@ -321,7 +467,9 @@ export const Profile: React.FC<ProfileProps> = ({
         onNotificationClick={onNotificationClick}
         onClearAll={onClearAll}
         onSignOut={onSignOut}
-        onGoToMarketplace={onBack}
+        backButton
+        onBack={onBack}
+        showBackButtonOnDesktop={true}
         title="الملف الشخصي"
         currentView="profile"
         hideModeToggle={true}
@@ -366,43 +514,49 @@ export const Profile: React.FC<ProfileProps> = ({
               {avatarPreview
                 ? (
                   <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 rounded-full">
-                    <motion.button
-                      whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.9 }}
-                      onClick={handleSaveAvatar}
-                      disabled={isUploadingAvatar}
-                      className="p-2 rounded-full bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="حفظ"
-                    >
-                      {isUploadingAvatar
-                        ? (
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin">
-                          </div>
-                        )
-                        : <Check size={18} />}
-                    </motion.button>
-                    <motion.button
-                      whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.9 }}
-                      onClick={handleCancelAvatar}
-                      disabled={isUploadingAvatar}
-                      className="p-2 rounded-full bg-secondary text-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="إلغاء"
-                    >
-                      <X size={18} />
-                    </motion.button>
+                    {canEdit && (
+                      <>
+                        <motion.button
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          onClick={handleSaveAvatar}
+                          disabled={isUploadingAvatar}
+                          className="p-2 rounded-full bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="حفظ"
+                        >
+                          {isUploadingAvatar
+                            ? (
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin">
+                              </div>
+                            )
+                            : <Check size={18} />}
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          onClick={handleCancelAvatar}
+                          disabled={isUploadingAvatar}
+                          className="p-2 rounded-full bg-secondary text-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="إلغاء"
+                        >
+                          <X size={18} />
+                        </motion.button>
+                      </>
+                    )}
                   </div>
                 )
                 : (
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleAvatarClick}
-                    className="absolute bottom-0 right-0 p-2 rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 transition-colors"
-                    title="تعديل الصورة"
-                  >
-                    <Camera size={16} />
-                  </motion.button>
+                  canEdit && (
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={handleAvatarClick}
+                      className="absolute bottom-0 right-0 p-2 rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 transition-colors"
+                      title="تعديل الصورة"
+                    >
+                      <Camera size={16} />
+                    </motion.button>
+                  )
                 )}
             </div>
 
@@ -411,7 +565,7 @@ export const Profile: React.FC<ProfileProps> = ({
                 <div className="flex-1 w-full">
                   {/* Name with Edit */}
                   <div className="w-full mb-2">
-                    {isEditingName
+                    {isEditingName && canEdit
                       ? (
                         <div className="flex flex-col gap-2 w-full">
                           <div className="relative">
@@ -431,7 +585,9 @@ export const Profile: React.FC<ProfileProps> = ({
                                   handleSaveName();
                                 } else if (e.key === "Escape") {
                                   setIsEditingName(false);
-                                  setDisplayName(user?.display_name || "");
+                                  setDisplayName(
+                                    currentUser?.display_name || "",
+                                  );
                                 }
                               }}
                             />
@@ -485,7 +641,7 @@ export const Profile: React.FC<ProfileProps> = ({
                               whileTap={{ scale: 0.95 }}
                               onClick={() => {
                                 setIsEditingName(false);
-                                setDisplayName(user?.display_name || "");
+                                setDisplayName(currentUser?.display_name || "");
                               }}
                               className="px-4 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors text-sm font-medium flex items-center gap-2"
                             >
@@ -496,7 +652,7 @@ export const Profile: React.FC<ProfileProps> = ({
                         </div>
                       )
                       : (
-                        displayName.trim() === ""
+                        displayName.trim() === "" && canEdit
                           ? (
                             <motion.button
                               whileHover={{ scale: 1.02 }}
@@ -515,28 +671,49 @@ export const Profile: React.FC<ProfileProps> = ({
                           : (
                             <div className="flex items-start justify-center md:justify-start gap-2 w-full">
                               <h1 className="text-2xl font-bold flex-1 break-words overflow-wrap-anywhere min-w-0">
-                                {displayName}
+                                {displayName || currentUser?.display_name ||
+                                  "مستخدم"}
                               </h1>
-                              <motion.button
-                                whileHover={{ scale: 1.1 }}
-                                whileTap={{ scale: 0.9 }}
-                                onClick={() => setIsEditingName(true)}
-                                className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-primary shrink-0 mt-1"
-                                title="تعديل الاسم"
-                              >
-                                <Edit2 size={18} />
-                              </motion.button>
+                              {canEdit && (
+                                <motion.button
+                                  whileHover={{ scale: 1.1 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  onClick={() => setIsEditingName(true)}
+                                  className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-primary shrink-0 mt-1"
+                                  title="تعديل الاسم"
+                                >
+                                  <Edit2 size={18} />
+                                </motion.button>
+                              )}
                             </div>
                           )
                       )}
                   </div>
 
-                  {user?.created_at && (
+                  {(currentUser?.created_at || user?.created_at) && (
                     <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
                       <Badge variant="outline">
                         <Calendar size={12} className="ml-1" />
-                        عضو منذ {new Date(user.created_at).getFullYear()}
+                        عضو منذ{" "}
+                        {new Date(currentUser?.created_at || user?.created_at)
+                          .getFullYear()}
                       </Badge>
+                      {currentUser?.is_verified && (
+                        <Badge variant="default" className="bg-primary">
+                          <Check size={12} className="ml-1" />
+                          معتمد
+                        </Badge>
+                      )}
+                      {currentUser?.rating && currentUser.rating > 0 && (
+                        <Badge variant="outline">
+                          <Star
+                            size={12}
+                            className="ml-1 fill-yellow-400 text-yellow-400"
+                          />
+                          {currentUser.rating.toFixed(1)}{" "}
+                          ({currentUser.reviews_count || 0} تقييم)
+                        </Badge>
+                      )}
                     </div>
                   )}
                 </div>
@@ -544,7 +721,7 @@ export const Profile: React.FC<ProfileProps> = ({
 
               {/* Bio with Edit */}
               <div className="relative">
-                {isEditingBio
+                {isEditingBio && canEdit
                   ? (
                     <div className="flex flex-col gap-2 w-full">
                       <div className="relative">
@@ -608,7 +785,7 @@ export const Profile: React.FC<ProfileProps> = ({
                           whileTap={{ scale: 0.95 }}
                           onClick={() => {
                             setIsEditingBio(false);
-                            setBio((user as any)?.bio || "");
+                            setBio((currentUser as any)?.bio || "");
                           }}
                           className="px-4 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors text-sm font-medium flex items-center gap-2"
                         >
@@ -619,7 +796,7 @@ export const Profile: React.FC<ProfileProps> = ({
                     </div>
                   )
                   : (
-                    bio.trim() === ""
+                    bio.trim() === "" && canEdit
                       ? (
                         <motion.button
                           whileHover={{ scale: 1.02 }}
@@ -656,96 +833,192 @@ export const Profile: React.FC<ProfileProps> = ({
             </div>
           </div>
 
-          {/* Interests Section */}
-          <div className="bg-card border border-border rounded-xl p-6 shadow-sm mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3 flex-1">
-                <div className="p-2 rounded-full bg-primary/10 text-primary">
-                  <Filter size={20} />
+          {/* Interests Section - Only show if viewing own profile */}
+          {!isViewingOtherUser && (
+            <div className="bg-card border border-border rounded-xl p-6 shadow-sm mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="p-2 rounded-full bg-primary/10 text-primary">
+                    <Filter size={20} />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-base">الاهتمامات</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedCategories.length > 0 ||
+                          selectedCities.length > 0
+                        ? [
+                          selectedCategories.length > 0 &&
+                          `${selectedCategories.length} تصنيف`,
+                          selectedCities.length > 0 &&
+                          `${selectedCities.length} مدينة`,
+                        ].filter(Boolean).join("، ")
+                        : "لم يتم تحديد أي اهتمامات"}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-base">الاهتمامات</h3>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedCategories.length > 0 || selectedCities.length > 0
-                      ? [
-                        selectedCategories.length > 0 &&
-                        `${selectedCategories.length} تصنيف`,
-                        selectedCities.length > 0 &&
-                        `${selectedCities.length} مدينة`,
-                      ].filter(Boolean).join("، ")
-                      : "لم يتم تحديد أي اهتمامات"}
-                  </p>
-                </div>
+                {canEdit && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setTempCategories(selectedCategories);
+                      setTempCities(selectedCities);
+                      setCitySearch("");
+                      setCategorySearch("");
+                      setIsManageInterestsOpen(true);
+                    }}
+                    className="gap-2 h-9 rounded-xl border-primary/20 hover:bg-primary/5 text-primary text-xs font-bold shrink-0"
+                  >
+                    <Edit size={14} />
+                    تعديل الاهتمامات
+                  </Button>
+                )}
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setTempCategories(selectedCategories);
-                  setTempCities(selectedCities);
-                  setCitySearch("");
-                  setCategorySearch("");
-                  setIsManageInterestsOpen(true);
-                }}
-                className="gap-2 h-9 rounded-xl border-primary/20 hover:bg-primary/5 text-primary text-xs font-bold shrink-0"
-              >
-                <Edit size={14} />
-                تعديل الاهتمامات
-              </Button>
+
+              {/* Preview Section */}
+              {(selectedCategories.length > 0 || selectedCities.length > 0) && (
+                <div className="space-y-3 pt-3 border-t border-border">
+                  {/* Categories Preview */}
+                  {selectedCategories.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold text-muted-foreground mb-2">
+                        التصنيفات المختارة:
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedCategories.map((catId) => {
+                          const cat = AVAILABLE_CATEGORIES.find((c) =>
+                            c.id === catId
+                          );
+                          return cat
+                            ? (
+                              <div
+                                key={catId}
+                                className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 px-2 py-1 rounded-lg text-xs"
+                              >
+                                <span>{cat.emoji}</span>
+                                <span className="text-primary font-medium">
+                                  {cat.label}
+                                </span>
+                              </div>
+                            )
+                            : null;
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cities Preview */}
+                  {selectedCities.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold text-muted-foreground mb-2">
+                        المدن المختارة:
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedCities.map((city) => (
+                          <div
+                            key={city}
+                            className="px-2 py-1 bg-primary/10 border border-primary/20 rounded-lg text-xs text-primary font-medium"
+                          >
+                            {city}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Reviews & Rating Section */}
+          <div className="bg-card border border-border rounded-xl p-6 shadow-sm mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-full bg-yellow-500/10 text-yellow-500">
+                <Star size={20} />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-base">التقييمات والمراجعات</h3>
+                <p className="text-xs text-muted-foreground">
+                  {userReviews.length > 0
+                    ? `${userReviews.length} تقييم • متوسط ${
+                      userRating.toFixed(1)
+                    } نجمة`
+                    : "لا توجد تقييمات بعد"}
+                </p>
+              </div>
             </div>
 
-            {/* Preview Section */}
-            {(selectedCategories.length > 0 || selectedCities.length > 0) && (
-              <div className="space-y-3 pt-3 border-t border-border">
-                {/* Categories Preview */}
-                {selectedCategories.length > 0 && (
-                  <div>
-                    <h4 className="text-xs font-bold text-muted-foreground mb-2">
-                      التصنيفات المختارة:
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedCategories.map((catId) => {
-                        const cat = AVAILABLE_CATEGORIES.find((c) =>
-                          c.id === catId
-                        );
-                        return cat
-                          ? (
-                            <div
-                              key={catId}
-                              className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 px-2 py-1 rounded-lg text-xs"
-                            >
-                              <span>{cat.emoji}</span>
-                              <span className="text-primary font-medium">
-                                {cat.label}
-                              </span>
-                            </div>
-                          )
-                          : null;
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Cities Preview */}
-                {selectedCities.length > 0 && (
-                  <div>
-                    <h4 className="text-xs font-bold text-muted-foreground mb-2">
-                      المدن المختارة:
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedCities.map((city) => (
-                        <div
-                          key={city}
-                          className="px-2 py-1 bg-primary/10 border border-primary/20 rounded-lg text-xs text-primary font-medium"
-                        >
-                          {city}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+            {/* Rating Display */}
+            {userRating > 0 && (
+              <div className="flex items-center gap-4 mb-4 p-3 bg-muted/50 rounded-lg">
+                <div className="text-3xl font-bold text-foreground">
+                  {userRating.toFixed(1)}
+                </div>
+                <div className="flex items-center gap-0.5">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      size={18}
+                      className={`${
+                        star <= Math.round(userRating)
+                          ? "fill-yellow-400 text-yellow-400"
+                          : "fill-transparent text-gray-300 dark:text-gray-600"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span className="text-sm text-muted-foreground">
+                  ({userReviews.length} تقييم)
+                </span>
               </div>
             )}
+
+            {/* Reviews List */}
+            {userReviews.length > 0
+              ? (
+                <div className="space-y-3 pt-3 border-t border-border">
+                  {userReviews.slice(0, 3).map((review) => (
+                    <div
+                      key={review.id}
+                      className="p-3 bg-muted/30 rounded-lg"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-sm">
+                          {review.reviewerName || review.authorName || "مستخدم"}
+                        </span>
+                        <div className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              size={12}
+                              className={`${
+                                star <= review.rating
+                                  ? "fill-yellow-400 text-yellow-400"
+                                  : "fill-transparent text-gray-300"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      {review.comment && (
+                        <p className="text-sm text-muted-foreground">
+                          {review.comment}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                  {userReviews.length > 3 && (
+                    <button className="w-full text-center text-sm text-primary hover:underline py-2">
+                      عرض كل التقييمات ({userReviews.length})
+                    </button>
+                  )}
+                </div>
+              )
+              : (
+                <div className="py-6 text-center text-muted-foreground text-sm">
+                  لم تتلقَ أي تقييمات بعد
+                </div>
+              )}
           </div>
         </div>
       </div>
@@ -969,7 +1242,12 @@ export const Profile: React.FC<ProfileProps> = ({
                         </div>
 
                         {/* City Autocomplete - فقط عندما تكون "مدن محددة" */}
+                        {/* CityAutocomplete temporarily disabled due to 500 error */}
                         {!tempCities.includes("كل المدن") && (
+                          <div className="p-4 bg-secondary/30 rounded-xl text-center text-muted-foreground text-sm">
+                            جاري صيانة البحث عن المدن...
+                          </div>
+                          /*
                           <CityAutocomplete
                             value=""
                             onChange={() => {}}
@@ -997,6 +1275,7 @@ export const Profile: React.FC<ProfileProps> = ({
                             hideChips={true}
                             dropdownDirection="up"
                           />
+                        */
                         )}
                       </motion.div>
                     )}

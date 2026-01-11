@@ -45,14 +45,10 @@ interface BottomNavigationProps {
   isDarkMode?: boolean;
   toggleTheme?: () => void;
   onOpenLanguagePopup?: () => void;
-  // Badges
+  // Badges - فقط الرسائل غير المقروءة (بدون الإشعارات)
   unreadMessagesForMyRequests?: number;
   unreadMessagesForMyOffers?: number;
   unreadInterestsCount?: number;
-  unreadNotificationsForMyRequests?: number;
-  unreadNotificationsForMyOffers?: number;
-  unreadNotificationsCount?: number;
-  unreadMessagesCount?: number;
   // نقطة إشعار على زر "أنت" عندما يحتاج المستخدم لإكمال ملفه الشخصي
   needsProfileSetup?: boolean;
   // إخفاء الـ bottom navigation في وضع الجوال (مثلاً عند فتح صفحة create-request أو request-detail)
@@ -74,9 +70,6 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   unreadMessagesForMyRequests = 0,
   unreadMessagesForMyOffers = 0,
   unreadInterestsCount = 0,
-  unreadNotificationsForMyRequests = 0,
-  unreadNotificationsForMyOffers = 0,
-  unreadNotificationsCount: _unreadNotificationsCount = 0,
   needsProfileSetup = false,
   hideOnMobile = false,
 }) => {
@@ -90,20 +83,13 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   });
   const [isDesktop, setIsDesktop] = useState(false);
 
-  // حساب الـ badge لـ "طلباتي": الرسائل + الإشعارات فقط (ليس العروض المستلمة)
-  // العروض المستلمة تظهر في البطاقة نفسها ولا تحتاج badge منفصل
+  // حساب الـ badge: الرسائل غير المقروءة فقط (بدون الإشعارات)
+  // الـ badges على البطاقات نفسها تم إزالتها بناءً على طلب المستخدم
   const badgeCounts: Record<BottomNavTab | "profile", number> = {
     marketplace: Math.max(0, unreadInterestsCount || 0),
-    "my-requests": Math.max(
-      0,
-      (unreadMessagesForMyRequests || 0) +
-        (unreadNotificationsForMyRequests || 0),
-    ),
+    "my-requests": Math.max(0, unreadMessagesForMyRequests || 0),
     create: 0,
-    "my-offers": Math.max(
-      0,
-      (unreadMessagesForMyOffers || 0) + (unreadNotificationsForMyOffers || 0),
-    ),
+    "my-offers": Math.max(0, unreadMessagesForMyOffers || 0),
     profile: 0, // لا نعرض badge على زر "أنت"
     messages: 0, // Placeholder for messages tab
   };
@@ -455,7 +441,6 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                       }}
                       className="relative flex items-center justify-center h-5"
                     >
-                      {renderBadge(badgeCount)}
                       {isGuest
                         ? (
                           // للزائر - أيقونة الدخول تتحول للأخضر فقط عند فتح الدروب داون
@@ -520,22 +505,6 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                             )}
                           </div>
                         )}
-                      {/* Dropdown arrow indicator - فقط للمستخدمين المسجلين */}
-                      {!isGuest && (
-                        <motion.div
-                          className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-card border border-border shadow-sm flex items-center justify-center"
-                          animate={{
-                            rotate: isProfileDropdownOpen ? 180 : 0,
-                          }}
-                          transition={{ duration: 0.2 }}
-                        >
-                          <ChevronUp
-                            size={10}
-                            strokeWidth={2.5}
-                            className="text-muted-foreground"
-                          />
-                        </motion.div>
-                      )}
                     </motion.div>
 
                     {/* Label - على نفس مستوى الأزرار الأخرى */}
@@ -547,7 +516,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                             : "text-muted-foreground/40 font-medium"
                         }`}
                       >
-                        {tab.label}
+                        {isGuest ? "تسجيل الدخول" : "حسابي"}
                       </span>
                     </div>
                   </motion.button>
@@ -922,14 +891,11 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                 e.stopPropagation();
                 setIsProfileDropdownOpen(false);
               }}
-              onMouseDown={(e) => e.preventDefault()}
-              onTouchStart={(e) => e.preventDefault()}
-              onWheel={(e) => e.preventDefault()}
-              onTouchMove={(e) => e.preventDefault()}
               style={{
                 WebkitTouchCallout: "none",
                 WebkitUserSelect: "none",
                 userSelect: "none",
+                touchAction: "none", // منع scroll والسلوك الافتراضي للـ touch events
               }}
             />
 

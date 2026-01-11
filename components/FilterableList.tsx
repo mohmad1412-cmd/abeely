@@ -220,8 +220,9 @@ export function FilterableList<T>({
                                   <div
                                     className="fixed inset-0 z-40 touch-none"
                                     onClick={() => setOpenFilterDropdownId(null)}
-                                    onWheel={(e) => e.preventDefault()}
-                                    onTouchMove={(e) => e.preventDefault()}
+                                    style={{
+                                      touchAction: "none", // منع scroll والسلوك الافتراضي للـ touch events
+                                    }}
                                   />
                                   <motion.div
                                     initial={{ opacity: 0, y: -8, scale: 0.95 }}

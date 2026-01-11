@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { logger } from "../utils/logger";
 
 /**
  * Storage service for uploading files to Supabase Storage
@@ -29,6 +30,14 @@ export const uploadFile = async (
 ): Promise<{ url: string; path: string } | null> => {
   try {
     const filePath = generateFileName(file, prefix);
+    
+    logger.log(`Uploading file: ${file.name} to ${bucket}/${filePath}`, {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      bucket,
+      path: filePath,
+    }, "storage");
 
     const { data, error } = await supabase.storage
       .from(bucket)
@@ -38,7 +47,37 @@ export const uploadFile = async (
       });
 
     if (error) {
-      console.error("Upload error:", error);
+      logger.error("Upload error:", {
+        error,
+        message: error.message,
+        statusCode: error.statusCode,
+        fileName: file.name,
+        bucket,
+        path: filePath,
+      }, "storage");
+      
+      // Check if bucket doesn't exist
+      if (error.message?.includes("Bucket not found") || error.message?.includes("not found")) {
+        logger.error(`Storage bucket '${bucket}' does not exist. Please create it in Supabase Storage.`, undefined, "storage");
+        throw new Error(`Storage bucket '${bucket}' غير موجود. يرجى إنشاؤه في Supabase Storage.`);
+      }
+      
+      // Check for permission errors
+      if (error.message?.includes("permission") || error.message?.includes("policy") || error.message?.includes("RLS")) {
+        logger.error(`Permission denied for bucket '${bucket}'. Check RLS policies.`, {
+          error: error.message,
+        }, "storage");
+        throw new Error(`ليس لديك صلاحية لرفع الملفات. يرجى التحقق من تسجيل الدخول.`);
+      }
+      
+      return null;
+    }
+
+    if (!data) {
+      logger.error("Upload returned no data", {
+        fileName: file.name,
+        bucket,
+      }, "storage");
       return null;
     }
 
@@ -47,12 +86,22 @@ export const uploadFile = async (
       .from(bucket)
       .getPublicUrl(data.path);
 
+    logger.log(`File uploaded successfully: ${file.name}`, {
+      url: urlData.publicUrl,
+      path: data.path,
+    }, "storage");
+
     return {
       url: urlData.publicUrl,
       path: data.path,
     };
-  } catch (err) {
-    console.error("Upload failed:", err);
+  } catch (err: any) {
+    logger.error("Upload failed:", {
+      error: err,
+      message: err?.message,
+      fileName: file.name,
+      bucket,
+    }, "storage");
     return null;
   }
 };
@@ -83,17 +132,78 @@ export const uploadRequestAttachments = async (
   files: File[],
   requestId: string,
 ): Promise<string[]> => {
+  if (!files || files.length === 0) {
+    logger.log("No files to upload", { requestId }, "storage");
+    return [];
+  }
+
+  logger.log(`Starting upload of ${files.length} file(s) for request: ${requestId}`, {
+    requestId,
+    fileCount: files.length,
+    fileNames: files.map(f => f.name),
+  }, "storage");
+
   const uploadedUrls: string[] = [];
 
-  for (const file of files) {
-    const result = await uploadFile(
-      file,
-      REQUEST_ATTACHMENTS_BUCKET,
-      requestId,
-    );
-    if (result) {
-      uploadedUrls.push(result.url);
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    try {
+      logger.log(`Uploading file ${i + 1}/${files.length}: ${file.name}`, {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+      }, "storage");
+
+      // Validate file before upload
+      const validation = validateFile(file);
+      if (!validation.valid) {
+        logger.warn(`File validation failed: ${validation.error}`, { 
+          fileName: file.name,
+          error: validation.error,
+        }, "storage");
+        continue;
+      }
+
+      const result = await uploadFile(
+        file,
+        REQUEST_ATTACHMENTS_BUCKET,
+        requestId,
+      );
+      
+      if (result && result.url) {
+        uploadedUrls.push(result.url);
+        logger.log(`✅ File ${i + 1}/${files.length} uploaded successfully: ${file.name}`, {
+          url: result.url,
+        }, "storage");
+      } else {
+        logger.warn(`❌ Failed to upload file: ${file.name} (no result returned)`, {
+          fileName: file.name,
+        }, "storage");
+      }
+    } catch (error: any) {
+      logger.error(`❌ Error uploading file ${file.name}:`, {
+        error,
+        message: error?.message,
+        fileName: file.name,
+        requestId,
+      }, "storage");
+      // Continue with other files even if one fails
+      // Don't throw - let the request continue without this file
     }
+  }
+
+  logger.log(`Upload complete: ${uploadedUrls.length}/${files.length} files uploaded successfully`, {
+    requestId,
+    uploadedCount: uploadedUrls.length,
+    totalFiles: files.length,
+    uploadedUrls,
+  }, "storage");
+
+  if (uploadedUrls.length === 0 && files.length > 0) {
+    logger.warn("⚠️ No files were uploaded successfully", { 
+      totalFiles: files.length,
+      requestId,
+    }, "storage");
   }
 
   return uploadedUrls;

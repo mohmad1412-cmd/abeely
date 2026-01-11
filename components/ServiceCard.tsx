@@ -1,16 +1,16 @@
 import React from "react";
-import { Request, Offer } from "../types";
+import { Offer, Request } from "../types";
 import { AVAILABLE_CATEGORIES } from "../data";
 import {
-  User,
-  Eye,
-  ExternalLink,
-  Lock,
   CheckCircle,
-  MessageCircle,
   Clock,
-  MapPin,
   DollarSign,
+  ExternalLink,
+  Eye,
+  Lock,
+  MapPin,
+  MessageCircle,
+  User,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -47,11 +47,9 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
     <motion.div
       data-request-id={req.id}
       initial={{ opacity: 0, y: 15 }}
-      animate={
-        isTouchHovered
-          ? { opacity: 1, y: -8, scale: 1.02 }
-          : { opacity: 1, y: 0, scale: 1 }
-      }
+      animate={isTouchHovered
+        ? { opacity: 1, y: -8, scale: 1.02 }
+        : { opacity: 1, y: 0, scale: 1 }}
       transition={{
         type: "spring",
         stiffness: 400,
@@ -65,8 +63,8 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        console.log("🖱️ ServiceCard clicked:", req.id);
-        
+        // ServiceCard clicked: req.id
+
         if (isGuest) {
           setGuestViewedIds((prev) => {
             const newSet = new Set(prev);
@@ -74,7 +72,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
             try {
               localStorage.setItem(
                 "guestViewedRequestIds",
-                JSON.stringify([...newSet])
+                JSON.stringify([...newSet]),
               );
             } catch (e) {
               console.error("Error saving guest viewed requests:", e);
@@ -82,10 +80,10 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
             return newSet;
           });
         }
-        
-        console.log("📞 Calling onSelectRequest for:", req.id);
+
+        // Calling onSelectRequest
         onSelectRequest(req);
-        console.log("✅ onSelectRequest called");
+        // onSelectRequest called
       }}
       onMouseEnter={() => setTouchHoveredCardId(req.id)}
       onMouseLeave={() => setTouchHoveredCardId(null)}
@@ -103,7 +101,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
           <User size={14} className="text-white" />
         </motion.div>
       )}
-      
+
       {/* Viewed Indicator */}
       {!isMyRequest && viewedRequestIds.has(req.id) && (
         <motion.div
@@ -113,56 +111,61 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
           title="فتحت هذا الطلب سابقاً"
         >
           <Eye size={14} className="text-white/80" />
-          <span className="text-white/80 text-xs font-medium whitespace-nowrap">تمت المشاهدة</span>
+          <span className="text-white/80 text-xs font-medium whitespace-nowrap">
+            تمت المشاهدة
+          </span>
         </motion.div>
       )}
 
       {/* Image Section */}
-      {req.images && req.images.length > 0 ? (
-        <motion.div
-          layoutId={`image-${req.id}`}
-          className="h-40 w-full bg-secondary overflow-hidden relative"
-        >
-          <motion.img
-            src={req.images[0]}
-            alt={req.title}
-            className="w-full h-full object-cover"
-            whileHover={{ scale: 1.1 }}
-            transition={{ duration: 0.4 }}
-          />
-          {req.images.length > 1 && (
-            <motion.span
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="absolute bottom-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[11px] px-2.5 py-1 rounded-full font-medium"
-            >
-              +{req.images.length - 1} صور
-            </motion.span>
-          )}
-        </motion.div>
-      ) : (
-        <motion.div
-          layoutId={`image-${req.id}`}
-          className="h-40 w-full relative overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-muted/8" />
+      {req.images && req.images.length > 0
+        ? (
           <motion.div
-            className="absolute -inset-20 opacity-[0.08]"
-            style={{
-              backgroundImage: `repeating-linear-gradient(45deg, currentColor, currentColor 0.5px, transparent 0.5px, transparent 11.5px)`,
-              backgroundSize: "40px 40px",
-            }}
-            animate={{
-              backgroundPosition: ["0px 0px", "40px 40px"],
-            }}
-            transition={{
-              duration: 8,
-              repeat: Infinity,
-              ease: "linear",
-            }}
-          />
-        </motion.div>
-      )}
+            layoutId={`image-${req.id}`}
+            className="h-40 w-full bg-secondary overflow-hidden relative"
+          >
+            <motion.img
+              src={req.images[0]}
+              alt={req.title}
+              className="w-full h-full object-cover"
+              whileHover={{ scale: 1.1 }}
+              transition={{ duration: 0.4 }}
+            />
+            {req.images.length > 1 && (
+              <motion.span
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="absolute bottom-2 right-2 bg-black/70 backdrop-blur-sm text-white text-[11px] px-2.5 py-1 rounded-full font-medium"
+              >
+                +{req.images.length - 1} صور
+              </motion.span>
+            )}
+          </motion.div>
+        )
+        : (
+          <motion.div
+            layoutId={`image-${req.id}`}
+            className="h-40 w-full relative overflow-hidden"
+          >
+            <div className="absolute inset-0 bg-muted/8" />
+            <motion.div
+              className="absolute -inset-20 opacity-[0.08]"
+              style={{
+                backgroundImage:
+                  `repeating-linear-gradient(45deg, currentColor, currentColor 0.5px, transparent 0.5px, transparent 11.5px)`,
+                backgroundSize: "40px 40px",
+              }}
+              animate={{
+                backgroundPosition: ["0px 0px", "40px 40px"],
+              }}
+              transition={{
+                duration: 8,
+                repeat: Infinity,
+                ease: "linear",
+              }}
+            />
+          </motion.div>
+        )}
 
       {/* Title & Description */}
       <div className="px-5 pt-3 pb-1">
@@ -178,12 +181,12 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
           <div className="flex flex-wrap gap-1.5 mt-2">
             {req.categories.slice(0, 3).map((catLabel, idx) => {
               const categoryObj = AVAILABLE_CATEGORIES.find(
-                (c) => c.label === catLabel || c.id === catLabel
+                (c) => c.label === catLabel || c.id === catLabel,
               );
               const emoji = categoryObj?.emoji || "📦";
               const displayLabel = categoryObj?.label || catLabel;
-              const isUnspecified =
-                catLabel === "غير محدد" || catLabel === "unspecified";
+              const isUnspecified = catLabel === "غير محدد" ||
+                catLabel === "unspecified";
 
               return (
                 <span
@@ -224,13 +227,13 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
                   <span className="text-xs font-medium text-foreground whitespace-nowrap truncate">
                     {req.location
                       ? (() => {
-                          const locationParts = req.location
-                            .split("،")
-                            .map((s) => s.trim());
-                          return locationParts.length > 1
-                            ? locationParts[locationParts.length - 1]
-                            : locationParts[0];
-                        })()
+                        const locationParts = req.location
+                          .split("،")
+                          .map((s) => s.trim());
+                        return locationParts.length > 1
+                          ? locationParts[locationParts.length - 1]
+                          : locationParts[0];
+                      })()
                       : "غير محددة"}
                   </span>
                   {req.location && req.locationCoords && (
@@ -283,114 +286,116 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
 
         <div className="mt-auto pt-4 border-t border-border flex items-center justify-center">
           {/* Action Area */}
-          {req.status === "assigned" || req.status === "completed" ? (
-            <div className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-muted text-muted-foreground">
-              <Lock size={14} />
-              منتهي
-            </div>
-          ) : isMyRequest ? (
-            (() => {
-              const receivedOffers = (receivedOffersMap.get(req.id) || []);
-              const offersCount = receivedOffers.length;
-              return (
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.96 }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
-                    onSelectRequest(req, false);
-                  }}
-                  className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800 text-primary border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all relative overflow-visible"
-                >
-                  <User size={14} className="text-primary" />
-                  <span className="flex items-center gap-1">
-                    طلبي
+          {req.status === "assigned" || req.status === "completed"
+            ? (
+              <div className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-muted text-muted-foreground">
+                <Lock size={14} />
+                منتهي
+              </div>
+            )
+            : isMyRequest
+            ? (
+              (() => {
+                const receivedOffers = receivedOffersMap.get(req.id) || [];
+                const offersCount = receivedOffers.length;
+                return (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
+                      onSelectRequest(req, false);
+                    }}
+                    className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800 text-primary border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all relative overflow-visible"
+                  >
+                    <User size={14} className="text-primary" />
+                    <span className="flex items-center gap-1">
+                      طلبي
+                      {offersCount > 0 && (
+                        <span className="text-primary/70 font-bold text-[10px] animate-pulse whitespace-nowrap">
+                          ({offersCount} {offersCount === 1 ? "عرض" : "عروض"})
+                        </span>
+                      )}
+                    </span>
                     {offersCount > 0 && (
-                      <span className="text-primary/70 font-bold text-[10px] animate-pulse whitespace-nowrap">
-                        ({offersCount} {offersCount === 1 ? "عرض" : "عروض"})
-                      </span>
+                      <motion.span
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="absolute -top-2.5 -left-2.5 min-w-[20px] h-[20px] px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg z-30 border-2 border-white dark:border-gray-900"
+                      >
+                        {offersCount}
+                      </motion.span>
                     )}
-                  </span>
-                  {offersCount > 0 && (
-                    <motion.span
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="absolute -top-2.5 -left-2.5 min-w-[20px] h-[20px] px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg z-30 border-2 border-white dark:border-gray-900"
-                    >
-                      {offersCount}
-                    </motion.span>
-                  )}
-                </motion.button>
-              );
-            })()
-          ) : myOffer ? (
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className={`w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 ${
-                myOffer.status === "accepted"
-                  ? "bg-primary/15 text-primary"
+                  </motion.button>
+                );
+              })()
+            )
+            : myOffer
+            ? (
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className={`w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 ${
+                  myOffer.status === "accepted"
+                    ? "bg-primary/15 text-primary"
+                    : myOffer.status === "negotiating"
+                    ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                    : "bg-primary/15 text-primary"
+                }`}
+              >
+                {myOffer.status === "accepted"
+                  ? <CheckCircle size={16} />
                   : myOffer.status === "negotiating"
-                  ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
-                  : "bg-primary/15 text-primary"
-              }`}
-            >
-              {myOffer.status === "accepted" ? (
-                <CheckCircle size={16} />
-              ) : myOffer.status === "negotiating" ? (
-                <MessageCircle size={16} />
-              ) : (
-                <CheckCircle size={16} />
-              )}
+                  ? <MessageCircle size={16} />
+                  : <CheckCircle size={16} />}
 
-              {myOffer.status === "accepted"
-                ? "تم قبول عرضك"
-                : myOffer.status === "negotiating"
-                ? "قيد التفاوض"
-                : "تم التقديم"}
-            </motion.div>
-          ) : (
-            <motion.button
-              initial={false}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              animate={isTouchHovered ? { scale: 1.02 } : {}}
-              transition={{
-                type: "spring",
-                stiffness: 800,
-                damping: 15,
-                mass: 0.5,
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (navigator.vibrate) {
-                  navigator.vibrate(10);
-                }
-                onSelectRequest(req, true);
-              }}
-              className="w-full h-9 px-4 text-xs font-bold rounded-xl bg-primary text-white relative overflow-hidden animate-button-breathe"
-            >
-              {/* Animations and effects */}
-              <motion.span
-                className="absolute -inset-1 rounded-xl border-[3px] border-primary pointer-events-none"
-                animate={{
-                  scale: [1, 1.2, 1.35],
-                  opacity: [0.7, 0.3, 0],
-                }}
+                {myOffer.status === "accepted"
+                  ? "تم قبول عرضك"
+                  : myOffer.status === "negotiating"
+                  ? "قيد التفاوض"
+                  : "تم التقديم"}
+              </motion.div>
+            )
+            : (
+              <motion.button
+                initial={false}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                animate={isTouchHovered ? { scale: 1.02 } : {}}
                 transition={{
-                  duration: 1.8,
-                  repeat: Infinity,
-                  ease: "easeOut",
+                  type: "spring",
+                  stiffness: 800,
+                  damping: 15,
+                  mass: 0.5,
                 }}
-              />
-              <span className="relative z-10">تقديم عرض</span>
-            </motion.button>
-          )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (navigator.vibrate) {
+                    navigator.vibrate(10);
+                  }
+                  onSelectRequest(req, true);
+                }}
+                className="w-full h-9 px-4 text-xs font-bold rounded-xl bg-primary text-white relative overflow-hidden animate-button-breathe"
+              >
+                {/* Animations and effects */}
+                <motion.span
+                  className="absolute -inset-1 rounded-xl border-[3px] border-primary pointer-events-none"
+                  animate={{
+                    scale: [1, 1.2, 1.35],
+                    opacity: [0.7, 0.3, 0],
+                  }}
+                  transition={{
+                    duration: 1.8,
+                    repeat: Infinity,
+                    ease: "easeOut",
+                  }}
+                />
+                <span className="relative z-10">تقديم عرض</span>
+              </motion.button>
+            )}
         </div>
       </div>
     </motion.div>
   );
 };
-
-

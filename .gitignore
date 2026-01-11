@@ -28,3 +28,14 @@ dist-ssr
 
 .vercel
 supabase/.temp/
+
+# Sensitive files with API keys
+env_local_copy.txt
+keys.json
+FIX_TWILIO_CONFIG.md
+FIX_TWILIO_FINAL_STEPS.md
+FIX_TWILIO_PRODUCTION.md
+FIX_SMS_NOW.md
+TWILIO_FIX_NOW.md
+*.env.copy
+*.local.copy

@@ -1,15 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Offer, Request } from "../types";
+import { logger } from "../utils/logger";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Archive,
   ArchiveRestore,
   ArrowUpDown,
-  Briefcase,
   Calendar,
   CheckCircle,
   ChevronDown,
   Clock,
+  Edit,
   Eye,
   EyeOff,
   FileText,
@@ -25,10 +26,10 @@ import {
   X,
 } from "lucide-react";
 import { FaHandPointUp } from "react-icons/fa";
-import { format } from "date-fns";
-import { ar } from "date-fns/locale";
+import { formatTimeAgo } from "../utils/timeFormat";
 import { UnifiedFilterIsland } from "./ui/UnifiedFilterIsland";
 import { AVAILABLE_CATEGORIES } from "../data";
+import { DropdownMenu, DropdownMenuItem } from "./ui/DropdownMenu";
 
 type RequestFilter = "active" | "approved" | "all" | "completed";
 type SortOrder = "updatedAt" | "createdAt";
@@ -43,10 +44,12 @@ interface MyRequestsProps {
   onHideRequest?: (requestId: string) => void;
   onUnhideRequest?: (requestId: string) => void;
   onBumpRequest?: (requestId: string) => void;
+  onEditRequest?: (request: Request) => void; // Callback to edit the request
   onOpenChat?: (requestId: string, offer: Offer) => void;
   userId?: string;
   viewedRequestIds?: Set<string>;
   unreadMessagesPerRequest?: Map<string, number>; // عدد الرسائل غير المقروءة لكل طلب
+  unreadMessagesPerOffer?: Map<string, number>; // عدد الرسائل غير المقروءة لكل عرض (للعرض المقبول)
   // Profile dropdown props
   user?: any;
   isGuest?: boolean;
@@ -65,6 +68,9 @@ interface MyRequestsProps {
   onFilterChange?: (filter: RequestFilter) => void;
   // Pull-to-refresh callback
   onRefresh?: () => void | Promise<void>;
+  // تتبع الطلبات مع عروض جديدة
+  requestsWithNewOffers?: Set<string>;
+  onClearNewOfferHighlight?: (requestId: string) => void;
 }
 
 export const MyRequests: React.FC<MyRequestsProps> = ({
@@ -77,10 +83,12 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   onHideRequest,
   onUnhideRequest,
   onBumpRequest,
+  onEditRequest,
   onOpenChat,
   userId,
   viewedRequestIds = new Set(),
   unreadMessagesPerRequest = new Map(),
+  unreadMessagesPerOffer = new Map(),
   user,
   isGuest = false,
   onNavigateToProfile,
@@ -94,6 +102,8 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   defaultFilter,
   onFilterChange,
   onRefresh,
+  requestsWithNewOffers = new Set(),
+  onClearNewOfferHighlight,
 }) => {
   // Header compression state - for smooth scroll animations
   const [isHeaderCompressed, setIsHeaderCompressed] = useState(false);
@@ -127,6 +137,40 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   );
   const [sortOrder, setSortOrder] = useState<SortOrder>("createdAt");
 
+  /* useEffect(() => {
+    logger.log("📦 MyRequests: Component state updated", {
+      requestsCount: requests.length,
+      requestIds: requests.map(r => r.id.slice(-4)),
+      requestStatuses: requests.map(r => ({ id: r.id.slice(-4), status: r.status, isPublic: r.isPublic })),
+      archivedCount: archivedRequests.length,
+      receivedOffersMapSize: receivedOffersMap.size,
+      receivedOffersMapKeys: Array.from(receivedOffersMap.keys()).map(id => id.slice(-4)),
+      reqFilter: reqFilter,
+    });
+
+    if (receivedOffersMap.size > 0) {
+      logger.log("📦 MyRequests: receivedOffersMap updated", {
+        size: receivedOffersMap.size,
+        requestIds: Array.from(receivedOffersMap.keys()).map(id => id.slice(-4)),
+        totalOffers: Array.from(receivedOffersMap.values()).reduce((sum, arr) => sum + arr.length, 0),
+        offersPerRequest: Array.from(receivedOffersMap.entries()).map(([reqId, offers]) => ({
+          requestId: reqId.slice(-4),
+          offersCount: offers.length,
+          offers: offers.map(o => ({ id: o.id.slice(-4), status: o.status, title: o.title })),
+        })),
+      });
+    } else if (requests.length > 0) {
+      logger.warn("⚠️ MyRequests: receivedOffersMap is empty but there are requests", {
+        requestsCount: requests.length,
+        requestIds: requests.map(r => r.id.slice(-4)),
+      });
+    }
+
+    if (requests.length === 0 && archivedRequests.length === 0) {
+      logger.warn("⚠️ MyRequests: NO REQUESTS AT ALL! Both requests and archivedRequests are empty!");
+    }
+  }, [receivedOffersMap, requests, archivedRequests, reqFilter]); */
+
   // Search state
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchInputOpen, setIsSearchInputOpen] = useState(false);
@@ -146,11 +190,115 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
     onFilterChange?.(newFilter);
   };
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [openFilterDropdownId, setOpenFilterDropdownId] = useState<
     string | null
   >(null);
   const filterDropdownRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // States for dropdown actions
+  const [isBumpingMap, setIsBumpingMap] = useState<Map<string, boolean>>(
+    new Map(),
+  );
+  const [isHidingMap, setIsHidingMap] = useState<Map<string, boolean>>(
+    new Map(),
+  );
+  const [isUnhidingMap, setIsUnhidingMap] = useState<Map<string, boolean>>(
+    new Map(),
+  );
+  const [isArchivingMap, setIsArchivingMap] = useState<Map<string, boolean>>(
+    new Map(),
+  );
+
+  // Handler functions for dropdown actions
+  const handleBumpRequest = async (requestId: string) => {
+    if (!onBumpRequest) return;
+    setIsBumpingMap((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(requestId, true);
+      return newMap;
+    });
+    try {
+      await onBumpRequest(requestId);
+    } catch (error) {
+      console.error("Failed to bump request:", error);
+    } finally {
+      setIsBumpingMap((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(requestId, false);
+        return newMap;
+      });
+    }
+  };
+
+  const handleHideRequest = async (requestId: string) => {
+    if (!onHideRequest) return;
+    setIsHidingMap((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(requestId, true);
+      return newMap;
+    });
+    try {
+      await onHideRequest(requestId);
+    } catch (error) {
+      console.error("Failed to hide request:", error);
+    } finally {
+      setIsHidingMap((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(requestId, false);
+        return newMap;
+      });
+    }
+  };
+
+  const handleUnhideRequest = async (requestId: string) => {
+    if (!onUnhideRequest) return;
+    setIsUnhidingMap((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(requestId, true);
+      return newMap;
+    });
+    try {
+      await onUnhideRequest(requestId);
+    } catch (error) {
+      console.error("Failed to unhide request:", error);
+    } finally {
+      setIsUnhidingMap((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(requestId, false);
+        return newMap;
+      });
+    }
+  };
+
+  const handleArchiveRequest = async (requestId: string) => {
+    if (!onArchiveRequest) return;
+    const confirmDelete = window.confirm(
+      "سيتم حذف/أرشفة هذا الطلب. هل أنت متأكد؟",
+    );
+    if (!confirmDelete) return;
+    setIsArchivingMap((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(requestId, true);
+      return newMap;
+    });
+    try {
+      await onArchiveRequest(requestId);
+    } catch (error) {
+      console.error("Failed to archive request:", error);
+    } finally {
+      setIsArchivingMap((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(requestId, false);
+        return newMap;
+      });
+    }
+  };
+
+  const handleEditRequest = (request: Request) => {
+    if (onEditRequest) {
+      onEditRequest(request);
+    }
+  };
 
   // Close filter dropdown when clicking outside
   useEffect(() => {
@@ -163,25 +311,14 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
           setOpenFilterDropdownId(null);
         }
       }
-
-      // Close menu when clicking outside
-      if (openMenuId) {
-        const target = event.target as HTMLElement;
-        if (
-          !target.closest(`button[title="خيارات الطلب"]`) &&
-          !target.closest(".absolute.left-0.top-7")
-        ) {
-          setOpenMenuId(null);
-        }
-      }
     };
 
-    if (openFilterDropdownId || openMenuId) {
+    if (openFilterDropdownId) {
       document.addEventListener("mousedown", handleClickOutside);
       return () =>
         document.removeEventListener("mousedown", handleClickOutside);
     }
-  }, [openFilterDropdownId, openMenuId]);
+  }, [openFilterDropdownId]);
 
   // Prevent body scroll when dropdown is open
   useEffect(() => {
@@ -405,8 +542,15 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
     };
   }, [requests, archivedRequests]);
 
-  // Filtered & Sorted Requests
   const filteredRequests = useMemo(() => {
+    /* logger.log(`🔍 MyRequests: Filtering requests`, {
+      filter: reqFilter,
+      requestsCount: requests.length,
+      archivedCount: archivedRequests.length,
+      requestIds: requests.map(r => r.id.slice(-4)),
+      requestStatuses: requests.map(r => ({ id: r.id.slice(-4), status: r.status })),
+    }); */
+
     const allReqs = [...requests, ...archivedRequests];
     let result: Request[] = [];
 
@@ -416,6 +560,10 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
       result = requests.filter((req) =>
         req.status === "active" || (req.status as any) === "draft"
       );
+      /* logger.log(`🔍 Active filter result:`, {
+        filteredCount: result.length,
+        filteredIds: result.map(r => r.id.slice(-4)),
+      }); */
     } else if (reqFilter === "approved") {
       result = requests.filter((req) => req.status === "assigned");
     } else {
@@ -433,7 +581,14 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
     }
 
     // Sort
-    return result.sort((a, b) => {
+    const sorted = result.sort((a, b) => {
+      // 1. الأولوية للطلبات التي وصلتها عروض جديدة
+      const aHasNew = requestsWithNewOffers.has(a.id);
+      const bHasNew = requestsWithNewOffers.has(b.id);
+      if (aHasNew && !bHasNew) return -1;
+      if (!aHasNew && bHasNew) return 1;
+
+      // 2. الترتيب المعتاد (تاريخ التحديث أو الإنشاء)
       if (sortOrder === "updatedAt") {
         const aDate = new Date(a.updatedAt || a.createdAt || 0).getTime();
         const bDate = new Date(b.updatedAt || b.createdAt || 0).getTime();
@@ -444,7 +599,29 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
         return bDate - aDate;
       }
     });
-  }, [requests, archivedRequests, reqFilter, sortOrder, searchTerm]);
+
+    /* logger.log(`✅ MyRequests: Filtered & sorted requests`, {
+      filter: reqFilter,
+      searchTerm: searchTerm,
+      inputCount: allReqs.length,
+      afterFilter: result.length,
+      afterSort: sorted.length,
+      sortedIds: sorted.map((r) => r.id.slice(-4)),
+      sortedStatuses: sorted.map((r) => ({
+        id: r.id.slice(-4),
+        status: r.status,
+      })),
+    }); */
+
+    return sorted;
+  }, [
+    requests,
+    archivedRequests,
+    reqFilter,
+    sortOrder,
+    searchTerm,
+    requestsWithNewOffers,
+  ]);
 
   // Filter configurations for FloatingFilterIsland
   const filterConfigs = useMemo(() => [
@@ -712,8 +889,9 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                                       className="fixed inset-0 z-[110] touch-none"
                                       onClick={() =>
                                         setOpenFilterDropdownId(null)}
-                                      onWheel={(e) => e.preventDefault()}
-                                      onTouchMove={(e) => e.preventDefault()}
+                                      style={{
+                                        touchAction: "none", // منع scroll والسلوك الافتراضي للـ touch events
+                                      }}
                                     />
                                     <motion.div
                                       initial={{
@@ -987,10 +1165,107 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
             </div>
           )}
           {filteredRequests.map((req, index) => {
+            // جلب العروض من receivedOffersMap
+            // محاولة البحث باستخدام ID الكامل أولاً
+            let allRequestOffers = receivedOffersMap.get(req.id) || [];
+
+            // إذا لم توجد عروض، نحاول البحث بطريقة أخرى (للتحقق من تطابق IDs)
+            if (allRequestOffers.length === 0 && receivedOffersMap.size > 0) {
+              // البحث في جميع المفاتيح للتحقق من تطابق IDs
+              const matchingKey = Array.from(receivedOffersMap.keys()).find(
+                (key) => {
+                  // مقارنة دقيقة للأرقام الأخيرة فقط للتأكد
+                  const reqIdSuffix = req.id.slice(-8); // آخر 8 أرقام
+                  const keySuffix = key.slice(-8);
+                  return reqIdSuffix === keySuffix;
+                },
+              );
+
+              if (matchingKey) {
+                logger.warn(
+                  `⚠️ Request ID mismatch detected! Using matching key instead`,
+                  {
+                    requestId: req.id,
+                    requestIdSuffix: req.id.slice(-8),
+                    matchingKey: matchingKey,
+                    matchingKeySuffix: matchingKey.slice(-8),
+                  },
+                );
+                allRequestOffers = receivedOffersMap.get(matchingKey) || [];
+              }
+            }
+
+            // Debug: Log دائماً للتحقق من العروض
+            if (receivedOffersMap.size > 0 || allRequestOffers.length > 0) {
+              logger.log(
+                `🔍 MyRequests: Checking offers for request ${
+                  req.id.slice(-4)
+                }`,
+                {
+                  requestId: req.id,
+                  requestIdShort: req.id.slice(-4),
+                  mapSize: receivedOffersMap.size,
+                  mapKeys: Array.from(receivedOffersMap.keys()).map((id) =>
+                    id.slice(-4)
+                  ),
+                  offersInMap: allRequestOffers.length,
+                  offersDetails: allRequestOffers.map((o) => ({
+                    id: o.id.slice(-4),
+                    status: o.status,
+                    title: o.title,
+                    requestId: o.requestId?.slice(-4),
+                  })),
+                },
+              );
+            }
+
             // استثناء العروض المؤرشفة
-            const requestOffers = (receivedOffersMap.get(req.id) || []).filter(
+            const requestOffers = allRequestOffers.filter(
               (o) => o.status !== "archived",
             );
+
+            // Log النتيجة النهائية
+            if (requestOffers.length > 0) {
+              logger.log(
+                `✅ Request ${
+                  req.id.slice(-4)
+                } WILL DISPLAY ${requestOffers.length} offers`,
+                {
+                  offers: requestOffers.map((o) => ({
+                    id: o.id.slice(-4),
+                    status: o.status,
+                    title: o.title,
+                  })),
+                  willRender: true,
+                },
+              );
+            } else if (allRequestOffers.length > 0) {
+              logger.warn(
+                `⚠️ Request ${
+                  req.id.slice(-4)
+                } has ${allRequestOffers.length} offers but all are archived!`,
+                {
+                  allOffers: allRequestOffers.map((o) => ({
+                    id: o.id.slice(-4),
+                    status: o.status,
+                  })),
+                },
+              );
+            } else if (receivedOffersMap.size > 0) {
+              logger.warn(
+                `⚠️ Request ${
+                  req.id.slice(-4)
+                } has NO offers in receivedOffersMap`,
+                {
+                  requestId: req.id,
+                  mapKeys: Array.from(receivedOffersMap.keys()),
+                  mapKeysShort: Array.from(receivedOffersMap.keys()).map((id) =>
+                    id.slice(-4)
+                  ),
+                  mapSize: receivedOffersMap.size,
+                },
+              );
+            }
             const acceptedOffer = requestOffers.find((o) =>
               o.status === "accepted"
             );
@@ -1001,24 +1276,51 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
               req.id.slice(-4).toUpperCase();
             const statusConfig = getStatusConfig(req);
             const isHidden = req.isPublic === false;
-            const lastUpdated = req.updatedAt
-              ? new Date(req.updatedAt)
-              : new Date(req.createdAt);
-            const sixHoursMs = 6 * 60 * 60 * 1000;
-            const elapsedSinceUpdate = Date.now() - lastUpdated.getTime();
-            const canBump = elapsedSinceUpdate >= sixHoursMs;
-            const bumpHoursLeft = Math.max(
-              0,
-              Math.ceil((sixHoursMs - elapsedSinceUpdate) / (60 * 60 * 1000)),
+            // Helper to calculate available after time (5 hours cooldown for bump)
+            const calculateAvailableAfter = (
+              updatedAt?: Date | string,
+            ): number | null => {
+              if (!updatedAt) return null;
+              const lastUpdated = typeof updatedAt === "string"
+                ? new Date(updatedAt)
+                : updatedAt;
+              const fiveHoursMs = 5 * 60 * 60 * 1000; // 5 hours in milliseconds
+              const elapsedSinceUpdate = Date.now() - lastUpdated.getTime();
+              const remainingMs = fiveHoursMs - elapsedSinceUpdate;
+
+              if (remainingMs > 0) {
+                const remainingHours = Math.ceil(
+                  remainingMs / (60 * 60 * 1000),
+                );
+                return remainingHours;
+              }
+              return null;
+            };
+
+            const availableAfterHours = calculateAvailableAfter(
+              req.updatedAt || req.createdAt,
             );
+            const canBump = availableAfterHours === null;
             const unreadCount = unreadMessagesPerRequest?.get(req.id) || 0;
+            const hasNewOffer = requestsWithNewOffers.has(req.id);
 
             return (
               <motion.div
                 key={req.id}
-                initial={false}
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  delay: Math.min(index * 0.05, 0.4),
+                  type: "spring",
+                  stiffness: 400,
+                  damping: 30,
+                }}
                 whileHover={{ y: -8, scale: 1.02 }}
+                className={`bg-card border-border rounded-2xl p-4 pt-5 transition-all cursor-pointer relative shadow-sm group text-right ${
+                  hasNewOffer
+                    ? "ring-2 ring-primary/40 bg-primary/5 border-primary/20 shadow-md"
+                    : "border"
+                }`}
                 onClick={(e) => {
                   // Prevent click if pull-to-refresh was active
                   if (preventClickAfterPullRef.current) {
@@ -1026,26 +1328,24 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                     e.stopPropagation();
                     return;
                   }
-                  // Don't handle click if clicking on menu button or inside menu
+                  // Don't handle click if clicking on dropdown menu
                   const target = e.target as HTMLElement;
-                  if (
-                    target.closest('button[title="خيارات الطلب"]') ||
-                    target.closest(".absolute.left-0.top-7")
-                  ) {
-                    return; // Let menu button handle its own events
+                  if (target.closest("[data-dropdown-menu]")) {
+                    return; // Let dropdown handle its own events
                   }
+
                   e.preventDefault();
                   e.stopPropagation();
+                  if (hasNewOffer && onClearNewOfferHighlight) {
+                    onClearNewOfferHighlight(req.id);
+                  }
                   onSelectRequest(req);
                 }}
                 onTouchStart={(e) => {
-                  // Don't prevent if clicking on menu button
+                  // Don't prevent if clicking on dropdown menu
                   const target = e.target as HTMLElement;
-                  if (
-                    target.closest('button[title="خيارات الطلب"]') ||
-                    target.closest(".absolute.left-0.top-7")
-                  ) {
-                    return; // Let menu button handle its own events
+                  if (target.closest("[data-dropdown-menu]")) {
+                    return;
                   }
                   // حفظ موقع اللمس للتفريق بين السكرول والضغط
                   cardTouchStartRef.current = {
@@ -1061,14 +1361,12 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                     cardTouchStartRef.current = null;
                     return;
                   }
-                  // Don't prevent if clicking on menu button
+
+                  // Don't prevent if clicking on dropdown menu
                   const target = e.target as HTMLElement;
-                  if (
-                    target.closest('button[title="خيارات الطلب"]') ||
-                    target.closest(".absolute.left-0.top-7")
-                  ) {
+                  if (target.closest("[data-dropdown-menu]")) {
                     cardTouchStartRef.current = null;
-                    return; // Let menu button handle its own events
+                    return;
                   }
 
                   // التحقق من أن هذا ضغط وليس سكرول (الفرق أقل من 15 بكسل)
@@ -1089,161 +1387,161 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
 
                   e.preventDefault();
                   e.stopPropagation();
+                  if (hasNewOffer && onClearNewOfferHighlight) {
+                    onClearNewOfferHighlight(req.id);
+                  }
                   // Force state update to ensure request opens
                   setTimeout(() => {
                     onSelectRequest(req);
                   }, 0);
                 }}
-                className="bg-card border border-border rounded-2xl p-4 pt-5 transition-colors cursor-pointer relative shadow-sm group text-right"
               >
                 {/* Floating Label */}
-                <span className="absolute -top-3 right-4 bg-card px-2 py-0.5 text-[11px] font-bold text-primary flex items-center gap-1 rounded-full border border-border">
-                  <FaHandPointUp size={12} className="text-primary" />
-                  طلبي ({requestNumber})
-                </span>
+                <div className="absolute -top-3 right-4 flex items-center gap-1.5">
+                  <span className="bg-card px-2 py-0.5 text-[11px] font-bold text-primary flex items-center gap-1 rounded-full border border-border">
+                    <span className={statusConfig.color.split(" ")[1]}>
+                      {statusConfig.icon}
+                    </span>
+                    {statusConfig.text}
+                  </span>
+                </div>
 
-                {/* Badge for unread messages */}
-                {unreadCount > 0 && (
+                {/* Badge for new offers */}
+                {hasNewOffer && (
                   <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute top-3 left-3 z-20 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow-lg border-2 border-white dark:border-card"
-                    title={`${unreadCount} رسالة غير مقروءة`}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="absolute top-3 left-3 z-20 px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center gap-1 shadow-lg ring-2 ring-background"
                   >
-                    {unreadCount > 99 ? "99+" : unreadCount}
+                    عرض جديد! 🎉
                   </motion.div>
                 )}
 
                 {/* Title & Status */}
                 <div className="flex items-start justify-between mb-2">
-                  <span className="font-bold text-base truncate text-primary max-w-[70%]">
+                  <span className="font-bold text-sm truncate text-primary max-w-[70%]">
                     {req.title}
                   </span>
                   <div className="flex items-center gap-1.5 relative">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusConfig.color}`}
-                    >
-                      {statusConfig.text}
-                    </span>
                     {isHidden && (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
                         مخفي
                       </span>
                     )}
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (navigator.vibrate) navigator.vibrate(10);
-                        setOpenMenuId(openMenuId === req.id ? null : req.id);
-                      }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onTouchEnd={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // Small delay to ensure menu opens after touch ends
-                        setTimeout(() => {
-                          if (navigator.vibrate) navigator.vibrate(10);
-                          setOpenMenuId((prev) =>
-                            prev === req.id ? null : req.id
-                          );
-                        }, 0);
-                      }}
-                      className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground relative z-[100]"
-                      style={{
-                        pointerEvents: "auto",
-                        touchAction: "manipulation",
-                      }}
-                      title="خيارات الطلب"
-                      type="button"
-                    >
-                      <MoreVertical size={16} />
-                    </button>
-                    {openMenuId === req.id && (
-                      <>
-                        {/* Backdrop to close menu when clicking outside */}
-                        <div
-                          className="fixed inset-0 z-[90]"
-                          onClick={() => setOpenMenuId(null)}
-                          onTouchStart={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setOpenMenuId(null);
-                          }}
-                        />
-                        <div
-                          className="absolute left-0 top-7 w-48 bg-card border border-border rounded-lg shadow-lg z-[100] text-sm overflow-hidden"
-                          onClick={(e) => e.stopPropagation()}
-                          onTouchStart={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            className="w-full text-right px-3 py-2 hover:bg-secondary flex items-center gap-2"
-                            onClick={() => {
-                              setOpenMenuId(null);
-                              if (isHidden) {
-                                onUnhideRequest && onUnhideRequest(req.id);
-                              } else {
-                                onHideRequest && onHideRequest(req.id);
+                    <div className="relative" data-dropdown-menu>
+                      {(() => {
+                        const isBumping = isBumpingMap.get(req.id) || false;
+                        const isHiding = isHidingMap.get(req.id) || false;
+                        const isUnhiding = isUnhidingMap.get(req.id) || false;
+                        const isArchiving = isArchivingMap.get(req.id) || false;
+
+                        const dropdownItems: DropdownMenuItem[] = [
+                          {
+                            id: "refresh",
+                            label: isBumping
+                              ? "جاري التحديث..."
+                              : canBump
+                              ? "تحديث الطلب"
+                              : `متاح بعد ${availableAfterHours} س`,
+                            icon: (
+                              <RefreshCw
+                                size={16}
+                                className={isBumping ? "animate-spin" : ""}
+                              />
+                            ),
+                            onClick: () => {
+                              if (
+                                canBump && !isBumping &&
+                                req.status !== "archived"
+                              ) {
+                                handleBumpRequest(req.id);
                               }
+                            },
+                            disabled: isBumping || !canBump ||
+                              req.status === "archived",
+                            keepOpenOnClick: !canBump, // Keep open if disabled (showing "متاح بعد")
+                          },
+                          {
+                            id: "edit",
+                            label: "تعديل الطلب",
+                            icon: <Edit size={16} />,
+                            onClick: () => handleEditRequest(req),
+                          },
+                          {
+                            id: req.isPublic === false ? "unhide" : "hide",
+                            label: req.isPublic === false
+                              ? (isUnhiding ? "جاري الإظهار..." : "إظهار الطلب")
+                              : (isHiding ? "جاري الإخفاء..." : "إخفاء الطلب"),
+                            icon: req.isPublic === false
+                              ? <Eye size={16} />
+                              : <EyeOff size={16} />,
+                            onClick: req.isPublic === false
+                              ? () => handleUnhideRequest(req.id)
+                              : () => handleHideRequest(req.id),
+                            disabled: isHiding || isUnhiding,
+                          },
+                          {
+                            id: "archive",
+                            label: isArchiving
+                              ? "جاري الأرشفة..."
+                              : "أرشفة الطلب",
+                            icon: <Archive size={16} />,
+                            onClick: () => handleArchiveRequest(req.id),
+                            variant: "danger",
+                            disabled: isArchiving,
+                            showDivider: true,
+                          },
+                        ];
+
+                        return (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                            }}
+                            onTouchStart={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                            }}
+                            onTouchEnd={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
                             }}
                           >
-                            {isHidden
-                              ? <Eye size={14} />
-                              : <EyeOff size={14} />}
-                            <span>
-                              {isHidden ? "إظهار في السوق" : "إخفاء من السوق"}
-                            </span>
-                          </button>
-                          {onArchiveRequest && req.status !== "archived" && (
-                            <button
-                              className="w-full text-right px-3 py-2 hover:bg-secondary flex items-center gap-2"
-                              onClick={() => {
-                                setOpenMenuId(null);
-                                onArchiveRequest(req.id);
-                              }}
-                            >
-                              <Archive size={14} />
-                              <span>أرشفة الطلب</span>
-                            </button>
-                          )}
-                          {onUnarchiveRequest && req.status === "archived" && (
-                            <button
-                              className="w-full text-right px-3 py-2 hover:bg-secondary flex items-center gap-2"
-                              onClick={() => {
-                                setOpenMenuId(null);
-                                onUnarchiveRequest(req.id);
-                              }}
-                            >
-                              <ArchiveRestore size={14} />
-                              <span>إلغاء الأرشفة</span>
-                            </button>
-                          )}
-                          <button
-                            disabled={!canBump || req.status === "archived"}
-                            className={`w-full text-right px-3 py-2 flex items-center gap-2 ${
-                              canBump && req.status !== "archived"
-                                ? "hover:bg-secondary"
-                                : "opacity-50 cursor-not-allowed"
-                            }`}
-                            onClick={() => {
-                              if (!canBump || req.status === "archived") return;
-                              setOpenMenuId(null);
-                              onBumpRequest && onBumpRequest(req.id);
-                            }}
-                          >
-                            <RefreshCw size={14} />
-                            <span>
-                              {canBump
-                                ? "تحديث ورفع الطلب"
-                                : `متاح بعد ${bumpHoursLeft} س`}
-                            </span>
-                          </button>
-                        </div>
-                      </>
-                    )}
+                            <DropdownMenu
+                              trigger={
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    if (navigator.vibrate) {
+                                      navigator.vibrate(10);
+                                    }
+                                  }}
+                                  onTouchStart={(e) => {
+                                    e.stopPropagation();
+                                  }}
+                                  onTouchEnd={(e) => {
+                                    e.stopPropagation();
+                                  }}
+                                  className="p-1 rounded transition-colors hover:bg-secondary/80 text-muted-foreground hover:text-foreground relative z-[100]"
+                                  style={{
+                                    pointerEvents: "auto",
+                                    touchAction: "manipulation",
+                                  }}
+                                  title="خيارات الطلب"
+                                  type="button"
+                                >
+                                  <MoreVertical size={16} />
+                                </button>
+                              }
+                              items={dropdownItems}
+                              align="left"
+                            />
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
 
@@ -1255,34 +1553,27 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                       {req.location}
                     </span>
                   )}
-                  {req.createdAt && (
-                    <span className="flex items-center gap-1">
-                      <Calendar size={14} />
-                      {format(new Date(req.createdAt), "dd MMM", {
-                        locale: ar,
-                      })}
-                    </span>
-                  )}
-                  {req.updatedAt && req.updatedAt !== req.createdAt && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-foreground">
-                      <Clock size={12} />
-                      محدث بتاريخ {format(new Date(req.updatedAt), "dd MMM", {
-                        locale: ar,
-                      })}
-                    </span>
-                  )}
-                  {req.categories && req.categories.length > 0 && (
-                    <span className="flex items-center gap-1">
-                      <Briefcase size={14} />
-                      {(() => {
-                        const catLabel = req.categories[0];
-                        const categoryObj = AVAILABLE_CATEGORIES.find((c) =>
-                          c.label === catLabel || c.id === catLabel
-                        );
-                        return categoryObj?.label || catLabel;
-                      })()}
-                    </span>
-                  )}
+                  {/* Show single date: "منشور منذ X" if not updated, or "محدّث منذ X" if updated */}
+                  {(() => {
+                    const isUpdated = req.updatedAt &&
+                      new Date(req.updatedAt).getTime() !==
+                        new Date(req.createdAt).getTime();
+                    const dateToShow = isUpdated
+                      ? req.updatedAt
+                      : req.createdAt;
+
+                    if (!dateToShow) return null;
+
+                    return (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-foreground">
+                        {isUpdated
+                          ? <RefreshCw size={12} />
+                          : <Calendar size={12} />}
+                        {isUpdated ? "محدّث " : "منشور "}
+                        {formatTimeAgo(new Date(dateToShow), true)}
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 {/* Budget */}
@@ -1299,78 +1590,103 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                   </div>
                 )}
 
-                {/* Offers Summary Box */}
-                {requestOffers.length > 0 && (
-                  <div className="mt-3 p-2.5 pt-3 rounded-lg bg-secondary/50 border border-border/50 space-y-1.5 relative">
-                    <span className="absolute -top-2.5 right-3 bg-card px-2 text-[11px] font-bold text-muted-foreground">
-                      العروض المستلمة ({requestOffers.length})
-                    </span>
+                {/* Offers Summary Box - Always show if there are offers */}
+                {requestOffers.length > 0
+                  ? (
+                    <div className="mt-3 p-2.5 pt-3 rounded-lg bg-secondary/50 border border-border/50 space-y-1.5 relative">
+                      <span className="absolute -top-2.5 right-3 bg-card px-2 text-[11px] font-bold text-muted-foreground">
+                        العروض المستلمة ({requestOffers.length})
+                      </span>
 
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      {pendingOffers.length > 0 && (
-                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400">
-                          ⏳ {pendingOffers.length} قيد الانتظار
-                        </span>
-                      )}
-                      {acceptedOffer && (
-                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/15 text-primary">
-                          ✅ عرض معتمد
-                        </span>
-                      )}
-                    </div>
-
-                    {acceptedOffer && (
-                      <div className="mt-2 pt-2 border-t border-border/50">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">
-                            العرض المعتمد:
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        {pendingOffers.length > 0 && (
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400">
+                            ⏳ {pendingOffers.length} قيد الانتظار
                           </span>
-                          <span className="font-bold text-primary">
-                            {acceptedOffer.price} ر.س
-                          </span>
-                        </div>
-                        {acceptedOffer.providerName && (
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                            <User size={12} />
-                            <span>{acceptedOffer.providerName}</span>
-                          </div>
                         )}
-                        {onOpenChat &&
-                          (req.contactMethod === "chat" ||
-                            req.contactMethod === "both" ||
-                            !req.contactMethod) &&
-                          (
-                            <div className="flex items-center gap-1.5 mt-2 justify-end">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onOpenChat(req.id, acceptedOffer);
-                                }}
-                                className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-primary hover:bg-primary/90 active:scale-95 text-primary-foreground transition-all shadow-sm"
-                                title="فتح المحادثة"
-                              >
-                                <MessageCircle size={12} />
-                                محادثة
-                              </button>
+                        {acceptedOffer && (
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/15 text-primary">
+                            ✅ عرض معتمد
+                          </span>
+                        )}
+                      </div>
+
+                      {acceptedOffer && (
+                        <div className="mt-2 pt-2 border-t border-border/50">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">
+                              العرض المعتمد:
+                            </span>
+                            <span className="font-bold text-primary">
+                              {acceptedOffer.price} ر.س
+                            </span>
+                          </div>
+                          {acceptedOffer.providerName && (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                              <User size={12} />
+                              <span>{acceptedOffer.providerName}</span>
                             </div>
                           )}
-                      </div>
-                    )}
-
-                    {!acceptedOffer && pendingOffers.length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-border/50">
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>أقل عرض:</span>
-                          <span className="font-bold text-foreground">
-                            {Math.min(...pendingOffers.map((o) =>
-                              parseFloat(o.price) || 0
-                            ))} ر.س
-                          </span>
+                          {onOpenChat &&
+                            (req.contactMethod === "chat" ||
+                              req.contactMethod === "both" ||
+                              !req.contactMethod) &&
+                            (
+                              <div className="flex items-center gap-1.5 mt-2 justify-end">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onOpenChat(req.id, acceptedOffer);
+                                  }}
+                                  className="relative flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-primary hover:bg-primary/90 active:scale-95 text-primary-foreground transition-all shadow-sm"
+                                  title="فتح المحادثة"
+                                >
+                                  <MessageCircle size={12} />
+                                  محادثة
+                                  {/* Badge للرسائل غير المقروءة للعرض المقبول */}
+                                  {acceptedOffer?.id &&
+                                    unreadMessagesPerOffer?.has(
+                                      acceptedOffer.id,
+                                    ) &&
+                                    (unreadMessagesPerOffer.get(
+                                        acceptedOffer.id,
+                                      ) || 0) > 0 &&
+                                    (
+                                      <motion.span
+                                        initial={{ scale: 0 }}
+                                        animate={{ scale: 1 }}
+                                        className="absolute -top-1.5 -right-3 min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow-md"
+                                      >
+                                        {unreadMessagesPerOffer.get(
+                                            acceptedOffer.id,
+                                          )! > 99
+                                          ? "99+"
+                                          : unreadMessagesPerOffer.get(
+                                            acceptedOffer.id,
+                                          )}
+                                      </motion.span>
+                                    )}
+                                </button>
+                              </div>
+                            )}
                         </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                      )}
+
+                      {!acceptedOffer && pendingOffers.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-border/50">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>أقل عرض:</span>
+                            <span className="font-bold text-foreground">
+                              {Math.min(...pendingOffers.map((o) =>
+                                parseFloat(o.price) || 0
+                              ))} ر.س
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                  : null}
 
                 {requestOffers.length === 0 && req.status === "active" && (
                   <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">

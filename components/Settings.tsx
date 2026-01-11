@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { logger } from '../utils/logger.ts';
-import { Bell, User, X, ChevronDown, Plus, Filter, Edit, Home } from 'lucide-react';
+import { Bell, User, X, ChevronDown, Plus, Filter, Edit, Home, MapPin, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AVAILABLE_CATEGORIES } from '../data.ts';
 import { UserPreferences } from '../types.ts';
+import { CityAutocomplete } from './ui/CityAutocomplete.tsx';
 
 type HomePageConfig = 
   | "marketplace:all"
@@ -47,12 +48,6 @@ interface SettingsProps {
   onNavigateToSettings?: () => void;
 }
 
-const CITIES = [
-  "الرياض", "جدة", "الدمام", "مكة", "المدينة", "الخبر", "أبها", "الطائف", "تبوك", "القصيم",
-  "بريدة", "خميس مشيط", "الهفوف", "المبرز", "حفر الباطن", "حائل", "نجران", "الجبيل", "القطيف", "ينبع",
-  "الخرج", "الثقبة", "ينبع البحر", "عرعر", "الحوية", "عنيزة", "سكاكا", "جيزان", "القريات", "الظهران",
-  "الباحة", "الزلفي", "الرس", "وادي الدواسر", "بيشة", "القنفذة", "رابغ", "عفيف", "الليث"
-];
 
 export const Settings: React.FC<SettingsProps> = ({ 
   onBack,
@@ -122,7 +117,6 @@ export const Settings: React.FC<SettingsProps> = ({
   const [tempCategories, setTempCategories] = useState<string[]>(selectedCategories);
   const [tempCities, setTempCities] = useState<string[]>(selectedCities);
   const [tempRadarWords, setTempRadarWords] = useState<string[]>([]);
-  const [citySearch, setCitySearch] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
   const [isCategoriesExpanded, setIsCategoriesExpanded] = useState(false);
   const [isCitiesExpanded, setIsCitiesExpanded] = useState(false);
@@ -186,10 +180,6 @@ export const Settings: React.FC<SettingsProps> = ({
       }
     });
   };
-
-  const filteredCities = CITIES.filter(city => 
-    city.toLowerCase().includes(citySearch.toLowerCase())
-  );
 
   const filteredCategories = AVAILABLE_CATEGORIES.filter((cat: { id: string; label: string; emoji: string }) =>
     cat.label.toLowerCase().includes(categorySearch.toLowerCase())
@@ -301,7 +291,9 @@ export const Settings: React.FC<SettingsProps> = ({
         onNotificationClick={onNotificationClick}
         onClearAll={onClearAll}
         onSignOut={onSignOut || (() => {})}
-        onGoToMarketplace={onBack}
+        backButton
+        onBack={onBack}
+        showBackButtonOnDesktop={true}
         title="الإعدادات"
         currentView="settings"
         hideModeToggle
@@ -940,7 +932,6 @@ export const Settings: React.FC<SettingsProps> = ({
                     setTempCategories(selectedCategories);
                     setTempCities(selectedCities);
                     setTempRadarWords(selectedRadarWords);
-                    setCitySearch("");
                     setCategorySearch("");
                     setNewRadarWord("");
                     setIsManageInterestsOpen(true);
@@ -1149,7 +1140,14 @@ export const Settings: React.FC<SettingsProps> = ({
                 {/* Cities - Collapsible */}
                 <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
                   <div 
-                    onClick={() => setIsCitiesExpanded(!isCitiesExpanded)}
+                    onClick={() => {
+                      const newState = !isCitiesExpanded;
+                      setIsCitiesExpanded(newState);
+                      if (newState) {
+                        setIsCategoriesExpanded(false);
+                        setIsRadarWordsExpanded(false);
+                      }
+                    }}
                     className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
                   >
                     <h4 className="font-bold text-sm">المدن والمناطق</h4>
@@ -1168,29 +1166,135 @@ export const Settings: React.FC<SettingsProps> = ({
                         className="overflow-hidden border-t border-border"
                       >
                         <div className="p-3 space-y-3">
-                          <input
-                            type="text"
-                            placeholder="بحث..."
-                            value={citySearch}
-                            onChange={(e) => setCitySearch(e.target.value)}
-                            className="w-full text-xs px-3 py-1.5 rounded-lg border-2 border-[#1E968C]/30 bg-background focus:border-[#178075] focus:outline-none transition-all"
-                          />
-                          <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar">
-                            {filteredCities.map((city) => (
-                              <button
-                                type="button"
-                                key={city}
-                                onClick={() => toggleCity(city)}
-                                className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
-                                  tempCities.includes(city)
-                                    ? 'bg-primary text-white'
-                                    : 'bg-background text-foreground hover:bg-secondary/80 border border-border'
-                                }`}
-                              >
-                                {city}
-                              </button>
-                            ))}
+                          {/* Options: جميع المدن or مدن محددة */}
+                          <div className="flex gap-2 w-full">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (navigator.vibrate) navigator.vibrate(10);
+                                // اختيار "جميع المدن" = نزيل كل المدن المحددة ونضيف "كل المدن"
+                                setTempCities(["كل المدن"]);
+                              }}
+                              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                                tempCities.includes("كل المدن")
+                                  ? "bg-primary text-white shadow-sm"
+                                  : "bg-background text-foreground hover:bg-secondary/80 border border-border"
+                              }`}
+                            >
+                              <MapPin size={16} />
+                              <div className="flex flex-col items-center">
+                                <span>جميع المدن</span>
+                                <span className="text-[10px] opacity-75">
+                                  يشمل عن بُعد
+                                </span>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (navigator.vibrate) navigator.vibrate(10);
+                                // اختيار "مدن محددة" = نزيل "كل المدن" ونبقي على أي مدن موجودة
+                                const filtered = tempCities.filter((c) => c !== "كل المدن");
+                                // إذا ما فيه مدن بعد الفلترة، نحط مصفوفة فارغة (يعني waiting for user to select)
+                                setTempCities(filtered);
+                              }}
+                              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                                !tempCities.includes("كل المدن")
+                                  ? "bg-primary text-white shadow-sm"
+                                  : "bg-background text-foreground hover:bg-secondary/80 border border-border"
+                              }`}
+                            >
+                              <MapPin size={16} />
+                              <span>مدن محددة</span>
+                            </button>
                           </div>
+
+                          {/* Selected Cities Chips - فقط عندما تكون "مدن محددة" */}
+                          {tempCities.length > 0 &&
+                            !tempCities.includes("كل المدن") &&
+                            tempCities.filter((c) => c !== "عن بعد").length > 0 && (
+                              <div className="flex flex-wrap justify-start gap-1.5 w-full">
+                                {tempCities.filter((c) => c !== "عن بعد").map((city) => (
+                                  <motion.span
+                                    key={city}
+                                    initial={{ scale: 0.8, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    exit={{ scale: 0.8, opacity: 0 }}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm border border-primary/30"
+                                  >
+                                    <MapPin size={12} />
+                                    <span>{city}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (navigator.vibrate) {
+                                          navigator.vibrate(10);
+                                        }
+                                        toggleCity(city);
+                                      }}
+                                      className="p-0.5 hover:bg-primary/20 rounded-full transition-colors"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  </motion.span>
+                                ))}
+                                {tempCities.includes("عن بعد") && (
+                                  <motion.span
+                                    initial={{ scale: 0.8, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    exit={{ scale: 0.8, opacity: 0 }}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm border border-primary/30"
+                                  >
+                                    <Globe size={12} />
+                                    <span>عن بعد</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (navigator.vibrate) {
+                                          navigator.vibrate(10);
+                                        }
+                                        toggleCity("عن بعد");
+                                      }}
+                                      className="p-0.5 hover:bg-primary/20 rounded-full transition-colors"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  </motion.span>
+                                )}
+                              </div>
+                            )}
+
+                          {/* City Autocomplete - فقط عندما تكون "مدن محددة" */}
+                          {!tempCities.includes("كل المدن") && (
+                            <CityAutocomplete
+                              value=""
+                              onChange={() => {}}
+                              placeholder="ابحث عن مدن، معالم، أو محلات..."
+                              multiSelect={true}
+                              showAllCitiesOption={true}
+                              selectedCities={tempCities}
+                              onSelectCity={(city) => {
+                                if (navigator.vibrate) navigator.vibrate(10);
+                                toggleCity(city);
+                              }}
+                              onRemoveCity={(city) => {
+                                if (navigator.vibrate) navigator.vibrate(10);
+                                toggleCity(city);
+                              }}
+                              showRemoteOption={true}
+                              showGPSOption={true}
+                              showMapOption={true}
+                              onOpenMap={() => {
+                                if (navigator.vibrate) navigator.vibrate(10);
+                                // فتح Google Maps في نافذة جديدة
+                                const mapsUrl =
+                                  `https://www.google.com/maps/search/?api=1&query=المملكة+العربية+السعودية`;
+                                window.open(mapsUrl, "_blank");
+                              }}
+                              hideChips={true}
+                              dropdownDirection="up"
+                            />
+                          )}
                         </div>
                       </motion.div>
                     )}

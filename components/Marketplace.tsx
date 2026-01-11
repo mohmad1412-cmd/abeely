@@ -15,32 +15,33 @@ import {
   SupportedLocale,
 } from "../types";
 import { AVAILABLE_CATEGORIES } from "../data";
-import {
-  getCategories,
-  getCurrentLocale,
-  subscribeToCategoriesUpdates,
-} from "../services/categoriesService";
+import { getCurrentLocale } from "../services/categoriesService";
 import { getKnownCategoryColor } from "../utils/categoryColors";
 import { CategoryIcon } from "./ui/CategoryIcon";
 import {
   AlertCircle,
   AlignJustify,
+  Archive,
   ArrowDown,
   ArrowLeftRight,
   ArrowRight,
   Bell,
+  Calendar,
   Check,
   CheckCircle,
   ChevronDown,
   ChevronUp,
   Clock,
   Compass,
+  Copy,
   CreditCard,
   DollarSign,
   Edit,
   ExternalLink,
   Eye,
+  EyeOff,
   Filter,
+  Flag,
   Globe,
   Heart,
   ImageIcon,
@@ -52,10 +53,14 @@ import {
   MapPin,
   Menu,
   MessageCircle,
+  MoreVertical,
   Plus,
+  RefreshCw,
   RotateCw,
   Search,
+  Share2,
   SlidersHorizontal,
+  Trash2,
   User,
   WifiOff,
   X,
@@ -66,17 +71,21 @@ import { AnimatePresence, motion } from "framer-motion";
 import { CardsGridSkeleton } from "./ui/LoadingSkeleton";
 import { UnifiedFilterIsland } from "./ui/UnifiedFilterIsland";
 import CompactListView from "./ui/CompactListView";
+import { DropdownMenu, DropdownMenuItem } from "./ui/DropdownMenu";
 import { CityAutocomplete } from "./ui/CityAutocomplete";
+import { ReportModal } from "./ui/ReportModal";
 import {
   CityResult,
   DEFAULT_SAUDI_CITIES,
   searchCities as searchCitiesAPI,
 } from "../services/placesService";
+import { copyShareUrl, getRequestShareUrl } from "../services/routingService";
 import { calculateSeriousness } from "../services/requestsService";
 import { markRequestAsViewed } from "../services/requestViewsService";
+import { formatTimeAgo } from "../utils/timeFormat";
 type ViewMode = "grid" | "text";
 
-interface MarketplaceProps {
+export interface MarketplaceProps {
   requests: Request[];
   interestsRequests?: Request[]; // طلبات اهتماماتي فقط
   unreadInterestsCount?: number; // عدد الطلبات غير المقروءة في اهتماماتي
@@ -98,7 +107,7 @@ interface MarketplaceProps {
   onRefresh?: () => void; // Callback for pull-to-refresh
   loadError?: string | null;
   savedScrollPosition?: number;
-  onScrollPositionChange?: (pos: number) => void;
+  onScrollPositionChange?: (pos: number, mode: "all" | "interests") => void;
   // Viewed requests from Backend - الطلبات المشاهدة من قاعدة البيانات
   viewedRequestIds?: Set<string>;
   isLoadingViewedRequests?: boolean; // هل يتم تحميل viewedRequestIds حالياً؟
@@ -137,6 +146,14 @@ interface MarketplaceProps {
   onViewModeChange?: (mode: "all" | "interests") => void;
   // New request IDs for animation
   newRequestIds?: Set<string>;
+  // Current view mode from parent (for scroll position management)
+  currentViewMode?: "all" | "interests";
+  // Request action handlers for dropdown menu
+  onBumpRequest?: (requestId: string) => void;
+  onEditRequest?: (request: Request) => void;
+  onHideRequest?: (requestId: string) => void;
+  onUnhideRequest?: (requestId: string) => void;
+  onArchiveRequest?: (requestId: string) => void;
 }
 
 export const Marketplace: React.FC<MarketplaceProps> = ({
@@ -162,6 +179,12 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   viewedRequestIds: backendViewedIds,
   isLoadingViewedRequests = false,
   onRequestViewed,
+  // Request action handlers
+  onBumpRequest,
+  onEditRequest,
+  onHideRequest,
+  onUnhideRequest,
+  onArchiveRequest,
   // Main Header Props
   mode,
   toggleMode,
@@ -191,6 +214,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   isActive = true,
   onViewModeChange,
   newRequestIds = new Set(),
+  currentViewMode: externalViewMode,
 }) => {
   // Validate onSelectRequest
   if (!onSelectRequest) {
@@ -202,38 +226,78 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     );
   }
 
-  console.log("🏪 Marketplace rendered:", {
+  /* console.log("🏪 Marketplace rendered:", {
     requestsCount: requests.length,
     hasOnSelectRequest: !!onSelectRequest,
     onSelectRequestType: typeof onSelectRequest,
-  });
+  }); */
 
   // View mode state - "all" or "interests"
   const [viewMode, setViewMode] = useState<"all" | "interests">("all");
 
-  // Categories from backend
+  // Categories - استخدام القائمة الشاملة من data.ts كمصدر موحد
   const [categories, setCategories] = useState<Category[]>(
     AVAILABLE_CATEGORIES,
   );
 
+  // Report Modal State
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [activeReportRequestId, setActiveReportRequestId] = useState<
+    string | null
+  >(null);
+  const [isIdCopiedMap, setIsIdCopiedMap] = useState<Record<string, boolean>>(
+    {},
+  );
+
+  const handleReportRequest = (requestId: string) => {
+    setActiveReportRequestId(requestId);
+    setIsReportModalOpen(true);
+  };
+
+  const handleCopyRequestId = async (requestId: string) => {
+    if (isIdCopiedMap[requestId]) return;
+    try {
+      await navigator.clipboard.writeText(requestId);
+      setIsIdCopiedMap((prev) => ({ ...prev, [requestId]: true }));
+      setTimeout(() => {
+        setIsIdCopiedMap((prev) => ({ ...prev, [requestId]: false }));
+      }, 1500);
+    } catch (err) {
+      logger.error("Failed to copy ID:", err);
+    }
+  };
+
+  const handleShareRequest = async (request: Request) => {
+    const shareUrl = getRequestShareUrl(request.id);
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: request.title,
+          text: `${request.title}\n${
+            request.description.substring(0, 100)
+          }...\n\nشاهد الطلب على أبيلي`,
+          url: shareUrl,
+        });
+      } else {
+        const copied = await copyShareUrl("request", { requestId: request.id });
+        if (copied) {
+          // Could show a toast here
+          alert("تم نسخ رابط المشاركة");
+        }
+      }
+    } catch (err) {
+      logger.log(err);
+    }
+  };
+
   // Current locale for category labels
   const [locale, setLocale] = useState<SupportedLocale>("ar");
 
-  // Load categories from backend on mount
+  // استخدام AVAILABLE_CATEGORIES كمصدر موحد - نفس القائمة المستخدمة في OnboardingScreen
   useEffect(() => {
-    const loadCategories = async () => {
-      const backendCategories = await getCategories();
-      if (backendCategories.length > 0) {
-        setCategories(backendCategories);
-      }
-    };
-    loadCategories();
+    // دائماً استخدام القائمة الشاملة من data.ts
+    setCategories(AVAILABLE_CATEGORIES);
     setLocale(getCurrentLocale());
-
-    // Subscribe to category updates
-    const unsubscribe = subscribeToCategoriesUpdates((updatedCategories) => {
-      setCategories(updatedCategories);
-    });
 
     // الاستماع لتغييرات اللغة
     const handleStorageChange = (e: StorageEvent) => {
@@ -247,19 +311,20 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     window.addEventListener("storage", handleStorageChange);
 
     return () => {
-      unsubscribe();
       window.removeEventListener("storage", handleStorageChange);
     };
   }, []);
 
-  // Notify parent when viewMode changes for smart notifications
+  // Sync viewMode with parent if provided
   useEffect(() => {
-    onViewModeChange?.(viewMode);
-  }, [viewMode, onViewModeChange]);
+    if (externalViewMode && externalViewMode !== viewMode) {
+      setViewMode(externalViewMode);
+    }
+  }, [externalViewMode]);
 
   // Track viewed requests when they become visible on screen (in interests mode)
-  // This decreases the badge count when user sees the card (50%+ visible)
-  // but the green dot remains until user actually opens the request (is_read = true)
+  // When user sees the card (10%+ visible), we mark it as viewed (is_read = true)
+  // This makes the badge disappear immediately when the card appears on screen
   useEffect(() => {
     // Only track views in interests mode and when not a guest
     if (viewMode !== "interests" || isGuest || !userId || !onRequestViewed) {
@@ -281,7 +346,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               backendViewedIds &&
               !backendViewedIds.has(requestId)
             ) {
-              // Mark as viewed in backend (viewed only, not read)
+              // Mark as viewed in backend (is_read = true) - badge disappears immediately
               markRequestAsViewed(requestId).then((success) => {
                 if (success) {
                   // Notify parent to update viewedRequestIds locally
@@ -298,9 +363,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         });
       },
       {
-        // Trigger when at least 50% of the card is visible
-        threshold: 0.5,
-        rootMargin: "0px",
+        // Trigger when at least 10% of the card is visible (more sensitive)
+        // هذا يجعل الـ badges تختفي فوراً عند ظهور الكارت على الشاشة
+        threshold: 0.1,
+        rootMargin: "50px", // Start tracking slightly before card enters viewport
       },
     );
 
@@ -549,7 +615,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
   // Temp state for Modal
   const [tempInterests, setTempInterests] = useState<string[]>(userInterests);
-  const [tempCities, setTempCities] = useState<string[]>(interestedCities);
+  // تحويل "جميع المدن (شامل عن بعد)" إلى "كل المدن" عند التحميل
+  const normalizedInitialCities = interestedCities.map((city: string) =>
+    city === "جميع المدن (شامل عن بعد)" ? "كل المدن" : city
+  );
+  const [tempCities, setTempCities] = useState<string[]>(
+    normalizedInitialCities,
+  );
   const [tempCitySearch, setTempCitySearch] = useState("");
   const [tempCatSearch, setTempCatSearch] = useState("");
   const [isCategoriesExpanded, setIsCategoriesExpanded] = useState(false);
@@ -839,7 +911,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       }
       scrollTimeoutRef.current = setTimeout(() => {
         if (onScrollPositionChange) {
-          onScrollPositionChange(lastScrollPosRef.current);
+          onScrollPositionChange(lastScrollPosRef.current, viewMode);
         }
       }, 150);
     };
@@ -915,25 +987,38 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   // Track if initial scroll restoration happened
   const initialScrollRestored = useRef(false);
   const prevExternalScrollPos = useRef(externalScrollPos);
+  const prevViewModeForScroll = useRef(viewMode);
 
   // Restore scroll position IMMEDIATELY before browser paint using useLayoutEffect
   useLayoutEffect(() => {
     const container = marketplaceScrollRef.current;
     if (container) {
-      // Only restore if scroll position changed from parent or on initial mount
+      // Restore if scroll position changed from parent, on initial mount, or when viewMode changes
+      const viewModeChanged = prevViewModeForScroll.current !== viewMode;
+      const scrollPosChanged =
+        externalScrollPos !== prevExternalScrollPos.current;
+
       if (
-        externalScrollPos !== prevExternalScrollPos.current ||
-        !initialScrollRestored.current
+        scrollPosChanged ||
+        !initialScrollRestored.current ||
+        viewModeChanged
       ) {
-        if (externalScrollPos > 0 || !initialScrollRestored.current) {
-          initialScrollRestored.current = true;
-          // Set scroll immediately - no delay
+        // Always restore if we have a valid scroll position or it's initial mount
+        if (externalScrollPos >= 0) {
+          // Set scroll immediately in useLayoutEffect (before paint) to prevent flicker
           container.scrollTop = externalScrollPos;
+          // Force a reflow to ensure scroll position is applied immediately
+          void container.offsetHeight;
+        }
+
+        if (!initialScrollRestored.current) {
+          initialScrollRestored.current = true;
         }
         prevExternalScrollPos.current = externalScrollPos;
+        prevViewModeForScroll.current = viewMode;
       }
     }
-  }, [externalScrollPos]);
+  }, [externalScrollPos, viewMode]);
 
   // Save scroll position when component unmounts - useLayoutEffect ensures this runs synchronously before unmount
   useLayoutEffect(() => {
@@ -943,11 +1028,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         const currentScroll = marketplaceScrollRef.current.scrollTop;
         if (currentScroll >= 0) {
           lastScrollPosRef.current = currentScroll;
-          onScrollPositionChange(currentScroll);
+          onScrollPositionChange(currentScroll, viewMode);
         }
       } else if (onScrollPositionChange && lastScrollPosRef.current >= 0) {
         // Fallback: use last known scroll position if ref is not available
-        onScrollPositionChange(lastScrollPosRef.current);
+        onScrollPositionChange(lastScrollPosRef.current, viewMode);
       }
       initialScrollRestored.current = false;
     };
@@ -955,12 +1040,23 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
   // Continuous icon toggle animation
 
-  // Reset scroll states when switching between viewMode tabs
+  // Save current scroll position before switching viewMode, then restore the correct position
+  const prevViewModeRef = useRef(viewMode);
   useEffect(() => {
+    // Save scroll position before switching (if viewMode actually changed)
+    if (prevViewModeRef.current !== viewMode && marketplaceScrollRef.current) {
+      const currentScroll = marketplaceScrollRef.current.scrollTop;
+      if (onScrollPositionChange && currentScroll >= 0) {
+        onScrollPositionChange(currentScroll, prevViewModeRef.current);
+      }
+    }
+
+    // Reset UI states (but NOT scroll position - we'll restore it)
     setShowScrollToTop(false);
     setIsAtTop(false);
     setHasScrolledPastFirstPage(false);
-    setSavedScrollPosition(0);
+    // Don't reset savedScrollPosition - it will be restored from externalScrollPos
+
     // عندما نكون في وضع "اهتماماتي"، الـ panel يجب أن يظهر دائماً
     if (viewMode === "interests") {
       setShowInterestsPanel(true);
@@ -969,7 +1065,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       setShowInterestsPanel(false);
     }
     lastScrollY.current = 0;
-  }, [viewMode]);
+
+    // Update ref for next comparison
+    prevViewModeRef.current = viewMode;
+
+    // Restore scroll position for the new viewMode (will be triggered by externalScrollPos change)
+    // The useLayoutEffect below will handle the actual restoration
+  }, [viewMode, onScrollPositionChange]);
 
   // Ensure interests panel is visible when in interests mode on mount
   useEffect(() => {
@@ -1009,7 +1111,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
     // افتح المودال مباشرة (لا ننتظر الانتقال)
     setTempInterests(userInterests);
-    setTempCities(interestedCities);
+    // تحويل "جميع المدن (شامل عن بعد)" إلى "كل المدن" عند فتح المودال
+    const normalizedCities = interestedCities.map((city: string) =>
+      city === "جميع المدن (شامل عن بعد)" ? "كل المدن" : city
+    );
+    setTempCities(normalizedCities);
     setTempCitySearch("");
     setTempCatSearch("");
     setTempRadarWords(radarWords); // Load saved radar words
@@ -1033,7 +1139,22 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
   const handleSaveInterests = () => {
     onUpdateInterests(tempInterests);
-    onUpdateCities(tempCities);
+
+    // إذا لم يتم اختيار أي مدينة حقيقية (فارغة تماماً)، نضيف "كل المدن" تلقائياً
+    // نعتبر "عن بعد" مدينة محددة، لذا إذا كانت موجودة وحدها، نحافظ عليها
+    const hasRealCities = tempCities.filter((c) =>
+      c !== "كل المدن" &&
+      c !== "جميع المدن (شامل عن بعد)" &&
+      c !== "عن بعد"
+    ).length > 0;
+
+    const citiesToSave =
+      (tempCities.length === 0 ||
+          (!hasRealCities && !tempCities.includes("عن بعد")))
+        ? ["كل المدن"]
+        : tempCities;
+
+    onUpdateCities(citiesToSave);
     setRadarWords(tempRadarWords); // Save radar words
     setIsManageInterestsOpen(false);
   };
@@ -1048,23 +1169,32 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     logger.log("toggleCity called with:", city);
     setTempCities((prev) => {
       logger.log("Current cities:", prev);
+      const hasAllCities = prev.includes("كل المدن") ||
+        prev.includes("جميع المدن (شامل عن بعد)");
+
       // إذا كانت المدينة موجودة، نزيلها
       if (prev.includes(city)) {
         const newCities = prev.filter((c) => c !== city);
         logger.log("Removing city, new cities:", newCities);
         return newCities;
       } else {
-        // إذا اختار "كل المدن"، نزيل المدن الأخرى (ما عدا "عن بعد")
+        // إذا اختار "كل المدن"، نزيل كل المدن الأخرى ونضيف فقط "كل المدن"
         if (city === "كل المدن") {
-          const remoteOnly = prev.filter((c) => c === "عن بعد");
-          const newCities = [...remoteOnly, city];
+          const newCities = [city];
           logger.log("Adding all cities, new cities:", newCities);
           return newCities;
         }
-        // إذا اختار مدينة معينة، نزيل "كل المدن"
-        const filtered = prev.filter((c) => c !== "كل المدن");
+
+        // إذا اختار مدينة معينة، نزيل "كل المدن" أو "جميع المدن (شامل عن بعد)" (إن وجد) ونضيف المدينة
+        // هذا يسمح بإزالة "كل المدن" عند اختيار مدن محددة
+        const filtered = prev.filter((c) =>
+          c !== "كل المدن" && c !== "جميع المدن (شامل عن بعد)"
+        );
         const newCities = [...filtered, city];
-        logger.log("Adding city, new cities:", newCities);
+        logger.log(
+          "Adding city (removed 'كل المدن' if present), new cities:",
+          newCities,
+        );
         return newCities;
       }
     });
@@ -1089,6 +1219,180 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   // Helper to get my offer on this request
   const getMyOffer = (reqId: string) => {
     return myOffers.find((o) => o.requestId === reqId);
+  };
+
+  // State tracking for request actions (bump, hide, archive) per request
+  const [requestActionStates, setRequestActionStates] = useState<
+    Map<string, { isBumping: boolean; isHiding: boolean; isArchiving: boolean }>
+  >(new Map());
+
+  const updateRequestActionState = (
+    requestId: string,
+    updates: Partial<{
+      isBumping: boolean;
+      isHiding: boolean;
+      isArchiving: boolean;
+    }>,
+  ) => {
+    setRequestActionStates((prev) => {
+      const newMap = new Map(prev);
+      const current = newMap.get(requestId) || {
+        isBumping: false,
+        isHiding: false,
+        isArchiving: false,
+      };
+      newMap.set(requestId, { ...current, ...updates });
+      return newMap;
+    });
+  };
+
+  // Helper to calculate available after time (5 hours cooldown for bump)
+  const calculateAvailableAfter = (
+    updatedAt?: Date | string,
+  ): number | null => {
+    if (!updatedAt) return null;
+    const lastUpdated = typeof updatedAt === "string"
+      ? new Date(updatedAt)
+      : updatedAt;
+    const fiveHoursMs = 5 * 60 * 60 * 1000; // 5 hours in milliseconds
+    const elapsedSinceUpdate = Date.now() - lastUpdated.getTime();
+    const remainingMs = fiveHoursMs - elapsedSinceUpdate;
+
+    if (remainingMs > 0) {
+      const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
+      return remainingHours;
+    }
+    return null;
+  };
+
+  // Handlers for request actions
+  const handleBumpRequestInMarketplace = async (request: Request) => {
+    if (!onBumpRequest) return;
+    const actionState = requestActionStates.get(request.id);
+    if (actionState?.isBumping) return; // Prevent double-click
+
+    updateRequestActionState(request.id, { isBumping: true });
+    try {
+      const success = await onBumpRequest(request.id);
+      if (success) {
+        // Update will be handled by App.tsx through handleBumpRequest
+        // Request.updatedAt will be updated, so "متاح بعد" will show correctly
+        // Call onRefresh to ensure UI updates
+        if (onRefresh) {
+          setTimeout(() => {
+            onRefresh();
+          }, 500);
+        }
+      }
+    } catch (error) {
+      logger.error("Failed to bump request in marketplace:", error);
+    } finally {
+      // Reset state after a short delay to show "متاح بعد"
+      setTimeout(() => {
+        updateRequestActionState(request.id, { isBumping: false });
+      }, 300);
+    }
+  };
+
+  const handleEditRequestInMarketplace = (request: Request) => {
+    if (!onEditRequest) return;
+    onEditRequest(request);
+    // Navigation will be handled by App.tsx
+  };
+
+  const handleHideRequestInMarketplace = async (request: Request) => {
+    if (!onHideRequest) return;
+    const actionState = requestActionStates.get(request.id);
+    if (actionState?.isHiding) return; // Prevent double-click
+
+    updateRequestActionState(request.id, { isHiding: true });
+    try {
+      const success = await onHideRequest(request.id);
+      if (success) {
+        // Request will be removed from list by App.tsx through handleHideRequest
+        // Call onRefresh to ensure UI updates
+        if (onRefresh) {
+          setTimeout(() => {
+            onRefresh();
+          }, 500);
+        }
+        // Reset state after a short delay to ensure UI updates
+        setTimeout(() => {
+          updateRequestActionState(request.id, { isHiding: false });
+        }, 300);
+      } else {
+        // If failed, reset state immediately
+        updateRequestActionState(request.id, { isHiding: false });
+      }
+    } catch (error) {
+      logger.error("Failed to hide request in marketplace:", error);
+      updateRequestActionState(request.id, { isHiding: false });
+    }
+  };
+
+  const handleUnhideRequestInMarketplace = async (request: Request) => {
+    if (!onUnhideRequest) return;
+    const actionState = requestActionStates.get(request.id);
+    if (actionState?.isHiding) return; // Prevent double-click
+
+    updateRequestActionState(request.id, { isHiding: true });
+    try {
+      const success = await onUnhideRequest(request.id);
+      if (success) {
+        // Request will be updated by App.tsx through handleUnhideRequest
+        // Call onRefresh to ensure UI updates
+        if (onRefresh) {
+          setTimeout(() => {
+            onRefresh();
+          }, 500);
+        }
+        // Reset state after a short delay to ensure UI updates
+        setTimeout(() => {
+          updateRequestActionState(request.id, { isHiding: false });
+        }, 300);
+      } else {
+        // If failed, reset state immediately
+        updateRequestActionState(request.id, { isHiding: false });
+      }
+    } catch (error) {
+      logger.error("Failed to unhide request in marketplace:", error);
+      updateRequestActionState(request.id, { isHiding: false });
+    }
+  };
+
+  const handleArchiveRequestInMarketplace = async (request: Request) => {
+    if (!onArchiveRequest) return;
+    const actionState = requestActionStates.get(request.id);
+    if (actionState?.isArchiving) return; // Prevent double-click
+
+    // Confirm before archiving
+    if (!confirm("هل أنت متأكد من أرشفة هذا الطلب؟")) {
+      return;
+    }
+
+    updateRequestActionState(request.id, { isArchiving: true });
+    try {
+      const success = await onArchiveRequest(request.id);
+      if (success) {
+        // Request will be removed from list by App.tsx through handleArchiveRequest
+        // Call onRefresh to ensure UI updates
+        if (onRefresh) {
+          setTimeout(() => {
+            onRefresh();
+          }, 500);
+        }
+        // Reset state after a short delay to ensure UI updates
+        setTimeout(() => {
+          updateRequestActionState(request.id, { isArchiving: false });
+        }, 300);
+      } else {
+        // If failed, reset state immediately
+        updateRequestActionState(request.id, { isArchiving: false });
+      }
+    } catch (error) {
+      logger.error("Failed to archive request in marketplace:", error);
+      updateRequestActionState(request.id, { isArchiving: false });
+    }
   };
 
   // Reset all search filters
@@ -1291,11 +1595,12 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   }, [onLoadMore, hasMore, isLoadingMore]);
 
   return (
-    <div
-      ref={marketplaceScrollRef}
-      id="marketplace-container"
-      className="h-full overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar overflow-y-auto"
-    >
+    <>
+      <div
+        ref={marketplaceScrollRef}
+        id="marketplace-container"
+        className="h-full overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar overflow-y-auto"
+      >
       {/* Sticky Header Wrapper - Unified with main header - same structure as MyRequests/MyOffers */}
       <div className="sticky top-0 z-[60] overflow-visible">
         {/* طبقة متدرجة خلف عناصر الهيدر - تعزل الكروت */}
@@ -1544,6 +1849,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                               handleResetSearch();
                             }
                             setViewMode("all");
+                            onViewModeChange?.("all");
                           }}
                           className={`flex-1 py-3 px-5 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
                             viewMode === "all" && !hasActiveFilters
@@ -1566,6 +1872,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                               handleResetSearch();
                             }
                             setViewMode("interests");
+                            onViewModeChange?.("interests");
                           }}
                           className={`flex-1 py-3 px-5 text-xs font-bold rounded-full transition-colors relative flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
                             viewMode === "interests" && !hasActiveFilters
@@ -2329,7 +2636,14 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                 radarWords.length > 0) &&
                               <span>•</span>}
                             {interestedCities.length > 0 && (
-                              <span>{interestedCities.length} مدينة</span>
+                              <span>
+                                {interestedCities.includes("كل المدن") ||
+                                    interestedCities.includes(
+                                      "جميع المدن (شامل عن بعد)",
+                                    )
+                                  ? "كل المدن"
+                                  : `${interestedCities.length} مدينة`}
+                              </span>
                             )}
                             {interestedCities.length > 0 &&
                               radarWords.length > 0 && <span>•</span>}
@@ -2483,7 +2797,12 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                   المدن المغطاة
                                 </span>
                                 <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-secondary px-1.5 text-[11px] text-muted-foreground font-bold">
-                                  {interestedCities.length || "الكل"}
+                                  {interestedCities.includes("كل المدن") ||
+                                      interestedCities.includes(
+                                        "جميع المدن (شامل عن بعد)",
+                                      )
+                                    ? "الكل"
+                                    : interestedCities.length || "الكل"}
                                 </span>
                               </div>
                               <div
@@ -2747,12 +3066,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     loadError.includes("Connection timeout")
                   ? (
                     <>
-                      <p>لا يمكن الاتصال بخادم Supabase. تأكد من:</p>
-                      <ul className="list-disc list-inside space-y-1 text-xs">
-                        <li>اتصالك بالإنترنت</li>
-                        <li>إعدادات Supabase في ملف .env.local</li>
-                        <li>أن Supabase project يعمل</li>
-                      </ul>
+                      <p>
+                        عذراً، لا يمكن الاتصال بالخادم حالياً. يرجى التحقق من اتصالك
+                        بالإنترنت والمحاولة مرة أخرى.
+                      </p>
                     </>
                   )
                   : (
@@ -2975,7 +3292,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
                   {/* Categories - Collapsible */}
                   <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
-                    <div 
+                    <div
                       onClick={() => {
                         const newState = !isCategoriesExpanded;
                         setIsCategoriesExpanded(newState);
@@ -2987,9 +3304,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
                     >
                       <h4 className="font-bold text-sm">التصنيفات والمهام</h4>
-                      <ChevronDown 
-                        size={18} 
-                        className={`text-muted-foreground transition-transform duration-200 ${isCategoriesExpanded ? "rotate-180" : ""}`} 
+                      <ChevronDown
+                        size={18}
+                        className={`text-muted-foreground transition-transform duration-200 ${
+                          isCategoriesExpanded ? "rotate-180" : ""
+                        }`}
                       />
                     </div>
                     <AnimatePresence>
@@ -3017,8 +3336,8 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                   onClick={() => toggleInterest(cat.id)}
                                   className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
                                     tempInterests.includes(cat.id)
-                                      ? 'bg-primary text-white'
-                                      : 'bg-background text-foreground hover:bg-secondary/80 border border-border'
+                                      ? "bg-primary text-white"
+                                      : "bg-background text-foreground hover:bg-secondary/80 border border-border"
                                   }`}
                                 >
                                   {cat.emoji} {cat.label}
@@ -3033,7 +3352,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
                   {/* Cities - Collapsible */}
                   <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
-                    <div 
+                    <div
                       onClick={() => {
                         const newState = !isCitiesExpanded;
                         setIsCitiesExpanded(newState);
@@ -3045,9 +3364,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
                     >
                       <h4 className="font-bold text-sm">المدن والمناطق</h4>
-                      <ChevronDown 
-                        size={18} 
-                        className={`text-muted-foreground transition-transform duration-200 ${isCitiesExpanded ? "rotate-180" : ""}`} 
+                      <ChevronDown
+                        size={18}
+                        className={`text-muted-foreground transition-transform duration-200 ${
+                          isCitiesExpanded ? "rotate-180" : ""
+                        }`}
                       />
                     </div>
                     <AnimatePresence>
@@ -3066,7 +3387,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                 type="button"
                                 onClick={() => {
                                   if (navigator.vibrate) navigator.vibrate(10);
-                                  // اختيار "جميع المدن" = نزيل كل المدن المحددة ونضيف "كل المدن"
+                                  // اختيار "جميع المدن" = نزيل كل المدن المحددة ونضيف "كل المدن" فقط (حصري)
                                   setTempCities(["كل المدن"]);
                                 }}
                                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
@@ -3088,7 +3409,9 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                 onClick={() => {
                                   if (navigator.vibrate) navigator.vibrate(10);
                                   // اختيار "مدن محددة" = نزيل "كل المدن" ونبقي على أي مدن موجودة
-                                  const filtered = tempCities.filter((c) => c !== "كل المدن");
+                                  const filtered = tempCities.filter((c) =>
+                                    c !== "كل المدن"
+                                  );
                                   // إذا ما فيه مدن بعد الفلترة، نحط مصفوفة فارغة (يعني waiting for user to select)
                                   setTempCities(filtered);
                                 }}
@@ -3110,32 +3433,34 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                 0 &&
                               (
                                 <div className="flex flex-wrap justify-start gap-1.5 w-full">
-                                  {tempCities.filter((c) => c !== "عن بعد").map((
-                                    city,
-                                  ) => (
-                                    <motion.span
-                                      key={city}
-                                      initial={{ scale: 0.8, opacity: 0 }}
-                                      animate={{ scale: 1, opacity: 1 }}
-                                      exit={{ scale: 0.8, opacity: 0 }}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm border border-primary/30"
-                                    >
-                                      <MapPin size={12} />
-                                      <span>{city}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          if (navigator.vibrate) {
-                                            navigator.vibrate(10);
-                                          }
-                                          toggleCity(city);
-                                        }}
-                                        className="p-0.5 hover:bg-primary/20 rounded-full transition-colors"
+                                  {tempCities.filter((c) => c !== "عن بعد").map(
+                                    (
+                                      city,
+                                    ) => (
+                                      <motion.span
+                                        key={city}
+                                        initial={{ scale: 0.8, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        exit={{ scale: 0.8, opacity: 0 }}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm border border-primary/30"
                                       >
-                                        <X size={12} />
-                                      </button>
-                                    </motion.span>
-                                  ))}
+                                        <MapPin size={12} />
+                                        <span>{city}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (navigator.vibrate) {
+                                              navigator.vibrate(10);
+                                            }
+                                            toggleCity(city);
+                                          }}
+                                          className="p-0.5 hover:bg-primary/20 rounded-full transition-colors"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      </motion.span>
+                                    ),
+                                  )}
                                   {tempCities.includes("عن بعد") && (
                                     <motion.span
                                       initial={{ scale: 0.8, opacity: 0 }}
@@ -3201,7 +3526,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
 
                   {/* Radar Words - Collapsible */}
                   <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
-                    <div 
+                    <div
                       onClick={() => {
                         const newState = !isRadarWordsExpanded;
                         setIsRadarWordsExpanded(newState);
@@ -3213,9 +3538,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
                     >
                       <h4 className="font-bold text-sm">رادار الكلمات</h4>
-                      <ChevronDown 
-                        size={18} 
-                        className={`text-muted-foreground transition-transform duration-200 ${isRadarWordsExpanded ? "rotate-180" : ""}`} 
+                      <ChevronDown
+                        size={18}
+                        className={`text-muted-foreground transition-transform duration-200 ${
+                          isRadarWordsExpanded ? "rotate-180" : ""
+                        }`}
                       />
                     </div>
                     <AnimatePresence>
@@ -3236,9 +3563,10 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                 type="text"
                                 placeholder="اكتب الكلمة..."
                                 value={newRadarWord}
-                                onChange={(e) => setNewRadarWord(e.target.value)}
+                                onChange={(e) =>
+                                  setNewRadarWord(e.target.value)}
                                 onKeyPress={(e) => {
-                                  if (e.key === 'Enter') {
+                                  if (e.key === "Enter") {
                                     e.preventDefault();
                                     addRadarWord();
                                   }
@@ -3327,10 +3655,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       isLoadingViewedRequests={isLoadingViewedRequests}
                       newRequestIds={newRequestIds}
                       onSelectRequest={(req) => {
-                        console.log(
-                          "🛒 Marketplace: ServiceCard clicked, calling onSelectRequest:",
-                          req.id,
-                        );
+                        // Marketplace: ServiceCard clicked
                         if (isGuest) {
                           setGuestViewedIds((prev) => {
                             const newSet = new Set(prev);
@@ -3349,19 +3674,20 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             return newSet;
                           });
                         }
-                        console.log(
-                          "📞 Marketplace: Calling parent onSelectRequest:",
-                          req.id,
-                        );
+                        // Calling parent onSelectRequest
                         onSelectRequest(req);
-                        console.log(
-                          "✅ Marketplace: onSelectRequest called successfully",
-                        );
                       }}
                       onLoadMore={onLoadMore}
                       hasMore={hasMore}
                       isLoadingMore={isLoadingMore}
                       externalScrollY={currentScrollY}
+                      onBumpRequest={onBumpRequest}
+                      onEditRequest={onEditRequest}
+                      onHideRequest={onHideRequest}
+                      onUnhideRequest={onUnhideRequest}
+                      onArchiveRequest={onArchiveRequest}
+                      onReportRequest={handleReportRequest}
+                      onRefresh={onRefresh}
                     />
                   </motion.div>
                 )
@@ -3511,7 +3837,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                     </motion.div>
                                   )}
                                 {/* Unread Indicator - نقطة القراءة (طلب غير مقروء) */}
-                                {isUnread && (
+                                {isUnread && !isMyRequest && (
                                   <motion.div
                                     initial={{ opacity: 0, scale: 0 }}
                                     animate={{ opacity: 1, scale: 1 }}
@@ -3519,6 +3845,185 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                     title="طلب غير مقروء"
                                   />
                                 )}
+                                {/* Dropdown Menu - للجميع مع اختلاف الخيارات */}
+                                <div className="absolute top-3 right-3 z-[100]">
+                                  {(() => {
+                                    const actionState = requestActionStates.get(
+                                      req.id,
+                                    ) || {
+                                      isBumping: false,
+                                      isHiding: false,
+                                      isArchiving: false,
+                                    };
+                                    const availableAfterHours =
+                                      calculateAvailableAfter(
+                                        req.updatedAt || req.createdAt,
+                                      );
+                                    const canBump =
+                                      availableAfterHours === null;
+                                    const isIdCopied =
+                                      isIdCopiedMap[req.id] || false;
+
+                                    const dropdownItems: DropdownMenuItem[] =
+                                      isMyRequest
+                                        ? [
+                                          {
+                                            id: "bump",
+                                            label: actionState.isBumping
+                                              ? "جاري التحديث..."
+                                              : canBump
+                                              ? "تحديث الطلب"
+                                              : `متاح بعد ${availableAfterHours} س`,
+                                            icon: (
+                                              <RefreshCw
+                                                size={16}
+                                                className={actionState.isBumping
+                                                  ? "animate-spin"
+                                                  : ""}
+                                              />
+                                            ),
+                                            onClick: () => {
+                                              if (
+                                                canBump &&
+                                                !actionState.isBumping &&
+                                                onBumpRequest
+                                              ) {
+                                                handleBumpRequestInMarketplace(
+                                                  req,
+                                                );
+                                              }
+                                            },
+                                            disabled: !canBump ||
+                                              actionState.isBumping,
+                                            keepOpenOnClick: !canBump,
+                                          },
+                                          {
+                                            id: "edit",
+                                            label: "تعديل الطلب",
+                                            icon: <Edit size={16} />,
+                                            onClick: () =>
+                                              handleEditRequestInMarketplace(
+                                                req,
+                                              ),
+                                          },
+                                          {
+                                            id: req.isPublic === false
+                                              ? "unhide"
+                                              : "hide",
+                                            label: req.isPublic === false
+                                              ? actionState.isHiding
+                                                ? "جاري الإظهار..."
+                                                : "إظهار الطلب"
+                                              : actionState.isHiding
+                                              ? "جاري الإخفاء..."
+                                              : "إخفاء الطلب",
+                                            icon: req.isPublic === false
+                                              ? <Eye size={16} />
+                                              : <EyeOff size={16} />,
+                                            onClick: req.isPublic === false
+                                              ? () =>
+                                                handleUnhideRequestInMarketplace(
+                                                  req,
+                                                )
+                                              : () =>
+                                                handleHideRequestInMarketplace(
+                                                  req,
+                                                ),
+                                            disabled: actionState.isHiding,
+                                          },
+                                          {
+                                            id: "archive",
+                                            label: actionState.isArchiving
+                                              ? "جاري الأرشفة..."
+                                              : "أرشفة الطلب",
+                                            icon: <Archive size={16} />,
+                                            onClick: () =>
+                                              handleArchiveRequestInMarketplace(
+                                                req,
+                                              ),
+                                            variant: "danger",
+                                            disabled: actionState.isArchiving,
+                                            showDivider: true,
+                                          },
+                                        ]
+                                        : [
+                                          {
+                                            id: "copy-id",
+                                            label: isIdCopied
+                                              ? "✓ تم النسخ!"
+                                              : `رقم الطلب: ${
+                                                req.id.slice(0, 8)
+                                              }...`,
+                                            icon: isIdCopied
+                                              ? <Check
+                                                size={16}
+                                                className="text-primary"
+                                              />
+                                              : <Copy size={16} />,
+                                            keepOpenOnClick: true,
+                                            onClick: () =>
+                                              handleCopyRequestId(req.id),
+                                          },
+                                          {
+                                            id: "share",
+                                            label: "مشاركة الطلب",
+                                            icon: (
+                                              <Share2
+                                                size={16}
+                                                className="text-primary"
+                                              />
+                                            ),
+                                            onClick: () =>
+                                              handleShareRequest(req),
+                                            showDivider: true,
+                                          },
+                                          {
+                                            id: "report",
+                                            label: "الإبلاغ عن الطلب",
+                                            icon: <Flag size={16} />,
+                                            onClick: () =>
+                                              handleReportRequest(req.id),
+                                            variant: "danger",
+                                            showDivider: true,
+                                          },
+                                        ];
+
+                                    return (
+                                      <div
+                                        onClick={(e) => {
+                                          // منع فتح الكرت عند النقر على منطقة الـ dropdown
+                                          e.stopPropagation();
+                                        }}
+                                        onMouseDown={(e) => {
+                                          // منع فتح الكرت عند الضغط على منطقة الـ dropdown
+                                          e.stopPropagation();
+                                        }}
+                                        onTouchStart={(e) => {
+                                          // منع فتح الكرت عند اللمس على منطقة الـ dropdown
+                                          e.stopPropagation();
+                                        }}
+                                        onTouchEnd={(e) => {
+                                          // منع فتح الكرت عند رفع اللمس من منطقة الـ dropdown
+                                          e.stopPropagation();
+                                        }}
+                                      >
+                                        <DropdownMenu
+                                          trigger={
+                                            <button
+                                              type="button"
+                                              className="p-1 rounded transition-colors hover:bg-secondary/80 text-muted-foreground hover:text-foreground relative z-[100]"
+                                              title="خيارات الطلب"
+                                            >
+                                              <MoreVertical size={18} />
+                                            </button>
+                                          }
+                                          items={dropdownItems}
+                                          align="right"
+                                        />
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
                                 {/* Image Section */}
                                 {req.images && req.images.length > 0
                                   ? (
@@ -3578,7 +4083,60 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                     {req.description}
                                   </p>
 
-                                  {/* Categories Labels */}
+                                  {/* First Row: Location and Date - Side by Side */}
+                                  <div className="flex items-center justify-between gap-2 mt-2 w-full">
+                                    {/* Location - Right Side */}
+                                    {req.location
+                                      ? (
+                                        <span className="flex items-center gap-1.5 text-muted-foreground/70 font-medium text-xs">
+                                          <MapPin
+                                            size={13}
+                                            className="text-primary/60"
+                                          />
+                                          {req.location}
+                                        </span>
+                                      )
+                                      : (
+                                        <div /> // Empty spacer
+                                      )}
+
+                                    {/* Date - Left Side - Show "منشور منذ X" if not updated, or "محدّث منذ X" if updated */}
+                                    {(() => {
+                                      const isUpdated = req.updatedAt &&
+                                        new Date(req.updatedAt).getTime() !==
+                                          new Date(req.createdAt).getTime();
+                                      const dateToShow = isUpdated
+                                        ? req.updatedAt
+                                        : req.createdAt;
+
+                                      if (!dateToShow) return <div />; // Empty div to maintain spacing
+
+                                      return (
+                                        <span className="flex items-center gap-1.5 text-muted-foreground/70 font-medium text-xs">
+                                          {isUpdated
+                                            ? (
+                                              <RotateCw
+                                                size={13}
+                                                className="text-primary/60"
+                                              />
+                                            )
+                                            : (
+                                              <Calendar
+                                                size={13}
+                                                className="text-primary/60"
+                                              />
+                                            )}
+                                          {isUpdated ? "محدّث " : "منشور "}
+                                          {formatTimeAgo(
+                                            new Date(dateToShow),
+                                            true,
+                                          )}
+                                        </span>
+                                      );
+                                    })()}
+                                  </div>
+
+                                  {/* Second Row: Categories - On their own line */}
                                   {req.categories &&
                                     req.categories.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 mt-2">
@@ -3826,7 +4384,9 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                           ? (
                                             (() => {
                                               const receivedOffers =
-                                                (receivedOffersMap.get(req.id) ||
+                                                (receivedOffersMap.get(
+                                                  req.id,
+                                                ) ||
                                                   []).filter((o) =>
                                                     o.status !== "archived"
                                                   );
@@ -3887,25 +4447,31 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                           : myOffer
                                           ? (
                                             <motion.div
-                                              initial={{ scale: 0.9, opacity: 0 }}
+                                              initial={{
+                                                scale: 0.9,
+                                                opacity: 0,
+                                              }}
                                               animate={{ scale: 1, opacity: 1 }}
                                               className={`w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 ${
                                                 myOffer.status === "accepted"
                                                   ? "bg-primary/15 text-primary"
-                                                  : myOffer.status === "negotiating"
+                                                  : myOffer.status ===
+                                                      "negotiating"
                                                   ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
                                                   : "bg-primary/15 text-primary"
                                               }`}
                                             >
                                               {myOffer.status === "accepted"
                                                 ? <CheckCircle size={16} />
-                                                : myOffer.status === "negotiating"
+                                                : myOffer.status ===
+                                                    "negotiating"
                                                 ? <MessageCircle size={16} />
                                                 : <CheckCircle size={16} />}
 
                                               {myOffer.status === "accepted"
                                                 ? "تم قبول عرضك"
-                                                : myOffer.status === "negotiating"
+                                                : myOffer.status ===
+                                                    "negotiating"
                                                 ? "قيد التفاوض"
                                                 : "تم التقديم"}
                                             </motion.div>
@@ -4024,55 +4590,6 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                                               </span>
                                             </motion.button>
                                           )}
-                                      </div>
-
-                                      {/* Status Dots - Display at bottom like RequestDetail */}
-                                      <div className="flex justify-center gap-1.5">
-                                        <div
-                                          className={`w-1.5 h-1.5 rounded-full transition-all ${
-                                            req.status === "active"
-                                              ? "bg-primary"
-                                              : req.status === "assigned"
-                                              ? "bg-blue-500"
-                                              : req.status === "completed"
-                                              ? "bg-green-500"
-                                              : req.status === "archived"
-                                              ? "bg-red-500"
-                                              : "bg-muted-foreground"
-                                          }`}
-                                          title={
-                                            req.status === "active"
-                                              ? "نشط"
-                                              : req.status === "assigned"
-                                              ? "تم التعيين"
-                                              : req.status === "completed"
-                                              ? "مكتمل"
-                                              : req.status === "archived"
-                                              ? "مؤرشف"
-                                              : "غير محدد"
-                                          }
-                                        />
-                                        <div
-                                          className={`w-1.5 h-1.5 rounded-full transition-all ${
-                                            req.status === "assigned"
-                                              ? "bg-blue-500"
-                                              : "bg-transparent"
-                                          }`}
-                                        />
-                                        <div
-                                          className={`w-1.5 h-1.5 rounded-full transition-all ${
-                                            req.status === "completed"
-                                              ? "bg-green-500"
-                                              : "bg-transparent"
-                                          }`}
-                                        />
-                                        <div
-                                          className={`w-1.5 h-1.5 rounded-full transition-all ${
-                                            req.status === "archived"
-                                              ? "bg-red-500"
-                                              : "bg-transparent"
-                                          }`}
-                                        />
                                       </div>
                                     </div>
                                   </div>
@@ -4297,6 +4814,12 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           )}
         </div>
       </div>
-    </div>
+      </div>
+      <ReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        targetId={activeReportRequestId || ""}
+      />
+    </>
   );
 };

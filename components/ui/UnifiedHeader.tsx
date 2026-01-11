@@ -319,7 +319,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.88 }}
                 transition={{ type: "spring", stiffness: 500, damping: 25 }}
-                className={`relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group shrink-0 ${
+                className={`relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-white/95 dark:bg-white/15 backdrop-blur-sm border border-border shadow-lg hover:bg-white dark:hover:bg-white/20 group shrink-0 ${
                   showBackButtonOnDesktop ? "" : "md:hidden"
                 }`}
               >
@@ -339,7 +339,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
             : onGoToMarketplace
             ? (
               <motion.button
-                className="relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card group shrink-0 md:hidden"
+                className="relative w-10 h-10 rounded-full flex items-center justify-center text-foreground focus:outline-none bg-white/95 dark:bg-white/15 backdrop-blur-sm border border-border shadow-lg hover:bg-white dark:hover:bg-white/20 group shrink-0 md:hidden"
                 onClick={() => {
                   if (navigator.vibrate) navigator.vibrate(12);
                   onGoToMarketplace?.();
@@ -365,7 +365,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
               <motion.div
                 layout
                 layoutId="header-title-container"
-                className="flex items-center gap-2 h-10 px-3 pr-1.5 rounded-full bg-card/95 backdrop-blur-xl border border-border shadow-lg min-w-0"
+                className="flex items-center gap-2 h-10 px-3 pr-1.5 rounded-full bg-white/95 dark:bg-white/15 backdrop-blur-xl border border-border shadow-lg min-w-0"
                 initial={false}
                 transition={{
                   type: "spring",
@@ -435,21 +435,43 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 z-[99998]"
                       >
-                        {/* Backdrop - blocks scroll and all interactions */}
+                        {/* Backdrop - darkens screen and prevents interactions */}
                         <div
-                          className="absolute inset-0 touch-none pointer-events-auto bg-black/20"
+                          className="absolute inset-0 touch-none pointer-events-auto bg-black/20 backdrop-blur-[1px]"
                           onClick={(e) => {
+                            e.preventDefault();
                             e.stopPropagation();
+                            e.nativeEvent.stopImmediatePropagation();
                             setIsProfileDropdownOpen(false);
                           }}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onTouchStart={(e) => e.preventDefault()}
-                          onWheel={(e) => e.preventDefault()}
-                          onTouchMove={(e) => e.preventDefault()}
+                          onTouchStart={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.nativeEvent.stopImmediatePropagation();
+                            setIsProfileDropdownOpen(false);
+                          }}
+                          onTouchEnd={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.nativeEvent.stopImmediatePropagation();
+                            setIsProfileDropdownOpen(false);
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.nativeEvent.stopImmediatePropagation();
+                          }}
+                          onMouseUp={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.nativeEvent.stopImmediatePropagation();
+                            setIsProfileDropdownOpen(false);
+                          }}
                           style={{
                             WebkitTouchCallout: "none",
                             WebkitUserSelect: "none",
                             userSelect: "none",
+                            touchAction: "none", // منع scroll والسلوك الافتراضي للـ touch events
                           }}
                         />
                         <motion.div
@@ -648,7 +670,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                 className={`relative flex items-center justify-center overflow-visible shrink-0 shadow-lg hover:shadow-xl transition-shadow ${
                   isGuest
                     ? "w-9 h-9 rounded-full bg-gradient-to-br from-primary to-teal-600 border border-white/20"
-                    : "w-9 h-9 rounded-full bg-card/80 backdrop-blur-sm border border-white/20"
+                    : "w-9 h-9 rounded-full bg-white/95 dark:bg-white/15 backdrop-blur-sm border border-white/20"
                 }`}
               >
                 {isGuest ? <GuestIcon size={18} className="text-white" /> : (
@@ -689,21 +711,43 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                     exit={{ opacity: 0 }}
                     className="fixed inset-0 z-[99998]"
                   >
-                    {/* Backdrop - blocks scroll and all interactions */}
+                    {/* Backdrop - darkens screen and prevents interactions */}
                     <div
-                      className="absolute inset-0 touch-none pointer-events-auto bg-black/20"
+                      className="absolute inset-0 touch-none pointer-events-auto bg-black/20 backdrop-blur-[1px]"
                       onClick={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
                         setIsProfileDropdownOpen(false);
                       }}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onTouchStart={(e) => e.preventDefault()}
-                      onWheel={(e) => e.preventDefault()}
-                      onTouchMove={(e) => e.preventDefault()}
+                      onTouchStart={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        setIsProfileDropdownOpen(false);
+                      }}
+                      onTouchEnd={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        setIsProfileDropdownOpen(false);
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                      }}
+                      onMouseUp={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        setIsProfileDropdownOpen(false);
+                      }}
                       style={{
                         WebkitTouchCallout: "none",
                         WebkitUserSelect: "none",
                         userSelect: "none",
+                        touchAction: "none", // منع scroll والسلوك الافتراضي للـ touch events
                       }}
                     />
                     <motion.div
@@ -869,14 +913,14 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
             </div>
           )}
 
-          {/* Title for pages with back button - only shows when scrolled, shrinks to fit */}
-          {backButton && isScrolled && (
+          {/* Title for pages with back button - always shows when title is provided */}
+          {backButton && title && (
             <motion.div
               key="scrolled-title"
-              initial={{ opacity: 0, y: 5 }}
+              initial={{ opacity: 1, y: 0 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -5 }}
-              className="px-4 h-10 flex items-center gap-2 rounded-full bg-card/95 backdrop-blur-xl border border-border shadow-lg min-w-0 flex-1"
+              className="px-4 h-10 flex items-center gap-2 rounded-full bg-white/95 dark:bg-white/15 backdrop-blur-xl border border-border shadow-lg min-w-0 flex-1"
             >
               <span
                 className={`font-bold text-sm text-foreground truncate block flex-1 ${
@@ -1011,419 +1055,431 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
           {!showScrollToOffer && (
             <>
               {/* Submit Button OR Notification Bell */}
-              {showSubmitButton
-                ? (
-                  <motion.button
-                    type="button"
-                    data-no-swipe="true"
-                    disabled={isSubmitting ||
-                      (!canSubmit && !submitSuccess && !editButtonIsSaved)}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      e.nativeEvent.stopImmediatePropagation();
+              {
+                showSubmitButton
+                  ? (
+                    <motion.button
+                      type="button"
+                      data-no-swipe="true"
+                      disabled={isSubmitting ||
+                        (!canSubmit && !submitSuccess && !editButtonIsSaved)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
 
-                      // في وضع التعديل مع "تم الحفظ" - العودة للصفحة السابقة
-                      if (isEditMode && editButtonIsSaved && onGoToRequest) {
-                        if (navigator.vibrate) navigator.vibrate([10, 50, 10]);
-                        onGoToRequest();
-                        return;
-                      }
+                        // في وضع التعديل مع "تم الحفظ" - العودة للصفحة السابقة
+                        if (isEditMode && editButtonIsSaved && onGoToRequest) {
+                          if (navigator.vibrate) {
+                            navigator.vibrate([10, 50, 10]);
+                          }
+                          onGoToRequest();
+                          return;
+                        }
 
-                      // إذا نجح الإرسال (وضع الإنشاء)، انتقل للطلب
-                      if (!isEditMode && submitSuccess && onGoToRequest) {
-                        if (navigator.vibrate) navigator.vibrate([10, 50, 10]);
-                        onGoToRequest();
-                        return;
-                      }
+                        // إذا نجح الإرسال (وضع الإنشاء)، انتقل للطلب
+                        if (!isEditMode && submitSuccess && onGoToRequest) {
+                          if (navigator.vibrate) {
+                            navigator.vibrate([10, 50, 10]);
+                          }
+                          onGoToRequest();
+                          return;
+                        }
 
-                      // إرسال/حفظ الطلب
-                      console.log(
-                        "Submit button clicked - checking conditions:",
-                        {
-                          canSubmit,
-                          hasOnSubmit: !!onSubmit,
-                          isSubmitting,
-                          isEditMode,
-                          editButtonIsSaved,
-                          submitSuccess,
-                        },
-                      );
+                        // إرسال/حفظ الطلب
+                        // Submit button clicked - checking conditions...
 
-                      if (canSubmit && onSubmit && !isSubmitting) {
-                        console.log("Conditions met - calling onSubmit");
-                        if (navigator.vibrate) navigator.vibrate([15, 30, 15]);
-                        onSubmit();
-                      } else {
-                        console.log(
-                          "Conditions NOT met - button click ignored",
-                        );
-                      }
-                    }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      e.nativeEvent.stopImmediatePropagation();
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation();
-                      e.nativeEvent.stopImmediatePropagation();
-                    }}
-                    onTouchEnd={(e) => {
-                      e.stopPropagation();
-                      e.nativeEvent.stopImmediatePropagation();
-                    }}
-                    whileTap={{
-                      scale: 0.96,
-                      transition: { duration: 0.1, ease: "easeOut" },
-                    }}
-                    animate={(submitSuccess ||
-                        (isEditMode && editButtonIsSaved))
-                      ? {
-                        scale: 1,
-                        transition: {
-                          duration: 0.3,
-                          ease: [0.34, 1.56, 0.64, 1],
-                        },
-                      }
-                      : {
-                        scale: 1,
+                        if (canSubmit && onSubmit && !isSubmitting) {
+                          // Conditions met - calling onSubmit
+                          if (navigator.vibrate) {
+                            navigator.vibrate([15, 30, 15]);
+                          }
+                          onSubmit();
+                        } else {
+                          // Conditions NOT met - button click ignored
+                        }
                       }}
-                    className={`relative flex items-center gap-2 h-11 rounded-full overflow-visible select-none transition-all duration-300 translate-y-[1px] ${
-                      (submitSuccess || (isEditMode && editButtonIsSaved))
-                        ? "px-5 cursor-pointer"
-                        : isSubmitting
-                        ? "px-5 cursor-wait"
-                        : canSubmit
-                        ? "px-4 cursor-pointer"
-                        : "px-4 cursor-default opacity-60"
-                    }`}
-                    style={{
-                      touchAction: "manipulation",
-                      WebkitTapHighlightColor: "transparent",
-                      pointerEvents: "auto",
-                      zIndex: 10,
-                      position: "relative",
-                    }}
-                  >
-                    {/* Ping Ring - Pulsing border effect (only when ready to submit, hide in edit mode) */}
-                    {canSubmit && !isSubmitting && !submitSuccess &&
-                      !isEditMode && (
-                      <motion.div
-                        className="absolute inset-0 rounded-full border-2 border-primary/50 pointer-events-none"
-                        animate={{
-                          scale: [1, 1.3, 1.5],
-                          opacity: [0.5, 0.2, 0],
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                      }}
+                      onTouchStart={(e) => {
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                      }}
+                      onTouchEnd={(e) => {
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                      }}
+                      whileTap={{
+                        scale: 0.96,
+                        transition: { duration: 0.1, ease: "easeOut" },
+                      }}
+                      animate={(submitSuccess ||
+                          (isEditMode && editButtonIsSaved))
+                        ? {
+                          scale: 1,
+                          transition: {
+                            duration: 0.3,
+                            ease: [0.34, 1.56, 0.64, 1],
+                          },
+                        }
+                        : {
+                          scale: 1,
                         }}
-                        transition={{
-                          duration: 2,
-                          repeat: Infinity,
-                          ease: "easeOut",
+                      className={`relative flex items-center gap-2 h-11 rounded-full overflow-visible select-none transition-all duration-300 translate-y-[1px] ${
+                        (submitSuccess || (isEditMode && editButtonIsSaved))
+                          ? "px-5 cursor-pointer"
+                          : isSubmitting
+                          ? "px-5 cursor-wait"
+                          : canSubmit
+                          ? "px-4 cursor-pointer"
+                          : "px-4 cursor-default opacity-60"
+                      }`}
+                      style={{
+                        touchAction: "manipulation",
+                        WebkitTapHighlightColor: "transparent",
+                        pointerEvents: "auto",
+                        zIndex: 10,
+                        position: "relative",
+                      }}
+                    >
+                      {/* Ping Ring - Pulsing border effect (only when ready to submit, hide in edit mode) */}
+                      {canSubmit && !isSubmitting && !submitSuccess &&
+                        !isEditMode && (
+                        <motion.div
+                          className="absolute inset-0 rounded-full border-2 border-primary/50 pointer-events-none"
+                          animate={{
+                            scale: [1, 1.3, 1.5],
+                            opacity: [0.5, 0.2, 0],
+                          }}
+                          transition={{
+                            duration: 2,
+                            repeat: Infinity,
+                            ease: "easeOut",
+                          }}
+                        />
+                      )}
+
+                      {/* Success celebration rings - subtle for edit mode */}
+                      {(submitSuccess || (isEditMode && editButtonIsSaved)) && (
+                        isEditMode
+                          ? (
+                            // وضع التعديل - بدون animation عند تم الحفظ (ثابت)
+                            null
+                          )
+                          : (
+                            // وضع الإنشاء - celebration كامل
+                            <>
+                              <motion.div
+                                className="absolute inset-0 rounded-full border-2 border-primary pointer-events-none"
+                                initial={{ scale: 1, opacity: 0.8 }}
+                                animate={{ scale: 2, opacity: 0 }}
+                                transition={{ duration: 0.6, ease: "easeOut" }}
+                              />
+                              <motion.div
+                                className="absolute inset-0 rounded-full border-2 border-primary pointer-events-none"
+                                initial={{ scale: 1, opacity: 0.6 }}
+                                animate={{ scale: 1.7, opacity: 0 }}
+                                transition={{
+                                  duration: 0.5,
+                                  delay: 0.1,
+                                  ease: "easeOut",
+                                }}
+                              />
+                            </>
+                          )
+                      )}
+
+                      {/* Outer Glow - Subtle and smooth */}
+                      <motion.div
+                        className="absolute inset-[-4px] rounded-full blur-lg pointer-events-none"
+                        initial={false}
+                        animate={{
+                          opacity:
+                            (submitSuccess || (isEditMode && editButtonIsSaved))
+                              ? 0.5
+                              : isSubmitting
+                              ? 0.3
+                              : canSubmit
+                              ? 0.4
+                              : 0,
+                          background:
+                            (submitSuccess || (isEditMode && editButtonIsSaved))
+                              ? "radial-gradient(circle, rgba(16, 185, 129, 0.5) 0%, transparent 70%)"
+                              : "radial-gradient(circle, rgba(30, 150, 140, 0.4) 0%, transparent 70%)",
+                        }}
+                        transition={{ duration: 0.5, ease: "easeOut" }}
+                      />
+
+                      {/* Main Button Body */}
+                      <motion.div
+                        className="absolute inset-0 rounded-full pointer-events-none"
+                        initial={false}
+                        animate={{
+                          background:
+                            (submitSuccess || (isEditMode && editButtonIsSaved))
+                              ? "linear-gradient(135deg, #10b981 0%, #059669 50%, #10b981 100%)"
+                              : isSubmitting
+                              ? "linear-gradient(135deg, rgba(var(--primary-rgb), 0.85) 0%, rgb(var(--primary-rgb)) 50%, rgba(20, 150, 140, 0.85) 100%)"
+                              : canSubmit
+                              ? "linear-gradient(135deg, rgb(var(--primary-rgb)) 0%, rgb(var(--primary-rgb)) 40%, rgb(20, 150, 140) 100%)"
+                              : "var(--muted)",
+                          boxShadow:
+                            (submitSuccess || (isEditMode && editButtonIsSaved))
+                              ? "0 4px 16px rgba(16, 185, 129, 0.35), 0 2px 8px rgba(16, 185, 129, 0.25)"
+                              : isSubmitting
+                              ? "0 3px 12px rgba(var(--primary-rgb), 0.25)"
+                              : canSubmit
+                              ? "0 6px 20px rgba(var(--primary-rgb), 0.3), 0 3px 10px rgba(var(--primary-rgb), 0.2)"
+                              : "none",
+                        }}
+                        transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+                        style={{
+                          // Fallback for CSS variable
+                          ["--primary-rgb" as any]: "30, 150, 140",
                         }}
                       />
-                    )}
 
-                    {/* Success celebration rings - subtle for edit mode */}
-                    {(submitSuccess || (isEditMode && editButtonIsSaved)) && (
-                      isEditMode
-                        ? (
-                          // وضع التعديل - بدون animation عند تم الحفظ (ثابت)
-                          null
-                        )
-                        : (
-                          // وضع الإنشاء - celebration كامل
-                          <>
+                      {/* Inner shine - subtle top highlight */}
+                      {(canSubmit || isSubmitting || submitSuccess ||
+                        (isEditMode && editButtonIsSaved)) && (
+                        <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
+                          <div className="absolute inset-0 bg-gradient-to-b from-white/15 via-transparent to-black/5" />
+                        </div>
+                      )}
+
+                      {/* Content with AnimatePresence for smooth transitions */}
+                      <AnimatePresence mode="popLayout">
+                        {(submitSuccess || (isEditMode && editButtonIsSaved))
+                          ? (
                             <motion.div
-                              className="absolute inset-0 rounded-full border-2 border-primary pointer-events-none"
-                              initial={{ scale: 1, opacity: 0.8 }}
-                              animate={{ scale: 2, opacity: 0 }}
-                              transition={{ duration: 0.6, ease: "easeOut" }}
-                            />
-                            <motion.div
-                              className="absolute inset-0 rounded-full border-2 border-primary pointer-events-none"
-                              initial={{ scale: 1, opacity: 0.6 }}
-                              animate={{ scale: 1.7, opacity: 0 }}
-                              transition={{
-                                duration: 0.5,
-                                delay: 0.1,
-                                ease: "easeOut",
+                              key="success"
+                              initial={{
+                                opacity: 0,
+                                y: 8,
+                                filter: "blur(4px)",
                               }}
-                            />
-                          </>
-                        )
-                    )}
-
-                    {/* Outer Glow - Subtle and smooth */}
-                    <motion.div
-                      className="absolute inset-[-4px] rounded-full blur-lg pointer-events-none"
-                      initial={false}
-                      animate={{
-                        opacity:
-                          (submitSuccess || (isEditMode && editButtonIsSaved))
-                            ? 0.5
-                            : isSubmitting
-                            ? 0.3
-                            : canSubmit
-                            ? 0.4
-                            : 0,
-                        background:
-                          (submitSuccess || (isEditMode && editButtonIsSaved))
-                            ? "radial-gradient(circle, rgba(16, 185, 129, 0.5) 0%, transparent 70%)"
-                            : "radial-gradient(circle, rgba(30, 150, 140, 0.4) 0%, transparent 70%)",
-                      }}
-                      transition={{ duration: 0.5, ease: "easeOut" }}
-                    />
-
-                    {/* Main Button Body */}
-                    <motion.div
-                      className="absolute inset-0 rounded-full pointer-events-none"
-                      initial={false}
-                      animate={{
-                        background:
-                          (submitSuccess || (isEditMode && editButtonIsSaved))
-                            ? "linear-gradient(135deg, #10b981 0%, #059669 50%, #10b981 100%)"
-                            : isSubmitting
-                            ? "linear-gradient(135deg, rgba(var(--primary-rgb), 0.85) 0%, rgb(var(--primary-rgb)) 50%, rgba(20, 150, 140, 0.85) 100%)"
-                            : canSubmit
-                            ? "linear-gradient(135deg, rgb(var(--primary-rgb)) 0%, rgb(var(--primary-rgb)) 40%, rgb(20, 150, 140) 100%)"
-                            : "var(--muted)",
-                        boxShadow:
-                          (submitSuccess || (isEditMode && editButtonIsSaved))
-                            ? "0 4px 16px rgba(16, 185, 129, 0.35), 0 2px 8px rgba(16, 185, 129, 0.25)"
-                            : isSubmitting
-                            ? "0 3px 12px rgba(var(--primary-rgb), 0.25)"
-                            : canSubmit
-                            ? "0 6px 20px rgba(var(--primary-rgb), 0.3), 0 3px 10px rgba(var(--primary-rgb), 0.2)"
-                            : "none",
-                      }}
-                      transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-                      style={{
-                        // Fallback for CSS variable
-                        ["--primary-rgb" as any]: "30, 150, 140",
-                      }}
-                    />
-
-                    {/* Inner shine - subtle top highlight */}
-                    {(canSubmit || isSubmitting || submitSuccess ||
-                      (isEditMode && editButtonIsSaved)) && (
-                      <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
-                        <div className="absolute inset-0 bg-gradient-to-b from-white/15 via-transparent to-black/5" />
-                      </div>
-                    )}
-
-                    {/* Content with AnimatePresence for smooth transitions */}
-                    <AnimatePresence mode="popLayout">
-                      {(submitSuccess || (isEditMode && editButtonIsSaved))
-                        ? (
-                          <motion.div
-                            key="success"
-                            initial={{ opacity: 0, y: 8, filter: "blur(4px)" }}
-                            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                            exit={{ opacity: 0, y: -8, filter: "blur(4px)" }}
-                            transition={{
-                              duration: 0.35,
-                              ease: [0.34, 1.56, 0.64, 1],
-                            }}
-                            className="relative z-10 flex items-center gap-2"
-                          >
-                            <motion.div
-                              initial={{ scale: 0, rotate: -180 }}
-                              animate={{ scale: 1, rotate: 0 }}
+                              animate={{
+                                opacity: 1,
+                                y: 0,
+                                filter: "blur(0px)",
+                              }}
+                              exit={{ opacity: 0, y: -8, filter: "blur(4px)" }}
                               transition={{
-                                delay: 0.1,
-                                duration: 0.4,
+                                duration: 0.35,
                                 ease: [0.34, 1.56, 0.64, 1],
                               }}
+                              className="relative z-10 flex items-center gap-2"
                             >
-                              <Check
-                                size={16}
-                                className="text-white"
-                                strokeWidth={3}
-                              />
-                            </motion.div>
-                            <span className="text-sm font-semibold text-white whitespace-nowrap">
-                              {isEditMode ? "تم الحفظ" : "طلبي"}
-                            </span>
-                            {!isEditMode && (
                               <motion.div
-                                initial={{ opacity: 0, x: -8 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: 0.2, duration: 0.3 }}
+                                initial={{ scale: 0, rotate: -180 }}
+                                animate={{ scale: 1, rotate: 0 }}
+                                transition={{
+                                  delay: 0.1,
+                                  duration: 0.4,
+                                  ease: [0.34, 1.56, 0.64, 1],
+                                }}
                               >
-                                <motion.div
-                                  animate={{ x: [0, 3, 0] }}
-                                  transition={{
-                                    duration: 1.2,
-                                    repeat: Infinity,
-                                    ease: "easeInOut",
-                                    delay: 0.5,
-                                  }}
-                                >
-                                  <ArrowLeft
-                                    size={14}
-                                    className="text-white/90"
-                                  />
-                                </motion.div>
+                                <Check
+                                  size={16}
+                                  className="text-white"
+                                  strokeWidth={3}
+                                />
                               </motion.div>
-                            )}
-                          </motion.div>
-                        )
-                        : isSubmitting
-                        ? (
-                          <motion.div
-                            key="submitting"
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.9 }}
-                            transition={{ duration: 0.2, ease: "easeOut" }}
-                            className="relative z-10 flex items-center gap-2"
-                          >
-                            <motion.div
-                              animate={{ rotate: 360 }}
-                              transition={{
-                                duration: 0.8,
-                                repeat: Infinity,
-                                ease: "linear",
-                              }}
-                            >
-                              <Loader2 size={16} className="text-white" />
-                            </motion.div>
-                            <span className="text-sm font-medium text-white whitespace-nowrap">
-                              {isEditMode ? "جاري الحفظ..." : "جاري الإرسال..."}
-                            </span>
-                          </motion.div>
-                        )
-                        : (
-                          <motion.div
-                            key="idle"
-                            initial={{ opacity: 0, y: -8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 8 }}
-                            transition={{ duration: 0.25, ease: "easeOut" }}
-                            className="relative z-10 flex items-center gap-2"
-                          >
-                            <span
-                              className={`text-sm font-medium transition-colors duration-300 ${
-                                canSubmit
-                                  ? "text-white"
-                                  : "text-muted-foreground"
-                              }`}
-                            >
-                              {isEditMode ? "حفظ التعديلات" : "إرسال الطلب"}
-                            </span>
-                            {canSubmit && (
-                              <Send
-                                size={16}
-                                className="-rotate-90 text-white"
-                              />
-                            )}
-                          </motion.div>
-                        )}
-                    </AnimatePresence>
-
-                    {/* Sparkles - Only when canSubmit and not submitting (hide in edit mode) */}
-                    {canSubmit && !isSubmitting && !submitSuccess &&
-                      !isEditMode && (
-                      <>
-                        <div className="absolute -top-1 -right-1 w-2 h-2 bg-white/50 rounded-full blur-[2px] animate-pulse pointer-events-none" />
-                        <div className="absolute -bottom-1 -left-1 w-1.5 h-1.5 bg-teal-300/40 rounded-full blur-[1px] animate-bounce pointer-events-none" />
-                      </>
-                    )}
-
-                    {/* Success sparkles - only for create mode */}
-                    {submitSuccess && !isEditMode && (
-                      <>
-                        <motion.div
-                          className="absolute -top-2 -right-2 w-3 h-3 bg-yellow-300 rounded-full pointer-events-none"
-                          initial={{ scale: 0, opacity: 1 }}
-                          animate={{ scale: [0, 1.5, 0], opacity: [1, 0.8, 0] }}
-                          transition={{ duration: 0.6, delay: 0.2 }}
-                        />
-                        <motion.div
-                          className="absolute -bottom-2 -left-2 w-2 h-2 bg-primary rounded-full pointer-events-none"
-                          initial={{ scale: 0, opacity: 1 }}
-                          animate={{ scale: [0, 1.5, 0], opacity: [1, 0.8, 0] }}
-                          transition={{ duration: 0.5, delay: 0.3 }}
-                        />
-                        <motion.div
-                          className="absolute top-0 left-1/2 w-2 h-2 bg-white rounded-full pointer-events-none"
-                          initial={{ scale: 0, opacity: 1, y: 0 }}
-                          animate={{
-                            scale: [0, 1, 0],
-                            opacity: [1, 0.6, 0],
-                            y: -15,
-                          }}
-                          transition={{ duration: 0.5, delay: 0.1 }}
-                        />
-                      </>
-                    )}
-                  </motion.button>
-                )
-                : showSearchButton && onSearchClick
-                ? (
-                  <button
-                    onClick={onSearchClick}
-                    className={`relative w-11 h-11 flex items-center justify-center rounded-xl border transition-all active:scale-95 ${
-                      hasActiveFilters
-                        ? "bg-primary/10 border-primary/30 text-primary"
-                        : "bg-card border-border text-muted-foreground hover:text-primary"
-                    }`}
-                  >
-                    <div className="relative w-full h-full flex items-center justify-center">
-                      {hasActiveFilters
-                        ? (
-                          // أيقونة ثابتة عند وجود فلاتر نشطة
-                          <Filter size={18} strokeWidth={2.5} />
-                        )
-                        : (
-                          // أيقونة متحركة عند عدم وجود فلاتر - fade فقط بدون حركة جانبية لتجنب الارتجاج
-                          <AnimatePresence mode="wait" initial={false}>
-                            {iconToggle
-                              ? (
+                              <span className="text-sm font-semibold text-white whitespace-nowrap">
+                                {isEditMode ? "تم الحفظ" : "طلبي"}
+                              </span>
+                              {!isEditMode && (
                                 <motion.div
-                                  key="filter-icon"
-                                  initial={{ opacity: 0, scale: 0.8 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  exit={{ opacity: 0, scale: 0.8 }}
-                                  transition={{
-                                    duration: 0.2,
-                                    ease: "easeOut",
-                                  }}
-                                  className="flex items-center justify-center"
+                                  initial={{ opacity: 0, x: -8 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  transition={{ delay: 0.2, duration: 0.3 }}
                                 >
-                                  <Filter size={18} strokeWidth={2} />
-                                </motion.div>
-                              )
-                              : (
-                                <motion.div
-                                  key="search-icon"
-                                  initial={{ opacity: 0, scale: 0.8 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  exit={{ opacity: 0, scale: 0.8 }}
-                                  transition={{
-                                    duration: 0.2,
-                                    ease: "easeOut",
-                                  }}
-                                  className="flex items-center justify-center"
-                                >
-                                  <Search size={18} strokeWidth={2} />
+                                  <motion.div
+                                    animate={{ x: [0, 3, 0] }}
+                                    transition={{
+                                      duration: 1.2,
+                                      repeat: Infinity,
+                                      ease: "easeInOut",
+                                      delay: 0.5,
+                                    }}
+                                  >
+                                    <ArrowLeft
+                                      size={14}
+                                      className="text-white/90"
+                                    />
+                                  </motion.div>
                                 </motion.div>
                               )}
-                          </AnimatePresence>
-                        )}
-                    </div>
-                    {/* Badge رقمي يظهر عدد الفلاتر النشطة */}
-                    {hasActiveFilters && activeFiltersCount > 0 && (
-                      <motion.span
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center shadow-md"
-                      >
-                        {activeFiltersCount}
-                      </motion.span>
-                    )}
-                  </button>
-                )
-                : null /* Notification button is hidden (may be restored later) */}
+                            </motion.div>
+                          )
+                          : isSubmitting
+                          ? (
+                            <motion.div
+                              key="submitting"
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.9 }}
+                              transition={{ duration: 0.2, ease: "easeOut" }}
+                              className="relative z-10 flex items-center gap-2"
+                            >
+                              <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{
+                                  duration: 0.8,
+                                  repeat: Infinity,
+                                  ease: "linear",
+                                }}
+                              >
+                                <Loader2 size={16} className="text-white" />
+                              </motion.div>
+                              <span className="text-sm font-medium text-white whitespace-nowrap">
+                                {isEditMode
+                                  ? "جاري الحفظ..."
+                                  : "جاري الإرسال..."}
+                              </span>
+                            </motion.div>
+                          )
+                          : (
+                            <motion.div
+                              key="idle"
+                              initial={{ opacity: 0, y: -8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 8 }}
+                              transition={{ duration: 0.25, ease: "easeOut" }}
+                              className="relative z-10 flex items-center gap-2"
+                            >
+                              <span
+                                className={`text-sm font-medium transition-colors duration-300 ${
+                                  canSubmit
+                                    ? "text-white"
+                                    : "text-muted-foreground"
+                                }`}
+                              >
+                                {isEditMode ? "حفظ التعديلات" : "إرسال الطلب"}
+                              </span>
+                              {canSubmit && (
+                                <Send
+                                  size={16}
+                                  className="-rotate-90 text-white"
+                                />
+                              )}
+                            </motion.div>
+                          )}
+                      </AnimatePresence>
+
+                      {/* Sparkles - Only when canSubmit and not submitting (hide in edit mode) */}
+                      {canSubmit && !isSubmitting && !submitSuccess &&
+                        !isEditMode && (
+                        <>
+                          <div className="absolute -top-1 -right-1 w-2 h-2 bg-white/50 rounded-full blur-[2px] animate-pulse pointer-events-none" />
+                          <div className="absolute -bottom-1 -left-1 w-1.5 h-1.5 bg-teal-300/40 rounded-full blur-[1px] animate-bounce pointer-events-none" />
+                        </>
+                      )}
+
+                      {/* Success sparkles - only for create mode */}
+                      {submitSuccess && !isEditMode && (
+                        <>
+                          <motion.div
+                            className="absolute -top-2 -right-2 w-3 h-3 bg-yellow-300 rounded-full pointer-events-none"
+                            initial={{ scale: 0, opacity: 1 }}
+                            animate={{
+                              scale: [0, 1.5, 0],
+                              opacity: [1, 0.8, 0],
+                            }}
+                            transition={{ duration: 0.6, delay: 0.2 }}
+                          />
+                          <motion.div
+                            className="absolute -bottom-2 -left-2 w-2 h-2 bg-primary rounded-full pointer-events-none"
+                            initial={{ scale: 0, opacity: 1 }}
+                            animate={{
+                              scale: [0, 1.5, 0],
+                              opacity: [1, 0.8, 0],
+                            }}
+                            transition={{ duration: 0.5, delay: 0.3 }}
+                          />
+                          <motion.div
+                            className="absolute top-0 left-1/2 w-2 h-2 bg-white rounded-full pointer-events-none"
+                            initial={{ scale: 0, opacity: 1, y: 0 }}
+                            animate={{
+                              scale: [0, 1, 0],
+                              opacity: [1, 0.6, 0],
+                              y: -15,
+                            }}
+                            transition={{ duration: 0.5, delay: 0.1 }}
+                          />
+                        </>
+                      )}
+                    </motion.button>
+                  )
+                  : showSearchButton && onSearchClick
+                  ? (
+                    <button
+                      onClick={onSearchClick}
+                      className={`relative w-11 h-11 flex items-center justify-center rounded-xl border transition-all active:scale-95 ${
+                        hasActiveFilters
+                          ? "bg-primary/10 border-primary/30 text-primary"
+                          : "bg-card border-border text-muted-foreground hover:text-primary"
+                      }`}
+                    >
+                      <div className="relative w-full h-full flex items-center justify-center">
+                        {hasActiveFilters
+                          ? (
+                            // أيقونة ثابتة عند وجود فلاتر نشطة
+                            <Filter size={18} strokeWidth={2.5} />
+                          )
+                          : (
+                            // أيقونة متحركة عند عدم وجود فلاتر - fade فقط بدون حركة جانبية لتجنب الارتجاج
+                            <AnimatePresence mode="wait" initial={false}>
+                              {iconToggle
+                                ? (
+                                  <motion.div
+                                    key="filter-icon"
+                                    initial={{ opacity: 0, scale: 0.8 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.8 }}
+                                    transition={{
+                                      duration: 0.2,
+                                      ease: "easeOut",
+                                    }}
+                                    className="flex items-center justify-center"
+                                  >
+                                    <Filter size={18} strokeWidth={2} />
+                                  </motion.div>
+                                )
+                                : (
+                                  <motion.div
+                                    key="search-icon"
+                                    initial={{ opacity: 0, scale: 0.8 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.8 }}
+                                    transition={{
+                                      duration: 0.2,
+                                      ease: "easeOut",
+                                    }}
+                                    className="flex items-center justify-center"
+                                  >
+                                    <Search size={18} strokeWidth={2} />
+                                  </motion.div>
+                                )}
+                            </AnimatePresence>
+                          )}
+                      </div>
+                      {/* Badge رقمي يظهر عدد الفلاتر النشطة */}
+                      {hasActiveFilters && activeFiltersCount > 0 && (
+                        <motion.span
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center shadow-md"
+                        >
+                          {activeFiltersCount}
+                        </motion.span>
+                      )}
+                    </button>
+                  )
+                  : null /* Notification button is hidden (may be restored later) */
+              }
             </>
           )}
         </div>

@@ -44,7 +44,12 @@ if ($response -eq "Y" -or $response -eq "y") {
     # نشر جميع الـ functions
     foreach ($func in $functions) {
         Write-Host "`n📤 نشر $func..." -ForegroundColor Cyan
-        supabase functions deploy $func
+        # ai-chat يجب أن يعمل للـ guests أيضاً، لذلك لا نتحقق من JWT
+        if ($func -eq "ai-chat") {
+            supabase functions deploy $func --no-verify-jwt
+        } else {
+            supabase functions deploy $func --verify-jwt
+        }
         
         if ($LASTEXITCODE -eq 0) {
             Write-Host "✅ تم نشر $func بنجاح!" -ForegroundColor Green
@@ -65,7 +70,12 @@ if ($response -eq "Y" -or $response -eq "y") {
     if ($selectedIndex -ge 0 -and $selectedIndex -lt $functions.Length) {
         $selectedFunc = $functions[$selectedIndex]
         Write-Host "`n📤 نشر $selectedFunc..." -ForegroundColor Cyan
-        supabase functions deploy $selectedFunc
+        # ai-chat يجب أن يعمل للـ guests أيضاً، لذلك لا نتحقق من JWT
+        if ($selectedFunc -eq "ai-chat") {
+            supabase functions deploy $selectedFunc --no-verify-jwt
+        } else {
+            supabase functions deploy $selectedFunc --verify-jwt
+        }
         
         if ($LASTEXITCODE -eq 0) {
             Write-Host "✅ تم نشر $selectedFunc بنجاح!" -ForegroundColor Green

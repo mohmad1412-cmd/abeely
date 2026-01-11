@@ -43,6 +43,13 @@
 html, body {
   height: 100%;
   overflow: hidden;
+  /* منع تحديد النصوص - تجربة احترافية */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  /* منع قائمة اللمس الطويل على iOS */
+  -webkit-touch-callout: none;
 }
 
 body {
@@ -93,31 +100,31 @@ body {
     animation-duration: 0.2s;
     animation-fill-mode: both;
   }
-  
+
   .fade-in {
     animation-name: fadeIn;
   }
-  
+
   .slide-in-from-top-1 {
     animation-name: slideInFromTop1;
   }
-  
+
   .slide-in-from-top-2 {
     animation-name: slideInFromTop2;
   }
-  
+
   .slide-in-from-bottom-2 {
     animation-name: slideInFromBottom2;
   }
-  
+
   .slide-in-from-right-2 {
     animation-name: slideInFromRight2;
   }
-  
+
   .slide-in-from-left-2 {
     animation-name: slideInFromLeft2;
   }
-  
+
   .zoom-in {
     animation-name: zoomIn;
   }
@@ -209,6 +216,43 @@ body {
 
 /* Mask gradient for horizontal scroll fade */
 .mask-linear-fade {
-  mask-image: linear-gradient(to left, transparent, black 20px, black calc(100% - 20px), transparent);
-  -webkit-mask-image: linear-gradient(to left, transparent, black 20px, black calc(100% - 20px), transparent);
+  mask-image: linear-gradient(
+    to left,
+    transparent,
+    black 20px,
+    black calc(100% - 20px),
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(
+    to left,
+    transparent,
+    black 20px,
+    black calc(100% - 20px),
+    transparent
+  );
+}
+
+/* Quick flash animation for offer form */
+@keyframes quick-flash {
+  0% {
+    border-color: hsl(var(--border));
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  }
+  30% {
+    border-color: #22c55e;
+    box-shadow: 0 0 30px 8px rgba(34, 197, 94, 0.7);
+  }
+  60% {
+    border-color: #22c55e;
+    box-shadow: 0 0 30px 8px rgba(34, 197, 94, 0.7);
+  }
+  100% {
+    border-color: hsl(var(--border));
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  }
+}
+
+.animate-quick-flash {
+  animation: quick-flash 0.8s ease-in-out;
+  animation-fill-mode: both;
 }

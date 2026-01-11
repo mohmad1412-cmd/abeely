@@ -30,6 +30,7 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const touchHandledRef = useRef<boolean>(false);
 
   // Calculate position when opening
   const updatePosition = useCallback(() => {
@@ -59,6 +60,24 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
   const handleToggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    
+    if (!isOpen) {
+      updatePosition();
+    }
+    setIsOpen(!isOpen);
+  }, [isOpen, updatePosition]);
+
+  // Handle touch events separately to avoid double-trigger
+  const handleTouchToggle = useCallback((e: React.TouchEvent) => {
+    if (touchHandledRef.current) return;
+    
+    e.stopPropagation();
+    e.preventDefault();
+    
+    touchHandledRef.current = true;
+    setTimeout(() => {
+      touchHandledRef.current = false;
+    }, 300);
     
     if (!isOpen) {
       updatePosition();
@@ -128,6 +147,7 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
       <div 
         ref={triggerRef} 
         onClick={handleToggle}
+        onTouchStart={handleTouchToggle}
         className={`cursor-pointer ${className}`}
       >
         {trigger}
@@ -137,14 +157,46 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({
         <AnimatePresence>
           {isOpen && (
             <>
-              {/* Backdrop */}
+              {/* Backdrop - darkens screen and prevents interactions */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.1 }}
-                className="fixed inset-0 z-[9998]"
-                onClick={() => setIsOpen(false)}
+                className="fixed inset-0 z-[9998] bg-black/20 backdrop-blur-[1px]"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                  setIsOpen(false);
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                  setIsOpen(false);
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                  setIsOpen(false);
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                }}
+                onMouseUp={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.nativeEvent.stopImmediatePropagation();
+                  setIsOpen(false);
+                }}
+                style={{ 
+                  touchAction: "none",
+                  pointerEvents: "auto"
+                }}
               />
               
               {/* Menu */}

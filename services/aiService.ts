@@ -115,16 +115,39 @@ export async function generateDraftWithCta(
     }
     
     if (error) {
-      logger.error("❌ Supabase Edge Function Error:", {
-        message: error.message,
-        name: error.name,
-        context: error.context,
-        details: JSON.stringify(error, null, 2)
-      });
+      // Handle 401 Unauthorized errors - هذه حالة متوقعة (guest user أو no session)
+      const is401Error = error.message?.includes("401") || 
+          error.message?.includes("Unauthorized") ||
+          error.name === "FunctionsHttpError" ||
+          (error.context?.status && error.context.status === 401);
+      
+      if (is401Error) {
+        // للخطأ 401، استخدم logger.debug بدلاً من error لأن fallback سيعمل
+        logger.debug("🔵 Edge Function requires authentication - using fallback (expected for guests)", {
+          message: error.message,
+          context: error.context?.status,
+        });
+        // Continue to fallback - don't block the request
+      } else {
+        // للأخطاء الأخرى، سجل كـ error
+        logger.error("❌ Supabase Edge Function Error:", {
+          message: error.message,
+          name: error.name,
+          context: error.context,
+          bodyType: typeof error.context?.body,
+          bodyValue: error.context?.body,
+          details: JSON.stringify(error, null, 2)
+        });
+      }
       
       // إذا كان الخطأ متعلق بـ ANTHROPIC_API_KEY
+      // Check if body is a string before calling includes
+      const bodyString = typeof error.context?.body === 'string' 
+        ? error.context.body 
+        : (error.context?.body ? String(error.context.body) : '');
+      
       if (error.message?.includes("ANTHROPIC_API_KEY") || 
-          error.context?.body?.includes("ANTHROPIC_API_KEY")) {
+          bodyString.includes("ANTHROPIC_API_KEY")) {
         return {
           summary: text,
           aiResponse: "⚠️ خدمة الذكاء الاصطناعي غير مهيئة في السيرفر. يرجى التواصل مع الدعم الفني لإضافة ANTHROPIC_API_KEY في Supabase Edge Functions.",
@@ -132,14 +155,31 @@ export async function generateDraftWithCta(
         } as any;
       }
       
-      logger.warn("⚠️ Supabase function error, falling back to direct API:", error);
+      // للخطأ 401، لا تطبع warning إضافي - تم طباعته أعلاه
+      if (!is401Error) {
+        logger.warn("⚠️ Supabase function error, falling back to direct API:", error);
+      }
     }
   } catch (err: any) {
-    logger.error("❌ Failed to invoke Supabase function:", {
-      message: err?.message,
-      stack: err?.stack
-    });
-    logger.warn("⚠️ Falling back to direct API...");
+    // Check if it's an authentication error
+    const is401Error = err?.message?.includes("401") || 
+        err?.message?.includes("Unauthorized") ||
+        err?.name === "FunctionsHttpError" ||
+        (err?.context?.status && err.context.status === 401);
+    
+    if (is401Error) {
+      // للخطأ 401، استخدم logger.debug بدلاً من error لأن fallback سيعمل
+      logger.debug("🔵 Edge Function requires authentication - using fallback (expected for guests)");
+    } else {
+      // للأخطاء الأخرى، سجل كـ error
+      logger.error("❌ Failed to invoke Supabase function:", {
+        message: err?.message,
+        name: err?.name,
+        stack: err?.stack?.substring(0, 500), // First 500 chars
+        context: err?.context,
+      });
+      logger.warn("⚠️ Falling back to direct API...");
+    }
   }
 
   // 2. Fallback to direct client-side call (if VITE_ANTHROPIC_API_KEY exists)
@@ -379,7 +419,7 @@ ${audioBlob ? `
     if (err?.message?.includes("API key") || err?.message?.includes("invalid") || err?.status === 401) {
       return {
         summary: text,
-        aiResponse: "⚠️ مفتاح Anthropic API غير صحيح أو غير موجود. يرجى إضافة VITE_ANTHROPIC_API_KEY في ملف .env",
+        aiResponse: "عذراً، المساعد الذكي غير متاح حالياً. يرجى المحاولة مرة أخرى لاحقاً أو التواصل مع الدعم الفني",
         isClarification: true,
       } as any;
     }
@@ -446,7 +486,7 @@ export async function checkAIConnection(): Promise<{connected: boolean; error?: 
   
   if (!apiKey) {
     logger.warn("⚠️ VITE_ANTHROPIC_API_KEY غير موجود في ملف .env");
-    const result = { connected: false, error: "VITE_ANTHROPIC_API_KEY غير موجود في ملف .env" };
+    const result = { connected: false, error: "المساعد الذكي غير متاح حالياً" };
     aiConnectionCache = { ...result, timestamp: Date.now() };
     localStorage.setItem('abeely_ai_connection_cache', JSON.stringify(aiConnectionCache));
     return result;

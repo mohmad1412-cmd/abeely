@@ -8,6 +8,7 @@ import React, {
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { AlertCircle, Check, X } from "lucide-react";
 import { UnifiedHeader } from "./components/ui/UnifiedHeader.tsx";
+import { logger } from "./utils/logger.ts";
 
 // Components
 import { Marketplace } from "./components/Marketplace.tsx";
@@ -62,7 +63,12 @@ import {
   getTotalUnreadMessagesCount,
   getUnreadMessagesForMyOffers,
   getUnreadMessagesForMyRequests,
+  getUnreadMessagesPerOffer,
+  getUnreadMessagesPerRequest,
+  markMessagesAsRead,
+  subscribeToConversations,
   subscribeToUnreadCount,
+  subscribeToUnreadMessagesForRequestsAndOffers,
 } from "./services/messagesService.ts";
 
 // Services
@@ -75,6 +81,7 @@ import {
   fetchArchivedRequests,
   fetchMyOffers,
   fetchMyRequests,
+  fetchOffersForRequest,
   fetchOffersForUserRequests,
   fetchRequestById,
   fetchRequestsPaginated,
@@ -90,6 +97,7 @@ import {
 import {
   getUnreadInterestsCount,
   getViewedRequestIds,
+  subscribeToUnreadInterestsCount,
   subscribeToViewedRequests,
 } from "./services/requestViewsService.ts";
 import {
@@ -120,6 +128,14 @@ import {
   refreshPushToken,
   removePushToken,
 } from "./services/pushNotificationService.ts";
+import {
+  RealtimeOffer,
+  RealtimeRequest,
+  subscribeToInterestingRequests,
+  subscribeToMyOfferStatusChanges,
+  subscribeToOffersForMyRequests,
+  subscribeToRequestStatusChanges,
+} from "./services/realtimeService.ts";
 
 // Auth Views
 type AppView = "splash" | "auth" | "onboarding" | "main" | "connection-error";
@@ -133,6 +149,7 @@ const App: React.FC = () => {
   // مهم: داخل useEffect([]) (مثل onAuthStateChange) قد تكون قيمة user قديمة (stale closure)
   // لذا نحتفظ بآخر user في ref لاستخدامه وقت الأحداث.
   const userRef = useRef<UserProfile | null>(null);
+  const didInitAuth = useRef(false);
   const [isGuest, setIsGuest] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -233,6 +250,15 @@ const App: React.FC = () => {
   const [unreadMessagesForMyRequests, setUnreadMessagesForMyRequests] =
     useState(0);
   const [unreadMessagesForMyOffers, setUnreadMessagesForMyOffers] = useState(0);
+  const [unreadMessagesPerOffer, setUnreadMessagesPerOffer] = useState<
+    Map<string, number>
+  >(new Map());
+  const [unreadMessagesPerRequest, setUnreadMessagesPerRequest] = useState<
+    Map<string, number>
+  >(new Map());
+  const [requestsWithNewOffers, setRequestsWithNewOffers] = useState<Set<string>>(
+    new Set(),
+  );
   const [connectionStatus, setConnectionStatus] = useState<
     {
       supabase: { connected: boolean; error?: string };
@@ -260,6 +286,12 @@ const App: React.FC = () => {
   const [scrollToOfferSection, setScrollToOfferSection] = useState(false);
   const [navigatedFromSidebar, setNavigatedFromSidebar] = useState(false); // لتتبع مصدر التنقل
   const [highlightOfferId, setHighlightOfferId] = useState<string | null>(null); // لتمييز العرض عند النقر على إشعار
+  const [initialActiveOfferId, setInitialActiveOfferId] = useState<
+    string | null
+  >(null); // فتح popup المحادثة مباشرة للعرض المحدد
+  const [viewingProfileUserId, setViewingProfileUserId] = useState<
+    string | null
+  >(null); // معرف المستخدم المراد عرض ملفه الشخصي (null = الملف الشخصي الحالي)
 
   // Save state when switching modes to restore when coming back
   const [savedOffersModeState, setSavedOffersModeState] = useState<
@@ -354,10 +386,16 @@ const App: React.FC = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   // Separate scroll positions for each mode
   // Load from localStorage on mount
-  const [marketplaceScrollPos, setMarketplaceScrollPos] = useState(() => {
-    const saved = localStorage.getItem("abeely_marketplace_scroll");
+  // Separate scroll positions for Marketplace "All" and "Interests" modes
+  const [marketplaceAllScrollPos, setMarketplaceAllScrollPos] = useState(() => {
+    const saved = localStorage.getItem("abeely_marketplace_all_scroll");
     return saved ? parseInt(saved, 10) : 0;
   });
+  const [marketplaceInterestsScrollPos, setMarketplaceInterestsScrollPos] =
+    useState(() => {
+      const saved = localStorage.getItem("abeely_marketplace_interests_scroll");
+      return saved ? parseInt(saved, 10) : 0;
+    });
   const [requestsModeScrollPos, setRequestsModeScrollPos] = useState(() => {
     const saved = localStorage.getItem("abeely_requests_scroll");
     return saved ? parseInt(saved, 10) : 0;
@@ -368,13 +406,67 @@ const App: React.FC = () => {
   });
   const notifRef = useRef<HTMLDivElement>(null);
 
+  // --- Optimization: Memoized Filtered Data ---
+  const myRequestIds = useMemo(() => new Set(myRequests.map((r) => r.id)), [
+    myRequests,
+  ]);
+
+  const myOfferRequestIds = useMemo(() => {
+    return new Set(
+      myOffers
+        .filter((offer) => offer.status !== "rejected")
+        .map((offer) => offer.requestId),
+    );
+  }, [myOffers]);
+
+  const filteredAllRequests = useMemo(() => {
+    return allRequests.filter((req) => {
+      if (req.isPublic === false) return false;
+      if (user?.id) {
+        if (myRequestIds.has(req.id)) return false;
+        if (req.author && req.author === user.id) return false;
+        if (myOfferRequestIds.has(req.id)) return false;
+      }
+      return true;
+    });
+  }, [allRequests, user?.id, myRequestIds, myOfferRequestIds]);
+
+  const enrichedRequest = useMemo(() => {
+    if (!selectedRequest) return null;
+    return {
+      ...selectedRequest,
+      offers: (receivedOffersMap.get(selectedRequest.id) ||
+        selectedRequest.offers || []),
+    };
+  }, [selectedRequest, receivedOffersMap]);
+
+  // --- Optimization: Stable Keys for Subscriptions ---
+  // Create stable string keys for IDs to prevent unnecessary re-subscriptions
+  // when other properties of requests/offers change (like status)
+  const myRequestIdsKey = useMemo(() => {
+    return myRequests.map((r) => r.id).sort().join(",");
+  }, [myRequests]);
+
+  const myOfferIdsKey = useMemo(() => {
+    return myOffers.map((o) => o.id).sort().join(",");
+  }, [myOffers]);
+  // --------------------------------------------------
+  // --------------------------------------------
+
   // Save to localStorage whenever scroll positions change
   useEffect(() => {
     localStorage.setItem(
-      "abeely_marketplace_scroll",
-      marketplaceScrollPos.toString(),
+      "abeely_marketplace_all_scroll",
+      marketplaceAllScrollPos.toString(),
     );
-  }, [marketplaceScrollPos]);
+  }, [marketplaceAllScrollPos]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "abeely_marketplace_interests_scroll",
+      marketplaceInterestsScrollPos.toString(),
+    );
+  }, [marketplaceInterestsScrollPos]);
 
   useEffect(() => {
     localStorage.setItem(
@@ -719,6 +811,12 @@ const App: React.FC = () => {
     // نحن فقط نستمع لتغييرات الـ session
 
     const initializeAuth = async () => {
+      console.log("🚀 [App] initializeAuth called");
+      if (didInitAuth.current) {
+        console.warn("⚠️ [App] initializeAuth already ran, skipping");
+        return;
+      }
+      didInitAuth.current = true;
       try {
         // تحقق أولاً إذا كان هذا OAuth callback مع PKCE code
         const urlParams = new URLSearchParams(window.location.search);
@@ -733,11 +831,7 @@ const App: React.FC = () => {
           sessionStorage.getItem(codeProcessedKey) === code;
 
         if ((code || hasAccessToken) && !alreadyProcessed) {
-          console.log(
-            "🔐 OAuth callback detected:",
-            code ? "PKCE code" : "access_token",
-            isInPopup ? "(in popup)" : "",
-          );
+          // OAuth callback detected (logging disabled for production)
           setIsProcessingOAuth(true);
 
           // حفظ الـ code لمنع إعادة المعالجة
@@ -754,7 +848,7 @@ const App: React.FC = () => {
 
           // إذا كان هناك code (PKCE flow)، استبدله بـ session
           if (code) {
-            console.log("🔄 Exchanging PKCE code for session...");
+            // Exchanging PKCE code for session...
             const { data: exchangeData, error: exchangeError } = await supabase
               .auth.exchangeCodeForSession(code);
 
@@ -765,19 +859,16 @@ const App: React.FC = () => {
 
               // إذا كنا في popup، أغلقه
               if (isInPopup) {
-                console.log("❌ Closing popup due to error...");
+                // Closing popup due to error...
                 setTimeout(() => window.close(), 1000);
               }
               // سيتم التعامل مع الـ auth عبر onAuthStateChange
             } else if (exchangeData?.session?.user && isMounted) {
-              console.log(
-                "✅ PKCE session obtained:",
-                exchangeData.session.user.email,
-              );
+              // PKCE session obtained successfully
 
               // إذا كنا في popup، أغلقه - النافذة الأصلية ستستلم الـ auth state change
               if (isInPopup) {
-                console.log("✅ Closing popup after successful auth...");
+                // Closing popup after successful auth...
                 sessionStorage.removeItem(codeProcessedKey);
                 setTimeout(() => window.close(), 500);
                 return;
@@ -794,7 +885,7 @@ const App: React.FC = () => {
               // تحميل الـ profile في الخلفية
               getCurrentUser().then((profile) => {
                 if (profile && isMounted) {
-                  console.log("👤 Profile loaded:", profile.display_name);
+                  // console.log("👤 Profile loaded:", profile.display_name);
                   setUser(profile);
                 }
               }).catch((err) => console.error("Profile error:", err));
@@ -852,20 +943,21 @@ const App: React.FC = () => {
         // إذا لم نجد session فوراً، ننتظر قليلاً للسماح لـ Supabase بمعالجة الـ session
         // هذا مهم عند إعادة التحميل عندما يكون هناك token محفوظ
         if (!session?.user) {
-          console.log("⏳ No session found immediately, waiting for Supabase to process...");
+          // No session found immediately, waiting for Supabase to process...
           // ننتظر 500ms للسماح لـ Supabase بمعالجة الـ session
           await new Promise((resolve) => setTimeout(resolve, 500));
-          
+
           // التحقق مرة أخرى من session
-          const { data: { session: retrySession }, error: retryError } = await supabase.auth.getSession();
+          const { data: { session: retrySession }, error: retryError } =
+            await supabase.auth.getSession();
           if (!retryError && retrySession?.user) {
             session = retrySession;
-            console.log("✅ Session found after retry!");
+            // console.log("✅ Session found after retry!");
           }
         }
 
         if (session?.user && isMounted) {
-          console.log("✅ Session found, loading profile...");
+          // Session found, loading profile...
           const profile = await getCurrentUser();
           if (profile && isMounted) {
             setUser(profile);
@@ -915,44 +1007,55 @@ const App: React.FC = () => {
           // 🚀 FIX: نبقى على splash وننتظر onAuthStateChange
           // لا نعرض صفحة auth إلا بعد التأكد التام أنه لا يوجد session
           // هذا يمنع الوميض عند إعادة التحميل
-          console.log("⏳ No session found, waiting for onAuthStateChange event...");
+          // console.log(
+          //   "⏳ No session found, waiting for onAuthStateChange event...",
+          // );
           // نبقى على splash وننتظر حدث onAuthStateChange
           // سيتم تغيير appView في onAuthStateChange إذا لم يكن هناك session
           // نعطي فرصة أكبر (2 ثانية) للسماح لـ Supabase بمعالجة الـ session
           setTimeout(() => {
             if (isMounted && !userRef.current && appView === "splash") {
               // التحقق مرة أخيرة من session قبل عرض صفحة auth
-              supabase.auth.getSession().then(({ data: { session: finalSession } }) => {
-                if (isMounted && !finalSession?.user && appView === "splash") {
-                  // التحقق من guest mode قبل عرض auth
-                  const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
-                  if (isGuestSaved) {
-                    setIsGuest(true);
-                    setAppView("main");
-                    setAuthLoading(false);
-                  } else {
-                    const route = parseRoute();
-                    const isPublicRoute = route.type === "request" ||
-                      route.type === "marketplace" ||
-                      route.type === "home" ||
-                      route.type === "create";
-                    
-                    if (isPublicRoute) {
+              supabase.auth.getSession().then(
+                ({ data: { session: finalSession } }) => {
+                  if (
+                    isMounted && !finalSession?.user && appView === "splash"
+                  ) {
+                    // التحقق من guest mode قبل عرض auth
+                    const isGuestSaved =
+                      localStorage.getItem("abeely_guest_mode") === "true";
+                    if (isGuestSaved) {
                       setIsGuest(true);
-                      localStorage.setItem("abeely_guest_mode", "true");
                       setAppView("main");
                       setAuthLoading(false);
                     } else {
-                      console.log("⚠️ No session after waiting, showing auth page");
-                      setAppView("auth");
-                      setAuthLoading(false);
+                      const route = parseRoute();
+                      const isPublicRoute = route.type === "request" ||
+                        route.type === "marketplace" ||
+                        route.type === "home" ||
+                        route.type === "create";
+
+                      if (isPublicRoute) {
+                        setIsGuest(true);
+                        localStorage.setItem("abeely_guest_mode", "true");
+                        setAppView("main");
+                        setAuthLoading(false);
+                      } else {
+                        // console.log(
+                        //   "⚠️ No session after waiting, showing auth page",
+                        // );
+                        setAppView("auth");
+                        setAuthLoading(false);
+                      }
                     }
+                  } else if (
+                    isMounted && finalSession?.user && appView === "splash"
+                  ) {
+                    // console.log("✅ Session found in final check!");
+                    // سيتم التعامل معها في onAuthStateChange
                   }
-                } else if (isMounted && finalSession?.user && appView === "splash") {
-                  console.log("✅ Session found in final check!");
-                  // سيتم التعامل معها في onAuthStateChange
-                }
-              });
+                },
+              );
             }
           }, 2000);
         }
@@ -987,11 +1090,43 @@ const App: React.FC = () => {
           );
         }
 
+        // معالجة حالة SIGNED_IN بدون session - محاولة جلب session يدوياً
+        if (
+          event === "SIGNED_IN" &&
+          !session?.user &&
+          isMounted
+        ) {
+          // SIGNED_IN event but no session - attempting to get session...
+          try {
+            const { data: { session: newSession }, error: sessionError } =
+              await supabase.auth.getSession();
+            if (newSession?.user && !sessionError) {
+              // Successfully retrieved session
+              // استخدام session الجديدة
+              session = newSession;
+            } else {
+              console.warn(
+                "⚠️ Failed to get session:",
+                sessionError?.message || "Unknown error",
+              );
+              // الانتقال إلى guest mode إذا لم يتم جلب session
+              setIsGuest(true);
+              setAuthLoading(false);
+              return;
+            }
+          } catch (err) {
+            console.error("❌ Error getting session:", err);
+            setIsGuest(true);
+            setAuthLoading(false);
+            return;
+          }
+        }
+
         if (
           (event === "SIGNED_IN" || event === "INITIAL_SESSION") &&
           session?.user && isMounted
         ) {
-          console.log("✅ User signed in:", session.user.email);
+          // User signed in
 
           // تنظيف sessionStorage
           sessionStorage.removeItem("oauth_code_processed");
@@ -1014,30 +1149,28 @@ const App: React.FC = () => {
 
           // تحميل الـ profile والتحقق من الـ onboarding
           getCurrentUser().then(async (profile) => {
-            console.log("🔍 Profile loaded:", profile);
+            // Profile loaded
             if (profile && isMounted) {
               setUser(profile);
 
               // التحقق إذا كان المستخدم جديداً ويحتاج الـ onboarding
-              console.log("🔍 Checking if user needs onboarding...");
+              // Checking onboarding status...
               const needsOnboard = await checkOnboardingStatus(
                 profile.id,
                 profile,
               );
-              console.log("🔍 Onboarding check result:", needsOnboard);
+              // Onboarding result check...
               if (needsOnboard && isMounted) {
-                console.log("✅ New user detected, showing onboarding...");
+                // New user detected
                 setNeedsOnboarding(true);
                 setIsNewUser(true);
                 setAppView("onboarding");
               } else {
-                console.log(
-                  "⏭️ User does not need onboarding, going to main...",
-                );
+                // User does not need onboarding
                 setAppView("main");
               }
             } else {
-              console.log("⚠️ No profile found, going to main...");
+              // No profile found
               setAppView("main");
             }
           }).catch((err) => {
@@ -1047,14 +1180,14 @@ const App: React.FC = () => {
           return; // منع setAppView("main") أدناه
         } else if (event === "TOKEN_REFRESHED" && session?.user && isMounted) {
           // تحديث الـ profile فقط - لا تسجيل خروج!
-          console.log("🔄 Token refreshed, updating profile...");
+          // Token refreshed, updating profile...
           const profile = await getCurrentUser();
           if (profile && isMounted) {
             setUser(profile);
           }
         } else if (event === "SIGNED_OUT" && isMounted) {
           // التحقق إذا كان تسجيل خروج صريح من المستخدم
-          console.log("👋 Auth event: SIGNED_OUT");
+          // Auth event: SIGNED_OUT
 
           // فقط نطبق SIGNED_OUT إذا كان هناك explicit_signout
           // هذا يمنع تسجيل الخروج بسبب أخطاء مؤقتة في Supabase (مثل refresh token)
@@ -1062,16 +1195,12 @@ const App: React.FC = () => {
 
           if (!isExplicitSignOut) {
             // ليس تسجيل خروج صريح - تحقق من وجود session فعلي
-            console.log(
-              "🔄 SIGNED_OUT event but no explicit signout, checking session...",
-            );
+            // SIGNED_OUT event but no explicit signout, checking session...
             try {
               const { data: { session: currentSession } } = await supabase.auth
                 .getSession();
               if (currentSession?.user) {
-                console.log(
-                  "✅ Session still exists, ignoring SIGNED_OUT event",
-                );
+                // Session still exists, ignoring SIGNED_OUT event
                 // الجلسة ما زالت موجودة - تجاهل الحدث
                 return;
               }
@@ -1111,7 +1240,7 @@ const App: React.FC = () => {
           }
 
           // تسجيل خروج فعلي (فقط إذا كان explicit أو لا يوجد session)
-          console.log("✅ Applying sign out");
+          // Applying sign out
           sessionStorage.removeItem("explicit_signout");
           setUser(null);
           setIsGuest(false);
@@ -1126,17 +1255,18 @@ const App: React.FC = () => {
           // 🚀 FIX: معالجة INITIAL_SESSION بدون session
           // هذا مهم عند إعادة التحميل عندما لا يوجد session
           // نتحقق مرة أخرى للتأكد التام قبل عرض صفحة auth
-          console.log("⏳ INITIAL_SESSION without session, verifying...");
-          
+          // INITIAL_SESSION without session, verifying...
+
           // انتظر قليلاً للسماح لـ Supabase بمعالجة أي session محفوظة
           await new Promise((resolve) => setTimeout(resolve, 300));
-          
+
           // التحقق النهائي من session
-          const { data: { session: finalSession } } = await supabase.auth.getSession();
-          
+          const { data: { session: finalSession } } = await supabase.auth
+            .getSession();
+
           if (finalSession?.user && isMounted) {
             // Session موجود! تحميل profile
-            console.log("✅ Session found in INITIAL_SESSION handler!");
+            // Session found in INITIAL_SESSION handler!
             const profile = await getCurrentUser();
             if (profile && isMounted) {
               setUser(profile);
@@ -1147,7 +1277,8 @@ const App: React.FC = () => {
             }
           } else if (isMounted) {
             // لا يوجد session فعلاً - تحقق من guest mode أو route
-            const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
+            const isGuestSaved =
+              localStorage.getItem("abeely_guest_mode") === "true";
             if (isGuestSaved) {
               setIsGuest(true);
               setAppView("main");
@@ -1158,7 +1289,7 @@ const App: React.FC = () => {
                 route.type === "marketplace" ||
                 route.type === "home" ||
                 route.type === "create";
-              
+
               if (isPublicRoute) {
                 setIsGuest(true);
                 localStorage.setItem("abeely_guest_mode", "true");
@@ -1166,7 +1297,7 @@ const App: React.FC = () => {
                 setAuthLoading(false);
               } else {
                 // لا يوجد session ولا guest mode - عرض صفحة auth
-                console.log("⚠️ No session confirmed, showing auth page");
+                // No session confirmed, showing auth page
                 setAppView("auth");
                 setAuthLoading(false);
               }
@@ -1203,9 +1334,7 @@ const App: React.FC = () => {
   const handleSplashComplete = useCallback(() => {
     // إذا كنا نعالج OAuth callback، لا تنتقل لـ auth
     if (authLoading || isProcessingOAuth) {
-      console.log(
-        "⏳ Splash complete but still loading auth or processing OAuth...",
-      );
+      // Splash complete but still loading auth or processing OAuth...
       return false;
     }
 
@@ -1287,7 +1416,7 @@ const App: React.FC = () => {
   // انتقل لـ main فوراً عندما يتم تعيين user أثناء OAuth
   useEffect(() => {
     if (appView === "splash" && user && !authLoading) {
-      console.log("✅ User detected during splash, transitioning to main...");
+      // User detected during splash, transitioning to main...
       setAppView("main");
       // تنظيف URL
       if (window.location.search.includes("code=")) {
@@ -1313,10 +1442,9 @@ const App: React.FC = () => {
     const timeout = hasOAuthCode ? 10000 : 5000;
 
     const failsafeTimer = setTimeout(async () => {
+      // Splash failsafe triggered
       console.warn(
-        "⚠️ Splash failsafe triggered - forcing exit after",
-        timeout,
-        "ms",
+        "⚠️ Splash failsafe triggered - forcing exit",
       );
       if (appView === "splash") {
         setAuthLoading(false);
@@ -1328,9 +1456,10 @@ const App: React.FC = () => {
           setAppView("main");
         } else {
           // 🚀 FIX: التحقق النهائي من session قبل عرض صفحة auth
-          const { data: { session: finalSession } } = await supabase.auth.getSession();
+          const { data: { session: finalSession } } = await supabase.auth
+            .getSession();
           if (finalSession?.user) {
-            console.log("✅ Session found in failsafe!");
+            // Session found in failsafe!
             const profile = await getCurrentUser();
             if (profile) {
               setUser(profile);
@@ -1340,7 +1469,7 @@ const App: React.FC = () => {
               return;
             }
           }
-          
+
           // لا يوجد session - نظف URL أولاً
           if (window.location.search.includes("code=")) {
             window.history.replaceState(
@@ -1349,9 +1478,10 @@ const App: React.FC = () => {
               window.location.pathname || "/",
             );
           }
-          
+
           // التحقق من guest mode قبل عرض auth
-          const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
+          const isGuestSaved =
+            localStorage.getItem("abeely_guest_mode") === "true";
           if (isGuestSaved) {
             setIsGuest(true);
             setAppView("main");
@@ -1361,7 +1491,7 @@ const App: React.FC = () => {
               route.type === "marketplace" ||
               route.type === "home" ||
               route.type === "create";
-            
+
             if (isPublicRoute) {
               setIsGuest(true);
               localStorage.setItem("abeely_guest_mode", "true");
@@ -1438,17 +1568,22 @@ const App: React.FC = () => {
   const hasSetInitialHomePage = useRef(false);
 
   // State for default offer filter (used when opening my-offers page)
-  const [defaultOfferFilter, setDefaultOfferFilter] = useState<"all" | "accepted" | "pending" | "completed" | undefined>(undefined);
+  const [defaultOfferFilter, setDefaultOfferFilter] = useState<
+    "all" | "accepted" | "pending" | "completed" | undefined
+  >(undefined);
 
   // Apply home page preference when entering main view
   useEffect(() => {
-    if (appView === "main" && !hasSetInitialHomePage.current && (userPreferences as any).homePage) {
+    if (
+      appView === "main" && !hasSetInitialHomePage.current &&
+      (userPreferences as any).homePage
+    ) {
       const homePage = (userPreferences as any).homePage as string;
-      
+
       // Only apply if current view is still the default (marketplace)
       if (view === "marketplace") {
         hasSetInitialHomePage.current = true;
-        
+
         // Parse home page config and apply settings
         if (homePage.startsWith("marketplace:")) {
           const [, viewMode] = homePage.split(":");
@@ -1466,8 +1601,13 @@ const App: React.FC = () => {
           setMode("requests");
           setActiveBottomTab("requests");
           // Set filter for my requests
-          if (filter === "all" || filter === "active" || filter === "approved" || filter === "completed") {
-            setMyRequestsFilter(filter as "all" | "active" | "approved" | "completed");
+          if (
+            filter === "all" || filter === "active" || filter === "approved" ||
+            filter === "completed"
+          ) {
+            setMyRequestsFilter(
+              filter as "all" | "active" | "approved" | "completed",
+            );
           }
         } else if (homePage.startsWith("my-offers:")) {
           const [, filter] = homePage.split(":");
@@ -1475,8 +1615,13 @@ const App: React.FC = () => {
           setMode("offers");
           setActiveBottomTab("offers");
           // Set default filter for offers
-          if (filter === "all" || filter === "accepted" || filter === "pending" || filter === "completed") {
-            setDefaultOfferFilter(filter as "all" | "accepted" | "pending" | "completed");
+          if (
+            filter === "all" || filter === "accepted" || filter === "pending" ||
+            filter === "completed"
+          ) {
+            setDefaultOfferFilter(
+              filter as "all" | "accepted" | "pending" | "completed",
+            );
             // Reset filter after component applies it (one-time use)
             setTimeout(() => setDefaultOfferFilter(undefined), 500);
           } else {
@@ -1508,46 +1653,86 @@ const App: React.FC = () => {
       return;
     }
 
+    let isMounted = true;
+
     // Load preferences from backend to populate interests filters
     const loadPreferences = async () => {
       try {
         const prefs = await getPreferencesDirect(user.id);
-        if (prefs) {
-          setUserPreferences(prefs);
+        if (prefs && isMounted) {
+          // تحويل "جميع المدن (شامل عن بعد)" إلى "كل المدن" لتوحيد الاسم
+          // (getPreferencesDirect يفعل ذلك بالفعل، لكن للتأكد نفعله هنا أيضاً)
+          const normalizedCities = prefs.interestedCities.map((city: string) =>
+            city === "جميع المدن (شامل عن بعد)" ? "كل المدن" : city
+          );
+          setUserPreferences({
+            ...prefs,
+            interestedCities: normalizedCities,
+          });
         }
       } catch (error) {
         console.error("Error loading user preferences:", error);
       }
     };
 
-    loadPreferences();
+    if (isMounted) {
+      loadPreferences();
+    }
 
     const loadUserData = async () => {
       try {
         // ترقية الطلبات القديمة من "مسودة" إلى "نشط" (مرة واحدة لكل مستخدم)
         await migrateUserDraftRequests(user.id);
 
+        if (!isMounted) return;
+
         setIsLoadingMyOffers(true);
         await Promise.all([
-          fetchMyRequests(user.id).then((reqs) =>
-            setMyRequests(reqs.filter((r) => r.status !== "archived"))
-          ),
-          fetchMyOffers(user.id).then((offers) => {
-            // جلب جميع العروض بما فيها المكتملة والمنتهية (لا نستثني أي شيء)
-            setMyOffers(offers);
-            setIsLoadingMyOffers(false);
+          fetchMyRequests(user.id).then((reqs) => {
+            console.log("📦 [App] Fetched Requests:", reqs.length);
+            const ids = reqs.map((r) => r.id);
+            const duplicates = ids.filter((item, index) =>
+              ids.indexOf(item) !== index
+            );
+            if (duplicates.length > 0) {
+              console.error("❌ [App] DUPLICATE REQUESTS FOUND:", duplicates);
+            }
+
+            if (isMounted) {
+              setMyRequests(reqs.filter((r) => r.status !== "archived"));
+            }
           }),
-          fetchOffersForUserRequests(user.id).then(setReceivedOffersMap),
-          fetchArchivedRequests(user.id).then(setArchivedRequests),
+          fetchMyOffers(user.id).then((offers) => {
+            if (isMounted) {
+              // جلب جميع العروض بما فيها المكتملة والمنتهية (لا نستثني أي شيء)
+              setMyOffers(offers);
+              setIsLoadingMyOffers(false);
+            }
+          }),
+          fetchOffersForUserRequests(user.id).then((data) => {
+            if (isMounted) setReceivedOffersMap(data);
+          }),
+          fetchArchivedRequests(user.id).then((data) => {
+            if (isMounted) setArchivedRequests(data);
+          }),
         ]);
       } catch (error) {
         console.error("Error loading user data:", error);
-        setIsLoadingMyOffers(false);
+        if (isMounted) setIsLoadingMyOffers(false);
       }
     };
 
-    loadUserData();
-  }, [user?.id, appView]);
+    if (isMounted) {
+      loadUserData();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+    // ملاحظة: أزلنا appView من dependencies لأن بيانات المستخدم
+    // لا تحتاج إعادة تحميل عند كل انتقال بين الصفحات (تحسين الأداء)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // ==========================================
   // Load Viewed Requests from Backend
@@ -1573,7 +1758,7 @@ const App: React.FC = () => {
     };
     loadViewedRequests();
 
-    // Subscribe to real-time updates
+    // Subscribe to real-time updates for viewedRequestIds
     const unsubscribe = subscribeToViewedRequests(user.id, (ids) => {
       setViewedRequestIds(ids);
       // لا نغير isLoadingViewedRequests هنا لأن الـ subscription قد يحدث بعد التحميل الأولي
@@ -1582,6 +1767,32 @@ const App: React.FC = () => {
     return () => {
       unsubscribe();
     };
+  }, [user?.id, isGuest]);
+
+  // ==========================================
+  // Subscribe to unread interests count changes via realtime
+  // ==========================================
+  useEffect(() => {
+    // استخدام appViewRef بدلاً من appView لتجنب إعادة إنشاء الـ subscription
+    // عند كل تغيير في appView (تحسين الأداء)
+    if (!user?.id || isGuest) {
+      return;
+    }
+
+    // Subscribe to real-time updates for unreadInterestsCount
+    // This ensures badges disappear immediately when a request is marked as read
+    const unsubscribe = subscribeToUnreadInterestsCount(user.id, (count) => {
+      // التحقق من أننا في main view قبل التحديث
+      if (appViewRef.current === "main") {
+        setUnreadInterestsCount(count);
+        // Realtime update received (logging disabled for production)
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, isGuest]);
 
   // ==========================================
@@ -1627,7 +1838,8 @@ const App: React.FC = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [user?.id, isGuest, appView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, isGuest]);
 
   // ==========================================
   // Reload Data When Opening Marketplace
@@ -1701,21 +1913,19 @@ const App: React.FC = () => {
 
     const checkAndReload = async () => {
       if (retryCount >= maxRetries) {
-        console.log("[Auto-Retry] Max retries reached, stopping auto-check");
+        // Max retries reached, stopping auto-check
         clearInterval(intervalId);
         return;
       }
 
       retryCount++;
-      console.log(
-        `[Auto-Retry] Checking connection (attempt ${retryCount})...`,
-      );
+      // Checking connection...
 
       try {
         const status = await checkSupabaseConnection();
 
         if (status.connected) {
-          console.log("[Auto-Retry] Connection restored! Reloading data...");
+          // Connection restored! Reloading data...
           loadingRef.current = true;
           setIsLoadingData(true);
           setRequestsLoadError(null);
@@ -1736,7 +1946,7 @@ const App: React.FC = () => {
               setMarketplaceHasMore(more);
               setMarketplaceLoadedOnce(true); // تم التحميل بنجاح (حتى لو 0 نتائج)
               clearInterval(intervalId);
-              console.log("[Auto-Retry] Data loaded successfully!");
+              // Data loaded successfully!
             }
           } catch (loadError) {
             console.error(
@@ -1748,10 +1958,10 @@ const App: React.FC = () => {
             loadingRef.current = false;
           }
         } else {
-          console.log(`[Auto-Retry] Still disconnected: ${status.error}`);
+          // Still disconnected
         }
       } catch (err) {
-        console.log("[Auto-Retry] Connection check failed:", err);
+        // console.log("[Auto-Retry] Connection check failed:", err);
       }
     };
 
@@ -1813,16 +2023,26 @@ const App: React.FC = () => {
       setHasUnreadMessages(count > 0);
     });
 
+    // Subscribe to conversation updates to trigger count recalculation instantly
+    const unsubscribeConversationUpdates = subscribeToConversations(
+      user.id,
+      () => {
+        // Trigger a recalculation when any conversation changes
+        window.dispatchEvent(new CustomEvent("refresh-unread-counts"));
+      },
+    );
+
     return () => {
       unsubscribe();
       unsubscribeMessages();
+      unsubscribeConversationUpdates();
       setUnreadMessagesCount(0);
       setHasUnreadMessages(false);
     };
   }, [appView, user?.id]);
 
   // ==========================================
-  // Calculate unread messages for My Requests and My Offers separately
+  // Calculate unread messages for My Requests and My Offers separately - تحديث فوري
   // ==========================================
   useEffect(() => {
     if (appView !== "main" || !user?.id) {
@@ -1831,37 +2051,316 @@ const App: React.FC = () => {
       return;
     }
 
-    const calculateUnreadMessages = async () => {
-      try {
-        // Get request IDs
-        const requestIds = myRequests.map((r) => r.id);
-        const requestsCount = requestIds.length > 0
-          ? await getUnreadMessagesForMyRequests(requestIds)
-          : 0;
+    const requestIds = myRequests.map((r) => r.id);
+    const offerIds = myOffers.map((o) => o.id);
+
+    // اشتراك فوري - أي تغيير في الرسائل يحدث تحديث فوري للـ badges
+    const unsubscribe = subscribeToUnreadMessagesForRequestsAndOffers(
+      user.id,
+      requestIds,
+      offerIds,
+      (
+        {
+          unreadForRequests,
+          unreadForOffers,
+          unreadPerRequest,
+          unreadPerOffer,
+        },
+      ) => {
+        // تحديث فوري - بدون تأخير
+        setUnreadMessagesForMyRequests(unreadForRequests);
+        setUnreadMessagesForMyOffers(unreadForOffers);
+        setUnreadMessagesPerRequest(unreadPerRequest);
+        setUnreadMessagesPerOffer(unreadPerOffer);
+      },
+    );
+
+    // Setup listeners for instant recalculation (backup)
+    const handleRefresh = () => {
+      // إعادة حساب فوري عند الطلب
+      Promise.all([
+        requestIds.length > 0
+          ? getUnreadMessagesForMyRequests(requestIds)
+          : Promise.resolve(0),
+        offerIds.length > 0
+          ? getUnreadMessagesForMyOffers(offerIds)
+          : Promise.resolve(0),
+        requestIds.length > 0
+          ? getUnreadMessagesPerRequest(requestIds)
+          : Promise.resolve(new Map()),
+        offerIds.length > 0
+          ? getUnreadMessagesPerOffer(offerIds)
+          : Promise.resolve(new Map()),
+      ]).then(([requestsCount, offersCount, perRequestMap, perOfferMap]) => {
         setUnreadMessagesForMyRequests(requestsCount);
-
-        // Get offer IDs
-        const offerIds = myOffers.map((o) => o.id);
-        const offersCount = offerIds.length > 0
-          ? await getUnreadMessagesForMyOffers(offerIds)
-          : 0;
         setUnreadMessagesForMyOffers(offersCount);
-      } catch (error) {
-        console.error("Error calculating unread messages:", error);
-      }
+        setUnreadMessagesPerRequest(perRequestMap);
+        setUnreadMessagesPerOffer(perOfferMap);
+      });
     };
-
-    calculateUnreadMessages();
-
-    // Recalculate when myRequests or myOffers change
-    const intervalId = setInterval(calculateUnreadMessages, 5000);
+    window.addEventListener("refresh-unread-counts", handleRefresh);
 
     return () => {
-      clearInterval(intervalId);
+      unsubscribe();
+      window.removeEventListener("refresh-unread-counts", handleRefresh);
       setUnreadMessagesForMyRequests(0);
       setUnreadMessagesForMyOffers(0);
+      setUnreadMessagesPerOffer(new Map());
+      setUnreadMessagesPerRequest(new Map());
     };
   }, [appView, user?.id, myRequests, myOffers]);
+
+  // ==========================================
+  // REALTIME: Subscribe to new offers on my requests
+  // ==========================================
+  useEffect(() => {
+    if (appView !== "main" || !user?.id) return;
+
+    if (!myRequestIdsKey) return;
+    const requestIds = myRequestIdsKey.split(",");
+
+    if (
+      requestIds.length === 0 ||
+      (requestIds.length === 1 && requestIds[0] === "")
+    ) return;
+
+    // Subscribe to new offers on my requests
+    const unsubscribeOffers = subscribeToOffersForMyRequests(
+      requestIds,
+      async (newOffer, requestId) => {
+        setReceivedOffersMap((prev) => {
+          const existingOffers = prev.get(requestId) || [];
+          if (existingOffers.some((o) => o.id === newOffer.id)) {
+            return prev;
+          }
+          const newMap = new Map(prev);
+          // Create offer with correct TypeScript field names
+          const formattedOffer: Offer = {
+            id: newOffer.id,
+            requestId: newOffer.request_id,
+            providerId: newOffer.provider_id,
+            providerName: newOffer.provider_name || "مزود خدمة",
+            title: newOffer.title || "عرض جديد",
+            description: "", // Will be fetched when viewing
+            price: newOffer.price || "",
+            deliveryTime: "", // Will be fetched when viewing
+            status: newOffer.status as Offer["status"],
+            createdAt: new Date(newOffer.created_at),
+            isNegotiable: true,
+          };
+          newMap.set(requestId, [...existingOffers, formattedOffer]);
+          return newMap;
+        });
+
+        // Play notification sound
+        notificationSound.notify();
+      },
+      // onOfferUpdate - تحديث حالة العرض
+      (updatedOffer, requestId) => {
+        setReceivedOffersMap((prev) => {
+          const existingOffers = prev.get(requestId) || [];
+          const updated = existingOffers.map((o) =>
+            o.id === updatedOffer.id
+              ? { ...o, status: updatedOffer.status as Offer["status"] }
+              : o
+          );
+
+          // Check if anything actually changed
+          const isSame = existingOffers.every((o, i) =>
+            o.status === updated[i].status
+          );
+          if (isSame) return prev;
+
+          const newMap = new Map(prev);
+          newMap.set(requestId, updated);
+          return newMap;
+        });
+      },
+      // onOfferDelete - حذف العرض
+      (offerId, requestId) => {
+        setReceivedOffersMap((prev) => {
+          const existingOffers = prev.get(requestId) || [];
+          const filtered = existingOffers.filter((o) => o.id !== offerId);
+
+          if (filtered.length === existingOffers.length) return prev;
+
+          const newMap = new Map(prev);
+          newMap.set(requestId, filtered);
+          return newMap;
+        });
+      },
+    );
+
+    return () => {
+      unsubscribeOffers();
+    };
+  }, [appView, user?.id, myRequestIdsKey]);
+
+  // ==========================================
+  // REALTIME: Subscribe to my offer status changes (for providers)
+  // ==========================================
+  useEffect(() => {
+    if (appView !== "main" || !user?.id) return;
+
+    if (!myOfferIdsKey) return;
+    const offerIds = myOfferIdsKey.split(",");
+
+    if (
+      offerIds.length === 0 || (offerIds.length === 1 && offerIds[0] === "")
+    ) return;
+
+    // Subscribe to status changes on my offers
+    const unsubscribeMyOfferStatus = subscribeToMyOfferStatusChanges(
+      offerIds,
+      (updatedOffer) => {
+        // Update myOffers with the new status
+        setMyOffers((prev) =>
+          prev.map((o) =>
+            o.id === updatedOffer.id
+              ? { ...o, status: updatedOffer.status as Offer["status"] }
+              : o
+          )
+        );
+
+        // Play notification sound for accepted offers
+        if (updatedOffer.status === "accepted") {
+          notificationSound.notify();
+        }
+      },
+    );
+
+    return () => {
+      unsubscribeMyOfferStatus();
+    };
+  }, [appView, user?.id, myOfferIdsKey]);
+
+  // ==========================================
+  // REALTIME: Subscribe to new requests matching interests
+  // ==========================================
+  useEffect(() => {
+    if (appView !== "main" || !user?.id) return;
+
+    // Subscribe to new requests (will filter by interests in the handler)
+    const unsubscribeInterests = subscribeToInterestingRequests(
+      user.id,
+      (newRequest) => {
+        // Check if request matches user interests
+        const userInterestIds = userInterests.map((i) => i.id);
+        const requestCategories = newRequest.categories || [];
+        const matchesInterest = requestCategories.some((cat) =>
+          userInterestIds.includes(cat)
+        );
+
+        const activeCities = userPreferences.interestedCities || [];
+        const matchesCity = !activeCities.length ||
+          (newRequest.location &&
+            activeCities.some((city: string) =>
+              newRequest.location?.toLowerCase().includes(city.toLowerCase())
+            ));
+
+        if (matchesInterest || matchesCity) {
+          // Add to interests requests list
+          setInterestsRequests((prev) => {
+            if (prev.some((r) => r.id === newRequest.id)) return prev;
+            return [
+              {
+                id: newRequest.id,
+                author_id: newRequest.author_id,
+                title: newRequest.title,
+                description: newRequest.description,
+                status: newRequest.status as Request["status"],
+                location: newRequest.location || "",
+                created_at: new Date(newRequest.created_at),
+              } as Request,
+              ...prev,
+            ];
+          });
+
+          // Update unread count
+          setUnreadInterestsCount((prev) => prev + 1);
+
+          // Mark as new request
+          setNewRequestIds((prev) => new Set(prev).add(newRequest.id));
+
+          // Play notification sound
+          notificationSound.notify();
+        }
+      },
+    );
+
+    return () => {
+      unsubscribeInterests();
+    };
+  }, [appView, user?.id, userInterests, userPreferences.interestedCities]);
+
+  // ==========================================
+  // REALTIME: Subscribe to request status changes (active → assigned → completed)
+  // ==========================================
+  useEffect(() => {
+    if (appView !== "main" || !user?.id) return;
+
+    if (!myRequestIdsKey) return;
+    const requestIds = myRequestIdsKey.split(",");
+
+    if (
+      requestIds.length === 0 ||
+      (requestIds.length === 1 && requestIds[0] === "")
+    ) return;
+
+    logger.log(
+      "Subscribing to request status changes for:",
+      requestIds.length,
+      "requests",
+    );
+
+    // Subscribe to status changes on my requests
+    const unsubscribeRequestStatus = subscribeToRequestStatusChanges(
+      requestIds,
+      (updatedRequest) => {
+        logger.log(
+          "🔔 Request status changed:",
+          updatedRequest.id,
+          updatedRequest.status,
+        );
+
+        // Update myRequests with the new status
+        setMyRequests((prev) =>
+          prev.map((r) =>
+            r.id === updatedRequest.id
+              ? {
+                ...r,
+                status: updatedRequest.status as Request["status"],
+                acceptedOfferId: updatedRequest.accepted_offer_id ||
+                  r.acceptedOfferId,
+              }
+              : r
+          )
+        );
+
+        // Also update in interestsRequests if it exists there
+        setInterestsRequests((prev) =>
+          prev.map((r) =>
+            r.id === updatedRequest.id
+              ? { ...r, status: updatedRequest.status as Request["status"] }
+              : r
+          )
+        );
+
+        // Play notification sound for important status changes
+        if (
+          updatedRequest.status === "assigned" ||
+          updatedRequest.status === "completed"
+        ) {
+          notificationSound.notify();
+        }
+      },
+    );
+
+    return () => {
+      logger.log("Unsubscribing from request status changes");
+      unsubscribeRequestStatus();
+    };
+  }, [appView, user?.id, myRequestIdsKey]);
 
   // ==========================================
   // Auto-mark notifications as read when viewing My Requests page with received offers
@@ -1907,7 +2406,7 @@ const App: React.FC = () => {
     }
     if (myRequests.length === 0) return;
 
-    const myRequestIds = new Set(myRequests.map((r) => r.id));
+    // Use top-level memoized myRequestIds
 
     // Mark all notifications related to my requests as read
     const markNotificationsAsRead = async () => {
@@ -1952,8 +2451,9 @@ const App: React.FC = () => {
     // جلب فوري
     fetchOffers();
 
-    // تحديث دوري كل 10 ثواني لضمان ظهور العروض الجديدة
-    const intervalId = setInterval(fetchOffers, 10000);
+    // تحديث دوري كل 60 ثانية لضمان ظهور العروض الجديدة (failsafe)
+    // Realtime subscriptions handle immediate updates
+    const intervalId = setInterval(fetchOffers, 60000);
 
     return () => clearInterval(intervalId);
   }, [appView, user?.id, view]);
@@ -2012,7 +2512,7 @@ const App: React.FC = () => {
 
         if (hasInterests) {
           // إنشاء Sets للتحقق السريع
-          const myRequestIdsForInterests = new Set(myRequests.map((r) => r.id));
+          // Use top-level memoized myRequestIds
           const myOfferRequestIdsForInterests = new Set(
             myOffers
               .filter((offer) => offer.status !== "rejected")
@@ -2028,7 +2528,7 @@ const App: React.FC = () => {
             // استبعاد طلبات المستخدم نفسه - استخدام Set للتحقق السريع
             if (user?.id) {
               // تحقق من myRequests
-              if (myRequestIdsForInterests.has(req.id)) {
+              if (myRequestIds.has(req.id)) {
                 return false;
               }
 
@@ -2181,7 +2681,7 @@ const App: React.FC = () => {
 
         // Smart notification based on current view
         if (userPreferences.notifyOnInterest) {
-          console.log("🎯 طلب جديد يطابق اهتماماتك:", newRequest.title);
+          // console.log("🎯 طلب جديد يطابق اهتماماتك:", newRequest.title);
 
           // Check if user is currently viewing interests page
           const isOnInterestsPage = view === "marketplace" &&
@@ -2280,7 +2780,12 @@ const App: React.FC = () => {
       if (mode === "requests") {
         setRequestsModeScrollPos(currentScroll);
       } else if (mode === "offers") {
-        setMarketplaceScrollPos(currentScroll);
+        // Save scroll for the currently active marketplace view mode
+        if (currentMarketplaceViewMode === "interests") {
+          setMarketplaceInterestsScrollPos(currentScroll);
+        } else {
+          setMarketplaceAllScrollPos(currentScroll);
+        }
       }
     }
 
@@ -2392,8 +2897,9 @@ const App: React.FC = () => {
 
   const handleNavigate = (newView: any) => {
     // Auto-switch mode if needed based on view to keep state consistent
-    if (newView === "marketplace" || newView === "request-detail") {
-      if (mode !== "offers") setMode("offers");
+    if (newView === "marketplace") {
+      // In marketplace, mode depends on which tab is active (requests tab = requests mode, etc)
+      // but usually defaults to current mode. We only force if needed.
     } else if (newView === "create-request") {
       if (mode !== "requests") setMode("requests");
     }
@@ -2460,15 +2966,23 @@ const App: React.FC = () => {
     // Marketplace component already saves scroll position via onScrollPositionChange
     // No need to manually save it here - marketplaceScrollPos is already up to date
     // حفظ الصفحة السابقة والتبويب السابق للرجوع إليها
-    // فقط إذا لم نكن بالفعل في request-detail
     if (view !== "request-detail") {
-      console.log("💾 Saving previousView:", view, "and tab:", activeBottomTab);
+      // Saving previousView/tab for navigation history
       setPreviousView(view);
       setPreviousBottomTab(activeBottomTab);
     } else {
-      console.log("⚠️ Already in request-detail, not saving previousView");
+      // Already in request-detail
     }
     setSelectedRequest(req);
+
+    // Set appropriate mode based on authorship
+    const isAuthor = user?.id && req.author === user.id;
+    if (isAuthor) {
+      if (mode !== "requests") setMode("requests");
+    } else {
+      if (mode !== "offers") setMode("offers");
+    }
+
     setScrollToOfferSection(scrollToOffer);
     setNavigatedFromSidebar(fromSidebar); // تتبع مصدر التنقل
     setView("request-detail");
@@ -2485,6 +2999,18 @@ const App: React.FC = () => {
 
     // أيضاً إزالة الطلب من قائمة الطلبات الجديدة (لإخفاء الانيميشن)
     setNewRequestIds((prev) => {
+      const next = new Set(prev);
+      next.delete(req.id);
+      return next;
+    });
+
+    // إزالة badge اهتماماتي فوراً إذا كان الطلب من اهتماماتي
+    if (interestsRequests.some((r) => r.id === req.id)) {
+      setUnreadInterestsCount((prev) => Math.max(0, prev - 1));
+    }
+
+    // إزالة badge العروض الجديدة فوراً إذا كان الطلب في قائمة العروض الجديدة
+    setRequestsWithNewOffers((prev) => {
       const next = new Set(prev);
       next.delete(req.id);
       return next;
@@ -2552,7 +3078,28 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRequestRead = async (requestId: string) => {
+  const handleRequestViewed = useCallback(async (requestId: string) => {
+    // Update unread interests count immediately after marking request as viewed
+    // This ensures badges disappear even when opening requests from outside interests page
+    if (user?.id && !isGuest) {
+      // Optimistically decrement count immediately for instant UI feedback
+      setUnreadInterestsCount((prev) => Math.max(0, prev - 1));
+      try {
+        // Small delay to ensure database update is complete
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const count = await getUnreadInterestsCount();
+        setUnreadInterestsCount(count);
+      } catch (error) {
+        console.error(
+          "Error reloading unread interests count after view:",
+          error,
+        );
+        // Keep optimistic update if database call fails
+      }
+    }
+  }, [user?.id, isGuest]);
+
+  const handleRequestRead = useCallback(async (requestId: string) => {
     // Reload unread count from database to ensure sync
     // The count is based on is_read in database, not local state
     if (user?.id && !isGuest) {
@@ -2565,7 +3112,7 @@ const App: React.FC = () => {
         setUnreadInterestsCount((prev) => Math.max(0, prev - 1));
       }
     }
-  };
+  }, [user?.id, isGuest]);
 
   const handleClearNotifications = async () => {
     await clearAllNotifications();
@@ -2642,10 +3189,22 @@ const App: React.FC = () => {
     try {
       const success = await archiveRequest(requestId, user.id);
       if (success) {
+        // إزالة الطلب من allRequests و interestsRequests مباشرة
+        setAllRequests((prev) => prev.filter((r) => r.id !== requestId));
+        setInterestsRequests((prev) => prev.filter((r) => r.id !== requestId));
+        // تحديث myRequests - إزالة الطلب المؤرشف
+        setMyRequests((prev) => prev.filter((r) => r.id !== requestId));
+        // تحديث selectedRequest إذا كان نفس الطلب
+        setSelectedRequest((prev) =>
+          prev && prev.id === requestId ? null : prev
+        );
+        // إعادة تحميل البيانات للتأكد من التزامن
         await reloadData();
       }
+      return success;
     } catch (error) {
       console.error("Error archiving request:", error);
+      return false;
     }
   };
 
@@ -2668,23 +3227,24 @@ const App: React.FC = () => {
       return false;
     }
 
-    console.log("🗑️ handleArchiveOffer called", { offerId, userId: user.id });
+    // console.log("🗑️ handleArchiveOffer called", { offerId, userId: user.id });
 
     try {
       const success = await archiveOffer(offerId, user.id);
-      console.log("📊 archiveOffer result:", success);
+      // console.log("📊 archiveOffer result:", success);
 
       if (success) {
         // Remove the offer from local state immediately for better UX
         setMyOffers((prev) => {
           const filtered = prev.filter((o) => o.id !== offerId);
-          console.log("📝 Updated myOffers:", {
+          /* console.log("📝 Updated myOffers:", {
             before: prev.length,
             after: filtered.length,
-          });
+          }); */
           return filtered;
         });
-        console.log("✅ Offer deleted successfully");
+        // Offer deleted successfully
+
         // Background sync without blocking - don't await
         reloadData().catch((err) =>
           console.error("Background sync error:", err)
@@ -2710,18 +3270,29 @@ const App: React.FC = () => {
     try {
       const success = await hideRequest(requestId, user.id);
       if (success) {
+        // تحديث myRequests
         setMyRequests((prev) =>
           prev.map((r) => r.id === requestId ? { ...r, isPublic: false } : r)
         );
         // إزالة الطلب المخفي من allRequests مباشرة
         setAllRequests((prev) => prev.filter((r) => r.id !== requestId));
+        // إزالة الطلب المخفي من interestsRequests أيضاً
+        setInterestsRequests((prev) => prev.filter((r) => r.id !== requestId));
         // تحديث selectedRequest أيضاً إذا كان نفس الطلب
         setSelectedRequest((prev) =>
           prev && prev.id === requestId ? { ...prev, isPublic: false } : prev
         );
+        // إعادة تحميل البيانات للتأكد من التزامن
+        setTimeout(() => {
+          reloadData().catch((err) =>
+            console.error("Background sync error after hide:", err)
+          );
+        }, 300);
       }
+      return success;
     } catch (error) {
       console.error("Error hiding request:", error);
+      return false;
     }
   };
 
@@ -2769,6 +3340,12 @@ const App: React.FC = () => {
         setSelectedRequest((prev) =>
           prev && prev.id === requestId ? { ...prev, isPublic: true } : prev
         );
+        // إعادة تحميل البيانات للتأكد من التزامن
+        setTimeout(() => {
+          reloadData().catch((err) =>
+            console.error("Background sync error after unhide:", err)
+          );
+        }, 300);
       }
     } catch (error) {
       console.error("Error unhiding request:", error);
@@ -2866,13 +3443,19 @@ const App: React.FC = () => {
         setAllRequests((prev) =>
           prev.map((r) => r.id === requestId ? { ...r, updatedAt: now } : r)
         );
+        // تحديث interestsRequests أيضاً
+        setInterestsRequests((prev) =>
+          prev.map((r) => r.id === requestId ? { ...r, updatedAt: now } : r)
+        );
         // تحديث selectedRequest أيضاً إذا كان نفس الطلب
         setSelectedRequest((prev) =>
           prev && prev.id === requestId ? { ...prev, updatedAt: now } : prev
         );
       }
+      return success;
     } catch (error) {
       console.error("Error bumping request:", error);
+      return false;
     }
   };
 
@@ -3000,15 +3583,14 @@ const App: React.FC = () => {
     userId: string,
     cachedProfile?: any,
   ): Promise<boolean> => {
-    console.log("🔍 checkOnboardingStatus called for user:", userId);
-    console.log("🔍 Cached profile:", cachedProfile);
+    // Checking onboarding status...
 
     // استخدم بيانات الـ user الحالية إن وجدت لتجنب ضرب Supabase بدون داعٍ
     let data: any = cachedProfile ?? null;
 
     // إذا لم يتم تمرير profile جاهز، اجلبه من Supabase
     if (!data) {
-      console.log("🔍 No cached profile, fetching from database...");
+      // console.log("🔍 No cached profile, fetching from database...");
       const { data: profileData, error } = await supabase
         .from("profiles")
         .select(
@@ -3040,14 +3622,14 @@ const App: React.FC = () => {
       }
 
       data = profileData;
-      console.log("🔍 Profile data from DB:", data);
+      // console.log("🔍 Profile data from DB:", data);
     } else {
-      console.log("🔍 Using cached profile data");
+      // console.log("🔍 Using cached profile data");
     }
 
     // إذا لم يكن هناك بيانات للمستخدم، يحتاج onboarding
     if (!data) {
-      console.log("✅ No profile data found, showing onboarding...");
+      // console.log("✅ No profile data found, showing onboarding...");
       return true;
     }
 
@@ -3058,7 +3640,7 @@ const App: React.FC = () => {
       data.interested_cities.length > 0;
     const alreadyOnboarded = data?.has_onboarded === true;
 
-    console.log("🔍 Onboarding check details:", {
+    /* console.log("🔍 Onboarding check details:", {
       hasName,
       hasInterests,
       hasCities,
@@ -3066,7 +3648,7 @@ const App: React.FC = () => {
       display_name: data?.display_name,
       interested_categories: data?.interested_categories,
       interested_cities: data?.interested_cities,
-    });
+    }); */
 
     // التحقق من localStorage أولاً - إذا كان المستخدم قد أكمل onboarding مسبقاً، لا نحتاج لإظهاره
     const userOnboardedKey = `abeely_onboarded_${userId}`;
@@ -3083,7 +3665,7 @@ const App: React.FC = () => {
     // حتى لو لم يكن لديه اهتمامات أو مدن - يمكنه إضافتها لاحقاً من الإعدادات
     if (alreadyOnboarded) {
       localStorage.setItem(userOnboardedKey, "true");
-      console.log("⏭️ User already onboarded (DB flag), skipping onboarding");
+      // console.log("⏭️ User already onboarded (DB flag), skipping onboarding");
       return false;
     }
 
@@ -3375,7 +3957,7 @@ const App: React.FC = () => {
           </SwipeBackWrapper>
         );
       case "marketplace":
-        console.log("🏪 Rendering marketplace case:", {
+        /* console.log("🏪 Rendering marketplace case:", {
           view,
           activeBottomTab,
           allRequestsCount: allRequests.length,
@@ -3383,70 +3965,10 @@ const App: React.FC = () => {
           willShowMarketplace: activeBottomTab === "marketplace",
           willShowMyRequests: activeBottomTab === "my-requests",
           willShowMyOffers: activeBottomTab === "my-offers",
-        });
+        }); */
 
         // All three pages are always mounted - CSS controls visibility for smooth transitions
-        // فلترة قوية: استبعاد طلبات المستخدم والطلبات التي قدم عليها عروض
-        // إنشاء Sets للتحقق السريع
-        const myRequestIds = new Set(myRequests.map((r) => r.id));
-        const myOfferRequestIds = new Set(
-          myOffers
-            .filter((offer) => offer.status !== "rejected")
-            .map((offer) => offer.requestId),
-        );
-
-        // Debug: التحقق من القيم
-        if (user?.id && (myRequestIds.size > 0 || myOfferRequestIds.size > 0)) {
-          console.log("🔍 Filtering marketplace requests:", {
-            userId: user.id,
-            myRequestsCount: myRequests.length,
-            myRequestIds: Array.from(myRequestIds),
-            myOffersCount: myOffers.length,
-            myOfferRequestIds: Array.from(myOfferRequestIds),
-            allRequestsCount: allRequests.length,
-          });
-        }
-
-        // فلترة صارمة: استبعاد طلبات المستخدم والطلبات التي قدم عليها عروض
-        const filteredAllRequests = allRequests.filter((req) => {
-          // 1. استبعاد الطلبات المخفية
-          if (req.isPublic === false) {
-            return false;
-          }
-
-          // 2. استبعاد طلبات المستخدم نفسه - تحقق من ID و author
-          if (user?.id) {
-            // تحقق من myRequests أولاً (الأسرع والأدق)
-            if (myRequestIds.has(req.id)) {
-              console.log("🚫 Filtered out my request:", req.id, req.title);
-              return false;
-            }
-
-            // تحقق من author مباشرة (fallback للتأكد 100%)
-            if (req.author && req.author === user.id) {
-              console.log(
-                "🚫 Filtered out my request by author:",
-                req.id,
-                req.title,
-              );
-              return false;
-            }
-
-            // 3. استبعاد الطلبات التي قدم عليها المستخدم عروض نشطة
-            if (myOfferRequestIds.has(req.id)) {
-              console.log(
-                "🚫 Filtered out request with my offer:",
-                req.id,
-                req.title,
-              );
-              return false;
-            }
-          }
-
-          return true;
-        });
-
-        // لا ندمج myRequests مع allRequests - كل واحد في مكانه
+        // Note: Filtered requests are now memoized at the top level (Optimization)
         const mergedRequests = filteredAllRequests;
         return (
           <div className="h-full flex flex-col overflow-hidden relative bg-transparent">
@@ -3572,17 +4094,43 @@ const App: React.FC = () => {
                   onUnhideRequest={(requestId) =>
                     handleUnhideRequest(requestId)}
                   onBumpRequest={(requestId) => handleBumpRequest(requestId)}
-                  onOpenChat={(requestId, offer) => {
+                  onOpenChat={async (requestId, offer) => {
                     const req = [...myRequests, ...archivedRequests].find((r) =>
                       r.id === requestId
                     );
-                    if (req) {
+                    if (req && offer) {
+                      // إزالة badge الرسائل غير المقروءة فوراً
+                      setUnreadMessagesPerOffer((prev) => {
+                        const next = new Map(prev);
+                        if (offer.id) {
+                          next.delete(offer.id);
+                        }
+                        return next;
+                      });
+                      setUnreadMessagesPerRequest((prev) => {
+                        const next = new Map(prev);
+                        next.delete(requestId);
+                        return next;
+                      });
+
+                      setInitialActiveOfferId(offer.id);
                       handleSelectRequest(req);
-                      setView("messages");
+                      setView("request-detail");
+                      // سيتم فتح popup المحادثة مباشرة عبر initialActiveOfferId في RequestDetail
                     }
                   }}
                   userId={user?.id}
                   viewedRequestIds={viewedRequestIds}
+                  unreadMessagesPerRequest={unreadMessagesPerRequest}
+                  unreadMessagesPerOffer={unreadMessagesPerOffer}
+                  requestsWithNewOffers={requestsWithNewOffers}
+                  onClearNewOfferHighlight={(requestId) => {
+                    setRequestsWithNewOffers((prev) => {
+                      const next = new Set(prev);
+                      next.delete(requestId);
+                      return next;
+                    });
+                  }}
                   isActive={activeBottomTab === "my-requests"}
                   defaultFilter={myRequestsFilter}
                   onFilterChange={(filter) => setMyRequestsFilter(filter)}
@@ -3635,15 +4183,32 @@ const App: React.FC = () => {
                   onOpenWhatsApp={(phoneNumber, offer) => {
                     window.open(`https://wa.me/${phoneNumber}`, "_blank");
                   }}
-                  onOpenChat={(requestId, offer) => {
+                  onOpenChat={async (requestId, offer) => {
                     const req = allRequests.find((r) => r.id === requestId);
-                    if (req) {
+                    if (req && offer) {
+                      // إزالة badge الرسائل غير المقروءة فوراً
+                      setUnreadMessagesPerOffer((prev) => {
+                        const next = new Map(prev);
+                        if (offer.id) {
+                          next.delete(offer.id);
+                        }
+                        return next;
+                      });
+                      setUnreadMessagesPerRequest((prev) => {
+                        const next = new Map(prev);
+                        next.delete(requestId);
+                        return next;
+                      });
+
+                      setInitialActiveOfferId(offer.id);
                       handleSelectRequest(req);
-                      setView("messages");
+                      setView("request-detail");
+                      // سيتم فتح popup المحادثة مباشرة عبر initialActiveOfferId في RequestDetail
                     }
                   }}
                   userId={user?.id}
                   viewedRequestIds={viewedRequestIds}
+                  unreadMessagesPerOffer={unreadMessagesPerOffer}
                   isActive={activeBottomTab === "my-offers"}
                   defaultFilter={defaultOfferFilter}
                   onRefresh={async () => {
@@ -3706,8 +4271,17 @@ const App: React.FC = () => {
                       onLoadMore={loadMoreMarketplaceRequests}
                       onRefresh={reloadData}
                       loadError={requestsLoadError}
-                      savedScrollPosition={marketplaceScrollPos}
-                      onScrollPositionChange={setMarketplaceScrollPos}
+                      savedScrollPosition={currentMarketplaceViewMode ===
+                          "interests"
+                        ? marketplaceInterestsScrollPos
+                        : marketplaceAllScrollPos}
+                      onScrollPositionChange={(pos, mode) => {
+                        if (mode === "interests") {
+                          setMarketplaceInterestsScrollPos(pos);
+                        } else {
+                          setMarketplaceAllScrollPos(pos);
+                        }
+                      }}
                       viewedRequestIds={viewedRequestIds}
                       isLoadingViewedRequests={isLoadingViewedRequests}
                       onRequestViewed={async (requestId: string) => {
@@ -3717,9 +4291,17 @@ const App: React.FC = () => {
                           newSet.add(requestId);
                           return newSet;
                         });
-                        // Reload unread count from database (based on viewed, not read)
+                        // Optimistically decrement count immediately for instant UI feedback
+                        setUnreadInterestsCount((prev) =>
+                          Math.max(0, prev - 1)
+                        );
+                        // Reload unread count from database to ensure sync
                         if (user?.id && !isGuest) {
                           try {
+                            // Small delay to ensure database update is complete
+                            await new Promise((resolve) =>
+                              setTimeout(resolve, 100)
+                            );
                             const count = await getUnreadInterestsCount();
                             setUnreadInterestsCount(count);
                           } catch (error) {
@@ -3727,9 +4309,20 @@ const App: React.FC = () => {
                               "Error reloading unread interests count after view:",
                               error,
                             );
+                            // Keep optimistic update if database call fails
                           }
                         }
                       }}
+                      onBumpRequest={handleBumpRequest}
+                      onEditRequest={(request) => {
+                        // تعيين الطلب للتعديل
+                        setRequestToEdit(request);
+                        setPreviousView("marketplace");
+                        setView("create-request");
+                      }}
+                      onHideRequest={handleHideRequest}
+                      onUnhideRequest={handleUnhideRequest}
+                      onArchiveRequest={handleArchiveRequest}
                       mode={mode}
                       toggleMode={toggleMode}
                       isModeSwitching={isModeSwitching}
@@ -3760,6 +4353,7 @@ const App: React.FC = () => {
                       onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
                       isActive={activeBottomTab === "marketplace"}
                       onViewModeChange={setCurrentMarketplaceViewMode}
+                      currentViewMode={currentMarketplaceViewMode}
                       newRequestIds={newRequestIds}
                     />
                   )
@@ -3779,14 +4373,7 @@ const App: React.FC = () => {
           </div>
         );
       case "request-detail":
-        // إثراء الطلب بالعروض المستلمة إذا كان المستخدم هو صاحب الطلب (استثناء العروض المؤرشفة)
-        const enrichedRequest = selectedRequest
-          ? {
-            ...selectedRequest,
-            offers: (receivedOffersMap.get(selectedRequest.id) ||
-              selectedRequest.offers || []),
-          }
-          : null;
+        // Note: enrichedRequest is now memoized at the top level
         const handleRequestDetailBack = () => {
           console.log("🔙 handleRequestDetailBack called", {
             previousView,
@@ -3869,7 +4456,10 @@ const App: React.FC = () => {
                 request={enrichedRequest}
                 mode={mode}
                 myOffer={offerForEdit}
-                onBack={handleRequestDetailBack}
+                onBack={() => {
+                  setInitialActiveOfferId(null);
+                  handleRequestDetailBack();
+                }}
                 isGuest={isGuest}
                 scrollToOfferSection={scrollToOfferSection}
                 navigatedFromSidebar={navigatedFromSidebar}
@@ -3891,6 +4481,23 @@ const App: React.FC = () => {
                         offerId,
                       );
                       if (conv) {
+                        // إزالة badge الرسائل غير المقروءة فوراً
+                        if (conversationId || conv.id) {
+                          markMessagesAsRead(conversationId || conv.id).catch(() => {});
+                        }
+                        setUnreadMessagesPerOffer((prev) => {
+                          const next = new Map(prev);
+                          if (offerId) {
+                            next.delete(offerId);
+                          }
+                          return next;
+                        });
+                        setUnreadMessagesPerRequest((prev) => {
+                          const next = new Map(prev);
+                          next.delete(requestId);
+                          return next;
+                        });
+
                         setPreviousView(view);
                         setInitialConversationId(conv.id);
                         setView("conversation");
@@ -3924,6 +4531,7 @@ const App: React.FC = () => {
                 onNotificationClick={handleNotificationClick}
                 onClearAll={handleClearNotifications}
                 onSignOut={isGuest ? handleGoToLogin : handleSignOut}
+                onRequestViewed={handleRequestViewed}
                 onMarkRequestAsRead={handleRequestRead}
                 onArchiveRequest={handleArchiveRequest}
                 onEditRequest={(request) => {
@@ -3931,14 +4539,50 @@ const App: React.FC = () => {
                   setRequestToEdit(request);
                 }}
                 onOfferCreated={async () => {
-                  // Reload user's offers after creating a new one
+                  // تحديث العروض في الخلفية بدون حجب الواجهة
+                  // العرض تم إضافته بالفعل بشكل فوري في RequestDetail (optimistic update)
                   if (user?.id) {
-                    const offers = await fetchMyOffers(user.id);
-                    setMyOffers(offers);
+                    // تحديث receivedOffersMap إذا كان الطلب يخص المستخدم (في الخلفية)
+                    if (selectedRequest) {
+                      fetchOffersForRequest(selectedRequest.id)
+                        .then((updatedOffers) => {
+                          setReceivedOffersMap((prev) => {
+                            const newMap = new Map(prev);
+                            newMap.set(selectedRequest.id, updatedOffers);
+                            return newMap;
+                          });
+                        })
+                        .catch((error) => {
+                          logger.error(
+                            "Error fetching offers for request:",
+                            error,
+                            "service",
+                          );
+                        });
+                    }
+
+                    // تحديث myOffers في الخلفية (لا ننتظر)
+                    fetchMyOffers(user.id)
+                      .then((offers) => {
+                        setMyOffers(offers);
+                      })
+                      .catch((error) => {
+                        logger.error(
+                          "Error reloading my offers:",
+                          error,
+                          "service",
+                        );
+                      });
                   }
                 }}
                 onNavigateToProfile={() => {
                   setPreviousView(view);
+                  setViewingProfileUserId(null); // عرض ملف المستخدم الحالي
+                  setView("profile");
+                }}
+                onNavigateToUserProfile={(userId: string) => {
+                  setPreviousView(view);
+                  setViewingProfileUserId(userId); // عرض ملف المستخدم المحدد
                   setView("profile");
                 }}
                 onNavigateToSettings={() => {
@@ -3973,6 +4617,9 @@ const App: React.FC = () => {
                 onBumpRequest={handleBumpRequest}
                 onHideRequest={handleHideRequest}
                 onUnhideRequest={handleUnhideRequest}
+                receivedOffersMap={receivedOffersMap}
+                initialActiveOfferId={initialActiveOfferId}
+                unreadMessagesPerOffer={unreadMessagesPerOffer}
               />
               {/* Bottom Navigation - مخفي في صفحة تفاصيل الطلب (يتم استبداله بزر تقديم العرض) */}
             </SwipeBackWrapper>
@@ -4115,6 +4762,7 @@ const App: React.FC = () => {
               unreadCount={unreadCount}
               hasUnreadMessages={hasUnreadMessages}
               user={user}
+              viewingUserId={viewingProfileUserId}
               onUpdateProfile={async (updates) => {
                 if (user?.id) {
                   const result = await updateProfile(user.id, updates);
@@ -4134,10 +4782,14 @@ const App: React.FC = () => {
               onNotificationClick={handleNotificationClick}
               onClearAll={handleClearNotifications}
               onSignOut={isGuest ? handleGoToLogin : handleSignOut}
-              onBack={handleProfileBack}
+              onBack={() => {
+                setViewingProfileUserId(null); // Reset viewing user ID
+                handleProfileBack();
+              }}
               isGuest={isGuest}
               onNavigateToProfile={() => {
                 setPreviousView(view);
+                setViewingProfileUserId(null); // عرض ملف المستخدم الحالي
                 setView("profile");
               }}
               onNavigateToSettings={() => {
@@ -4304,7 +4956,7 @@ const App: React.FC = () => {
 
   // الإشعارات المرتبطة بطلباتي
 
-  const myRequestIds = new Set(myRequests.map((r) => r.id));
+  // Use top-level memoized myRequestIds
   const unreadNotificationsForMyRequests =
     unreadNotifications.filter((n) =>
       n.relatedRequest && myRequestIds.has(n.relatedRequest.id)
@@ -4367,131 +5019,33 @@ const App: React.FC = () => {
     return (
       <AuthPage
         onAuthenticated={async () => {
-          // محاولة واحدة سريعة لجلب الـ session والـ profile
+          console.log(
+            "🔍 AuthPage onAuthenticated called - going to main immediately",
+          );
+
+          // 🔧 DEV: الذهاب للـ main مباشرة بدون انتظار
+          // الـ onAuthStateChange في App سيتعامل مع تحديث الـ user
+          setIsGuest(false);
+          localStorage.removeItem("abeely_guest_mode");
+          setView("marketplace");
+          setMode("offers");
+          setSelectedRequest(null);
+          setPreviousView(null);
+          setAppView("main");
+
+          // محاولة جلب الـ profile في الخلفية (اختياري)
           try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user) {
-              console.log("🔍 AuthPage onAuthenticated - fetching profile...");
               const profile = await getCurrentUser();
-              console.log("🔍 AuthPage profile loaded:", profile);
               if (profile) {
                 setUser(profile);
-
-                // التحقق إذا كان المستخدم جديداً ويحتاج الـ onboarding
-                console.log("🔍 AuthPage checking if user needs onboarding...");
-                const needsOnboard = await checkOnboardingStatus(
-                  profile.id,
-                  profile,
-                );
-                console.log(
-                  "🔍 AuthPage onboarding check result:",
-                  needsOnboard,
-                );
-                if (needsOnboard) {
-                  console.log(
-                    "✅ AuthPage: New user detected, showing onboarding...",
-                  );
-                  setNeedsOnboarding(true);
-                  setIsNewUser(true);
-                  setIsGuest(false);
-                  localStorage.removeItem("abeely_guest_mode");
-                  setAppView("onboarding");
-                  return;
-                } else {
-                  console.log(
-                    "⏭️ AuthPage: User does not need onboarding, going to main...",
-                  );
-                }
-              } else {
-                console.log("⚠️ AuthPage: No profile found");
+                console.log("✅ Profile loaded in background:", profile.id);
               }
-              setIsGuest(false);
-              localStorage.removeItem("abeely_guest_mode");
-
-              // Check for saved form data and navigate accordingly
-              // SECURITY: Check user-specific key first, then generic key (for backward compatibility)
-              const userId = profile?.id;
-              const userSpecificKey = userId
-                ? `abeely_pending_request_form_${userId}`
-                : null;
-              const genericKey = "abeely_pending_request_form";
-
-              let savedRequestForm: string | null = null;
-
-              // Try user-specific key first
-              if (userSpecificKey) {
-                savedRequestForm = localStorage.getItem(userSpecificKey);
-              }
-
-              // Fallback to generic key if no user-specific data found
-              if (!savedRequestForm) {
-                savedRequestForm = localStorage.getItem(genericKey);
-              }
-
-              // SECURITY: Verify that the draft belongs to the current user
-              if (savedRequestForm && userId) {
-                try {
-                  const formData = JSON.parse(savedRequestForm);
-                  // If draft has a userId and it doesn't match current user, ignore it
-                  if (formData.userId && formData.userId !== userId) {
-                    console.warn(
-                      "Security: Draft belongs to different user, ignoring",
-                    );
-                    savedRequestForm = null;
-                    // Clean up the draft that doesn't belong to this user
-                    if (userSpecificKey) {
-                      localStorage.removeItem(userSpecificKey);
-                    }
-                    localStorage.removeItem(genericKey);
-                  }
-                } catch (error) {
-                  console.error("Error parsing saved request form:", error);
-                  savedRequestForm = null;
-                }
-              }
-
-              const savedOfferForm = localStorage.getItem(
-                "abeely_pending_offer_form",
-              );
-              const pendingRoute = localStorage.getItem("abeely_pending_route");
-              if (pendingRoute) {
-                localStorage.removeItem("abeely_pending_route");
-              }
-
-              if (savedRequestForm) {
-                // Navigate to create request page - data will be restored automatically
-                setView("create-request");
-                setPreviousView("marketplace");
-                setAppView("main");
-              } else if (savedOfferForm) {
-                // For offers, we need to find the request first
-                // The data will be restored when QuickOfferForm is opened
-                setView("marketplace");
-                setMode("offers");
-                setSelectedRequest(null);
-                setPreviousView(null);
-                setAppView("main");
-              } else if (pendingRoute === "create-request") {
-                setView("create-request");
-                setMode("requests");
-                setSelectedRequest(null);
-                setPreviousView("marketplace");
-                setAppView("main");
-              } else {
-                // Normal navigation
-                setView("marketplace");
-                setMode("offers");
-                setSelectedRequest(null);
-                setPreviousView(null);
-                setAppView("main");
-              }
-              return;
             }
           } catch (err) {
-            console.error("Error fetching user after auth:", err);
+            console.warn("⚠️ Background profile load failed:", err);
           }
-          // إذا لم تنجح المحاولة، الـ onAuthStateChange سيتعامل مع الأمر
-          setAppView("main");
         }}
         onGuestMode={() => {
           setIsGuest(true);
@@ -4555,11 +5109,9 @@ const App: React.FC = () => {
         unreadMessagesForMyRequests={unreadMessagesForMyRequests}
         unreadMessagesForMyOffers={unreadMessagesForMyOffers}
         unreadInterestsCount={unreadInterestsCount}
-        unreadNotificationsForMyRequests={unreadNotificationsForMyRequests}
-        unreadNotificationsForMyOffers={unreadNotificationsForMyOffers}
-        unreadNotificationsCount={unreadNotificationsForProfile}
         needsProfileSetup={!isGuest && !user?.display_name?.trim()}
-        hideOnMobile={view === "create-request" || view === "request-detail" || view === "settings" || view === "profile"}
+        hideOnMobile={view === "create-request" || view === "request-detail" ||
+          view === "settings" || view === "profile"}
       />
 
       {/* Language Popup */}

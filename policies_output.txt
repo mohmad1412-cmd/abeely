@@ -1,0 +1,17 @@
+Using Service Role Key (Admin Access)...
+Fetching RLS Policies...
+Trying to infer policies by behavior...
+
+Found 3 pending offers.
+Target Offer Found:
+{
+  "id": "2ae045e3-1bb2-4584-bb07-2fc09e1bf53c",
+  "status": "pending",
+  "provider_id": "89e1112b-9139-4402-ae76-fae03637264c",
+  "request_id": "ade1bcdd-5558-4a6b-9e71-efdb8b048841",
+  "request": {
+    "id": "ade1bcdd-5558-4a6b-9e71-efdb8b048841",
+    "author_id": "0a34ad3e-da43-4297-9ee5-b47bdc3bbee9"
+  }
+}
+CRITICAL: request join failed or is null!

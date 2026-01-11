@@ -1,4 +1,18 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  canUserReviewRequest,
+  createReview,
+  getReviewsForUser,
+  updateReview,
+} from "../services/reviewsService.ts";
+import { ReviewForm } from "./ReviewForm.tsx";
+import { Review } from "../types.ts";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { logger } from "../utils/logger.ts";
 import { AppMode, Message as LocalMessage, Offer, Request } from "../types.ts";
 import { Button } from "./ui/Button.tsx";
@@ -8,6 +22,8 @@ import {
   AlertTriangle,
   Archive,
   ArrowRight,
+  Bell,
+  BellOff,
   Calendar,
   Camera,
   Check,
@@ -16,7 +32,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsDown,
-  ChevronUp,
   Clock,
   Copy,
   DollarSign,
@@ -42,6 +57,7 @@ import {
   Send,
   Share2,
   Sparkles,
+  Star,
   Trash2,
   Upload,
   Wand2,
@@ -51,7 +67,6 @@ import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { formatTimeAgo } from "../utils/timeFormat.ts";
 import { AnimatePresence, motion } from "framer-motion";
-import { AVAILABLE_CATEGORIES } from "../data.ts";
 import {
   confirmGuestPhone,
   getCurrentUser,
@@ -85,10 +100,12 @@ import {
   Message as ChatMessage,
   sendMessage,
   subscribeToMessages,
+  uploadVoiceMessage,
 } from "../services/messagesService.ts";
 import {
   acceptOffer,
   createOffer,
+  fetchOffersForRequest,
   startNegotiation,
 } from "../services/requestsService.ts";
 import {
@@ -100,6 +117,11 @@ import {
 import { supabase } from "../services/supabaseClient.ts";
 import { DEFAULT_SAUDI_CITIES } from "../services/placesService.ts";
 import { CityAutocomplete } from "./ui/CityAutocomplete.tsx";
+import { AVAILABLE_CATEGORIES } from "../data.ts";
+import { getCategoryLabel, SupportedLocale } from "../types.ts";
+import { getKnownCategoryColor } from "../utils/categoryColors.ts";
+import { CategoryIcon } from "./ui/CategoryIcon.tsx";
+import { getCurrentLocale } from "../services/categoriesService.ts";
 
 interface RequestDetailProps {
   request: Request;
@@ -161,15 +183,22 @@ interface RequestDetailProps {
   onClearAll: () => void;
   onSignOut: () => void;
   onMarkRequestAsRead?: (id: string) => void;
+  onRequestViewed?: (id: string) => void; // Callback when request is marked as viewed (for updating badges)
   onOfferCreated?: () => void; // Callback when a new offer is successfully created
+  onOfferStatusChange?: () => void; // Callback when offer status changes (accept/negotiate)
   onArchiveRequest?: (id: string) => void;
   onEditRequest?: (request: Request) => void; // Callback to edit the request
   onNavigateToProfile?: () => void;
+  onNavigateToUserProfile?: (userId: string) => void; // Callback to navigate to another user's profile
   onNavigateToSettings?: () => void;
   onCancelOffer?: (offerId: string) => Promise<void>; // Callback to cancel an offer
   onBumpRequest?: (id: string) => void; // Callback to refresh/bump the request
   onHideRequest?: (id: string) => void; // Callback to hide the request
   onUnhideRequest?: (id: string) => void; // Callback to unhide/show the request
+  sourceTab?: "marketplace" | "my-requests" | "my-offers"; // Source tab to determine if categories should be shown
+  receivedOffersMap?: Map<string, Offer[]>; // العروض المستلمة على طلبات المستخدم (من App.tsx)
+  initialActiveOfferId?: string | null; // فتح popup المحادثة مباشرة للعرض المحدد
+  unreadMessagesPerOffer?: Map<string, number>; // عدد الرسائل غير المقروءة لكل عرض
 }
 
 export const RequestDetail: React.FC<RequestDetailProps> = (
@@ -185,6 +214,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     scrollToOfferSection = false,
     navigatedFromSidebar = false,
     highlightOfferId = null,
+    receivedOffersMap = new Map(),
     onNavigateToMessages,
     autoTranslateRequests = false,
     currentLanguage = "ar",
@@ -208,26 +238,62 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     onClearAll,
     onSignOut,
     onMarkRequestAsRead,
+    onRequestViewed,
     onOfferCreated,
+    onOfferStatusChange,
     onArchiveRequest,
     onEditRequest,
     onNavigateToProfile,
+    onNavigateToUserProfile,
     onNavigateToSettings,
     onCancelOffer,
     onBumpRequest,
     onHideRequest,
     onUnhideRequest,
+    sourceTab,
+    initialActiveOfferId = null,
+    unreadMessagesPerOffer = new Map(),
   },
 ) => {
-  const [negotiationOpen, setNegotiationOpen] = useState(false);
-  const [activeOfferId, setActiveOfferId] = useState<string | null>(null); // العرض المحدد للمحادثة
+  // Current locale for category labels - use ref to prevent unnecessary re-renders
+  const localeRef = useRef<SupportedLocale>(getCurrentLocale());
+  const [locale, setLocale] = useState<SupportedLocale>(localeRef.current);
+
+  // Load locale on mount and listen for changes
+  useEffect(() => {
+    const currentLocale = getCurrentLocale();
+    if (currentLocale !== localeRef.current) {
+      localeRef.current = currentLocale;
+      setLocale(currentLocale);
+    }
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "locale" && e.newValue) {
+        const newLocale = e.newValue as SupportedLocale;
+        if (newLocale === "ar" || newLocale === "en" || newLocale === "ur") {
+          localeRef.current = newLocale;
+          setLocale(newLocale);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
+  const [negotiationOpen, setNegotiationOpen] = useState(
+    !!initialActiveOfferId,
+  );
+  const [activeOfferId, setActiveOfferId] = useState<string | null>(
+    initialActiveOfferId,
+  ); // العرض المحدد للمحادثة
   const [localOfferStatuses, setLocalOfferStatuses] = useState<
     Record<string, string>
   >({}); // track local status changes
   const [chatMessage, setChatMessage] = useState("");
+  const [isSendingChat, setIsSendingChat] = useState(false);
   const [isShared, setIsShared] = useState(false);
   const [isIdCopied, setIsIdCopied] = useState(false);
   const [showOfferPulse, setShowOfferPulse] = useState(false);
+  const [flashKey, setFlashKey] = useState(0);
   const [showStatusPulse, setShowStatusPulse] = useState(false);
   const [clickedIcons, setClickedIcons] = useState<{ [key: string]: boolean }>(
     {},
@@ -235,6 +301,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [isShowingOriginal, setIsShowingOriginal] = useState(false);
   const [isOfferSectionVisible, setIsOfferSectionVisible] = useState(false);
   const offerSectionRef = useRef<HTMLDivElement>(null);
+
+  // State for loaded offers (in case they're not in request.offers)
+  const [loadedOffers, setLoadedOffers] = useState<Offer[]>([]);
+  const [isLoadingOffers, setIsLoadingOffers] = useState(false);
 
   // Language names for display
   const languageNames = {
@@ -258,6 +328,34 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [isCancellingOffer, setIsCancellingOffer] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [userReview, setUserReview] = useState<Review | null>(null);
+  const [canReview, setCanReview] = useState(false);
+
+  // Check if user can review this request
+  useEffect(() => {
+    const checkReviewStatus = async () => {
+      if (request.status === "completed" && user) {
+        // Check eligibility
+        const canReviewResult = await canUserReviewRequest(request.id, user.id);
+        setCanReview(canReviewResult);
+
+        // Check if already reviewed
+        if (canReviewResult) {
+          const reviews = await getReviewsForUser(
+            request.author === user.id
+              ? (request.acceptedOfferId
+                ? request.acceptedOfferProvider || ""
+                : "")
+              : request.author, // review the OTHER person
+          );
+          // Logic to find specific review for this request is handled by RLS mostly, but for UI we might need to fetch specific review
+          // For now, simplify: just show button if "completed"
+        }
+      }
+    };
+    checkReviewStatus();
+  }, [request.status, user]);
 
   // ترجمة رسائل الخطأ من Supabase للعربية
   const translateAuthError = (error: string): string => {
@@ -344,6 +442,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
   // Image Carousel State with Drag
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [expandedImageIndex, setExpandedImageIndex] = useState<number | null>(
+    null,
+  );
   const imageContainerRef = useRef<HTMLDivElement>(null);
 
   // Refined Image Swipe
@@ -522,18 +623,104 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   >(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Voice recording state for chat
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [chatMediaRecorder, setChatMediaRecorder] = useState<
+    MediaRecorder | null
+  >(null);
+  const [recordingTimeVoice, setRecordingTimeVoice] = useState(0);
+  const [recordedAudioBlobChat, setRecordedAudioBlobChat] = useState<
+    Blob | null
+  >(null);
+  const [recordedAudioUrlChat, setRecordedAudioUrlChat] = useState<
+    string | null
+  >(null);
+
   // للتحقق من وجود محادثة سابقة (لمقدم العرض)
   const [hasExistingConversation, setHasExistingConversation] = useState(false);
   const [isCheckingConversation, setIsCheckingConversation] = useState(false);
 
+  // State لكتم إشعارات المحادثة
+  const [isConversationMuted, setIsConversationMuted] = useState(false);
+
+  // دمج العروض من request.offers و loadedOffers
+  // Memoize categories display data to prevent unnecessary re-renders
+  const shouldShowCategories = useMemo(() => {
+    return (
+      request.categories &&
+      request.categories.length > 0 &&
+      (sourceTab === "marketplace" || sourceTab === "my-offers")
+    );
+  }, [request.categories, sourceTab]);
+
+  const categoriesDisplay = useMemo(() => {
+    if (!shouldShowCategories || !request.categories) return [];
+
+    return request.categories.map((catLabel, idx) => {
+      const categoryObj = AVAILABLE_CATEGORIES.find((c) =>
+        c.label === catLabel || c.id === catLabel
+      );
+      const displayLabel = categoryObj
+        ? getCategoryLabel(categoryObj, locale)
+        : catLabel;
+      const categoryId = categoryObj?.id || catLabel;
+
+      return {
+        id: categoryId,
+        label: displayLabel,
+        icon: categoryObj?.icon,
+        emoji: categoryObj?.emoji,
+        color: getKnownCategoryColor(categoryId),
+        key: `${categoryId}-${idx}`,
+      };
+    });
+  }, [shouldShowCategories, request.categories, locale]);
+
+  const allOffers = React.useMemo(() => {
+    const offersFromRequest = request.offers || [];
+    const offersFromLoaded = loadedOffers || [];
+
+    /* logger.log(
+      `🔍 RequestDetail: Computing allOffers for request ${
+        request.id.slice(-4)
+      }:`,
+      {
+        offersFromRequest: offersFromRequest.length,
+        offersFromLoaded: offersFromLoaded.length,
+        loadedOffersState: loadedOffers.length,
+        requestId: request.id.slice(-4),
+      },
+    ); */
+
+    // إذا كانت العروض محملة من قاعدة البيانات أو من receivedOffersMap، استخدمها
+    if (offersFromLoaded.length > 0) {
+      /* logger.log(
+        `✅ RequestDetail: Using loadedOffers (${offersFromLoaded.length} offers)`,
+        {
+          offers: offersFromLoaded.map((o) => ({
+            id: o.id.slice(-4),
+            status: o.status,
+            title: o.title,
+          })),
+        },
+      ); */
+      return offersFromLoaded;
+    }
+
+    // وإلا استخدم العروض من request.offers
+    /* logger.log(
+      `✅ RequestDetail: Using request.offers (${offersFromRequest.length} offers)`,
+    ); */
+    return offersFromRequest;
+  }, [request.offers, loadedOffers, request.id]);
+
   // تحديد الطرف الآخر في المحادثة
   const getOtherUserId = () => {
     // إذا كان المستخدم صاحب الطلب، الطرف الآخر هو مقدم العرض المقبول أو أول عرض
-    if (mode === "requests") {
+    if (isMyRequest || mode === "requests") {
       // البحث عن العرض المقبول أو أول عرض
-      const acceptedOffer = request.offers?.find((o) =>
-        o.status === "accepted"
-      ) || request.offers?.[0];
+      const acceptedOffer = allOffers.find((o) => o.status === "accepted") ||
+        allOffers[0];
       return acceptedOffer?.providerId;
     } else {
       // إذا كان المستخدم مقدم العرض، الطرف الآخر هو صاحب الطلب
@@ -636,6 +823,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
       // تعيين العرض النشط وفتح المحادثة
       setActiveOfferId(offerId);
+
+      // إبلاغ الـ parent لتحديث البيانات
+      onOfferStatusChange?.();
     } catch (error) {
       logger.error("خطأ في قبول العرض:", error, "service");
       setAcceptOfferError("حدث خطأ غير متوقع");
@@ -673,6 +863,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
       // فتح نافذة المحادثة مباشرة بعد بدء التفاوض
       setNegotiationOpen(true);
+
+      // إبلاغ الـ parent لتحديث البيانات
+      onOfferStatusChange?.();
     } catch (error) {
       logger.error("خطأ في بدء التفاوض:", error, "service");
       setStartNegotiationError("حدث خطأ غير متوقع");
@@ -683,83 +876,213 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
   // تحميل أو إنشاء المحادثة عند فتح الـ bottom sheet
   useEffect(() => {
-    if (!negotiationOpen || !user?.id || isGuest) return;
+    if (!negotiationOpen || !user?.id || isGuest) {
+      // Reset states when closing
+      if (!negotiationOpen) {
+        setCurrentConversation(null);
+        setChatMessages([]);
+        setIsChatLoading(false);
+      }
+      return;
+    }
 
+    let isMounted = true;
     const loadOrCreateConversation = async () => {
       setIsChatLoading(true);
+
+      // Safety timeout: reset loading after 15 seconds
+      const timeoutId = setTimeout(() => {
+        if (isMounted) {
+          logger.warn("Conversation load timeout - resetting loading state");
+          setIsChatLoading(false);
+        }
+      }, 15000);
+
       try {
         const otherUserId = getOtherUserId();
         if (!otherUserId) {
+          clearTimeout(timeoutId);
           logger.warn("لا يوجد طرف آخر للمحادثة");
-          setIsChatLoading(false);
+          if (isMounted) setIsChatLoading(false);
           return;
         }
 
         // تحديد offer_id إذا كان موجودًا
-        const offerId = mode === "offers"
-          ? myOffer?.id
-          : request.offers?.find((o) => o.status === "accepted")?.id ||
-            request.offers?.[0]?.id;
+        // أولوية للعرض النشط المحدد من بدء التفاوض
+        const offerId = activeOfferId ||
+          (mode === "offers"
+            ? myOffer?.id
+            : request.offers?.find((o) => o.status === "accepted")?.id ||
+              request.offers?.[0]?.id);
 
+        logger.log("Loading conversation:", {
+          otherUserId,
+          requestId: request.id,
+          offerId,
+        });
         const conversation = await getOrCreateConversation(
           otherUserId,
           request.id,
           offerId,
         );
-        if (conversation) {
-          setCurrentConversation(conversation);
 
-          // التحقق من إغلاق المحادثة
-          if (conversation.is_closed) {
-            setIsConversationClosed(true);
-            setConversationClosedReason(
-              conversation.closed_reason || "تم إغلاق هذه المحادثة",
-            );
-          } else {
-            setIsConversationClosed(false);
-            setConversationClosedReason(null);
+        clearTimeout(timeoutId);
+
+        if (!isMounted) return;
+
+        if (!conversation) {
+          logger.error("Failed to get or create conversation");
+          setIsChatLoading(false);
+          return;
+        }
+
+        setCurrentConversation(conversation);
+
+        // التحقق من إغلاق المحادثة
+        if (conversation.is_closed) {
+          setIsConversationClosed(true);
+          setConversationClosedReason(
+            conversation.closed_reason || "تم إغلاق هذه المحادثة",
+          );
+        } else {
+          setIsConversationClosed(false);
+          setConversationClosedReason(null);
+        }
+
+        // Load messages with better error handling
+        logger.log("Loading messages for conversation:", conversation.id);
+        let msgs: ChatMessage[] = [];
+
+        try {
+          // محاولة تحميل الرسائل مع timeout أطول
+          const messagesPromise = getMessages(conversation.id);
+          const timeoutPromise = new Promise<ChatMessage[]>((resolve) =>
+            setTimeout(() => {
+              logger.warn("Messages load timeout - using empty array");
+              resolve([]);
+            }, 15000) // زيادة timeout إلى 15 ثانية
+          );
+
+          msgs = await Promise.race([messagesPromise, timeoutPromise]);
+
+          if (!isMounted) return;
+
+          // التأكد من أن msgs هو array
+          if (!Array.isArray(msgs)) {
+            logger.warn("getMessages returned non-array, using empty array");
+            msgs = [];
           }
 
-          const msgs = await getMessages(conversation.id);
+          logger.log("Loaded messages:", msgs.length);
           setChatMessages(msgs);
-          await markMessagesAsRead(conversation.id);
+
+          // Mark as read (don't await to avoid blocking)
+          markMessagesAsRead(conversation.id).catch((err) => {
+            logger.warn("Failed to mark messages as read:", err);
+          });
+
+          // Scroll to bottom after a short delay
+          setTimeout(() => {
+            if (isMounted) {
+              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }
+          }, 100);
+        } catch (msgError) {
+          logger.error("Error loading messages:", msgError, "service");
+          // في حالة فشل تحميل الرسائل، استخدم array فارغ
+          if (isMounted) {
+            setChatMessages([]);
+            logger.log("Set messages to empty array due to error");
+          }
         }
       } catch (error) {
+        clearTimeout(timeoutId);
         logger.error("خطأ في تحميل المحادثة:", error, "service");
+        if (isMounted) {
+          setIsChatLoading(false);
+          // Show error to user
+          alert("حدث خطأ في تحميل المحادثة. يرجى المحاولة مرة أخرى.");
+        }
       } finally {
-        setIsChatLoading(false);
+        if (isMounted) {
+          setIsChatLoading(false);
+        }
       }
     };
 
     loadOrCreateConversation();
-  }, [negotiationOpen, user?.id, isGuest, request.id, mode]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [negotiationOpen, user?.id, isGuest, request.id, mode, activeOfferId]);
+
+  // فتح popup المحادثة مباشرة عند تغيير initialActiveOfferId
+  useEffect(() => {
+    if (initialActiveOfferId && initialActiveOfferId !== activeOfferId) {
+      setActiveOfferId(initialActiveOfferId);
+      setNegotiationOpen(true);
+    }
+  }, [initialActiveOfferId]);
 
   // الاشتراك في الرسائل الجديدة
   useEffect(() => {
-    if (!currentConversation?.id || !user?.id) return;
+    if (!currentConversation?.id || !user?.id) {
+      return;
+    }
+
+    logger.log(
+      "Subscribing to messages for conversation:",
+      currentConversation.id,
+    );
 
     const unsubscribe = subscribeToMessages(
       currentConversation.id,
       (newMsg, eventType) => {
-        if (eventType === "INSERT") {
-          setChatMessages((prev) => {
-            // تجنب التكرار
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
-          // وضع علامة مقروء إذا لم تكن من المستخدم الحالي
-          if (newMsg.sender_id !== user?.id) {
-            markMessagesAsRead(currentConversation.id);
+        try {
+          if (eventType === "INSERT") {
+            logger.log("New message received:", {
+              id: newMsg.id,
+              senderId: newMsg.sender_id,
+            });
+            setChatMessages((prev) => {
+              // تجنب التكرار
+              if (prev.some((m) => m.id === newMsg.id)) {
+                logger.log("Message already exists, skipping:", newMsg.id);
+                return prev;
+              }
+              logger.log("Adding new message to chat:", newMsg.id);
+              return [...prev, newMsg];
+            });
+
+            // وضع علامة مقروء إذا لم تكن من المستخدم الحالي
+            if (newMsg.sender_id !== user?.id) {
+              markMessagesAsRead(currentConversation.id).catch((err) => {
+                logger.warn("Failed to mark message as read:", err);
+              });
+            }
+
+            // Scroll to bottom after a short delay
+            setTimeout(() => {
+              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, 100);
+          } else if (eventType === "UPDATE") {
+            logger.log("Message updated:", newMsg.id);
+            setChatMessages((prev) =>
+              prev.map((m) => (m.id === newMsg.id ? newMsg : m))
+            );
           }
-        } else if (eventType === "UPDATE") {
-          setChatMessages((prev) =>
-            prev.map((m) => (m.id === newMsg.id ? newMsg : m))
-          );
+        } catch (error) {
+          logger.error("Error handling message update:", error, "service");
         }
       },
     );
 
     return () => {
+      logger.log(
+        "Unsubscribing from messages for conversation:",
+        currentConversation.id,
+      );
       unsubscribe();
     };
   }, [currentConversation?.id, user?.id]);
@@ -768,23 +1091,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
-
-  const handleSendChat = async () => {
-    if (!chatMessage.trim() || !currentConversation || isSendingMessage) return;
-
-    setIsSendingMessage(true);
-    try {
-      const sentMsg = await sendMessage(currentConversation.id, chatMessage);
-      if (sentMsg) {
-        setChatMessages((prev) => [...prev, sentMsg]);
-      }
-      setChatMessage("");
-    } catch (error) {
-      logger.error("خطأ في إرسال الرسالة:", error, "service");
-    } finally {
-      setIsSendingMessage(false);
-    }
-  };
 
   const handleShare = async () => {
     // استخدام رابط المشاركة الجديد
@@ -977,11 +1283,116 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     }
   };
 
-  const requestAuthorId = (request as any).authorId ||
-    (request as any).author_id || request.author;
+  const requestAuthorId = request.author;
   const isMyRequest = !!user?.id && requestAuthorId === user.id;
   const isMyOffer = !!myOffer;
   const [isArchiving, setIsArchiving] = useState(false);
+
+  // Debug: Log isMyRequest and mode
+  useEffect(() => {
+    /* logger.log(
+      `🔍 RequestDetail: isMyRequest check for request ${
+        request.id.slice(-4)
+      }:`,
+      {
+        requestId: request.id.slice(-4),
+        userId: user?.id?.slice(-4),
+        requestAuthorId: requestAuthorId?.slice(-4),
+        isMyRequest,
+        mode,
+        willShowOffersSection: isMyRequest,
+      },
+    ); */
+  }, [request.id, user?.id, requestAuthorId, isMyRequest, mode]);
+
+  // ✅ 1. useEffect منفصل لتحديث loadedOffers من receivedOffersMap (Real-time updates)
+  useEffect(() => {
+    if (!receivedOffersMap) return;
+
+    const offersFromMap = receivedOffersMap.get(request.id) || [];
+
+    if (offersFromMap.length > 0) {
+      // مقارنة ذكية لتجنب تحديث غير ضروري (تجنب Infinite Loop)
+      const currentIds = loadedOffers.map((o) => o.id).sort().join(",");
+      const mapIds = offersFromMap.map((o) => o.id).sort().join(",");
+      const currentStatuses = loadedOffers.map((o) => o.status).sort().join(
+        ",",
+      );
+      const mapStatuses = offersFromMap.map((o) => o.status).sort().join(",");
+
+      // تحديث فقط إذا كانت العروض مختلفة
+      // دمج ذكي: إذا كان loadedOffers يحتوي على عروض ليست في receivedOffersMap، نحتفظ بها
+      if (currentIds !== mapIds || currentStatuses !== mapStatuses) {
+        // دمج العروض: نحتفظ بالعروض في loadedOffers التي ليست في receivedOffersMap
+        const mapOfferIds = new Set(offersFromMap.map((o) => o.id));
+        const uniqueLocalOffers = loadedOffers.filter(
+          (o) => !mapOfferIds.has(o.id),
+        );
+        const mergedOffers = [...offersFromMap, ...uniqueLocalOffers];
+
+        // ترتيب حسب التاريخ (الأحدث أولاً)
+        mergedOffers.sort((a, b) => {
+          const dateA = a.createdAt?.getTime() || 0;
+          const dateB = b.createdAt?.getTime() || 0;
+          return dateB - dateA;
+        });
+
+        setLoadedOffers(mergedOffers);
+        setIsLoadingOffers(false);
+      }
+    }
+  }, [request.id, receivedOffersMap, loadedOffers]); // نراقب التغييرات في الخريطة
+
+  // ✅ 2. useEffect الرئيسي لتحميل العروض من قاعدة البيانات (Initial Fetch)
+  useEffect(() => {
+    const isArchived = request.status === "archived";
+
+    // قراءة offers من receivedOffersMap مرة واحدة (لا تعتمد عليها في dependency لتجنب Loops)
+    const offersFromMap = receivedOffersMap?.get(request.id) || [];
+
+    // إذا كانت العروض موجودة بالفعل في الخريطة، تم التعامل معها في useEffect الأول
+    if (offersFromMap.length > 0) {
+      return;
+    }
+
+    // التحقق مما إذا كانت العروض موجودة بالفعل (لتجنب الجلب المتكرر)
+    const hasExistingOffers =
+      (request.offers?.length || 0) + (loadedOffers?.length || 0) > 0;
+
+    if (
+      isMyRequest &&
+      user?.id &&
+      !hasExistingOffers &&
+      !isLoadingOffers &&
+      !isArchived
+    ) {
+      // logger.log(
+      //   "📥 RequestDetail: Loading offers for request from database:",
+      //   request.id.slice(-4),
+      // );
+      setIsLoadingOffers(true);
+      fetchOffersForRequest(request.id)
+        .then((offers) => {
+          setLoadedOffers(offers);
+        })
+        .catch((error) => {
+          logger.error("❌ RequestDetail: خطأ في تحميل العروض:", error);
+          setLoadedOffers([]);
+        })
+        .finally(() => {
+          setIsLoadingOffers(false);
+        });
+    }
+    // ملاحظة: قمنا بإزالة setLoadedOffers([]) التلقائي لأنه كان يسبب Infinite Loops
+  }, [
+    isMyRequest,
+    user?.id,
+    request.id,
+    request.offers?.length,
+    isLoadingOffers,
+    request.status,
+    loadedOffers.length, // نراقب الطول فقط بدلاً من الخريطة كاملة
+  ]);
 
   // Scroll state for glass header animation
   const [isScrolled, setIsScrolled] = useState(false);
@@ -1017,18 +1428,18 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     };
   }, [onScrollPositionChange]);
 
-  // Restore scroll position on mount
+  // Always scroll to top when opening/opening again the request
   useEffect(() => {
     const container = scrollContainerRef.current;
-    if (container && savedScrollPosition > 0) {
+    if (container) {
       // Use requestAnimationFrame to ensure container is fully rendered
       requestAnimationFrame(() => {
         if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollTop = savedScrollPosition;
+          scrollContainerRef.current.scrollTop = 0;
         }
       });
     }
-  }, [savedScrollPosition]);
+  }, [request.id]); // Scroll to top whenever request changes
 
   // Track previous form values to prevent infinite loop
   const prevFormRef = useRef<
@@ -1101,9 +1512,14 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
   // Mark request as viewed and increment view count when component mounts
   useEffect(() => {
-    if (request?.id) {
+    if (request?.id && !isGuest && user?.id) {
       // For registered users, mark as viewed in their personal view history
-      markRequestAsViewed(request.id);
+      markRequestAsViewed(request.id).then((success) => {
+        if (success && onRequestViewed) {
+          // Update badges immediately after marking as viewed
+          onRequestViewed(request.id);
+        }
+      });
 
       // For everyone (including guests), increment the public view count
       incrementRequestViews(request.id).then((result) => {
@@ -1111,8 +1527,15 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
           setViewCount(result.viewCount);
         }
       });
+    } else if (request?.id) {
+      // For guests, just increment the public view count
+      incrementRequestViews(request.id).then((result) => {
+        if (result.success) {
+          setViewCount(result.viewCount);
+        }
+      });
     }
-  }, [request?.id]);
+  }, [request?.id, user?.id, isGuest, onRequestViewed]);
 
   // Mark request as read when user opens it (immediately on mount)
   useEffect(() => {
@@ -1156,8 +1579,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       }
 
       // التحقق من أن المستخدم لا يقدم عرض على طلبه الخاص
-      const requestAuthorId = (request as any).authorId ||
-        (request as any).author_id || request.author;
+      const requestAuthorId = request.author;
       if (requestAuthorId && userData.user.id === requestAuthorId) {
         alert("لا يمكنك تقديم عرض على طلبك الخاص");
         return;
@@ -1408,6 +1830,353 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     }
   };
 
+  // Voice recording timer for chat
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (isRecordingVoice) {
+      setRecordingTimeVoice(0);
+      interval = setInterval(() => {
+        setRecordingTimeVoice((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isRecordingVoice]);
+
+  // Voice recording functions for chat
+  const startRecordingVoiceChat = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      alert("التسجيل الصوتي غير مدعوم في هذا المتصفح");
+      return;
+    }
+
+    if (isRecordingVoice || recordedAudioUrlChat) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunks.push(event.data);
+      };
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (chunks.length > 0) {
+          const blob = new Blob(chunks, { type: "audio/webm" });
+          setRecordedAudioBlobChat(blob);
+          setRecordedAudioUrlChat(URL.createObjectURL(blob));
+        }
+      };
+
+      recorder.start();
+      setChatMediaRecorder(recorder);
+      setIsRecordingVoice(true);
+    } catch (error) {
+      logger.error("Error starting voice recording:", error, "service");
+      alert("حدث خطأ في بدء التسجيل");
+    }
+  };
+
+  const stopRecordingVoiceChat = () => {
+    if (chatMediaRecorder && isRecordingVoice) {
+      chatMediaRecorder.stop();
+      setIsRecordingVoice(false);
+      setChatMediaRecorder(null);
+    }
+  };
+
+  const cancelRecordingVoiceChat = () => {
+    if (chatMediaRecorder && isRecordingVoice) {
+      chatMediaRecorder.stop();
+    }
+    setIsRecordingVoice(false);
+    setChatMediaRecorder(null);
+    setRecordingTimeVoice(0);
+    setRecordedAudioBlobChat(null);
+    if (recordedAudioUrlChat) {
+      URL.revokeObjectURL(recordedAudioUrlChat);
+    }
+    setRecordedAudioUrlChat(null);
+  };
+
+  const formatRecordingTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const handleSendChat = async () => {
+    const hasContent = chatMessage.trim() || recordedAudioBlobChat;
+    if (!hasContent || !user?.id || isSendingChat) {
+      logger.warn("Cannot send chat message:", {
+        hasContent,
+        hasUser: !!user?.id,
+        isSendingChat,
+      });
+      return;
+    }
+
+    setIsSendingChat(true);
+
+    // Safety timeout: reset isSendingChat after 30 seconds
+    const timeoutId = setTimeout(() => {
+      logger.warn("Message send timeout - resetting isSendingChat state");
+      setIsSendingChat(false);
+    }, 30000);
+
+    try {
+      let otherUserId = "";
+      let currentOfferId = activeOfferId;
+
+      // Use currentConversation if available (faster path)
+      if (currentConversation) {
+        let audioUrl: string | undefined;
+        let audioDuration: number | undefined;
+
+        // Upload voice message if any
+        if (recordedAudioBlobChat) {
+          try {
+            const voiceResult = await uploadVoiceMessage(
+              recordedAudioBlobChat,
+              currentConversation.id,
+              recordingTimeVoice,
+            );
+            if (voiceResult) {
+              audioUrl = voiceResult.url;
+              audioDuration = voiceResult.duration;
+            } else {
+              clearTimeout(timeoutId);
+              logger.warn("Failed to upload voice message");
+              alert("فشل رفع الرسالة الصوتية. يرجى المحاولة مرة أخرى.");
+              setIsSendingChat(false);
+              return;
+            }
+          } catch (voiceError) {
+            clearTimeout(timeoutId);
+            logger.error(
+              "Error uploading voice message:",
+              voiceError,
+              "service",
+            );
+            alert("فشل رفع الرسالة الصوتية. يرجى المحاولة مرة أخرى.");
+            setIsSendingChat(false);
+            return;
+          }
+        }
+
+        // Send message with optional audio
+        // Allow empty content if there's audio
+        const messageContent = chatMessage.trim() || (audioUrl ? "" : "");
+        if (!messageContent && !audioUrl) {
+          clearTimeout(timeoutId);
+          logger.warn("Cannot send empty message without audio");
+          setIsSendingChat(false);
+          return;
+        }
+
+        // Optimistic UI Update
+        const tempId = `temp-${Date.now()}`;
+        const optimisticMessage: Message = {
+          id: tempId,
+          conversation_id: currentConversation.id,
+          sender_id: user.id,
+          content: messageContent,
+          is_read: false,
+          read_at: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          audio_url: audioUrl || null,
+          audio_duration: audioDuration || null,
+          message_type: audioUrl ? "audio" : "text",
+          sender: {
+            id: user.id,
+            display_name: "أنا", // Will be updated with real profile later
+            avatar_url: null,
+          },
+        };
+
+        // Add optimistic message immediately
+        setChatMessages((prev) => [...prev, optimisticMessage]);
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 10);
+
+        // Reset UI immediately
+        setChatMessage("");
+        if (recordedAudioUrlChat) URL.revokeObjectURL(recordedAudioUrlChat);
+        setRecordedAudioBlobChat(null);
+        setRecordedAudioUrlChat(null);
+        setRecordingTimeVoice(0);
+
+        const sentMessage = await sendMessage(
+          currentConversation.id,
+          messageContent,
+          {
+            audioUrl,
+            audioDuration,
+          },
+        );
+
+        clearTimeout(timeoutId);
+
+        if (sentMessage) {
+          setChatMessages((prev) =>
+            prev.map((m) => m.id === tempId ? sentMessage : m)
+          );
+        } else {
+          // Failure: Remove optimistic message
+          setChatMessages((prev) => prev.filter((m) => m.id !== tempId));
+          logger.warn("sendMessage returned null");
+          alert("فشل إرسال الرسالة. يرجى المحاولة مرة أخرى.");
+        }
+
+        setIsSendingChat(false);
+        return;
+      }
+
+      // Fallback: create conversation if not exists
+      // Explicitly handle "My Requests" vs "My Offers" (Provider view)
+      if (isMyRequest) {
+        // Requester chatting with a provider
+        if (!currentOfferId && request.accepted_offer_id) {
+          currentOfferId = request.accepted_offer_id;
+        }
+
+        if (!currentOfferId) {
+          clearTimeout(timeoutId);
+          logger.error("No active offer ID for chat");
+          setIsSendingChat(false);
+          alert("لم يتم العثور على عرض نشط. يرجى المحاولة مرة أخرى.");
+          return;
+        }
+        const offer = allOffers.find((o) => o.id === currentOfferId);
+        if (offer) otherUserId = offer.providerId;
+      } else {
+        // Provider chatting with Requester
+        otherUserId = request.author;
+      }
+
+      if (!otherUserId) {
+        clearTimeout(timeoutId);
+        logger.error("Could not determine chat participant");
+        setIsSendingChat(false);
+        alert("لم يتم العثور على الطرف الآخر. يرجى المحاولة مرة أخرى.");
+        return;
+      }
+
+      const offerContextId = isMyRequest
+        ? currentOfferId
+        : (myOffer?.id || undefined);
+
+      logger.log("Creating/getting conversation:", {
+        otherUserId,
+        requestId: request.id,
+        offerId: offerContextId,
+      });
+      const conversation = await getOrCreateConversation(
+        otherUserId,
+        request.id,
+        offerContextId || undefined,
+      );
+
+      if (!conversation) {
+        clearTimeout(timeoutId);
+        logger.error("Failed to get or create conversation");
+        setIsSendingChat(false);
+        alert("فشل في إنشاء المحادثة. يرجى المحاولة مرة أخرى.");
+        return;
+      }
+
+      // Update currentConversation state
+      setCurrentConversation(conversation);
+
+      let audioUrl: string | undefined;
+      let audioDuration: number | undefined;
+
+      // Upload voice message if any
+      if (recordedAudioBlobChat) {
+        try {
+          const voiceResult = await uploadVoiceMessage(
+            recordedAudioBlobChat,
+            conversation.id,
+            recordingTimeVoice,
+          );
+          if (voiceResult) {
+            audioUrl = voiceResult.url;
+            audioDuration = voiceResult.duration;
+          } else {
+            clearTimeout(timeoutId);
+            logger.warn("Failed to upload voice message");
+            alert("فشل رفع الرسالة الصوتية. يرجى المحاولة مرة أخرى.");
+            setIsSendingChat(false);
+            return;
+          }
+        } catch (voiceError) {
+          clearTimeout(timeoutId);
+          logger.error("Error uploading voice message:", voiceError, "service");
+          alert("فشل رفع الرسالة الصوتية. يرجى المحاولة مرة أخرى.");
+          setIsSendingChat(false);
+          return;
+        }
+      }
+
+      // Send message with optional audio
+      // Allow empty content if there's audio
+      const messageContent = chatMessage.trim() || (audioUrl ? "" : "");
+      if (!messageContent && !audioUrl) {
+        clearTimeout(timeoutId);
+        logger.warn("Cannot send empty message without audio");
+        setIsSendingChat(false);
+        return;
+      }
+
+      const sentMessage = await sendMessage(conversation.id, messageContent, {
+        audioUrl,
+        audioDuration,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (sentMessage) {
+        logger.log("Message sent successfully:", sentMessage.id);
+        setChatMessages((prev) => {
+          // Avoid duplicates
+          if (prev.some((m) => m.id === sentMessage.id)) return prev;
+          return [...prev, sentMessage];
+        });
+        // Scroll to bottom
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
+
+        setChatMessage("");
+
+        // Clear recorded audio
+        if (recordedAudioUrlChat) {
+          URL.revokeObjectURL(recordedAudioUrlChat);
+        }
+        setRecordedAudioBlobChat(null);
+        setRecordedAudioUrlChat(null);
+        setRecordingTimeVoice(0);
+      } else {
+        logger.warn(
+          "sendMessage returned null - message may have failed to send",
+        );
+        alert("فشل إرسال الرسالة. يرجى المحاولة مرة أخرى.");
+      }
+    } catch (error) {
+      clearTimeout(timeoutId);
+      logger.error("Error sending chat message:", error, "service");
+      console.error("Send chat error", error);
+      alert("حدث خطأ أثناء إرسال الرسالة. يرجى المحاولة مرة أخرى.");
+    } finally {
+      setIsSendingChat(false);
+    }
+  };
+
   const dropdownItems: DropdownMenuItem[] = isMyRequest
     ? [
       {
@@ -1533,7 +2302,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         isSubmittingOffer={isSubmittingOffer}
         offerSubmitSuccess={offerSubmitted}
         showMyRequestButton={isMyRequest}
-        myRequestOffersCount={request.offers?.length || 0}
+        myRequestOffersCount={allOffers.length}
         onMyRequestClick={() => {
           // Scroll to top to see offers
           if (scrollContainerRef.current) {
@@ -1564,16 +2333,28 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
               ? (
                 <motion.div
                   layoutId={`image-${request.id}`}
-                  className="relative h-64 w-full bg-secondary flex items-center justify-center overflow-hidden group touch-pan-y"
+                  className="relative h-64 w-full bg-secondary flex items-center justify-center overflow-hidden group touch-pan-y cursor-pointer"
                   ref={imageContainerRef}
                   onTouchStart={handleImgTouchStart}
                   onTouchEnd={handleImgTouchEnd}
+                  onClick={() => setExpandedImageIndex(currentImageIndex)}
                 >
-                  <img
-                    src={request.images[currentImageIndex]}
-                    alt={`Image`}
-                    className="w-full h-full object-cover pointer-events-none select-none"
-                  />
+                  <div
+                    className="absolute inset-0 flex transition-transform duration-300 ease-out"
+                    style={{
+                      transform: `translateX(${currentImageIndex * 100}%)`,
+                    }}
+                  >
+                    {request.images.map((img, idx) => (
+                      <img
+                        key={idx}
+                        src={img}
+                        alt={`Image ${idx + 1}`}
+                        className="w-full h-full object-cover flex-shrink-0 pointer-events-none select-none"
+                        style={{ transform: `translateX(-${idx * 100}%)` }}
+                      />
+                    ))}
+                  </div>
 
                   {/* Status Badge - Bottom Left */}
                   {request.status === "active" && (
@@ -1610,45 +2391,17 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                             size="lg"
                             className="backdrop-blur-md bg-white/20 dark:bg-white/10 border-primary/30 text-primary dark:text-primary"
                           >
-                            يستقبل عروض
+                            ينتظر عرضك!
                           </Badge>
                         )}
                     </motion.div>
                   )}
 
-                  {/* Title Overlay - Pill-shaped design matching UnifiedHeader */}
-                  <motion.div
-                    layoutId={`title-${request.id}`}
-                    initial={{ opacity: 1 }}
-                    animate={{ opacity: isScrolled ? 0 : 1 }}
-                    transition={{ duration: 0.3 }}
-                    className="absolute top-4 right-4 left-4 z-20 px-4 h-10 flex items-center gap-2 rounded-full bg-card/95 backdrop-blur-xl border border-border shadow-lg"
-                  >
-                    <h1 className="flex-1 text-sm font-bold text-foreground truncate">
-                      {request.title}
-                    </h1>
-
-                    {/* Menu button for all users */}
-                    <DropdownMenu
-                      trigger={
-                        <button className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 -ml-1">
-                          <MoreVertical
-                            size={20}
-                            strokeWidth={2.5}
-                            className="text-muted-foreground"
-                          />
-                        </button>
-                      }
-                      items={dropdownItems}
-                      align="left"
-                    />
-                  </motion.div>
-
-                  {/* Translation Toggle - Below Title */}
+                  {/* Translation Toggle */}
                   {autoTranslateRequests && (
                     <button
                       onClick={() => setIsShowingOriginal(!isShowingOriginal)}
-                      className="absolute top-16 right-4 text-xs text-white/80 hover:text-white z-20 underline underline-offset-2 px-3 py-1 rounded-md bg-black/20 backdrop-blur-sm transition-colors"
+                      className="absolute top-4 right-4 text-xs text-white/80 hover:text-white z-20 underline underline-offset-2 px-3 py-1 rounded-md bg-black/20 backdrop-blur-sm transition-colors"
                     >
                       {isShowingOriginal
                         ? `استعرض الطلب بـ${languageNames[currentLanguage]}`
@@ -1761,45 +2514,17 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                             size="lg"
                             className="backdrop-blur-md bg-white/20 dark:bg-white/10 border-primary/30 text-primary dark:text-primary"
                           >
-                            يستقبل عروض
+                            ينتظر عرضك!
                           </Badge>
                         )}
                     </motion.div>
                   )}
 
-                  {/* Title Overlay - Pill-shaped design matching UnifiedHeader */}
-                  <motion.div
-                    layoutId={`title-${request.id}`}
-                    initial={{ opacity: 1 }}
-                    animate={{ opacity: isScrolled ? 0 : 1 }}
-                    transition={{ duration: 0.3 }}
-                    className="absolute top-4 right-4 left-4 z-20 px-4 h-10 flex items-center gap-2 rounded-full bg-card/95 backdrop-blur-xl border border-border shadow-lg"
-                  >
-                    <h1 className="flex-1 text-sm font-bold text-foreground truncate">
-                      {request.title}
-                    </h1>
-
-                    {/* Menu button for all users */}
-                    <DropdownMenu
-                      trigger={
-                        <button className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 -ml-1">
-                          <MoreVertical
-                            size={20}
-                            strokeWidth={2.5}
-                            className="text-muted-foreground"
-                          />
-                        </button>
-                      }
-                      items={dropdownItems}
-                      align="left"
-                    />
-                  </motion.div>
-
-                  {/* Translation Toggle - Below Title (No Images State) */}
+                  {/* Translation Toggle (No Images State) */}
                   {autoTranslateRequests && (
                     <button
                       onClick={() => setIsShowingOriginal(!isShowingOriginal)}
-                      className="absolute top-16 right-4 text-xs text-white/80 hover:text-white z-20 underline underline-offset-2 px-3 py-1 rounded-md bg-black/20 backdrop-blur-sm transition-colors"
+                      className="absolute top-4 right-4 text-xs text-white/80 hover:text-white z-20 underline underline-offset-2 px-3 py-1 rounded-md bg-black/20 backdrop-blur-sm transition-colors"
                     >
                       {isShowingOriginal
                         ? `استعرض الطلب بـ${languageNames[currentLanguage]}`
@@ -1810,31 +2535,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
               )}
 
             <div className="p-6 border border-t-0 border-border rounded-b-xl">
-              <div className="flex justify-between items-start gap-4 mb-4">
-                <div>
-                  {/* Category Badges */}
-                  {mode === "offers" && request.categories &&
-                    request.categories.length > 0 && (
-                    <div className="flex flex-wrap justify-start gap-2 w-full">
-                      {request.categories.map((c) => {
-                        const category = AVAILABLE_CATEGORIES.find((cat) =>
-                          cat.id === c
-                        );
-                        return (
-                          <Badge
-                            key={c}
-                            variant="outline"
-                            className="bg-secondary/50"
-                          >
-                            {category ? category.label : c}
-                          </Badge>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1848,19 +2548,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
               >
                 {/* Location - First Row */}
                 <div className="flex flex-col gap-1.5 w-full">
-                  <span
-                    className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground whitespace-nowrap"
-                    onClick={() =>
-                      setClickedIcons((prev) => ({
-                        ...prev,
-                        location: !prev.location,
-                      }))}
-                  >
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium whitespace-nowrap">
                     <MapPin
                       size={18}
-                      className={clickedIcons.location
-                        ? "text-primary"
-                        : "text-red-500"}
+                      className="text-red-500"
                     />{" "}
                     الموقع
                   </span>
@@ -1992,7 +2683,31 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   </div>
                 )}
 
-                {/* Available After - Fifth Row (only for my requests) */}
+                {/* Categories - Fifth Row (only for Marketplace and MyOffers, not MyRequests) */}
+                {shouldShowCategories && (
+                  <div className="flex flex-col gap-1.5 w-full">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                      <FileText size={18} /> التصنيفات
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {categoriesDisplay.map((cat) => (
+                        <span
+                          key={cat.key}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${cat.color}`}
+                        >
+                          <CategoryIcon
+                            icon={cat.icon}
+                            emoji={cat.emoji}
+                            size={12}
+                          />
+                          {cat.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Available After - Sixth Row (only for my requests) */}
                 {isMyRequest && request.status === "active" && (() => {
                   const lastUpdated = request.updatedAt
                     ? new Date(request.updatedAt)
@@ -2002,7 +2717,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   const canBump = elapsedSinceUpdate >= sixHoursMs;
                   const bumpHoursLeft = Math.max(
                     0,
-                    Math.ceil((sixHoursMs - elapsedSinceUpdate) / (60 * 60 * 1000)),
+                    Math.ceil(
+                      (sixHoursMs - elapsedSinceUpdate) / (60 * 60 * 1000),
+                    ),
                   );
 
                   if (!canBump) {
@@ -2022,55 +2739,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 })()}
               </motion.div>
 
-              {/* Status Dots - Display at bottom of request info */}
-              <div className="flex justify-center gap-1.5 mt-4 pt-4 border-t border-border">
-                <div
-                  className={`w-1.5 h-1.5 rounded-full transition-all ${
-                    request.status === "active"
-                      ? "bg-primary"
-                      : request.status === "assigned"
-                      ? "bg-blue-500"
-                      : request.status === "completed"
-                      ? "bg-green-500"
-                      : request.status === "archived"
-                      ? "bg-red-500"
-                      : "bg-muted-foreground"
-                  }`}
-                  title={
-                    request.status === "active"
-                      ? "نشط"
-                      : request.status === "assigned"
-                      ? "تم التعيين"
-                      : request.status === "completed"
-                      ? "مكتمل"
-                      : request.status === "archived"
-                      ? "مؤرشف"
-                      : "غير محدد"
-                  }
-                />
-                <div
-                  className={`w-1.5 h-1.5 rounded-full transition-all ${
-                    request.status === "assigned"
-                      ? "bg-blue-500"
-                      : "bg-transparent"
-                  }`}
-                />
-                <div
-                  className={`w-1.5 h-1.5 rounded-full transition-all ${
-                    request.status === "completed"
-                      ? "bg-green-500"
-                      : "bg-transparent"
-                  }`}
-                />
-                <div
-                  className={`w-1.5 h-1.5 rounded-full transition-all ${
-                    request.status === "archived"
-                      ? "bg-red-500"
-                      : "bg-transparent"
-                  }`}
-                />
-              </div>
-
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -2088,7 +2756,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3 }}
           >
-            {mode === "requests" && isMyRequest && (
+            {isMyRequest && (
               <div className="space-y-4">
                 {/* Complete Request Button for Requester - After approving an offer */}
                 {request.status === "assigned" && onCompleteRequest && (
@@ -2110,12 +2778,25 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     <>
                       العروض المستلمة
                       <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-primary/10 text-primary px-1.5 text-[11px] font-bold">
-                        {request.offers.length}
+                        {allOffers.length}
                       </span>
                     </>
                   )}
                 </h3>
-                {request.offers.length === 0
+                {isLoadingOffers
+                  ? (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="text-center p-8 bg-card rounded-2xl border border-dashed"
+                    >
+                      <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-primary" />
+                      <p className="text-muted-foreground">
+                        جاري تحميل العروض...
+                      </p>
+                    </motion.div>
+                  )
+                  : allOffers.length === 0
                   ? (
                     <motion.div
                       initial={{ opacity: 0, y: 20 }}
@@ -2151,7 +2832,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       }}
                       className="space-y-4"
                     >
-                      {request.offers.map((offer, index) => (
+                      {allOffers.map((offer, index) => (
                         <motion.div
                           key={offer.id}
                           id={`offer-${offer.id}`}
@@ -2194,14 +2875,43 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         >
                           <div className="flex justify-between items-start mb-2">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary">
+                              <div
+                                className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary cursor-pointer hover:bg-primary/20 transition-colors"
+                                onClick={() => {
+                                  if (
+                                    offer.providerId && onNavigateToUserProfile
+                                  ) {
+                                    onNavigateToUserProfile(offer.providerId);
+                                  }
+                                }}
+                                title="عرض ملف المزود الشخصي"
+                              >
                                 {offer.providerName.charAt(0)}
                               </div>
                               <div>
                                 <div className="flex items-center gap-2">
-                                  <h4 className="font-bold text-sm">
-                                    {offer.providerName}
-                                  </h4>
+                                  <button
+                                    onClick={() => {
+                                      if (
+                                        offer.providerId &&
+                                        onNavigateToUserProfile
+                                      ) {
+                                        onNavigateToUserProfile(
+                                          offer.providerId,
+                                        );
+                                      }
+                                    }}
+                                    className="font-bold text-sm hover:text-primary transition-colors cursor-pointer text-left"
+                                    title="عرض ملف المزود الشخصي"
+                                    data-provider-id={offer.providerId}
+                                    data-provider-name={offer.providerName ||
+                                      "مزود خدمة"}
+                                    aria-label={`عرض ملف ${
+                                      offer.providerName || "مزود خدمة"
+                                    }`}
+                                  >
+                                    {offer.providerName || "مزود خدمة"}
+                                  </button>
                                 </div>
                                 <span className="text-xs text-muted-foreground">
                                   {format(offer.createdAt, "PP", {
@@ -2326,12 +3036,37 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                   <Button
                                     size="sm"
                                     variant="secondary"
-                                    className="flex-1 border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 h-10"
-                                    onClick={() => setNegotiationOpen(true)}
+                                    className="relative flex-1 border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 h-10 overflow-visible"
+                                    onClick={() => {
+                                      setActiveOfferId(offer.id);
+                                      setNegotiationOpen(true);
+                                    }}
                                   >
-                                    <MessageSquare size={18} className="ml-2" />
-                                    {" "}
-                                    متابعة التفاوض
+                                    <div className="inline-flex items-center justify-center gap-2">
+                                      <MessageSquare
+                                        size={18}
+                                        className="ml-2"
+                                      />{" "}
+                                      متابعة التفاوض
+                                      {unreadMessagesPerOffer?.has(offer.id) &&
+                                        (unreadMessagesPerOffer.get(offer.id) ||
+                                            0) > 0 &&
+                                        (
+                                          <motion.span
+                                            initial={{ scale: 0, opacity: 0 }}
+                                            animate={{ scale: 1, opacity: 1 }}
+                                            className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-gradient-to-br from-red-500 to-red-600 text-white text-[11px] font-bold shadow-md border border-red-400/30 dark:border-red-700/50 ring-2 ring-red-500/20 dark:ring-red-500/30"
+                                          >
+                                            {unreadMessagesPerOffer.get(
+                                                offer.id,
+                                              )! > 99
+                                              ? "99+"
+                                              : unreadMessagesPerOffer.get(
+                                                offer.id,
+                                              )}
+                                          </motion.span>
+                                        )}
+                                    </div>
                                   </Button>
                                   <Button
                                     size="sm"
@@ -2397,7 +3132,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                     <Button
                                       size="sm"
                                       className="flex-1 bg-primary hover:bg-primary/90 h-10"
-                                      onClick={() => setNegotiationOpen(true)}
+                                      onClick={() => {
+                                        setActiveOfferId(offer.id);
+                                        setNegotiationOpen(true);
+                                      }}
                                     >
                                       <MessageCircle
                                         size={18}
@@ -2414,10 +3152,54 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       ))}
                     </motion.div>
                   )}
+                {/* COMPLETED STATUS - Add Review Button */}
+                {request.status === "completed" && (
+                  <div className="w-full space-y-3 mt-4">
+                    <div className="bg-green-500/10 text-green-600 rounded-lg text-sm font-bold flex items-center justify-center gap-2 border border-green-500/20 px-4 py-3">
+                      <CheckCircle size={20} /> تم إكمال الطلب بنجاح
+                    </div>
+
+                    {canReview && (
+                      <Button
+                        size="lg"
+                        className="w-full bg-yellow-500 hover:bg-yellow-600 text-white shadow-md animate-in fade-in zoom-in duration-3000"
+                        onClick={() => setShowReviewForm(true)}
+                      >
+                        <div className="flex items-center justify-center gap-2">
+                          <Star size={20} className="fill-white" />
+                          <span>تقييم مقدم الخدمة</span>
+                        </div>
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* ================= PROVIDER VIEW ================= */}
+            {/* Review Form Modal */}
+            <ReviewForm
+              isOpen={showReviewForm}
+              onClose={() => setShowReviewForm(false)}
+              requestId={request.id}
+              // For Requester: We need the provider's ID.
+              // We have `request.accepted_offer_id`. We can find the offer in `receivedOffersMap` or `loadedOffers`.
+              revieweeId={isMyRequest
+                ? (loadedOffers.find((o) => o.id === request.acceptedOfferId)
+                  ?.providerId ||
+                  Array.from(receivedOffersMap.values()).flat().find((o) =>
+                    o.id === request.acceptedOfferId
+                  )?.providerId || "")
+                : request.author}
+              reviewerId={user?.id || ""}
+              onSuccess={() => {
+                setShowReviewForm(false);
+                setCanReview(false); // Hide button after review
+                // Maybe refresh reviews?
+              }}
+              reviewerName={user?.display_name || "مستخدم"}
+              requestTitle={request.title}
+            />
+
             {!isMyRequest && (
               <>
                 {/* CASE 1: I ALREADY HAVE AN OFFER */}
@@ -2465,86 +3247,41 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       </motion.button>
                     )}
 
-                    {/* Chat Button at Top - Only for negotiating/accepted */}
+                    {/* WhatsApp Button - Only for negotiating/accepted (when available) */}
                     {(myOffer.status === "negotiating" ||
-                      myOffer.status === "accepted") && (
-                      <div className="flex gap-2">
-                        {/* WhatsApp Button - Proper WhatsApp green */}
-                        {request.whatsappNumber &&
-                          (request.contactMethod === "whatsapp" ||
-                            request.contactMethod === "both" ||
-                            request.isCreatedViaWhatsApp) &&
-                          (
-                            <Button
-                              size="sm"
-                              className="flex-1 bg-[#25D366] hover:bg-[#20BD5A] text-white gap-2 h-10"
-                              onClick={() =>
-                                window.open(
-                                  `https://wa.me/${request.whatsappNumber}`,
-                                  "_blank",
-                                )}
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                viewBox="0 0 24 24"
-                                fill="currentColor"
-                              >
-                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
-                              </svg>
-                              واتساب
-                            </Button>
-                          )}
-
-                        {/* In-App Chat Button - يظهر فقط إذا تم اعتماد العرض أو توجد محادثة سابقة */}
-                        {(!request.isCreatedViaWhatsApp &&
-                          (request.contactMethod === "chat" ||
-                            request.contactMethod === "both" ||
-                            !request.contactMethod)) && (
-                            canProviderChat()
-                              ? (
-                                <Button
-                                  size="sm"
-                                  className="flex-1 bg-primary hover:bg-primary/90 gap-2 h-10"
-                                  onClick={() => setNegotiationOpen(true)}
-                                >
-                                  <MessageCircle size={18} />
-                                  {myOffer.status === "accepted"
-                                    ? "محادثة"
-                                    : "تفاوض"}
-                                </Button>
-                              )
-                              : myOffer.isNegotiable
-                              ? (
-                                <Button
-                                  size="sm"
-                                  disabled
-                                  className="flex-1 bg-muted text-muted-foreground gap-2 h-10 cursor-not-allowed"
-                                >
-                                  <Clock size={18} />
-                                  بانتظار صاحب الطلب
-                                </Button>
-                              )
-                              : (
-                                <Button
-                                  size="sm"
-                                  disabled
-                                  className="flex-1 bg-orange-100 text-orange-700 gap-2 h-10 cursor-not-allowed"
-                                >
-                                  <Lock size={18} />
-                                  التفاوض غير متاح
-                                </Button>
-                              )
-                          )}
-                      </div>
-                    )}
+                      myOffer.status === "accepted") &&
+                      request.whatsappNumber &&
+                      (request.contactMethod === "whatsapp" ||
+                        request.contactMethod === "both" ||
+                        request.isCreatedViaWhatsApp) &&
+                      (
+                        <Button
+                          size="sm"
+                          className="w-full bg-[#25D366] hover:bg-[#20BD5A] text-white gap-2 h-10"
+                          onClick={() =>
+                            window.open(
+                              `https://wa.me/${request.whatsappNumber}`,
+                              "_blank",
+                            )}
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                          >
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                          </svg>
+                          واتساب
+                        </Button>
+                      )}
 
                     {/* My Offer Box - Clean Design */}
                     <div className="bg-card border border-border rounded-xl p-5 pt-6 shadow-sm relative">
                       {/* Header with Floating Status */}
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-2 text-primary font-bold">
-                          <FileText size={18} />
-                          <h3>تفاصيل عرضي</h3>
+                      <div className="flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-2 text-primary">
+                          <FileText size={14} />
+                          <span className="text-sm font-bold">تفاصيل عرضي</span>
                         </div>
 
                         <div className="flex items-center gap-1.5">
@@ -2560,19 +3297,19 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                 badgeClass =
                                   "bg-primary/10 text-primary border-primary/30";
                                 icon = <CheckCircle size={14} />;
-                                text = "مقبول";
+                                text = "عرض مقبول";
                                 break;
                               case "negotiating":
                                 badgeClass =
                                   "bg-primary/10 text-primary border-primary/30";
                                 icon = <MessageCircle size={14} />;
-                                text = "مفاوضة";
+                                text = "جاري التفاوض";
                                 break;
                               case "pending":
                                 badgeClass =
                                   "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800";
                                 icon = <Clock size={14} />;
-                                text = "انتظار";
+                                text = "قيد الانتظار";
                                 break;
                               case "completed":
                                 badgeClass =
@@ -2596,7 +3333,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                 badgeClass =
                                   "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800";
                                 icon = <Clock size={14} />;
-                                text = "انتظار";
+                                text = "قيد الانتظار";
                             }
 
                             return (
@@ -2630,6 +3367,15 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           )}
                         </div>
                       </div>
+
+                      {/* Offer Title */}
+                      {myOffer?.title && (
+                        <div className="mb-4">
+                          <h4 className="text-base font-bold text-foreground break-words">
+                            {myOffer.title}
+                          </h4>
+                        </div>
+                      )}
 
                       {/* Info Grid - Same Layout as Request Info */}
                       <motion.div
@@ -2695,7 +3441,14 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         {/* Negotiable Status - Fourth */}
                         <div className="flex flex-col gap-1.5">
                           <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                            {myOffer.isNegotiable
+                            {myOffer.status === "negotiating"
+                              ? (
+                                <MessageCircle
+                                  size={18}
+                                  className="text-primary"
+                                />
+                              )
+                              : myOffer.isNegotiable
                               ? <RefreshCw size={18} className="text-primary" />
                               : (
                                 <Lock
@@ -2706,12 +3459,17 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           </span>
                           <span
                             className={`font-bold text-sm ${
-                              myOffer.isNegotiable
+                              myOffer.status === "negotiating" ||
+                                myOffer.isNegotiable
                                 ? "text-primary"
                                 : "text-muted-foreground"
                             }`}
                           >
-                            {myOffer.isNegotiable ? "قابل للتفاوض" : "نهائي"}
+                            {myOffer.status === "negotiating"
+                              ? "جاري التفاوض"
+                              : myOffer.isNegotiable
+                              ? "قابل للتفاوض"
+                              : "نهائي"}
                           </span>
                         </div>
                       </motion.div>
@@ -2817,12 +3575,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
                 {/* CASE 2: NO OFFER YET (AND REQUEST IS ACTIVE) */}
                 {!isMyRequest && !isMyOffer && request.status === "active" && (
-                  <div
+                  <motion.div
                     ref={offerSectionRef}
-                    className={`bg-card border-2 rounded-2xl p-6 shadow-lg mt-4 relative ${
-                      showOfferPulse
-                        ? "border-primary animate-soft-pulse"
-                        : "border-border"
+                    key={flashKey}
+                    className={`bg-card border-2 rounded-2xl p-6 shadow-lg mt-4 relative border-border ${
+                      showOfferPulse ? "animate-quick-flash" : ""
                     }`}
                   >
                     <div className="flex flex-col gap-4 mb-6">
@@ -3292,7 +4049,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         )}
                       </AnimatePresence>
                     </div>
-                  </div>
+                  </motion.div>
                 )}
 
                 {/* CASE 3: CLOSED REQUEST */}
@@ -3316,7 +4073,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
           </motion.div>
         </div>
 
-        {/* Floating Submit Offer Button - Like "أرسل الطلب الآن" */}
+        {/* Floating Buttons - Submit Offer and Negotiate */}
         {!isMyRequest && !isMyOffer && request.status === "active" && (
           <motion.div
             initial={{ y: 100, opacity: 0 }}
@@ -3330,87 +4087,224 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
             }}
             className="fixed bottom-0 left-0 right-0 md:right-72 z-[110] bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4"
           >
-            <motion.button
-              layout
-              onClick={async () => {
-                // If NOT in offer section, scroll to it first
-                if (!isOfferSectionVisible) {
-                  if (offerSectionRef.current && scrollContainerRef.current) {
-                    // Scroll so the offer section header is at the very top
-                    const containerRect = scrollContainerRef.current
-                      .getBoundingClientRect();
-                    const targetRect = offerSectionRef.current
-                      .getBoundingClientRect();
-                    const relativeTop = targetRect.top - containerRect.top +
-                      scrollContainerRef.current.scrollTop;
+            <div className="flex flex-col gap-2">
+              {/* زر التفاوض - ثابت عندما يكون هناك عرض قابل للتفاوض */}
+              {(() => {
+                // البحث عن أول عرض قابل للتفاوض لم يتم قبوله
+                const negotiableOffer = allOffers.find(
+                  (offer) =>
+                    offer.isNegotiable &&
+                    getEffectiveOfferStatus(offer) !== "accepted" &&
+                    getEffectiveOfferStatus(offer) !== "rejected",
+                );
 
-                    // Add extra offset to push it higher (negative to scroll more)
-                    scrollContainerRef.current.scrollTo({
-                      top: relativeTop + 100,
-                      behavior: "smooth",
-                    });
-                  }
-                  return;
-                }
+                if (negotiableOffer) {
+                  const offerStatus = getEffectiveOfferStatus(negotiableOffer);
+                  const isNegotiating = offerStatus === "negotiating";
 
-                // We're in the offer section - validate and submit
-                const canSubmit = offerPrice && offerTitle;
-                if (!canSubmit) return;
-
-                if (navigator.vibrate) navigator.vibrate(15);
-                await handleSubmitOfferFromHeader();
-              }}
-              disabled={isOfferSectionVisible && (!offerPrice || !offerTitle) &&
-                !isSubmittingOffer && !offerSubmitted}
-              className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg ${
-                !isOfferSectionVisible
-                  ? "bg-primary text-white hover:bg-primary/90 shadow-primary/30"
-                  : (offerPrice && offerTitle) && !isSubmittingOffer
-                  ? "bg-primary text-white hover:bg-primary/90 shadow-primary/30"
-                  : "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none"
-              }`}
-            >
-              {isSubmittingOffer
-                ? (
-                  <>
-                    <Loader2 size={20} className="animate-spin" />
-                    <span>
-                      {isUploadingAttachments
-                        ? "جاري الرفع..."
-                        : "جاري الإرسال..."}
-                    </span>
-                  </>
-                )
-                : offerSubmitted
-                ? (
-                  <>
-                    <Check size={20} />
-                    <span>تم الإرسال!</span>
-                  </>
-                )
-                : isOfferSectionVisible
-                ? (
-                  <>
-                    <span>أرسل عرضك الآن</span>
-                    <ChevronLeft size={20} />
-                  </>
-                )
-                : (
-                  <>
-                    <span>قدّم عرضك</span>
-                    <motion.div
-                      animate={{ y: [0, 4, 0] }}
-                      transition={{
-                        duration: 1.5,
-                        repeat: Infinity,
-                        ease: "easeInOut",
+                  return (
+                    <motion.button
+                      layout
+                      onClick={() => {
+                        setActiveOfferId(negotiableOffer.id);
+                        if (isNegotiating) {
+                          setNegotiationOpen(true);
+                        } else {
+                          handleStartNegotiation(negotiableOffer.id);
+                        }
                       }}
+                      disabled={isStartingNegotiation || isGuest}
+                      className={`relative inline-flex items-center justify-center gap-2 rounded-2xl font-bold text-base transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 overflow-hidden active:scale-[0.96] select-none touch-manipulation bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-lg shadow-lg w-full py-4 px-4`}
                     >
-                      <ChevronsDown size={20} />
-                    </motion.div>
-                  </>
-                )}
-            </motion.button>
+                      {isStartingNegotiation
+                        ? (
+                          <>
+                            <Loader2 size={20} className="animate-spin" />
+                            <span>جاري بدء التفاوض...</span>
+                          </>
+                        )
+                        : isNegotiating
+                        ? (
+                          <>
+                            <MessageSquare size={20} />
+                            <span>متابعة التفاوض</span>
+                          </>
+                        )
+                        : (
+                          <>
+                            <MessageCircle size={20} />
+                            <span>تفاوض</span>
+                          </>
+                        )}
+                    </motion.button>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* زر إرسال العرض */}
+              <motion.button
+                layout
+                onClick={async () => {
+                  // If NOT in offer section, scroll to it first
+                  if (!isOfferSectionVisible) {
+                    if (offerSectionRef.current && scrollContainerRef.current) {
+                      // Scroll so the offer section header is at the very top
+                      const containerRect = scrollContainerRef.current
+                        .getBoundingClientRect();
+                      const targetRect = offerSectionRef.current
+                        .getBoundingClientRect();
+                      const relativeTop = targetRect.top - containerRect.top +
+                        scrollContainerRef.current.scrollTop;
+
+                      // Add extra offset to push it higher (negative to scroll more)
+                      scrollContainerRef.current.scrollTo({
+                        top: relativeTop + 100,
+                        behavior: "smooth",
+                      });
+                    }
+                    return;
+                  }
+
+                  // We're in the offer section - validate and submit
+                  const canSubmit = offerPrice && offerTitle;
+                  if (!canSubmit) {
+                    // Trigger flash effect when form is incomplete
+                    setFlashKey((prev) => prev + 1);
+                    setShowOfferPulse(true);
+                    setTimeout(() => setShowOfferPulse(false), 800);
+                    return;
+                  }
+
+                  // Trigger flash effect before submitting
+                  setFlashKey((prev) => prev + 1);
+                  setShowOfferPulse(true);
+                  setTimeout(() => setShowOfferPulse(false), 800);
+
+                  if (navigator.vibrate) navigator.vibrate(15);
+                  await handleSubmitOfferFromHeader();
+                }}
+                disabled={isOfferSectionVisible &&
+                  (!offerPrice || !offerTitle) &&
+                  !isSubmittingOffer && !offerSubmitted}
+                className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg ${
+                  !isOfferSectionVisible
+                    ? "bg-primary text-white hover:bg-primary/90 shadow-primary/30"
+                    : (offerPrice && offerTitle) && !isSubmittingOffer
+                    ? "bg-primary text-white hover:bg-primary/90 shadow-primary/30"
+                    : "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none"
+                }`}
+              >
+                {isSubmittingOffer
+                  ? (
+                    <>
+                      <Loader2 size={20} className="animate-spin" />
+                      <span>
+                        {isUploadingAttachments
+                          ? "جاري الرفع..."
+                          : "جاري الإرسال..."}
+                      </span>
+                    </>
+                  )
+                  : offerSubmitted
+                  ? (
+                    <>
+                      <Check size={20} />
+                      <span>تم الإرسال!</span>
+                    </>
+                  )
+                  : isOfferSectionVisible
+                  ? (
+                    <>
+                      <span>أرسل عرضك الآن</span>
+                      <ChevronLeft size={20} />
+                    </>
+                  )
+                  : (
+                    <>
+                      <span>قدّم عرضك</span>
+                      <motion.div
+                        animate={{ y: [0, 4, 0] }}
+                        transition={{
+                          duration: 1.5,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                        }}
+                      >
+                        <ChevronsDown size={20} />
+                      </motion.div>
+                    </>
+                  )}
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* زر التفاوض الثابت - لمقدم العرض (Provider) عندما يكون لديه عرض قابل للتفاوض */}
+        {isMyOffer && myOffer && myOffer.isNegotiable &&
+          request.status === "active" && canProviderChat() && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{
+              type: "spring",
+              stiffness: 400,
+              damping: 35,
+              mass: 0.8,
+            }}
+            className="fixed bottom-0 left-0 right-0 md:right-72 z-[110] bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4"
+          >
+            <div className="flex flex-col gap-2">
+              {(() => {
+                const offerStatus = myOffer.status || "pending";
+                const isNegotiating = offerStatus === "negotiating";
+                // حساب عدد الرسائل غير المقروءة (من الرسائل المحملة قبل قراءتها)
+                const unreadMessagesCount = chatMessages.filter(
+                  (msg) => !msg.is_read && msg.sender_id !== user?.id,
+                ).length || 0;
+
+                return (
+                  <motion.button
+                    layout
+                    onClick={() => {
+                      if (myOffer) setActiveOfferId(myOffer.id);
+                      setNegotiationOpen(true);
+                    }}
+                    disabled={isGuest}
+                    className={`relative inline-flex items-center justify-center gap-2 rounded-2xl font-bold text-base transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 overflow-visible active:scale-[0.96] select-none touch-manipulation bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-lg shadow-lg w-full py-4 px-4`}
+                  >
+                    <div className="inline-flex items-center justify-center gap-2">
+                      {isNegotiating || offerStatus === "accepted" ||
+                          hasExistingConversation
+                        ? (
+                          <>
+                            <MessageSquare size={20} />
+                            <span>متابعة التفاوض</span>
+                          </>
+                        )
+                        : (
+                          <>
+                            <MessageCircle size={20} />
+                            <span>تفاوض</span>
+                          </>
+                        )}
+                      {unreadMessagesCount > 0 && (
+                        <motion.span
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-gradient-to-br from-red-500 to-red-600 text-white text-[11px] font-bold shadow-md border border-red-400/30 dark:border-red-700/50 ring-2 ring-red-500/20 dark:ring-red-500/30"
+                        >
+                          {unreadMessagesCount > 99
+                            ? "99+"
+                            : unreadMessagesCount}
+                        </motion.span>
+                      )}
+                    </div>
+                  </motion.button>
+                );
+              })()}
+            </div>
           </motion.div>
         )}
 
@@ -3620,8 +4514,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                             }
 
                             // التحقق من أن المستخدم لا يقدم عرض على طلبه الخاص
-                            const requestAuthorId = (request as any).authorId ||
-                              (request as any).author_id || request.author;
+                            const requestAuthorId = request.author;
                             if (
                               requestAuthorId &&
                               userProfile.id === requestAuthorId
@@ -3754,11 +4647,49 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                   navigator.vibrate([30, 50, 30]);
                                 }
 
+                                // ✅ Optimistic Update: إضافة العرض مباشرة إلى الواجهة بدون انتظار
+                                const newOffer: Offer = {
+                                  id: offerResult.id,
+                                  requestId: request.id,
+                                  providerId: userId,
+                                  providerName: userProfile.display_name ||
+                                    "مزود خدمة",
+                                  providerAvatar: userProfile.avatar_url,
+                                  title: offerTitle.trim(),
+                                  description: offerDescription.trim() || "",
+                                  price: offerPrice.trim(),
+                                  deliveryTime: offerDuration.trim() || "",
+                                  status: "pending",
+                                  createdAt: new Date(),
+                                  isNegotiable,
+                                  location: offerCity.trim() || undefined,
+                                  images: uploadedImageUrls.length > 0
+                                    ? uploadedImageUrls
+                                    : undefined,
+                                };
+
+                                // إضافة العرض مباشرة إلى loadedOffers
+                                setLoadedOffers((prev) => {
+                                  // التحقق من عدم وجود العرض مسبقاً (لتجنب التكرار)
+                                  if (
+                                    prev.some((o) => o.id === offerResult.id)
+                                  ) {
+                                    return prev;
+                                  }
+                                  return [newOffer, ...prev];
+                                });
+
                                 setOfferSubmitted(true);
 
-                                // Notify parent
+                                // Notify parent (في الخلفية)
                                 if (onOfferCreated) {
-                                  onOfferCreated();
+                                  onOfferCreated().catch((error) => {
+                                    logger.error(
+                                      "Error in onOfferCreated callback:",
+                                      error,
+                                      "service",
+                                    );
+                                  });
                                 }
 
                                 // Reset form
@@ -4080,43 +5011,109 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 initial={{ y: "100%" }}
                 animate={{ y: 0 }}
                 exit={{ y: "100%" }}
-                transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                transition={{
+                  type: "spring",
+                  damping: 35,
+                  stiffness: 400,
+                  mass: 0.8,
+                }}
                 drag="y"
                 dragConstraints={{ top: 0, bottom: 0 }}
-                dragElastic={{ top: 0, bottom: 0.5 }}
+                dragElastic={{ top: 0, bottom: 0.3 }}
+                dragMomentum={false}
                 onDragEnd={(_, info) => {
-                  if (info.offset.y > 100 || info.velocity.y > 500) {
+                  const velocityThreshold = 800;
+                  const offsetThreshold = 150;
+                  const shouldClose = info.offset.y > offsetThreshold ||
+                    info.velocity.y > velocityThreshold;
+
+                  if (shouldClose) {
                     setNegotiationOpen(false);
                   }
                 }}
-                className="fixed bottom-0 left-0 right-0 z-[95] bg-card rounded-t-3xl flex flex-col max-h-[90vh] shadow-2xl"
+                className="fixed bottom-0 left-0 right-0 z-[120] bg-card rounded-t-3xl flex flex-col max-h-[90vh] shadow-2xl"
               >
-                {/* Drag Handle */}
-                <div className="flex justify-center py-3 cursor-grab active:cursor-grabbing">
-                  <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full" />
+                {/* Drag Handle - أعلى البوتوم شيت */}
+                <div className="flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none shrink-0">
+                  <div className="w-20 h-1 bg-muted-foreground/40 dark:bg-muted-foreground/50 rounded-full transition-colors duration-200 active:bg-muted-foreground/60" />
                 </div>
 
                 {/* Chat Header */}
                 <div className="px-5 pb-4 border-b border-border flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
-                      <MessageCircle size={24} className="text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-base">المحادثة</h4>
-                      <span className="text-xs text-muted-foreground">
-                        التواصل مع مقدم الخدمة
-                      </span>
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="flex-1 min-w-0">
+                      {(() => {
+                        // عندما يكون المستخدم صاحب طلب، عرض اسم العارض. وإلا عرض عنوان الطلب
+                        if (isMyRequest || mode === "requests") {
+                          // البحث عن العرض النشط أو المقبول للحصول على اسم العارض
+                          const activeOffer = activeOfferId
+                            ? allOffers.find((o) => o.id === activeOfferId)
+                            : allOffers.find((o) => o.status === "accepted") ||
+                              allOffers[0];
+
+                          const providerName = activeOffer?.providerName ||
+                            "مقدم خدمة";
+
+                          return (
+                            <>
+                              <h4 className="font-bold text-base truncate">
+                                {providerName}
+                              </h4>
+                              <span className="text-xs text-muted-foreground">
+                                التواصل مع مقدم الخدمة
+                              </span>
+                            </>
+                          );
+                        } else {
+                          // عندما يكون المستخدم مقدم خدمة، عرض عنوان الطلب
+                          return (
+                            <>
+                              <h4 className="font-bold text-base truncate">
+                                {request.title}
+                              </h4>
+                              <span className="text-xs text-muted-foreground">
+                                التواصل مع صاحب الطلب
+                              </span>
+                            </>
+                          );
+                        }
+                      })()}
                     </div>
                   </div>
-                  <motion.button
-                    onClick={() => setNegotiationOpen(false)}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
-                  >
-                    <X size={20} />
-                  </motion.button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* Mute Notifications Button */}
+                    <motion.button
+                      onClick={() => {
+                        if (navigator.vibrate) navigator.vibrate(10);
+                        setIsConversationMuted((prev) => !prev);
+                        // TODO: Implement mute notifications functionality
+                        logger.log(
+                          `Conversation notifications ${
+                            !isConversationMuted ? "muted" : "unmuted"
+                          }`,
+                        );
+                      }}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
+                      title={isConversationMuted
+                        ? "إلغاء كتم الإشعارات"
+                        : "كتم إشعارات المحادثة"}
+                    >
+                      {isConversationMuted
+                        ? <BellOff size={18} className="text-red-500" />
+                        : <Bell size={18} />}
+                    </motion.button>
+                    {/* Close Button */}
+                    <motion.button
+                      onClick={() => setNegotiationOpen(false)}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
+                    >
+                      <X size={18} />
+                    </motion.button>
+                  </div>
                 </div>
 
                 {/* Messages Area */}
@@ -4181,10 +5178,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                             chatMessages.map((msg) => (
                               <div
                                 key={msg.id}
-                                className={`flex flex-col ${
+                                className={`flex flex-col w-full ${
                                   msg.sender_id === user?.id
-                                    ? "items-end"
-                                    : "items-start"
+                                    ? "items-start"
+                                    : "items-end"
                                 }`}
                               >
                                 {/* رسالة نظام */}
@@ -4199,13 +5196,28 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                   : (
                                     <>
                                       <div
-                                        className={`px-4 py-3 rounded-2xl max-w-[80%] text-sm leading-relaxed shadow-sm ${
+                                        className={`px-4 py-3 rounded-2xl max-w-[80%] text-base leading-relaxed shadow-sm ${
                                           msg.sender_id === user?.id
-                                            ? "bg-primary text-primary-foreground rounded-br-md"
-                                            : "bg-card border border-border rounded-bl-md"
+                                            ? "bg-primary text-primary-foreground rounded-br-md rounded-tr-none"
+                                            : "bg-card border border-border rounded-bl-md rounded-tl-none"
                                         }`}
                                       >
-                                        {msg.content}
+                                        {/* Voice Message */}
+                                        {msg.audio_url && (
+                                          <div className="mb-2">
+                                            <audio
+                                              src={msg.audio_url}
+                                              controls
+                                              className="w-full h-8 rounded-lg"
+                                            />
+                                          </div>
+                                        )}
+                                        {/* Text Content */}
+                                        {msg.content && (
+                                          <p className="whitespace-pre-wrap">
+                                            {msg.content}
+                                          </p>
+                                        )}
                                       </div>
                                       <span className="text-[10px] text-muted-foreground mt-1.5 px-2">
                                         {format(new Date(msg.created_at), "p", {
@@ -4238,52 +5250,152 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       </div>
                     )
                     : (
-                      <div className="flex items-center gap-2 bg-secondary/30 rounded-2xl border border-border p-2">
-                        {/* Attachment Button */}
-                        <button className="w-10 h-10 rounded-full flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-background/80 transition-colors shrink-0">
-                          <Paperclip size={20} />
-                        </button>
-
-                        {/* Input Field */}
-                        <input
-                          type="text"
-                          dir="rtl"
-                          className="flex-1 bg-transparent px-2 py-2 focus:outline-none text-sm"
-                          placeholder="اكتب رسالتك..."
-                          value={chatMessage}
-                          onChange={(e) => setChatMessage(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              handleSendChat();
-                            }
-                          }}
-                        />
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          {!chatMessage.trim() && (
-                            <button className="w-10 h-10 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors">
-                              <Mic size={20} />
-                            </button>
+                      <>
+                        {/* Recording indicator */}
+                        <AnimatePresence>
+                          {isRecordingVoice && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 10 }}
+                              className="flex items-center justify-between mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl"
+                            >
+                              <button
+                                onClick={cancelRecordingVoiceChat}
+                                className="p-2 hover:bg-red-500/20 rounded-full transition-colors"
+                              >
+                                <X size={18} className="text-red-500" />
+                              </button>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">
+                                  {formatRecordingTime(recordingTimeVoice)}
+                                </span>
+                                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                              </div>
+                              <button
+                                onClick={stopRecordingVoiceChat}
+                                className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 transition-colors"
+                              >
+                                إيقاف
+                              </button>
+                            </motion.div>
                           )}
-                          <button
-                            onClick={handleSendChat}
-                            disabled={!chatMessage.trim() || isSendingMessage ||
-                              !currentConversation}
-                            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                              chatMessage.trim() && !isSendingMessage &&
-                                currentConversation
-                                ? "bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
-                                : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {isSendingMessage
-                              ? <Loader2 size={18} className="animate-spin" />
-                              : <Send size={18} className="-rotate-90" />}
+                        </AnimatePresence>
+
+                        {/* Recorded audio preview */}
+                        <AnimatePresence>
+                          {recordedAudioUrlChat && !isRecordingVoice && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 10 }}
+                              className="flex items-center gap-2 mb-3 p-3 bg-primary/10 border border-primary/20 rounded-xl"
+                            >
+                              <button
+                                onClick={cancelRecordingVoiceChat}
+                                className="p-2 hover:bg-primary/20 rounded-full transition-colors"
+                              >
+                                <Trash2
+                                  size={16}
+                                  className="text-destructive"
+                                />
+                              </button>
+                              <div className="flex-1">
+                                <audio
+                                  src={recordedAudioUrlChat}
+                                  controls
+                                  className="w-full h-8"
+                                />
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        <div className="flex items-center gap-2 bg-secondary/30 rounded-2xl border border-border p-2">
+                          {/* Attachment Button */}
+                          <button className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
+                            <Paperclip
+                              size={18}
+                              className="text-muted-foreground"
+                            />
                           </button>
+
+                          {/* Input Field with buttons inside */}
+                          <div className="flex-1 relative">
+                            <input
+                              type="text"
+                              dir="rtl"
+                              className="w-full py-3 pl-20 pr-4 rounded-xl bg-secondary border border-border focus:outline-none focus:border-primary text-base disabled:opacity-50 disabled:cursor-not-allowed"
+                              placeholder="اكتب رسالتك..."
+                              value={chatMessage}
+                              onChange={(e) => setChatMessage(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleSendChat();
+                                }
+                              }}
+                              disabled={isRecordingVoice || isSendingChat}
+                            />
+                            {/* Buttons inside input field (on the left side for RTL) */}
+                            <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10">
+                              {/* Voice recording button */}
+                              <button
+                                onClick={isRecordingVoice
+                                  ? stopRecordingVoiceChat
+                                  : startRecordingVoiceChat}
+                                disabled={isSendingChat ||
+                                  (recordedAudioUrlChat !== null &&
+                                    !isRecordingVoice)}
+                                className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                  isRecordingVoice
+                                    ? "bg-red-500 text-white animate-pulse"
+                                    : "bg-transparent hover:bg-secondary/80 text-muted-foreground"
+                                }`}
+                                aria-label={isRecordingVoice
+                                  ? "إيقاف التسجيل"
+                                  : "تسجيل رسالة صوتية"}
+                              >
+                                <Mic
+                                  size={18}
+                                  className={isRecordingVoice
+                                    ? "text-white"
+                                    : "text-muted-foreground"}
+                                />
+                              </button>
+
+                              {/* Send button */}
+                              <motion.button
+                                onClick={handleSendChat}
+                                disabled={(!chatMessage.trim() &&
+                                  !recordedAudioBlobChat) ||
+                                  isSendingChat || isRecordingVoice}
+                                className="w-9 h-9 rounded-lg bg-primary text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
+                                whileHover={(!chatMessage.trim() &&
+                                    !recordedAudioBlobChat) ||
+                                    isSendingChat || isRecordingVoice
+                                  ? {}
+                                  : { scale: 1.05 }}
+                                whileTap={(!chatMessage.trim() &&
+                                    !recordedAudioBlobChat) ||
+                                    isSendingChat || isRecordingVoice
+                                  ? {}
+                                  : { scale: 0.95 }}
+                                aria-label="إرسال الرسالة"
+                              >
+                                {isSendingChat
+                                  ? (
+                                    <Loader2
+                                      size={16}
+                                      className="animate-spin"
+                                    />
+                                  )
+                                  : <Send size={16} className="-rotate-90" />}
+                              </motion.button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
+                      </>
                     )}
                 </div>
               </motion.div>
@@ -4441,12 +5553,31 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
               initial={{ opacity: 0, y: "100%" }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 400 }}
+              transition={{
+                type: "spring",
+                damping: 35,
+                stiffness: 400,
+                mass: 0.8,
+              }}
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.3 }}
+              dragMomentum={false}
+              onDragEnd={(_, info) => {
+                const velocityThreshold = 800;
+                const offsetThreshold = 150;
+                const shouldClose = info.offset.y > offsetThreshold ||
+                  info.velocity.y > velocityThreshold;
+
+                if (shouldClose) {
+                  setIsReportModalOpen(false);
+                }
+              }}
               className="fixed inset-x-0 bottom-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 max-w-md w-full mx-auto bg-card border-t sm:border border-border rounded-t-3xl sm:rounded-2xl shadow-2xl z-[101] max-h-[90vh] flex flex-col"
             >
-              {/* Drag Handle - Mobile Only */}
-              <div className="sm:hidden flex justify-center py-2">
-                <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
+              {/* Drag Handle - أعلى البوتوم شيت - Mobile Only */}
+              <div className="sm:hidden flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none shrink-0">
+                <div className="w-20 h-1 bg-muted-foreground/40 dark:bg-muted-foreground/50 rounded-full transition-colors duration-200 active:bg-muted-foreground/60" />
               </div>
 
               {/* Header */}
@@ -4574,6 +5705,97 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
               )}
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* Fullscreen Image Modal */}
+      <AnimatePresence>
+        {expandedImageIndex !== null && request.images &&
+          request.images.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center"
+            onClick={() => setExpandedImageIndex(null)}
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setExpandedImageIndex(null)}
+              className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+            >
+              <X size={24} />
+            </button>
+
+            {/* Image Counter */}
+            <div className="absolute top-4 left-4 z-10 text-white/70 text-sm">
+              {(expandedImageIndex ?? 0) + 1} / {request.images.length}
+            </div>
+
+            {/* Main Image */}
+            <motion.img
+              key={expandedImageIndex}
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              src={request.images[expandedImageIndex ?? 0]}
+              alt="Expanded"
+              className="max-w-full max-h-full object-contain p-4"
+              onClick={(e) => e.stopPropagation()}
+            />
+
+            {/* Navigation Arrows */}
+            {request.images.length > 1 && (
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedImageIndex((prev) =>
+                      prev !== null
+                        ? (prev - 1 + request.images!.length) %
+                          request.images!.length
+                        : 0
+                    );
+                  }}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+                >
+                  <ChevronRight size={28} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedImageIndex((prev) =>
+                      prev !== null ? (prev + 1) % request.images!.length : 0
+                    );
+                  }}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+                >
+                  <ChevronLeft size={28} />
+                </button>
+              </>
+            )}
+
+            {/* Dots Indicator */}
+            {request.images.length > 1 && (
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2">
+                {request.images.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedImageIndex(idx);
+                    }}
+                    className={`w-2.5 h-2.5 rounded-full transition-all ${
+                      idx === expandedImageIndex
+                        ? "bg-white scale-125"
+                        : "bg-white/40 hover:bg-white/60"
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
+          </motion.div>
         )}
       </AnimatePresence>
     </motion.div>

@@ -242,12 +242,42 @@ export const FloatingFilterIsland: React.FC<FloatingFilterIslandProps> = ({
             <AnimatePresence>
               {openDropdownId === filter.id && (
                 <>
-                  {/* Backdrop - blocks scroll */}
+                  {/* Backdrop - darkens screen and prevents interactions */}
                   <div
-                    className="fixed inset-0 z-40 touch-none"
-                    onClick={() => setOpenDropdownId(null)}
-                    onWheel={(e) => e.preventDefault()}
-                    onTouchMove={(e) => e.preventDefault()}
+                    className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px] touch-none"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.nativeEvent.stopImmediatePropagation();
+                      setOpenDropdownId(null);
+                    }}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.nativeEvent.stopImmediatePropagation();
+                      setOpenDropdownId(null);
+                    }}
+                    onTouchEnd={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.nativeEvent.stopImmediatePropagation();
+                      setOpenDropdownId(null);
+                    }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.nativeEvent.stopImmediatePropagation();
+                    }}
+                    onMouseUp={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.nativeEvent.stopImmediatePropagation();
+                      setOpenDropdownId(null);
+                    }}
+                    style={{ 
+                      touchAction: "none", // منع scroll والسلوك الافتراضي للـ touch events
+                      pointerEvents: "auto"
+                    }}
                   />
                   <motion.div
                     initial={{ opacity: 0, y: -8, scale: 0.95 }}

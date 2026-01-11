@@ -17,6 +17,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "سافٹ ویئر ڈویلپمنٹ",
     icon: "Code",
     emoji: "💻",
+    group: "tech",
   },
   {
     id: "web-dev",
@@ -25,6 +26,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ویب ڈویلپمنٹ",
     icon: "Globe",
     emoji: "🌐",
+    group: "tech",
   },
   {
     id: "mobile-apps",
@@ -33,6 +35,16 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "موبائل ایپس",
     icon: "Smartphone",
     emoji: "📱",
+    group: "tech",
+  },
+  {
+    id: "mobile-phones",
+    label: "جوالات وأجهزة",
+    label_en: "Mobile Phones & Devices",
+    label_ur: "موبائل فون اور آلات",
+    icon: "Smartphone",
+    emoji: "📱",
+    group: "tech",
   },
   {
     id: "it-support",
@@ -41,6 +53,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "آئی ٹی سپورٹ",
     icon: "Headphones",
     emoji: "🎧",
+    group: "tech",
   },
   {
     id: "data-analysis",
@@ -49,6 +62,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ڈیٹا تجزیہ",
     icon: "BarChart",
     emoji: "📊",
+    group: "tech",
   },
   {
     id: "ai-services",
@@ -57,6 +71,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "اے آئی خدمات",
     icon: "Brain",
     emoji: "🧠",
+    group: "tech",
   },
 
   // تصميم
@@ -67,6 +82,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "گرافک ڈیزائن",
     icon: "Palette",
     emoji: "🎨",
+    group: "design",
   },
   {
     id: "ui-ux",
@@ -75,6 +91,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "یو آئی ڈیزائن",
     icon: "Layout",
     emoji: "📐",
+    group: "design",
   },
   {
     id: "logo-branding",
@@ -83,6 +100,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "لوگو اور برانڈنگ",
     icon: "Figma",
     emoji: "✨",
+    group: "design",
   },
   {
     id: "interior-design",
@@ -91,6 +109,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "انٹیریئر ڈیزائن",
     icon: "Sofa",
     emoji: "🛋️",
+    group: "design",
   },
   {
     id: "architectural",
@@ -99,6 +118,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "تعمیراتی ڈیزائن",
     icon: "Building2",
     emoji: "🏗️",
+    group: "design",
   },
 
   // محتوى
@@ -109,6 +129,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "مواد لکھنا",
     icon: "FileText",
     emoji: "📝",
+    group: "content",
   },
   {
     id: "copywriting",
@@ -117,6 +138,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "کاپی رائٹنگ",
     icon: "PenTool",
     emoji: "✍️",
+    group: "content",
   },
   {
     id: "translation",
@@ -125,6 +147,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ترجمہ",
     icon: "Languages",
     emoji: "🌍",
+    group: "content",
   },
   {
     id: "voice-over",
@@ -133,6 +156,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "وائس اوور",
     icon: "Mic",
     emoji: "🎙️",
+    group: "content",
   },
   {
     id: "proofreading",
@@ -141,6 +165,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "پروف ریڈنگ",
     icon: "Check",
     emoji: "✔️",
+    group: "content",
   },
 
   // تسويق
@@ -151,6 +176,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ڈیجیٹل مارکیٹنگ",
     icon: "TrendingUp",
     emoji: "📈",
+    group: "marketing",
   },
   {
     id: "social-media",
@@ -159,6 +185,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "سوشل میڈیا",
     icon: "Share2",
     emoji: "📲",
+    group: "marketing",
   },
   {
     id: "seo",
@@ -167,6 +194,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ایس ای او",
     icon: "Search",
     emoji: "🔍",
+    group: "marketing",
   },
   {
     id: "advertising",
@@ -175,6 +203,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "اشتہارات",
     icon: "Megaphone",
     emoji: "📣",
+    group: "marketing",
   },
 
   // خدمات مهنية
@@ -185,6 +214,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "قانونی خدمات",
     icon: "Scale",
     emoji: "⚖️",
+    group: "professional",
   },
   {
     id: "accounting",
@@ -193,6 +223,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "اکاؤنٹنگ",
     icon: "Calculator",
     emoji: "🧮",
+    group: "professional",
   },
   {
     id: "consulting",
@@ -201,6 +232,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "مشاورت",
     icon: "MessageSquare",
     emoji: "💬",
+    group: "professional",
   },
   {
     id: "hr-services",
@@ -209,6 +241,25 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ایچ آر خدمات",
     icon: "Users",
     emoji: "👥",
+    group: "professional",
+  },
+  {
+    id: "jobs",
+    label: "وظائف",
+    label_en: "Jobs",
+    label_ur: "ملازمتیں",
+    icon: "Briefcase",
+    emoji: "💼",
+    group: "professional",
+  },
+  {
+    id: "delivery-jobs",
+    label: "وظائف مناديب",
+    label_en: "Delivery Jobs",
+    label_ur: "ڈیلیوری ملازمتیں",
+    icon: "Package",
+    emoji: "📦",
+    group: "professional",
   },
 
   // تعليم
@@ -219,6 +270,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ٹیوشن",
     icon: "GraduationCap",
     emoji: "🎓",
+    group: "education",
   },
   {
     id: "online-courses",
@@ -227,6 +279,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "آن لائن کورسز",
     icon: "Monitor",
     emoji: "🖥️",
+    group: "education",
   },
   {
     id: "language-learning",
@@ -235,6 +288,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "زبان سیکھنا",
     icon: "BookOpen",
     emoji: "📖",
+    group: "education",
   },
   {
     id: "skills-training",
@@ -243,6 +297,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ہنر کی تربیت",
     icon: "Target",
     emoji: "🎯",
+    group: "education",
   },
 
   // صحة
@@ -253,6 +308,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "طبی مشاورت",
     icon: "Stethoscope",
     emoji: "🩺",
+    group: "health",
   },
   {
     id: "nutrition",
@@ -261,6 +317,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "غذائیت",
     icon: "Apple",
     emoji: "🍎",
+    group: "health",
   },
   {
     id: "fitness",
@@ -269,6 +326,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "فٹنس",
     icon: "Dumbbell",
     emoji: "💪",
+    group: "health",
   },
   {
     id: "mental-health",
@@ -277,6 +335,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ذہنی صحت",
     icon: "Heart",
     emoji: "❤️",
+    group: "health",
   },
 
   // صيانة ومنزل
@@ -287,6 +346,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "پلمبنگ",
     icon: "Droplet",
     emoji: "🔧",
+    group: "maintenance",
   },
   {
     id: "electrical",
@@ -295,6 +355,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "بجلی",
     icon: "Zap",
     emoji: "⚡",
+    group: "maintenance",
   },
   {
     id: "ac-services",
@@ -303,6 +364,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "اے سی خدمات",
     icon: "Wind",
     emoji: "❄️",
+    group: "maintenance",
   },
   {
     id: "home-repair",
@@ -311,6 +373,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "گھر کی مرمت",
     icon: "Hammer",
     emoji: "🔨",
+    group: "maintenance",
   },
   {
     id: "appliance-repair",
@@ -319,6 +382,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "آلات کی مرمت",
     icon: "Settings",
     emoji: "⚙️",
+    group: "maintenance",
   },
   {
     id: "painting",
@@ -327,6 +391,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "پینٹنگ",
     icon: "Paintbrush",
     emoji: "🖌️",
+    group: "maintenance",
   },
   {
     id: "carpentry",
@@ -335,6 +400,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "بڑھئی گری",
     icon: "Axe",
     emoji: "🪓",
+    group: "maintenance",
   },
 
   // نقل
@@ -345,6 +411,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "سامان منتقلی",
     icon: "Truck",
     emoji: "🚚",
+    group: "moving",
   },
   {
     id: "shipping",
@@ -353,6 +420,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "شپنگ",
     icon: "Package",
     emoji: "📦",
+    group: "moving",
   },
   {
     id: "delivery",
@@ -361,6 +429,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ڈیلیوری",
     icon: "MapPin",
     emoji: "📍",
+    group: "moving",
   },
 
   // سيارات
@@ -371,6 +440,16 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "گاڑی کی مرمت",
     icon: "Car",
     emoji: "🚗",
+    group: "cars",
+  },
+  {
+    id: "car-parts",
+    label: "قطع غيار سيارات",
+    label_en: "Car Parts",
+    label_ur: "گاڑی کے پرزے",
+    icon: "Wrench",
+    emoji: "🔩",
+    group: "cars",
   },
   {
     id: "car-wash",
@@ -379,6 +458,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "گاڑی دھلائی",
     icon: "Droplets",
     emoji: "💧",
+    group: "cars",
   },
   {
     id: "car-rental",
@@ -387,6 +467,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "گاڑی کرایہ",
     icon: "Key",
     emoji: "🔑",
+    group: "cars",
   },
   {
     id: "driver-services",
@@ -395,6 +476,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ڈرائیور خدمات",
     icon: "UserCheck",
     emoji: "👨‍✈️",
+    group: "cars",
   },
 
   // مناسبات
@@ -405,6 +487,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "تقریب کی منصوبہ بندی",
     icon: "Calendar",
     emoji: "📅",
+    group: "events",
   },
   {
     id: "catering",
@@ -413,6 +496,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "کیٹرنگ",
     icon: "UtensilsCrossed",
     emoji: "🍴",
+    group: "events",
   },
   {
     id: "photography",
@@ -421,6 +505,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "فوٹوگرافی",
     icon: "Camera",
     emoji: "📷",
+    group: "events",
   },
   {
     id: "videography",
@@ -429,6 +514,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ویڈیو گرافی",
     icon: "Video",
     emoji: "🎬",
+    group: "events",
   },
   {
     id: "entertainment",
@@ -437,6 +523,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "تفریح",
     icon: "Music",
     emoji: "🎵",
+    group: "events",
   },
   {
     id: "flowers-decor",
@@ -445,6 +532,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "پھول اور سجاوٹ",
     icon: "Flower",
     emoji: "💐",
+    group: "events",
   },
 
   // جمال وعناية
@@ -455,6 +543,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "بالوں کا اسٹائل",
     icon: "Scissors",
     emoji: "✂️",
+    group: "beauty",
   },
   {
     id: "makeup",
@@ -463,6 +552,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "میک اپ",
     icon: "Sparkles",
     emoji: "💄",
+    group: "beauty",
   },
   {
     id: "spa-massage",
@@ -471,6 +561,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "سپا اور مساج",
     icon: "Flower2",
     emoji: "🌸",
+    group: "beauty",
   },
   {
     id: "nails",
@@ -479,6 +570,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ناخن",
     icon: "Hand",
     emoji: "💅",
+    group: "beauty",
   },
 
   // تنظيف
@@ -489,6 +581,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "گھر کی صفائی",
     icon: "Home",
     emoji: "🏠",
+    group: "cleaning",
   },
   {
     id: "office-cleaning",
@@ -497,6 +590,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "دفتر کی صفائی",
     icon: "Building",
     emoji: "🏢",
+    group: "cleaning",
   },
   {
     id: "laundry",
@@ -505,6 +599,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "لانڈری",
     icon: "Shirt",
     emoji: "👔",
+    group: "cleaning",
   },
   {
     id: "pest-control",
@@ -513,6 +608,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "کیڑے مکوڑے کنٹرول",
     icon: "Bug",
     emoji: "🐛",
+    group: "cleaning",
   },
 
   // طعام
@@ -523,6 +619,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "گھر کا کھانا",
     icon: "ChefHat",
     emoji: "👨‍🍳",
+    group: "food",
   },
   {
     id: "restaurants",
@@ -531,6 +628,16 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "ریسٹورانٹس",
     icon: "UtensilsCrossed",
     emoji: "🍽️",
+    group: "food",
+  },
+  {
+    id: "restaurant-supplies",
+    label: "مأكولات للمطاعم",
+    label_en: "Restaurant Supplies",
+    label_ur: "ریسٹورانٹ سپلائی",
+    icon: "ChefHat",
+    emoji: "🍴",
+    group: "food",
   },
   {
     id: "baking",
@@ -539,6 +646,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "بیکنگ",
     icon: "Cake",
     emoji: "🎂",
+    group: "food",
   },
   {
     id: "catering-food",
@@ -547,6 +655,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "کھانے کی کیٹرنگ",
     icon: "Soup",
     emoji: "🍲",
+    group: "food",
   },
 
   // عقارات
@@ -557,6 +666,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "رئیل اسٹیٹ",
     icon: "Building2",
     emoji: "🏘️",
+    group: "real-estate",
   },
   {
     id: "property-mgmt",
@@ -565,6 +675,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "جائیداد کا انتظام",
     icon: "KeyRound",
     emoji: "🔐",
+    group: "real-estate",
   },
 
   // حيوانات أليفة
@@ -575,6 +686,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "پالتو جانوروں کی دیکھ بھال",
     icon: "Cat",
     emoji: "🐱",
+    group: "pets",
   },
   {
     id: "pet-grooming",
@@ -583,6 +695,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "پالتو جانوروں کی گرومنگ",
     icon: "Sparkle",
     emoji: "✨",
+    group: "pets",
   },
 
   // أمن وحماية
@@ -593,6 +706,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "سیکیورٹی خدمات",
     icon: "Shield",
     emoji: "🛡️",
+    group: "security",
   },
   {
     id: "cctv",
@@ -601,6 +715,45 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "سی سی ٹی وی",
     icon: "Cctv",
     emoji: "📹",
+    group: "security",
+  },
+
+  // جملة وتجزئة
+  {
+    id: "wholesale-food",
+    label: "جملة أغذية",
+    label_en: "Wholesale Food",
+    label_ur: "کھانے کی تھوک فروشی",
+    icon: "ShoppingCart",
+    emoji: "🛒",
+    group: "wholesale",
+  },
+  {
+    id: "wholesale-clothing",
+    label: "جملة ملابس",
+    label_en: "Wholesale Clothing",
+    label_ur: "کپڑوں کی تھوک فروشی",
+    icon: "Shirt",
+    emoji: "👕",
+    group: "wholesale",
+  },
+  {
+    id: "wholesale-electronics",
+    label: "جملة إلكترونيات",
+    label_en: "Wholesale Electronics",
+    label_ur: "الیکٹرانکس کی تھوک فروشی",
+    icon: "Monitor",
+    emoji: "📺",
+    group: "wholesale",
+  },
+  {
+    id: "wholesale-general",
+    label: "جملة عامة",
+    label_en: "General Wholesale",
+    label_ur: "عام تھوک فروشی",
+    icon: "Package",
+    emoji: "📦",
+    group: "wholesale",
   },
 
   // أخرى
@@ -611,6 +764,7 @@ export const AVAILABLE_CATEGORIES: Category[] = [
     label_ur: "دیگر",
     icon: "Grid3x3",
     emoji: "📦",
+    group: "other",
   },
 ];
 

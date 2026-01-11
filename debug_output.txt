@@ -1,0 +1,16 @@
+Using Service Role Key (Admin Access)...
+Finding user with phone +966555555555...
+User +966555555555 NOT FOUND in auth.users!
+Available users (first 3): [
+  { id: '89e1112b-9139-4402-ae76-fae03637264c', phone: '' },
+  { id: '0a34ad3e-da43-4297-9ee5-b47bdc3bbee9', phone: '' },
+  { id: 'db2bae42-51f7-44de-9781-e838a95492e3', phone: '' }
+]
+
+Searching for request '┘â╪د╪ز╪ذ ┘é╪د┘┘ê┘┘è'...
+
+Request: ┘à╪╖┘┘ê╪ذ ┘â╪د╪ز╪ذ ┘é╪د┘┘ê┘┘è ┘à╪ص╪ز╪▒┘ (ID: ade1bcdd-5558-4a6b-9e71-efdb8b048841)
+Author ID: 0a34ad3e-da43-4297-9ee5-b47bdc3bbee9
+Is Current User Author? false
+  -> Found 1 offers visible:
+     - Offer ID: 2ae045e3-1bb2-4584-bb07-2fc09e1bf53c, Status: pending, Provider: 89e1112b-9139-4402-ae76-fae03637264c

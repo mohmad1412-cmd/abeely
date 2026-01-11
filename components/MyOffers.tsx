@@ -109,7 +109,9 @@ export const MyOffers: React.FC<MyOffersProps> = ({
   const cardTouchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Filter & Sort States
-  const [offerFilter, setOfferFilter] = useState<OfferFilter>(defaultFilter || "all");
+  const [offerFilter, setOfferFilter] = useState<OfferFilter>(
+    defaultFilter || "all",
+  );
   const [sortOrder, setSortOrder] = useState<SortOrder>("createdAt");
   const [hideRejected, setHideRejected] = useState(true);
 
@@ -698,13 +700,47 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                               <AnimatePresence>
                                 {openFilterDropdownId === filter.id && (
                                   <>
-                                    {/* Backdrop */}
+                                    {/* Backdrop - darkens screen and prevents interactions */}
                                     <div
-                                      className="fixed inset-0 z-[110] touch-none"
-                                      onClick={() =>
-                                        setOpenFilterDropdownId(null)}
-                                      onWheel={(e) => e.preventDefault()}
-                                      onTouchMove={(e) => e.preventDefault()}
+                                      className="fixed inset-0 z-[110] bg-black/20 backdrop-blur-[1px] touch-none"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        e.nativeEvent
+                                          .stopImmediatePropagation();
+                                        setOpenFilterDropdownId(null);
+                                      }}
+                                      onTouchStart={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        e.nativeEvent
+                                          .stopImmediatePropagation();
+                                        setOpenFilterDropdownId(null);
+                                      }}
+                                      onTouchEnd={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        e.nativeEvent
+                                          .stopImmediatePropagation();
+                                        setOpenFilterDropdownId(null);
+                                      }}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        e.nativeEvent
+                                          .stopImmediatePropagation();
+                                      }}
+                                      onMouseUp={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        e.nativeEvent
+                                          .stopImmediatePropagation();
+                                        setOpenFilterDropdownId(null);
+                                      }}
+                                      style={{
+                                        touchAction: "none", // منع scroll والسلوك الافتراضي للـ touch events
+                                        pointerEvents: "auto",
+                                      }}
                                     />
                                     <motion.div
                                       initial={{
@@ -976,9 +1012,8 @@ export const MyOffers: React.FC<MyOffersProps> = ({
               </motion.div>
             )}
             {filteredOffers.map((offer, index) => {
-              const relatedReq = allRequests.find((r) =>
-                r.id === offer.requestId
-              );
+              const relatedReq = offer.relatedRequest ||
+                allRequests.find((r) => r.id === offer.requestId);
               const contactStatus = getContactStatus(offer);
               const requestNumber = relatedReq?.requestNumber ||
                 relatedReq?.id?.slice(-4).toUpperCase() || "";
@@ -992,7 +1027,12 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                   initial={{ opacity: 0, y: 20, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  transition={{
+                    delay: Math.min(index * 0.05, 0.4),
+                    type: "spring",
+                    stiffness: 400,
+                    damping: 30,
+                  }}
                   whileHover={{ y: -8, scale: 1.02 }}
                   onClick={(e) => {
                     // Prevent click if pull-to-refresh was active
@@ -1017,7 +1057,15 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                     }
                     e.preventDefault();
                     e.stopPropagation();
-                    if (onSelectOffer) {
+                    if (
+                      (offer.status === "accepted" ||
+                        offer.status === "negotiating" ||
+                        offer.status === "completed") &&
+                      relatedReq &&
+                      onSelectRequest
+                    ) {
+                      onSelectRequest(relatedReq);
+                    } else if (onSelectOffer) {
                       onSelectOffer(offer);
                     } else if (relatedReq) {
                       onSelectRequest(relatedReq);
@@ -1088,7 +1136,15 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                     e.stopPropagation();
                     // Force state update to ensure request/offer opens
                     setTimeout(() => {
-                      if (onSelectOffer) {
+                      if (
+                        (offer.status === "accepted" ||
+                          offer.status === "negotiating" ||
+                          offer.status === "completed") &&
+                        relatedReq &&
+                        onSelectRequest
+                      ) {
+                        onSelectRequest(relatedReq);
+                      } else if (onSelectOffer) {
                         onSelectOffer(offer);
                       } else if (relatedReq) {
                         onSelectRequest(relatedReq);
@@ -1101,50 +1157,41 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                     عرضي
                   </span>
 
-                  {/* Badge for unread messages */}
-                  {unreadCount > 0 && (
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="absolute top-3 left-3 z-20 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow-lg border-2 border-white dark:border-card"
-                      title={`${unreadCount} رسالة غير مقروءة`}
-                    >
-                      {unreadCount > 99 ? "99+" : unreadCount}
-                    </motion.div>
-                  )}
-
                   <div className="flex items-start justify-between mb-2">
-                    <span className="font-bold text-base truncate text-primary max-w-[70%]">
+                    <span className="font-bold text-sm truncate text-primary max-w-[70%]">
                       {offer.title}
                     </span>
                     <div className="flex items-center gap-1.5">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          offer.status === "pending" ||
-                            offer.status === "negotiating"
-                            ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            offer.status === "pending" ||
+                              offer.status === "negotiating"
+                              ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                              : offer.status === "accepted"
+                              ? "bg-primary/15 text-primary"
+                              : offer.status === "completed"
+                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                              : offer.status === "rejected" ||
+                                  offer.status === "cancelled"
+                              ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                              : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                          }`}
+                        >
+                          {offer.status === "negotiating"
+                            ? "جاري التفاوض"
+                            : offer.status === "pending"
+                            ? "قيد الانتظار"
                             : offer.status === "accepted"
-                            ? "bg-primary/15 text-primary"
+                            ? "عرض مقبول"
                             : offer.status === "completed"
-                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                            ? "مكتمل"
                             : offer.status === "rejected" ||
                                 offer.status === "cancelled"
-                            ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                            : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
-                        }`}
-                      >
-                        {offer.status === "pending" ||
-                            offer.status === "negotiating"
-                          ? "قيد الانتظار"
-                          : offer.status === "accepted"
-                          ? "مقبول"
-                          : offer.status === "completed"
-                          ? "مكتمل"
-                          : offer.status === "rejected" ||
-                              offer.status === "cancelled"
-                          ? "منتهي"
-                          : "قيد الانتظار"}
-                      </span>
+                            ? "منتهي"
+                            : "قيد الانتظار"}
+                        </span>
+                      </div>
                       {(() => {
                         const showDeleteButton = onArchiveOffer &&
                           offer.status !== "rejected" &&
@@ -1226,7 +1273,7 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                       </span>
 
                       <div className="flex items-center gap-1 text-sm text-foreground">
-                        <span className="font-bold truncate max-w-[180px]">
+                        <span className="font-bold break-words">
                           {relatedReq.title}
                         </span>
                       </div>
@@ -1308,11 +1355,27 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                                   e.stopPropagation();
                                   onOpenChat(relatedReq.id, offer);
                                 }}
-                                className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-primary hover:bg-primary/90 active:scale-95 active:bg-primary/80 text-primary-foreground transition-all shadow-sm"
+                                className="relative flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-primary hover:bg-primary/90 active:scale-95 active:bg-primary/80 text-primary-foreground transition-all shadow-sm"
                                 title="فتح المحادثة"
                               >
                                 <MessageCircle size={12} />
                                 محادثة
+                                {/* Badge للرسائل غير المقروءة */}
+                                {unreadMessagesPerOffer?.has(offer.id) &&
+                                  (unreadMessagesPerOffer.get(offer.id) || 0) >
+                                    0 &&
+                                  (
+                                    <motion.span
+                                      initial={{ scale: 0 }}
+                                      animate={{ scale: 1 }}
+                                      className="absolute -top-1.5 -right-3 min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow-md"
+                                    >
+                                      {unreadMessagesPerOffer.get(offer.id)! >
+                                          99
+                                        ? "99+"
+                                        : unreadMessagesPerOffer.get(offer.id)}
+                                    </motion.span>
+                                  )}
                               </button>
                             )}
                           </div>

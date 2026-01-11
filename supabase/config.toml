@@ -145,13 +145,12 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "http://127.0.0.1:3005"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = [
-  "https://127.0.0.1:3000",
-  "http://localhost:3000",
+  "http://127.0.0.1:3005",
+  "https://127.0.0.1:3005",
   "http://localhost:3005",
-  "https://localhost:3000",
   "https://localhost:3005"
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
@@ -170,7 +169,7 @@ refresh_token_reuse_interval = 3600
 # Allow/disallow new user signups to your project.
 enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
-enable_anonymous_sign_ins = false
+enable_anonymous_sign_ins = true
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
@@ -266,16 +265,70 @@ max_frequency = "5s"
 # Use pre-defined map of phone number to OTP for testing.
 # أرقام وهمية للتطوير - الرمز دائماً 0000
 # يمكن استخدام أي رقم يبدأ بـ 0555 مثل 0555555555
+# ملاحظة: أي رقم يبدأ بـ 966555 سيستخدم الرمز 0000
 [auth.sms.test_otp]
+# أرقام حقيقية للاختبار - تعمل كحسابات حقيقية تماماً
+966551111111 = "0000"  # 0555111111 أو 555111111 - حساب اختبار حقيقي
+966552222222 = "0000"  # 0555222222 أو 555222222 - حساب اختبار حقيقي
+966555111111 = "0000"  # 555111111 (9 أرقام) - حساب اختبار حقيقي
 966501234567 = "0000"
 966502345678 = "0000"
 966503456789 = "0000"
-# أرقام وهمية إضافية (0555...)
+# أرقام وهمية إضافية (0555...) - أي رقم يبدأ بـ 966555
 966555555555 = "0000"
 966555555556 = "0000"
 966555555557 = "0000"
 966555555558 = "0000"
 966555555559 = "0000"
+966555555560 = "0000"
+966555555561 = "0000"
+966555555562 = "0000"
+966555555563 = "0000"
+966555555564 = "0000"
+966555555565 = "0000"
+966555555566 = "0000"
+966555555567 = "0000"
+966555555568 = "0000"
+966555555569 = "0000"
+966555555570 = "0000"
+966555555571 = "0000"
+966555555572 = "0000"
+966555555573 = "0000"
+966555555574 = "0000"
+966555555575 = "0000"
+966555555576 = "0000"
+966555555577 = "0000"
+966555555578 = "0000"
+966555555579 = "0000"
+966555555580 = "0000"
+966555555581 = "0000"
+966555555582 = "0000"
+966555555583 = "0000"
+966555555584 = "0000"
+966555555585 = "0000"
+966555555586 = "0000"
+966555555587 = "0000"
+966555555588 = "0000"
+966555555589 = "0000"
+966555555590 = "0000"
+966555555591 = "0000"
+966555555592 = "0000"
+966555555593 = "0000"
+966555555594 = "0000"
+966555555595 = "0000"
+966555555596 = "0000"
+966555555597 = "0000"
+966555555598 = "0000"
+966555555599 = "0000"
+# أرقام اختبار إضافية (555111111, 555454545, إلخ)
+# 966555111111 موجود أعلاه (السطر 273)
+966555222222 = "0000"  # رقم الاختبار الرئيسي - مرتبط بحساب حقيقي
+966555222223 = "0000"
+966555454545 = "0000"
+966555454546 = "0000"
+966555454547 = "0000"
+966555454548 = "0000"
+966555454549 = "0000"
 
 # Configure logged in session timeouts.
 # [auth.sessions]
@@ -297,12 +350,14 @@ max_frequency = "5s"
 # Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
 # ملاحظة: يتم تفعيل Twilio من Supabase Dashboard في الإنتاج
 # هذه الإعدادات للتطوير المحلي فقط
-[auth.sms.twilio]
-enabled = true
-account_sid = "env(TWILIO_ACCOUNT_SID)"
-message_service_sid = "env(TWILIO_MESSAGE_SERVICE_SID)"
-# DO NOT commit your Twilio auth token to git. Use environment variable substitution instead:
-auth_token = "env(TWILIO_AUTH_TOKEN)"
+# ⚠️ معطّل للتطوير المحلي - نستخدم test_otp بدلاً من Twilio
+# لاستخدام أرقام الاختبار (0551111111, 0552222222) مع رمز 0000
+# [auth.sms.twilio_verify]
+# enabled = true
+# account_sid = "env(TWILIO_ACCOUNT_SID)"
+# message_service_sid = "env(TWILIO_MESSAGE_SERVICE_SID)"
+# auth_token = "env(TWILIO_AUTH_TOKEN)"
+
 
 # Multi-factor-authentication is available to Supabase Pro plan.
 [auth.mfa]
@@ -432,7 +487,7 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 
 [functions.ai-chat]
 enabled = true
-verify_jwt = true
+verify_jwt = false  # يجب أن يعمل للـ guests أيضاً (التحقق يتم داخلياً إذا لزم)
 import_map = "./functions/ai-chat/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx

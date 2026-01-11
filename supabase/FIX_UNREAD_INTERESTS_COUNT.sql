@@ -40,8 +40,8 @@ BEGIN
     AND r.status = 'active'
     AND r.author_id != current_user_id  -- استبعاد طلبات المستخدم نفسه
     -- Count as unread if not viewed (badge decreases when user sees the card)
-    -- Note: Green dot visibility depends on is_read, not is_viewed
-    AND (rv.id IS NULL OR rv.is_viewed = FALSE)
+    -- Note: When user sees the card (50%+ visible), is_read = TRUE is set, hiding the badge
+    AND (rv.id IS NULL OR rv.is_read = FALSE)
     AND NOT EXISTS (
       -- استبعاد الطلبات التي قدم عليها المستخدم عروض نشطة (غير مرفوضة)
       SELECT 1 FROM offers o
