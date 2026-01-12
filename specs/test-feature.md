@@ -1,0 +1,25 @@
+# test-feature
+
+## Overview
+[Feature description goes here]
+
+## User Stories
+- [ ] As a [user type], I want to [action] so that [benefit]
+
+## Requirements
+### Functional Requirements
+- [ ] Requirement 1
+- [ ] Requirement 2
+
+### Non-Functional Requirements
+- [ ] Requirement 1
+- [ ] Requirement 2
+
+## Acceptance Criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+## Technical Considerations
+- [ ] Consideration 1
+- [ ] Consideration 2
+

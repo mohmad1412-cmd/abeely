@@ -1,3 +1,4 @@
+/// <reference types="google.maps" />
 /**
  * Google Places Service
  * خدمة البحث عن المدن والمواقع باستخدام Google Places API
@@ -273,7 +274,7 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 دقائق
 
 // التحقق من وجود Google Places API
 const isGooglePlacesAvailable = (): boolean => {
-  return !!(window.google && window.google.maps && window.google.maps.places);
+  return typeof google !== "undefined" && !!google.maps && !!google.maps.places;
 };
 
 // انتظار تحميل Google Places API
@@ -379,7 +380,10 @@ export const searchCities = async (
             componentRestrictions: { country: countryCode },
             language: "ar", // اللغة العربية
           },
-          (results, status) => {
+          (
+            results: google.maps.places.AutocompletePrediction[] | null,
+            status: google.maps.places.PlacesServiceStatus,
+          ) => {
             if (
               status === google.maps.places.PlacesServiceStatus.OK && results
             ) {
@@ -490,7 +494,10 @@ export const getPlaceDetails = async (
             ],
             language: "ar",
           },
-          (result, status) => {
+          (
+            result: google.maps.places.PlaceResult | null,
+            status: google.maps.places.PlacesServiceStatus,
+          ) => {
             if (
               status === google.maps.places.PlacesServiceStatus.OK && result
             ) {
@@ -584,7 +591,10 @@ export const searchPlaces = async (
             componentRestrictions: { country: countryCode },
             language: "ar",
           },
-          (results, status) => {
+          (
+            results: google.maps.places.AutocompletePrediction[] | null,
+            status: google.maps.places.PlacesServiceStatus,
+          ) => {
             if (
               status === google.maps.places.PlacesServiceStatus.OK && results
             ) {
@@ -606,7 +616,7 @@ export const searchPlaces = async (
       const secondaryText = prediction.structured_formatting.secondary_text ||
         "";
 
-      const parts = secondaryText.split("،").map((p) => p.trim());
+      const parts = secondaryText.split("،").map((p: string) => p.trim());
       const region = parts.length > 1 ? parts[0] : undefined;
       const country = parts.length > 0
         ? parts[parts.length - 1]
@@ -692,7 +702,10 @@ export const reverseGeocode = async (
             location: { lat, lng },
             language: "ar",
           },
-          (results, status) => {
+          (
+            results: google.maps.GeocoderResult[] | null,
+            status: google.maps.GeocoderStatus,
+          ) => {
             if (
               status === google.maps.GeocoderStatus.OK && results &&
               results.length > 0
@@ -791,9 +804,4 @@ export const getDefaultCities = (): CityResult[] => {
   }));
 };
 
-// Declare google namespace for TypeScript
-declare global {
-  interface Window {
-    google: typeof google;
-  }
-}
+// Google namespace is now handled by @types/google.maps

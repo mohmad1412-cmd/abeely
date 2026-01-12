@@ -222,13 +222,13 @@ export const deleteFile = async (
       .remove([path]);
 
     if (error) {
-      console.error("❌ Delete error:", error);
+      logger.error("Delete error", error, "storageService");
       return false;
     }
 
     return true;
   } catch (err) {
-    console.error("❌ Delete failed:", err);
+    logger.error("Delete failed", err as Error, "storageService");
     return false;
   }
 };
@@ -311,13 +311,15 @@ export const uploadAvatar = async (
     // Validate file
     const validation = validateFile(file);
     if (!validation.valid) {
-      console.error("Avatar validation failed:", validation.error);
+      logger.error("Avatar validation failed", undefined, "storageService", {
+        error: validation.error,
+      });
       return null;
     }
 
     // Only allow images for avatars
     if (!isImageFile(file)) {
-      console.error("Avatar must be an image");
+      logger.error("Avatar must be an image", undefined, "storageService");
       return null;
     }
 
@@ -332,7 +334,7 @@ export const uploadAvatar = async (
           await deleteFile(AVATARS_BUCKET, oldPath);
         }
       } catch (err) {
-        console.warn("Failed to delete old avatar:", err);
+        logger.warn("Failed to delete old avatar", err, "storageService");
         // Continue anyway
       }
     }
@@ -346,7 +348,7 @@ export const uploadAvatar = async (
 
     return null;
   } catch (err) {
-    console.error("Avatar upload failed:", err);
+    logger.error("Avatar upload failed", err as Error, "storageService");
     return null;
   }
 };

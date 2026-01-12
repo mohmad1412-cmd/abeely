@@ -417,7 +417,7 @@ export async function canUserReviewRequest(
       return { success: true, canReview: false, reason: "الطلب غير موجود" };
     }
 
-    if (request.status !== "completed") {
+    if ((request.status as string) !== "completed") {
       return {
         success: true,
         canReview: false,
@@ -491,7 +491,7 @@ export async function getReviewsByUser(
     const from = page * pageSize;
     const to = from + pageSize - 1;
 
-    let query = supabase
+    const query = supabase
       .from("reviews")
       .select(
         `

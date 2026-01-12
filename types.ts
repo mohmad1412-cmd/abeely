@@ -107,9 +107,19 @@ export function getCategoryLabel(
   }
 }
 
-export interface Notification {
+export interface AppNotification {
   id: string;
-  type: "offer" | "message" | "status" | "system" | "interest";
+  type:
+    | "offer"
+    | "message"
+    | "status"
+    | "system"
+    | "interest"
+    | "offer_accepted"
+    | "view_request"
+    | "view_offer"
+    | "negotiation"
+    | "request_completed";
   title: string;
   message: string;
   timestamp: Date;
@@ -216,4 +226,85 @@ export type ViewState =
   | "settings"
   | "create-request"
   | "messages"
-  | "conversation";
+  | "conversation"
+  | "my-requests"
+  | "my-offers";
+
+export type AppView =
+  | "splash"
+  | "auth"
+  | "onboarding"
+  | "main"
+  | "connection-error";
+
+export type RequestInsert = {
+  id?: string;
+  author_id?: string;
+  title: string;
+  description: string;
+  status: "active" | "assigned" | "completed" | "archived";
+  is_public: boolean;
+  budget_min?: string;
+  budget_max?: string;
+  budget_type?: "not-specified" | "negotiable" | "fixed";
+  location?: string;
+  delivery_type?: "not-specified" | "pickup" | "delivery" | "both";
+  delivery_from?: string;
+  delivery_to?: string;
+  seriousness?: number;
+  images?: string[]; // صور الطلب
+};
+
+export type OfferInsert = {
+  id?: string;
+  request_id: string;
+  provider_id: string;
+  provider_name: string;
+  title: string;
+  description: string;
+  price?: string;
+  delivery_time?: string;
+  status:
+    | "pending"
+    | "accepted"
+    | "rejected"
+    | "negotiating"
+    | "cancelled"
+    | "completed";
+  is_negotiable: boolean;
+  location?: string;
+  images?: string[];
+};
+
+export interface UserProfile {
+  id: string;
+  updated_at?: Date;
+  created_at?: string;
+  username?: string;
+  full_name?: string;
+  display_name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  avatar_url?: string | null;
+  website?: string;
+  phone?: string | null;
+  email?: string | null;
+  role?: "admin" | "user" | "moderator" | "provider";
+  rating?: number;
+  reviews_count?: number;
+  is_verified?: boolean;
+  bio?: string | null;
+  is_guest?: boolean;
+
+  // تفضيلات المستخدم
+  has_onboarded?: boolean;
+  interested_categories?: string[] | null;
+  interested_cities?: string[] | null;
+  preferred_categories?: string[];
+  preferred_cities?: string[];
+
+  // metavs user fields for compatibility
+  app_metadata?: any;
+  user_metadata?: any;
+  aud?: string;
+}

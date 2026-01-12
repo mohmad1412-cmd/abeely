@@ -55,12 +55,12 @@ export async function getCategories(forceRefresh = false): Promise<Category[]> {
       .order('sort_order');
 
     if (error) {
-      console.warn('Error fetching categories from backend, using local fallback:', error.message);
+      logger.warn('Error fetching categories from backend, using local fallback', error, 'categoriesService');
       return LOCAL_CATEGORIES;
     }
 
     if (!data || data.length === 0) {
-      console.warn('No categories found in backend, using local fallback');
+      logger.warn('No categories found in backend, using local fallback', undefined, 'categoriesService');
       return LOCAL_CATEGORIES;
     }
 
@@ -78,7 +78,7 @@ export async function getCategories(forceRefresh = false): Promise<Category[]> {
 
     return categoriesCache;
   } catch (err) {
-    console.error('Error in getCategories:', err);
+    logger.error('Error in getCategories', err as Error, 'categoriesService');
     return LOCAL_CATEGORIES;
   }
 }
@@ -141,13 +141,13 @@ export async function setRequestCategories(requestId: string, categoryIds: strin
     });
 
     if (error) {
-      console.error('Error setting request categories:', error);
+      logger.error('Error setting request categories', error, 'categoriesService');
       return false;
     }
 
     return true;
   } catch (err) {
-    console.error('Error in setRequestCategories:', err);
+    logger.error('Error in setRequestCategories', err as Error, 'categoriesService');
     return false;
   }
 }
@@ -162,7 +162,7 @@ export async function getRequestCategories(requestId: string): Promise<Category[
     });
 
     if (error) {
-      console.error('Error getting request categories:', error);
+      logger.error('Error getting request categories', error, 'categoriesService');
       return [];
     }
 
@@ -175,7 +175,7 @@ export async function getRequestCategories(requestId: string): Promise<Category[
       emoji: cat.emoji || '📦',
     }));
   } catch (err) {
-    console.error('Error in getRequestCategories:', err);
+    logger.error('Error in getRequestCategories', err as Error, 'categoriesService');
     return [];
   }
 }
@@ -200,7 +200,7 @@ export async function getPendingCategories(): Promise<PendingCategory[]> {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.warn('Error fetching pending categories:', error.message);
+      logger.warn('Error fetching pending categories', error, 'categoriesService');
       return [];
     }
 
@@ -214,7 +214,7 @@ export async function getPendingCategories(): Promise<PendingCategory[]> {
       created_at: new Date(cat.created_at),
     }));
   } catch (err) {
-    console.error('Error in getPendingCategories:', err);
+    logger.error('Error in getPendingCategories', err as Error, 'categoriesService');
     return [];
   }
 }
@@ -250,7 +250,7 @@ export async function approvePendingCategory(
       });
 
     if (insertError) {
-      console.error('Error inserting approved category:', insertError);
+      logger.error('Error inserting approved category', insertError, 'categoriesService');
       return false;
     }
 
@@ -264,7 +264,7 @@ export async function approvePendingCategory(
       .eq('id', pendingCategoryId);
 
     if (updateError) {
-      console.error('Error updating pending category:', updateError);
+      logger.error('Error updating pending category', updateError, 'categoriesService');
     }
 
     // مسح الـ cache
@@ -272,7 +272,7 @@ export async function approvePendingCategory(
 
     return true;
   } catch (err) {
-    console.error('Error in approvePendingCategory:', err);
+    logger.error('Error in approvePendingCategory', err as Error, 'categoriesService');
     return false;
   }
 }
@@ -292,13 +292,13 @@ export async function rejectPendingCategory(pendingCategoryId: string, notes?: s
       .eq('id', pendingCategoryId);
 
     if (error) {
-      console.error('Error rejecting pending category:', error);
+      logger.error('Error rejecting pending category', error, 'categoriesService');
       return false;
     }
 
     return true;
   } catch (err) {
-    console.error('Error in rejectPendingCategory:', err);
+    logger.error('Error in rejectPendingCategory', err as Error, 'categoriesService');
     return false;
   }
 }
@@ -321,13 +321,13 @@ export async function mergePendingCategory(
       .eq('id', pendingCategoryId);
 
     if (error) {
-      console.error('Error merging pending category:', error);
+      logger.error('Error merging pending category', error, 'categoriesService');
       return false;
     }
 
     return true;
   } catch (err) {
-    console.error('Error in mergePendingCategory:', err);
+    logger.error('Error in mergePendingCategory', err as Error, 'categoriesService');
     return false;
   }
 }

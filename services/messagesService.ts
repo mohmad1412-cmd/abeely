@@ -102,7 +102,7 @@ export async function getConversations(): Promise<Conversation[]> {
       participantIds.add(conv.participant2_id);
     });
 
-    let profilesMap: Record<string, any> = {};
+    const profilesMap: Record<string, any> = {};
     if (participantIds.size > 0) {
       const { data: profiles } = await supabase
         .from("profiles")
@@ -126,7 +126,7 @@ export async function getConversations(): Promise<Conversation[]> {
 
     // Fetch all unread counts in one query instead of N queries (performance optimization)
     const conversationIds = (data || []).map((c) => c.id);
-    let unreadCountsMap: Record<string, number> = {};
+    const unreadCountsMap: Record<string, number> = {};
 
     if (conversationIds.length > 0) {
       try {
@@ -407,7 +407,7 @@ export async function getMessages(
     const senderIds = [
       ...new Set((messagesData || []).map((m) => m.sender_id)),
     ];
-    let sendersMap: Record<string, any> = {};
+    const sendersMap: Record<string, any> = {};
     if (senderIds.length > 0) {
       const { data: senders } = await supabase
         .from("profiles")

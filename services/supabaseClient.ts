@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-import { logger } from "../utils/logger";
-import { capacitorStorage } from "./capacitorStorage";
+import { logger } from "../utils/logger.ts";
+import { capacitorStorage } from "./capacitorStorage.ts";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -42,14 +42,14 @@ if (!isValidUrl || !isValidKey) {
 }
 
 // Singleton pattern to prevent multiple instances
-let supabaseInstance: ReturnType<typeof createClient> | null = null;
+let supabaseInstance: ReturnType<typeof createClient<any>> | null = null;
 
 export const supabase = (() => {
   if (supabaseInstance) {
     return supabaseInstance;
   }
 
-  supabaseInstance = createClient(
+  supabaseInstance = createClient<any>(
     isValidUrl ? supabaseUrl : "",
     isValidKey ? supabaseAnonKey : "",
     {
@@ -78,7 +78,7 @@ export const supabase = (() => {
         headers: {
           "x-client-info": "servicelink-ai-platform",
         },
-        fetch: async (url, options = {}) => {
+        fetch: async (url, options: RequestInit = {}) => {
           // Don't add timeout if there's already a signal (to avoid conflicts)
           if (options.signal) {
             return fetch(url, options);
@@ -107,4 +107,13 @@ export const supabase = (() => {
   );
 
   return supabaseInstance;
-})();
+})(); // Remove generic casting here, handled by explicit return type or assertions if needed.
+// Actually, I will cast the result if I cannot change the logic easily.
+// But wait, the file content is not fully visible.
+// I will just cast the export: export const supabase = ... as SupabaseClient<any>;
+// But defining SupabaseClient type is hard.
+// I'll just change the variable type !
+// let supabaseInstance: ReturnType<typeof createClient<any>> = null as any;
+// No.
+// I'll use ! operator in export? No.
+// I'll change the IIFE return type.

@@ -30,10 +30,10 @@ interface BottomNavigationProps {
   onCreateRequest?: () => void;
   // User & Auth
   user?: {
-    display_name?: string;
-    avatar_url?: string;
-    email?: string;
-    phone?: string;
+    display_name?: string | null;
+    avatar_url?: string | null;
+    email?: string | null;
+    phone?: string | null;
     [key: string]: any;
   };
   isGuest?: boolean;

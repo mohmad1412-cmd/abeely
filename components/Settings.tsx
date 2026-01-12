@@ -1,12 +1,23 @@
-import React, { useState } from 'react';
-import { logger } from '../utils/logger.ts';
-import { Bell, User, X, ChevronDown, Plus, Filter, Edit, Home, MapPin, Globe } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { AVAILABLE_CATEGORIES } from '../data.ts';
-import { UserPreferences } from '../types.ts';
-import { CityAutocomplete } from './ui/CityAutocomplete.tsx';
+import React, { useState } from "react";
+import { logger } from "../utils/logger.ts";
+import {
+  Bell,
+  ChevronDown,
+  Edit,
+  Filter,
+  Globe,
+  Home,
+  MapPin,
+  Plus,
+  User,
+  X,
+} from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { AVAILABLE_CATEGORIES } from "../data.ts";
+import { AppNotification, UserPreferences } from "../types.ts";
+import { CityAutocomplete } from "./ui/CityAutocomplete.tsx";
 
-type HomePageConfig = 
+type HomePageConfig =
   | "marketplace:all"
   | "marketplace:interests"
   | "my-requests:all"
@@ -15,11 +26,11 @@ type HomePageConfig =
   | "my-offers:all"
   | "my-offers:pending"
   | "my-offers:accepted";
-import { UserProfile, sendOTP, verifyOTP } from '../services/authService.ts';
-import { supabase } from '../services/supabaseClient.ts';
-import { UnifiedHeader } from './ui/UnifiedHeader.tsx';
-import { Button } from './ui/Button.tsx';
-import { hapticService } from '../services/hapticService.ts';
+import { sendOTP, UserProfile, verifyOTP } from "../services/authService.ts";
+import { supabase } from "../services/supabaseClient.ts";
+import { UnifiedHeader } from "./ui/UnifiedHeader.tsx";
+import { Button } from "./ui/Button.tsx";
+import { hapticService } from "../services/hapticService.ts";
 
 interface SettingsProps {
   isDarkMode: boolean;
@@ -31,7 +42,7 @@ interface SettingsProps {
   onUpdateProfile?: (updates: Partial<UserProfile>) => Promise<void>;
   onSignOut?: () => void;
   // Unified Header Props
-  mode: 'requests' | 'offers';
+  mode: "requests" | "offers";
   toggleMode: () => void;
   isModeSwitching: boolean;
   unreadCount: number;
@@ -39,26 +50,25 @@ interface SettingsProps {
   setView: (view: string) => void;
   setPreviousView: (view: string) => void;
   titleKey: number;
-  notifications: Array<{ id: string; [key: string]: unknown }>;
+  notifications: AppNotification[];
   onMarkAsRead: (id: string) => void;
-  onNotificationClick?: (notification: { id: string; [key: string]: unknown }) => void;
+  onNotificationClick?: (notification: AppNotification) => void;
   onClearAll: () => void;
   isGuest?: boolean;
   onNavigateToProfile?: () => void;
   onNavigateToSettings?: () => void;
 }
 
-
-export const Settings: React.FC<SettingsProps> = ({ 
+export const Settings: React.FC<SettingsProps> = ({
   onBack,
   userPreferences = {
     interestedCategories: [],
     interestedCities: [],
     notifyOnInterest: true,
-    roleMode: 'requester',
+    roleMode: "requester",
     showNameToApprovedProvider: true,
     radarWords: [],
-    homePage: "marketplace:all" as HomePageConfig
+    homePage: "marketplace:all" as HomePageConfig,
   },
   onUpdatePreferences,
   user = null,
@@ -86,35 +96,47 @@ export const Settings: React.FC<SettingsProps> = ({
   const [editedName, setEditedName] = useState(user?.display_name || "");
   const [editedEmail, setEditedEmail] = useState(user?.email || "");
   const [editedPhone, setEditedPhone] = useState(user?.phone || "");
-  
+
   // Loading states for save operations
   const [isSavingName, setIsSavingName] = useState(false);
   const [isSavingEmail, setIsSavingEmail] = useState(false);
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
-  
+
   // Phone verification states
-  const [phoneVerificationStep, setPhoneVerificationStep] = useState<'none' | 'phone' | 'otp'>('none');
-  const [phoneOTP, setPhoneOTP] = useState('');
+  const [phoneVerificationStep, setPhoneVerificationStep] = useState<
+    "none" | "phone" | "otp"
+  >("none");
+  const [phoneOTP, setPhoneOTP] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [isSendingOTP, setIsSendingOTP] = useState(false);
   const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
-  const [tempPhone, setTempPhone] = useState('');
-  
+  const [tempPhone, setTempPhone] = useState("");
+
   // Initialize edited values when user changes
   React.useEffect(() => {
     setEditedName(user?.display_name || "");
     setEditedEmail(user?.email || "");
     setEditedPhone(user?.phone || "");
   }, [user]);
-  const [notifyOnInterest, setNotifyOnInterest] = useState(userPreferences.notifyOnInterest);
+  const [notifyOnInterest, setNotifyOnInterest] = useState(
+    userPreferences.notifyOnInterest,
+  );
   const [notifyOnOffers, setNotifyOnOffers] = useState(true);
   const [notifyOnMessages, setNotifyOnMessages] = useState(true);
-  const [showNameToApprovedProvider, setShowNameToApprovedProvider] = useState(userPreferences.showNameToApprovedProvider ?? true);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(userPreferences.interestedCategories);
-  const [selectedCities, setSelectedCities] = useState<string[]>(userPreferences.interestedCities);
+  const [showNameToApprovedProvider, setShowNameToApprovedProvider] = useState(
+    userPreferences.showNameToApprovedProvider ?? true,
+  );
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    userPreferences.interestedCategories,
+  );
+  const [selectedCities, setSelectedCities] = useState<string[]>(
+    userPreferences.interestedCities,
+  );
   const [selectedRadarWords, setSelectedRadarWords] = useState<string[]>([]);
   const [isManageInterestsOpen, setIsManageInterestsOpen] = useState(false);
-  const [tempCategories, setTempCategories] = useState<string[]>(selectedCategories);
+  const [tempCategories, setTempCategories] = useState<string[]>(
+    selectedCategories,
+  );
   const [tempCities, setTempCities] = useState<string[]>(selectedCities);
   const [tempRadarWords, setTempRadarWords] = useState<string[]>([]);
   const [categorySearch, setCategorySearch] = useState("");
@@ -122,8 +144,12 @@ export const Settings: React.FC<SettingsProps> = ({
   const [isCitiesExpanded, setIsCitiesExpanded] = useState(false);
   const [isRadarWordsExpanded, setIsRadarWordsExpanded] = useState(false);
   const [newRadarWord, setNewRadarWord] = useState("");
-  const [isInterestsPreviewExpanded, setIsInterestsPreviewExpanded] = useState(false);
-  const [selectedHomePage, setSelectedHomePage] = useState<HomePageConfig>((userPreferences as any).homePage || "marketplace:all");
+  const [isInterestsPreviewExpanded, setIsInterestsPreviewExpanded] = useState(
+    false,
+  );
+  const [selectedHomePage, setSelectedHomePage] = useState<HomePageConfig>(
+    (userPreferences as any).homePage || "marketplace:all",
+  );
   const [isHomePageDropdownOpen, setIsHomePageDropdownOpen] = useState(false);
 
   // Update selectedHomePage when userPreferences change
@@ -142,13 +168,13 @@ export const Settings: React.FC<SettingsProps> = ({
           ...userPreferences,
           interestedCategories: tempCategories,
           interestedCities: tempCities,
-          notifyOnInterest
+          notifyOnInterest,
         });
       }
       setIsManageInterestsOpen(false);
     } catch (error) {
-      logger.error('خطأ في حفظ الإعدادات:', error, 'service');
-      alert('حدث خطأ أثناء حفظ الإعدادات. يرجى المحاولة مرة أخرى.');
+      logger.error("خطأ في حفظ الإعدادات:", error, "service");
+      alert("حدث خطأ أثناء حفظ الإعدادات. يرجى المحاولة مرة أخرى.");
     } finally {
       setIsSavingPreferences(false);
     }
@@ -156,34 +182,34 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const toggleCategory = (catId: string) => {
     hapticService.tap();
-    setTempCategories(prev => 
-      prev.includes(catId) 
-        ? prev.filter(id => id !== catId)
+    setTempCategories((prev) =>
+      prev.includes(catId)
+        ? prev.filter((id) => id !== catId)
         : [...prev, catId]
     );
   };
 
   const toggleCity = (city: string) => {
     hapticService.tap();
-    setTempCities(prev => {
+    setTempCities((prev) => {
       if (prev.includes(city)) {
-        return prev.filter(c => c !== city);
+        return prev.filter((c) => c !== city);
       } else {
         // إذا اختار "كل المدن"، نزيل المدن الأخرى (ما عدا "عن بعد")
-        if (city === 'كل المدن') {
-          const remoteOnly = prev.filter(c => c === 'عن بعد');
+        if (city === "كل المدن") {
+          const remoteOnly = prev.filter((c) => c === "عن بعد");
           return [...remoteOnly, city];
         }
         // إذا اختار مدينة معينة، نزيل "كل المدن"
-        const filtered = prev.filter(c => c !== 'كل المدن');
+        const filtered = prev.filter((c) => c !== "كل المدن");
         return [...filtered, city];
       }
     });
   };
 
-  const filteredCategories = AVAILABLE_CATEGORIES.filter((cat: { id: string; label: string; emoji: string }) =>
-    cat.label.toLowerCase().includes(categorySearch.toLowerCase())
-  );
+  const filteredCategories = AVAILABLE_CATEGORIES.filter((
+    cat: { id: string; label: string; emoji: string },
+  ) => cat.label.toLowerCase().includes(categorySearch.toLowerCase()));
 
   const addRadarWord = () => {
     const trimmedWord = newRadarWord.trim();
@@ -194,48 +220,55 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const removeRadarWord = (word: string) => {
-    setTempRadarWords(tempRadarWords.filter(w => w !== word));
+    setTempRadarWords(tempRadarWords.filter((w) => w !== word));
   };
 
   // ترجمة رسائل الخطأ من Supabase للعربية
   const translateAuthError = (error: string): string => {
     const errorMap: Record<string, string> = {
-      'Token has expired or is invalid': 'انتهت صلاحية رمز التحقق. يرجى طلب رمز جديد.',
-      'Invalid OTP': 'رمز التحقق غير صحيح',
-      'OTP expired': 'انتهت صلاحية رمز التحقق',
-      'Phone number is invalid': 'رقم الجوال غير صحيح',
-      'Rate limit exceeded': 'تم تجاوز الحد المسموح. انتظر قليلاً ثم حاول مرة أخرى.',
-      'For security purposes, you can only request this after': 'لأسباب أمنية، يمكنك طلب رمز جديد بعد',
+      "Token has expired or is invalid":
+        "انتهت صلاحية رمز التحقق. يرجى طلب رمز جديد.",
+      "Invalid OTP": "رمز التحقق غير صحيح",
+      "OTP expired": "انتهت صلاحية رمز التحقق",
+      "Phone number is invalid": "رقم الجوال غير صحيح",
+      "Rate limit exceeded":
+        "تم تجاوز الحد المسموح. انتظر قليلاً ثم حاول مرة أخرى.",
+      "For security purposes, you can only request this after":
+        "لأسباب أمنية، يمكنك طلب رمز جديد بعد",
     };
-    
+
     for (const [key, value] of Object.entries(errorMap)) {
       if (error.toLowerCase().includes(key.toLowerCase())) {
         return value;
       }
     }
-    
+
     return error;
   };
 
   const handleSendPhoneOTP = async () => {
     if (!tempPhone.trim()) {
-      setPhoneError('الرجاء إدخال رقم الجوال');
+      setPhoneError("الرجاء إدخال رقم الجوال");
       return;
     }
 
     setIsSendingOTP(true);
     setPhoneError(null);
-    
+
     try {
       const result = await sendOTP(tempPhone.trim());
       if (result.success) {
-        setPhoneVerificationStep('otp');
+        setPhoneVerificationStep("otp");
       } else {
-        setPhoneError(translateAuthError(result.error || 'حدث خطأ أثناء إرسال رمز التحقق'));
+        setPhoneError(
+          translateAuthError(result.error || "حدث خطأ أثناء إرسال رمز التحقق"),
+        );
       }
     } catch (err: unknown) {
       const error = err as { message?: string };
-      setPhoneError(translateAuthError(error.message || 'حدث خطأ أثناء إرسال رمز التحقق'));
+      setPhoneError(
+        translateAuthError(error.message || "حدث خطأ أثناء إرسال رمز التحقق"),
+      );
     } finally {
       setIsSendingOTP(false);
     }
@@ -243,13 +276,13 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const handleVerifyPhoneOTP = async () => {
     if (!phoneOTP.trim()) {
-      setPhoneError('الرجاء إدخال رمز التحقق');
+      setPhoneError("الرجاء إدخال رمز التحقق");
       return;
     }
 
     setIsVerifyingOTP(true);
     setPhoneError(null);
-    
+
     try {
       const result = await verifyOTP(tempPhone.trim(), phoneOTP.trim());
       if (result.success) {
@@ -258,16 +291,18 @@ export const Settings: React.FC<SettingsProps> = ({
           await onUpdateProfile({ phone: tempPhone.trim() });
         }
         setEditedPhone(tempPhone.trim());
-        setPhoneVerificationStep('none');
+        setPhoneVerificationStep("none");
         setIsEditingPhone(false);
-        setPhoneOTP('');
-        setTempPhone('');
+        setPhoneOTP("");
+        setTempPhone("");
       } else {
-        setPhoneError(translateAuthError(result.error || 'رمز التحقق غير صحيح'));
+        setPhoneError(
+          translateAuthError(result.error || "رمز التحقق غير صحيح"),
+        );
       }
     } catch (err: unknown) {
       const error = err as { message?: string };
-      setPhoneError(translateAuthError(error.message || 'رمز التحقق غير صحيح'));
+      setPhoneError(translateAuthError(error.message || "رمز التحقق غير صحيح"));
     } finally {
       setIsVerifyingOTP(false);
     }
@@ -313,74 +348,94 @@ export const Settings: React.FC<SettingsProps> = ({
                 </div>
                 <h3 className="font-bold text-base">الحساب</h3>
               </div>
-              
+
               <div className="space-y-3">
                 {/* Name */}
                 <div className="flex items-center justify-between">
                   <div className="flex-1 text-right">
                     <p className="font-medium text-sm">الاسم</p>
-                    {isEditingName ? (
-                      <div className="flex items-center gap-2 mt-1">
-                        <input
-                          type="text"
-                          value={editedName}
-                          onChange={(e) => setEditedName(e.target.value)}
-                          className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-right"
-                          dir="rtl"
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (onUpdateProfile && editedName.trim()) {
-                              setIsSavingName(true);
-                              try {
-                                await onUpdateProfile({ display_name: editedName.trim() });
-                                // انتظر قليلاً للتأكد من تحديث user state
-                                await new Promise(resolve => setTimeout(resolve, 100));
+                    {isEditingName
+                      ? (
+                        <div className="flex items-center gap-2 mt-1">
+                          <input
+                            type="text"
+                            value={editedName}
+                            onChange={(e) => setEditedName(e.target.value)}
+                            className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-right"
+                            dir="rtl"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (onUpdateProfile && editedName.trim()) {
+                                setIsSavingName(true);
+                                try {
+                                  await onUpdateProfile({
+                                    display_name: editedName.trim(),
+                                  });
+                                  // انتظر قليلاً للتأكد من تحديث user state
+                                  await new Promise((resolve) =>
+                                    setTimeout(resolve, 100)
+                                  );
+                                  setIsEditingName(false);
+                                } catch (error) {
+                                  logger.error(
+                                    "خطأ في حفظ الاسم:",
+                                    error,
+                                    "service",
+                                  );
+                                  alert(
+                                    "حدث خطأ أثناء حفظ الاسم. يرجى المحاولة مرة أخرى.",
+                                  );
+                                } finally {
+                                  setIsSavingName(false);
+                                }
+                              } else {
                                 setIsEditingName(false);
-                              } catch (error) {
-                                logger.error('خطأ في حفظ الاسم:', error, 'service');
-                                alert('حدث خطأ أثناء حفظ الاسم. يرجى المحاولة مرة أخرى.');
-                              } finally {
-                                setIsSavingName(false);
                               }
-                            } else {
+                            }}
+                            disabled={isSavingName}
+                            className="text-xs text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                          >
+                            {isSavingName
+                              ? (
+                                <>
+                                  <span className="inline-flex items-center gap-0.5">
+                                    <span className="animate-[bounce_1s_infinite]">
+                                      .
+                                    </span>
+                                    <span className="animate-[bounce_1s_infinite_0.2s]">
+                                      .
+                                    </span>
+                                    <span className="animate-[bounce_1s_infinite_0.4s]">
+                                      .
+                                    </span>
+                                  </span>
+                                  انتظار
+                                </>
+                              )
+                              : (
+                                "حفظ"
+                              )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditedName(user?.display_name || "");
                               setIsEditingName(false);
-                            }
-                          }}
-                          disabled={isSavingName}
-                          className="text-xs text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                        >
-                          {isSavingName ? (
-                            <>
-                              <span className="inline-flex items-center gap-0.5">
-                                <span className="animate-[bounce_1s_infinite]">.</span>
-                                <span className="animate-[bounce_1s_infinite_0.2s]">.</span>
-                                <span className="animate-[bounce_1s_infinite_0.4s]">.</span>
-                              </span>
-                              انتظار
-                            </>
-                          ) : (
-                            'حفظ'
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditedName(user?.display_name || "");
-                            setIsEditingName(false);
-                          }}
-                          className="text-xs text-muted-foreground hover:underline"
-                        >
-                          إلغاء
-                        </button>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground" dir="rtl">
-                        {user?.display_name || "غير محدد"}
-                      </p>
-                    )}
+                            }}
+                            className="text-xs text-muted-foreground hover:underline"
+                          >
+                            إلغاء
+                          </button>
+                        </div>
+                      )
+                      : (
+                        <p className="text-xs text-muted-foreground" dir="rtl">
+                          {user?.display_name || "غير محدد"}
+                        </p>
+                      )}
                   </div>
                   {!isEditingName && (
                     <button
@@ -392,83 +447,110 @@ export const Settings: React.FC<SettingsProps> = ({
                     </button>
                   )}
                 </div>
-                
+
                 {/* Email */}
                 <div className="flex items-center justify-between">
                   <div className="flex-1 text-right">
                     <p className="font-medium text-sm">البريد الإلكتروني</p>
-                    {isEditingEmail ? (
-                      <div className="flex items-center gap-2 mt-1">
-                        <input
-                          type="email"
-                          value={editedEmail}
-                          onChange={(e) => setEditedEmail(e.target.value)}
-                          className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-left"
-                          dir="ltr"
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (onUpdateProfile && editedEmail.trim() && editedEmail !== user?.email) {
-                              setIsSavingEmail(true);
-                              try {
-                                // تحديث البريد الإلكتروني في Supabase Auth
-                                const { error: authError } = await supabase.auth.updateUser({
-                                  email: editedEmail.trim()
-                                });
-                                
-                                if (authError) {
-                                  logger.error('Error updating email:', authError, 'service');
-                                  alert('حدث خطأ أثناء تحديث البريد الإلكتروني: ' + authError.message);
-                                  return;
+                    {isEditingEmail
+                      ? (
+                        <div className="flex items-center gap-2 mt-1">
+                          <input
+                            type="email"
+                            value={editedEmail}
+                            onChange={(e) => setEditedEmail(e.target.value)}
+                            className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-left"
+                            dir="ltr"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (
+                                onUpdateProfile && editedEmail.trim() &&
+                                editedEmail !== user?.email
+                              ) {
+                                setIsSavingEmail(true);
+                                try {
+                                  // تحديث البريد الإلكتروني في Supabase Auth
+                                  const { error: authError } = await supabase
+                                    .auth.updateUser({
+                                      email: editedEmail.trim(),
+                                    });
+
+                                  if (authError) {
+                                    logger.error(
+                                      "Error updating email:",
+                                      authError,
+                                      "service",
+                                    );
+                                    alert(
+                                      "حدث خطأ أثناء تحديث البريد الإلكتروني: " +
+                                        authError.message,
+                                    );
+                                    return;
+                                  }
+
+                                  // تحديث في جدول profiles أيضاً
+                                  await onUpdateProfile({
+                                    email: editedEmail.trim(),
+                                  });
+                                  setIsEditingEmail(false);
+                                } catch (err: unknown) {
+                                  logger.error(
+                                    "Error updating email:",
+                                    err,
+                                    "service",
+                                  );
+                                  alert("حدث خطأ أثناء تحديث البريد الإلكتروني");
+                                } finally {
+                                  setIsSavingEmail(false);
                                 }
-                                
-                                // تحديث في جدول profiles أيضاً
-                                await onUpdateProfile({ email: editedEmail.trim() });
+                              } else {
                                 setIsEditingEmail(false);
-                              } catch (err: unknown) {
-                                logger.error('Error updating email:', err, 'service');
-                                alert('حدث خطأ أثناء تحديث البريد الإلكتروني');
-                              } finally {
-                                setIsSavingEmail(false);
                               }
-                            } else {
+                            }}
+                            disabled={isSavingEmail}
+                            className="text-xs text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                          >
+                            {isSavingEmail
+                              ? (
+                                <>
+                                  <span className="inline-flex items-center gap-0.5">
+                                    <span className="animate-[bounce_1s_infinite]">
+                                      .
+                                    </span>
+                                    <span className="animate-[bounce_1s_infinite_0.2s]">
+                                      .
+                                    </span>
+                                    <span className="animate-[bounce_1s_infinite_0.4s]">
+                                      .
+                                    </span>
+                                  </span>
+                                  انتظار
+                                </>
+                              )
+                              : (
+                                "حفظ"
+                              )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditedEmail(user?.email || "");
                               setIsEditingEmail(false);
-                            }
-                          }}
-                          disabled={isSavingEmail}
-                          className="text-xs text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                        >
-                          {isSavingEmail ? (
-                            <>
-                              <span className="inline-flex items-center gap-0.5">
-                                <span className="animate-[bounce_1s_infinite]">.</span>
-                                <span className="animate-[bounce_1s_infinite_0.2s]">.</span>
-                                <span className="animate-[bounce_1s_infinite_0.4s]">.</span>
-                              </span>
-                              انتظار
-                            </>
-                          ) : (
-                            'حفظ'
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditedEmail(user?.email || "");
-                            setIsEditingEmail(false);
-                          }}
-                          className="text-xs text-muted-foreground hover:underline"
-                        >
-                          إلغاء
-                        </button>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground" dir="ltr">
-                        {user?.email || "غير محدد"}
-                      </p>
-                    )}
+                            }}
+                            className="text-xs text-muted-foreground hover:underline"
+                          >
+                            إلغاء
+                          </button>
+                        </div>
+                      )
+                      : (
+                        <p className="text-xs text-muted-foreground" dir="ltr">
+                          {user?.email || "غير محدد"}
+                        </p>
+                      )}
                   </div>
                   {!isEditingEmail && (
                     <button
@@ -480,56 +562,61 @@ export const Settings: React.FC<SettingsProps> = ({
                     </button>
                   )}
                 </div>
-                
+
                 {/* Phone */}
                 <div className="flex items-center justify-between">
                   <div className="flex-1 text-right">
                     <p className="font-medium text-sm">رقم الجوال</p>
-                    {isEditingPhone ? (
-                      <div className="flex items-center gap-2 mt-1">
-                        <input
-                          type="tel"
-                          value={editedPhone}
-                          onChange={(e) => setEditedPhone(e.target.value)}
-                          className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-left"
-                          dir="ltr"
-                          autoFocus
-                          disabled={phoneVerificationStep !== 'none'}
-                        />
-                        {phoneVerificationStep === 'none' ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTempPhone(editedPhone.trim());
-                                setPhoneVerificationStep('phone');
-                                setPhoneError(null);
-                              }}
-                              disabled={!editedPhone.trim() || editedPhone.trim() === user?.phone}
-                              className="text-xs text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              حفظ
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditedPhone(user?.phone || "");
-                                setIsEditingPhone(false);
-                                setPhoneVerificationStep('none');
-                                setPhoneError(null);
-                              }}
-                              className="text-xs text-muted-foreground hover:underline"
-                            >
-                              إلغاء
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground" dir="ltr">
-                        {user?.phone || "غير محدد"}
-                      </p>
-                    )}
+                    {isEditingPhone
+                      ? (
+                        <div className="flex items-center gap-2 mt-1">
+                          <input
+                            type="tel"
+                            value={editedPhone}
+                            onChange={(e) => setEditedPhone(e.target.value)}
+                            className="flex-1 h-8 px-2 text-xs rounded-lg border border-border bg-background text-left"
+                            dir="ltr"
+                            autoFocus
+                            disabled={phoneVerificationStep !== "none"}
+                          />
+                          {phoneVerificationStep === "none"
+                            ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTempPhone(editedPhone.trim());
+                                    setPhoneVerificationStep("phone");
+                                    setPhoneError(null);
+                                  }}
+                                  disabled={!editedPhone.trim() ||
+                                    editedPhone.trim() === user?.phone}
+                                  className="text-xs text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  حفظ
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditedPhone(user?.phone || "");
+                                    setIsEditingPhone(false);
+                                    setPhoneVerificationStep("none");
+                                    setPhoneError(null);
+                                  }}
+                                  className="text-xs text-muted-foreground hover:underline"
+                                >
+                                  إلغاء
+                                </button>
+                              </>
+                            )
+                            : null}
+                        </div>
+                      )
+                      : (
+                        <p className="text-xs text-muted-foreground" dir="ltr">
+                          {user?.phone || "غير محدد"}
+                        </p>
+                      )}
                   </div>
                   {!isEditingPhone && (
                     <button
@@ -537,7 +624,7 @@ export const Settings: React.FC<SettingsProps> = ({
                       onClick={() => {
                         setIsEditingPhone(true);
                         setEditedPhone(user?.phone || "");
-                        setPhoneVerificationStep('none');
+                        setPhoneVerificationStep("none");
                       }}
                       className="text-xs text-primary hover:underline shrink-0 mr-2"
                     >
@@ -552,21 +639,36 @@ export const Settings: React.FC<SettingsProps> = ({
             <div className="p-4 bg-secondary/50 rounded-lg border border-border">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 rounded-full bg-primary/10 text-primary">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
                 </div>
                 <h3 className="font-bold text-base">الخصوصية</h3>
               </div>
-              
+
               <div className="space-y-3">
                 {/* Show Name to Approved Provider */}
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <p className="font-medium text-sm">
-                      {showNameToApprovedProvider ? "اظهار اسمي لمقدم العرض بعد اعتماده" : "إبقاء اسمي غير ظاهر دائماً"}
+                      {showNameToApprovedProvider
+                        ? "اظهار اسمي لمقدم العرض بعد اعتماده"
+                        : "إبقاء اسمي غير ظاهر دائماً"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {showNameToApprovedProvider 
-                        ? "سيظهر اسمك لمقدم الخدمة بعد اعتماد عرضه" 
+                      {showNameToApprovedProvider
+                        ? "سيظهر اسمك لمقدم الخدمة بعد اعتماد عرضه"
                         : "لن يظهر اسمك لمقدمي الخدمات، سيظهر رقم الطلب فقط"}
                     </p>
                   </div>
@@ -579,7 +681,7 @@ export const Settings: React.FC<SettingsProps> = ({
                       if (onUpdatePreferences) {
                         onUpdatePreferences({
                           ...userPreferences,
-                          showNameToApprovedProvider: newValue
+                          showNameToApprovedProvider: newValue,
                         });
                       }
                     }}
@@ -589,7 +691,11 @@ export const Settings: React.FC<SettingsProps> = ({
                   >
                     <motion.div
                       animate={{ x: showNameToApprovedProvider ? -28 : 0 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 500,
+                        damping: 30,
+                      }}
                       className="w-5 h-5 bg-white rounded-full shadow-lg"
                     />
                   </button>
@@ -605,10 +711,12 @@ export const Settings: React.FC<SettingsProps> = ({
                 </div>
                 <h3 className="font-bold text-base">تخصيص صفحة البداية</h3>
               </div>
-              
+
               <div className="space-y-3">
                 <div>
-                  <p className="font-medium text-sm mb-2">اختر الصفحة التي تريد أن تبدأ بها عندما تفتح التطبيق</p>
+                  <p className="font-medium text-sm mb-2">
+                    اختر الصفحة التي تريد أن تبدأ بها عندما تفتح التطبيق
+                  </p>
                   <div className="relative">
                     <button
                       type="button"
@@ -619,21 +727,31 @@ export const Settings: React.FC<SettingsProps> = ({
                       className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg border border-border bg-background hover:bg-secondary/50 transition-colors text-sm"
                     >
                       <span className="text-foreground">
-                        {selectedHomePage === "marketplace:all" && "السوق (كل الطلبات)"}
-                        {selectedHomePage === "marketplace:interests" && "السوق (اهتماماتي)"}
-                        {selectedHomePage === "my-requests:all" && "طلباتي (كل طلباتي)"}
-                        {selectedHomePage === "my-requests:active" && "طلباتي (الطلبات النشطة)"}
-                        {selectedHomePage === "my-requests:approved" && "طلباتي (الطلبات المعتمدة)"}
-                        {selectedHomePage === "my-offers:all" && "عروضي (كل عروضي)"}
-                        {selectedHomePage === "my-offers:pending" && "عروضي (عروضي قيد الانتظار)"}
-                        {selectedHomePage === "my-offers:accepted" && "عروضي (عروضي المقبولة)"}
+                        {selectedHomePage === "marketplace:all" &&
+                          "السوق (كل الطلبات)"}
+                        {selectedHomePage === "marketplace:interests" &&
+                          "السوق (اهتماماتي)"}
+                        {selectedHomePage === "my-requests:all" &&
+                          "طلباتي (كل طلباتي)"}
+                        {selectedHomePage === "my-requests:active" &&
+                          "طلباتي (الطلبات النشطة)"}
+                        {selectedHomePage === "my-requests:approved" &&
+                          "طلباتي (الطلبات المعتمدة)"}
+                        {selectedHomePage === "my-offers:all" &&
+                          "عروضي (كل عروضي)"}
+                        {selectedHomePage === "my-offers:pending" &&
+                          "عروضي (عروضي قيد الانتظار)"}
+                        {selectedHomePage === "my-offers:accepted" &&
+                          "عروضي (عروضي المقبولة)"}
                       </span>
-                      <ChevronDown 
-                        size={18} 
-                        className={`text-muted-foreground transition-transform duration-200 ${isHomePageDropdownOpen ? "rotate-180" : ""}`} 
+                      <ChevronDown
+                        size={18}
+                        className={`text-muted-foreground transition-transform duration-200 ${
+                          isHomePageDropdownOpen ? "rotate-180" : ""
+                        }`}
                       />
                     </button>
-                    
+
                     <AnimatePresence>
                       {isHomePageDropdownOpen && (
                         <motion.div
@@ -648,18 +766,21 @@ export const Settings: React.FC<SettingsProps> = ({
                             type="button"
                             onClick={() => {
                               hapticService.tap();
-                              const newHomePage: HomePageConfig = "marketplace:all";
+                              const newHomePage: HomePageConfig =
+                                "marketplace:all";
                               setSelectedHomePage(newHomePage);
                               setIsHomePageDropdownOpen(false);
                               if (onUpdatePreferences) {
                                 onUpdatePreferences({
                                   ...userPreferences,
-                                  homePage: newHomePage
-                                } as any);
+                                  homePage: newHomePage,
+                                });
                               }
                             }}
                             className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
-                              selectedHomePage === "marketplace:all" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                              selectedHomePage === "marketplace:all"
+                                ? "bg-primary/10 text-primary font-medium"
+                                : "text-foreground"
                             }`}
                           >
                             السوق (كل الطلبات)
@@ -668,41 +789,47 @@ export const Settings: React.FC<SettingsProps> = ({
                             type="button"
                             onClick={() => {
                               hapticService.tap();
-                              const newHomePage: HomePageConfig = "marketplace:interests";
+                              const newHomePage: HomePageConfig =
+                                "marketplace:interests";
                               setSelectedHomePage(newHomePage);
                               setIsHomePageDropdownOpen(false);
                               if (onUpdatePreferences) {
                                 onUpdatePreferences({
                                   ...userPreferences,
-                                  homePage: newHomePage
-                                } as any);
+                                  homePage: newHomePage,
+                                });
                               }
                             }}
                             className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
-                              selectedHomePage === "marketplace:interests" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                              selectedHomePage === "marketplace:interests"
+                                ? "bg-primary/10 text-primary font-medium"
+                                : "text-foreground"
                             }`}
                           >
                             السوق (اهتماماتي)
                           </button>
-                          
+
                           {/* طلباتي */}
                           <div className="border-t border-border my-1"></div>
                           <button
                             type="button"
                             onClick={() => {
                               hapticService.tap();
-                              const newHomePage: HomePageConfig = "my-requests:all";
+                              const newHomePage: HomePageConfig =
+                                "my-requests:all";
                               setSelectedHomePage(newHomePage);
                               setIsHomePageDropdownOpen(false);
                               if (onUpdatePreferences) {
                                 onUpdatePreferences({
                                   ...userPreferences,
-                                  homePage: newHomePage
-                                } as any);
+                                  homePage: newHomePage,
+                                });
                               }
                             }}
                             className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
-                              selectedHomePage === "my-requests:all" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                              selectedHomePage === "my-requests:all"
+                                ? "bg-primary/10 text-primary font-medium"
+                                : "text-foreground"
                             }`}
                           >
                             طلباتي (كل طلباتي)
@@ -711,18 +838,21 @@ export const Settings: React.FC<SettingsProps> = ({
                             type="button"
                             onClick={() => {
                               hapticService.tap();
-                              const newHomePage: HomePageConfig = "my-requests:active";
+                              const newHomePage: HomePageConfig =
+                                "my-requests:active";
                               setSelectedHomePage(newHomePage);
                               setIsHomePageDropdownOpen(false);
                               if (onUpdatePreferences) {
                                 onUpdatePreferences({
                                   ...userPreferences,
-                                  homePage: newHomePage
-                                } as any);
+                                  homePage: newHomePage,
+                                });
                               }
                             }}
                             className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
-                              selectedHomePage === "my-requests:active" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                              selectedHomePage === "my-requests:active"
+                                ? "bg-primary/10 text-primary font-medium"
+                                : "text-foreground"
                             }`}
                           >
                             طلباتي (الطلبات النشطة)
@@ -731,41 +861,47 @@ export const Settings: React.FC<SettingsProps> = ({
                             type="button"
                             onClick={() => {
                               hapticService.tap();
-                              const newHomePage: HomePageConfig = "my-requests:approved";
+                              const newHomePage: HomePageConfig =
+                                "my-requests:approved";
                               setSelectedHomePage(newHomePage);
                               setIsHomePageDropdownOpen(false);
                               if (onUpdatePreferences) {
                                 onUpdatePreferences({
                                   ...userPreferences,
-                                  homePage: newHomePage
-                                } as any);
+                                  homePage: newHomePage,
+                                });
                               }
                             }}
                             className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
-                              selectedHomePage === "my-requests:approved" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                              selectedHomePage === "my-requests:approved"
+                                ? "bg-primary/10 text-primary font-medium"
+                                : "text-foreground"
                             }`}
                           >
                             طلباتي (الطلبات المعتمدة)
                           </button>
-                          
+
                           {/* عروضي */}
                           <div className="border-t border-border my-1"></div>
                           <button
                             type="button"
                             onClick={() => {
                               hapticService.tap();
-                              const newHomePage: HomePageConfig = "my-offers:all";
+                              const newHomePage: HomePageConfig =
+                                "my-offers:all";
                               setSelectedHomePage(newHomePage);
                               setIsHomePageDropdownOpen(false);
                               if (onUpdatePreferences) {
                                 onUpdatePreferences({
                                   ...userPreferences,
-                                  homePage: newHomePage
-                                } as any);
+                                  homePage: newHomePage,
+                                });
                               }
                             }}
                             className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
-                              selectedHomePage === "my-offers:all" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                              selectedHomePage === "my-offers:all"
+                                ? "bg-primary/10 text-primary font-medium"
+                                : "text-foreground"
                             }`}
                           >
                             عروضي (كل عروضي)
@@ -774,18 +910,21 @@ export const Settings: React.FC<SettingsProps> = ({
                             type="button"
                             onClick={() => {
                               hapticService.tap();
-                              const newHomePage: HomePageConfig = "my-offers:pending";
+                              const newHomePage: HomePageConfig =
+                                "my-offers:pending";
                               setSelectedHomePage(newHomePage);
                               setIsHomePageDropdownOpen(false);
                               if (onUpdatePreferences) {
                                 onUpdatePreferences({
                                   ...userPreferences,
-                                  homePage: newHomePage
-                                } as any);
+                                  homePage: newHomePage,
+                                });
                               }
                             }}
                             className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
-                              selectedHomePage === "my-offers:pending" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                              selectedHomePage === "my-offers:pending"
+                                ? "bg-primary/10 text-primary font-medium"
+                                : "text-foreground"
                             }`}
                           >
                             عروضي (عروضي قيد الانتظار)
@@ -794,18 +933,21 @@ export const Settings: React.FC<SettingsProps> = ({
                             type="button"
                             onClick={() => {
                               hapticService.tap();
-                              const newHomePage: HomePageConfig = "my-offers:accepted";
+                              const newHomePage: HomePageConfig =
+                                "my-offers:accepted";
                               setSelectedHomePage(newHomePage);
                               setIsHomePageDropdownOpen(false);
                               if (onUpdatePreferences) {
                                 onUpdatePreferences({
                                   ...userPreferences,
-                                  homePage: newHomePage
-                                } as any);
+                                  homePage: newHomePage,
+                                });
                               }
                             }}
                             className={`w-full text-right px-4 py-2.5 text-sm hover:bg-secondary/50 transition-colors ${
-                              selectedHomePage === "my-offers:accepted" ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                              selectedHomePage === "my-offers:accepted"
+                                ? "bg-primary/10 text-primary font-medium"
+                                : "text-foreground"
                             }`}
                           >
                             عروضي (عروضي المقبولة)
@@ -826,14 +968,18 @@ export const Settings: React.FC<SettingsProps> = ({
                 </div>
                 <h3 className="font-bold text-base">الإشعارات</h3>
               </div>
-              
+
               <div className="space-y-3">
                 {/* Notify on Interest */}
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <p className="font-medium text-sm">إشعارات الطلبات الجديدة</p>
-                    <p className="text-xs text-muted-foreground">إشعار عند وجود طلبات جديدة حسب اهتماماتك</p>
-             </div>
+                    <p className="font-medium text-sm">
+                      إشعارات الطلبات الجديدة
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      إشعار عند وجود طلبات جديدة حسب اهتماماتك
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -847,19 +993,25 @@ export const Settings: React.FC<SettingsProps> = ({
                   >
                     <motion.div
                       animate={{ x: notifyOnInterest ? -28 : 0 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 500,
+                        damping: 30,
+                      }}
                       className="w-5 h-5 bg-white rounded-full shadow-lg"
                     />
                   </button>
-          </div>
-          
+                </div>
+
                 {/* Notify on Offers */}
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <p className="font-medium text-sm">إشعارات العروض</p>
-                    <p className="text-xs text-muted-foreground">إشعار عند استلام عروض جديدة على طلباتك</p>
+                    <p className="text-xs text-muted-foreground">
+                      إشعار عند استلام عروض جديدة على طلباتك
+                    </p>
                   </div>
-          <button
+                  <button
                     type="button"
                     onClick={() => {
                       // Haptic feedback
@@ -869,20 +1021,26 @@ export const Settings: React.FC<SettingsProps> = ({
                     className={`w-14 h-7 rounded-full p-1 transition-all relative flex items-center shrink-0 ${
                       notifyOnOffers ? "bg-primary" : "bg-gray-300"
                     }`}
-          >
+                  >
                     <motion.div
                       animate={{ x: notifyOnOffers ? -28 : 0 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 500,
+                        damping: 30,
+                      }}
                       className="w-5 h-5 bg-white rounded-full shadow-lg"
-            />
-          </button>
-        </div>
+                    />
+                  </button>
+                </div>
 
                 {/* Notify on Messages */}
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <p className="font-medium text-sm">إشعارات الرسائل</p>
-                    <p className="text-xs text-muted-foreground">إشعار عند استلام رسائل جديدة</p>
+                    <p className="text-xs text-muted-foreground">
+                      إشعار عند استلام رسائل جديدة
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -897,7 +1055,11 @@ export const Settings: React.FC<SettingsProps> = ({
                   >
                     <motion.div
                       animate={{ x: notifyOnMessages ? -28 : 0 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 500,
+                        damping: 30,
+                      }}
                       className="w-5 h-5 bg-white rounded-full shadow-lg"
                     />
                   </button>
@@ -915,13 +1077,18 @@ export const Settings: React.FC<SettingsProps> = ({
                   <div className="flex-1">
                     <h3 className="font-bold text-base">إدارة الاهتمامات</h3>
                     <p className="text-xs text-muted-foreground">
-                      {selectedCategories.length > 0 || selectedCities.length > 0 || selectedRadarWords.length > 0
+                      {selectedCategories.length > 0 ||
+                          selectedCities.length > 0 ||
+                          selectedRadarWords.length > 0
                         ? [
-                            selectedCategories.length > 0 && `${selectedCategories.length} تصنيف`,
-                            selectedCities.length > 0 && `${selectedCities.length} مدينة`,
-                            selectedRadarWords.length > 0 && `${selectedRadarWords.length} كلمة رادار`
-                          ].filter(Boolean).join('، ')
-                        : 'لم يتم تحديد أي اهتمامات'}
+                          selectedCategories.length > 0 &&
+                          `${selectedCategories.length} تصنيف`,
+                          selectedCities.length > 0 &&
+                          `${selectedCities.length} مدينة`,
+                          selectedRadarWords.length > 0 &&
+                          `${selectedRadarWords.length} كلمة رادار`,
+                        ].filter(Boolean).join("، ")
+                        : "لم يتم تحديد أي اهتمامات"}
                     </p>
                   </div>
                 </div>
@@ -944,16 +1111,24 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               {/* Preview Section - Collapsible */}
-              {(selectedCategories.length > 0 || selectedCities.length > 0 || selectedRadarWords.length > 0) && (
+              {(selectedCategories.length > 0 || selectedCities.length > 0 ||
+                selectedRadarWords.length > 0) && (
                 <div className="border-t border-border pt-3">
-                  <div 
-                    onClick={() => setIsInterestsPreviewExpanded(!isInterestsPreviewExpanded)}
+                  <div
+                    onClick={() =>
+                      setIsInterestsPreviewExpanded(
+                        !isInterestsPreviewExpanded,
+                      )}
                     className="flex items-center justify-between cursor-pointer hover:bg-secondary/50 rounded-lg p-2 -mx-2 transition-all"
                   >
-                    <span className="text-xs font-medium text-muted-foreground">عرض التفاصيل</span>
-                    <ChevronDown 
-                      size={16} 
-                      className={`text-muted-foreground transition-transform duration-200 ${isInterestsPreviewExpanded ? "rotate-180" : ""}`} 
+                    <span className="text-xs font-medium text-muted-foreground">
+                      عرض التفاصيل
+                    </span>
+                    <ChevronDown
+                      size={16}
+                      className={`text-muted-foreground transition-transform duration-200 ${
+                        isInterestsPreviewExpanded ? "rotate-180" : ""
+                      }`}
                     />
                   </div>
                   <AnimatePresence>
@@ -969,19 +1144,31 @@ export const Settings: React.FC<SettingsProps> = ({
                           {/* Categories Preview */}
                           {selectedCategories.length > 0 && (
                             <div>
-                              <h4 className="text-xs font-bold text-muted-foreground mb-2">التصنيفات المختارة:</h4>
+                              <h4 className="text-xs font-bold text-muted-foreground mb-2">
+                                التصنيفات المختارة:
+                              </h4>
                               <div className="flex flex-wrap gap-2">
                                 {selectedCategories.map((catId) => {
-                                  const cat = AVAILABLE_CATEGORIES.find((c: { id: string; label: string; emoji: string }) => c.id === catId);
-                                  return cat ? (
-                                    <div
-                                      key={catId}
-                                      className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 px-2 py-1 rounded-lg text-xs"
-                                    >
-                                      <span>{cat.emoji}</span>
-                                      <span className="text-primary font-medium">{cat.label}</span>
-                                    </div>
-                                  ) : null;
+                                  const cat = AVAILABLE_CATEGORIES.find((
+                                    c: {
+                                      id: string;
+                                      label: string;
+                                      emoji: string;
+                                    },
+                                  ) => c.id === catId);
+                                  return cat
+                                    ? (
+                                      <div
+                                        key={catId}
+                                        className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 px-2 py-1 rounded-lg text-xs"
+                                      >
+                                        <span>{cat.emoji}</span>
+                                        <span className="text-primary font-medium">
+                                          {cat.label}
+                                        </span>
+                                      </div>
+                                    )
+                                    : null;
                                 })}
                               </div>
                             </div>
@@ -990,7 +1177,9 @@ export const Settings: React.FC<SettingsProps> = ({
                           {/* Cities Preview */}
                           {selectedCities.length > 0 && (
                             <div>
-                              <h4 className="text-xs font-bold text-muted-foreground mb-2">المدن المختارة:</h4>
+                              <h4 className="text-xs font-bold text-muted-foreground mb-2">
+                                المدن المختارة:
+                              </h4>
                               <div className="flex flex-wrap gap-2">
                                 {selectedCities.map((city) => (
                                   <div
@@ -1007,7 +1196,9 @@ export const Settings: React.FC<SettingsProps> = ({
                           {/* Radar Words Preview */}
                           {selectedRadarWords.length > 0 && (
                             <div>
-                              <h4 className="text-xs font-bold text-muted-foreground mb-2">كلمات الرادار:</h4>
+                              <h4 className="text-xs font-bold text-muted-foreground mb-2">
+                                كلمات الرادار:
+                              </h4>
                               <div className="flex flex-wrap gap-2">
                                 {selectedRadarWords.map((word) => (
                                   <div
@@ -1027,7 +1218,6 @@ export const Settings: React.FC<SettingsProps> = ({
                 </div>
               )}
             </div>
-
           </div>
         </div>
       </div>
@@ -1063,7 +1253,9 @@ export const Settings: React.FC<SettingsProps> = ({
                       <Bell size={18} className="text-primary" />
                       <div>
                         <h4 className="font-bold text-sm">إشعارات الاهتمامات</h4>
-                        <p className="text-xs text-muted-foreground">تنبيهات فورية للطلبات التي تهمك</p>
+                        <p className="text-xs text-muted-foreground">
+                          تنبيهات فورية للطلبات التي تهمك
+                        </p>
                       </div>
                     </div>
                     <button
@@ -1079,7 +1271,11 @@ export const Settings: React.FC<SettingsProps> = ({
                     >
                       <motion.div
                         animate={{ x: notifyOnInterest ? -28 : 0 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 500,
+                          damping: 30,
+                        }}
                         className="w-5 h-5 bg-white rounded-full shadow-lg"
                       />
                     </button>
@@ -1088,14 +1284,17 @@ export const Settings: React.FC<SettingsProps> = ({
 
                 {/* Categories - Collapsible */}
                 <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
-                  <div 
-                    onClick={() => setIsCategoriesExpanded(!isCategoriesExpanded)}
+                  <div
+                    onClick={() =>
+                      setIsCategoriesExpanded(!isCategoriesExpanded)}
                     className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
                   >
                     <h4 className="font-bold text-sm">التصنيفات والمهام</h4>
-                    <ChevronDown 
-                      size={18} 
-                      className={`text-muted-foreground transition-transform duration-200 ${isCategoriesExpanded ? "rotate-180" : ""}`} 
+                    <ChevronDown
+                      size={18}
+                      className={`text-muted-foreground transition-transform duration-200 ${
+                        isCategoriesExpanded ? "rotate-180" : ""
+                      }`}
                     />
                   </div>
                   <AnimatePresence>
@@ -1116,15 +1315,17 @@ export const Settings: React.FC<SettingsProps> = ({
                             className="w-full text-xs px-3 py-1.5 rounded-lg border-2 border-[#1E968C]/30 bg-background focus:border-[#178075] focus:outline-none transition-all"
                           />
                           <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto no-scrollbar">
-                            {filteredCategories.map((cat: { id: string; label: string; emoji: string }) => (
+                            {filteredCategories.map((
+                              cat: { id: string; label: string; emoji: string },
+                            ) => (
                               <button
                                 type="button"
                                 key={cat.id}
                                 onClick={() => toggleCategory(cat.id)}
                                 className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
                                   tempCategories.includes(cat.id)
-                                    ? 'bg-primary text-white'
-                                    : 'bg-background text-foreground hover:bg-secondary/80 border border-border'
+                                    ? "bg-primary text-white"
+                                    : "bg-background text-foreground hover:bg-secondary/80 border border-border"
                                 }`}
                               >
                                 {cat.emoji} {cat.label}
@@ -1139,7 +1340,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
                 {/* Cities - Collapsible */}
                 <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
-                  <div 
+                  <div
                     onClick={() => {
                       const newState = !isCitiesExpanded;
                       setIsCitiesExpanded(newState);
@@ -1151,9 +1352,11 @@ export const Settings: React.FC<SettingsProps> = ({
                     className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
                   >
                     <h4 className="font-bold text-sm">المدن والمناطق</h4>
-                    <ChevronDown 
-                      size={18} 
-                      className={`text-muted-foreground transition-transform duration-200 ${isCitiesExpanded ? "rotate-180" : ""}`} 
+                    <ChevronDown
+                      size={18}
+                      className={`text-muted-foreground transition-transform duration-200 ${
+                        isCitiesExpanded ? "rotate-180" : ""
+                      }`}
                     />
                   </div>
                   <AnimatePresence>
@@ -1194,7 +1397,9 @@ export const Settings: React.FC<SettingsProps> = ({
                               onClick={() => {
                                 if (navigator.vibrate) navigator.vibrate(10);
                                 // اختيار "مدن محددة" = نزيل "كل المدن" ونبقي على أي مدن موجودة
-                                const filtered = tempCities.filter((c) => c !== "كل المدن");
+                                const filtered = tempCities.filter((c) =>
+                                  c !== "كل المدن"
+                                );
                                 // إذا ما فيه مدن بعد الفلترة، نحط مصفوفة فارغة (يعني waiting for user to select)
                                 setTempCities(filtered);
                               }}
@@ -1212,9 +1417,13 @@ export const Settings: React.FC<SettingsProps> = ({
                           {/* Selected Cities Chips - فقط عندما تكون "مدن محددة" */}
                           {tempCities.length > 0 &&
                             !tempCities.includes("كل المدن") &&
-                            tempCities.filter((c) => c !== "عن بعد").length > 0 && (
+                            tempCities.filter((c) => c !== "عن بعد").length >
+                              0 &&
+                            (
                               <div className="flex flex-wrap justify-start gap-1.5 w-full">
-                                {tempCities.filter((c) => c !== "عن بعد").map((city) => (
+                                {tempCities.filter((c) => c !== "عن بعد").map((
+                                  city,
+                                ) => (
                                   <motion.span
                                     key={city}
                                     initial={{ scale: 0.8, opacity: 0 }}
@@ -1303,14 +1512,17 @@ export const Settings: React.FC<SettingsProps> = ({
 
                 {/* Radar Words - Collapsible */}
                 <div className="bg-secondary/50 rounded-lg border border-border overflow-hidden">
-                  <div 
-                    onClick={() => setIsRadarWordsExpanded(!isRadarWordsExpanded)}
+                  <div
+                    onClick={() =>
+                      setIsRadarWordsExpanded(!isRadarWordsExpanded)}
                     className="flex items-center justify-between p-3 cursor-pointer hover:bg-secondary/70 transition-all"
                   >
                     <h4 className="font-bold text-sm">رادار الكلمات</h4>
-                    <ChevronDown 
-                      size={18} 
-                      className={`text-muted-foreground transition-transform duration-200 ${isRadarWordsExpanded ? "rotate-180" : ""}`} 
+                    <ChevronDown
+                      size={18}
+                      className={`text-muted-foreground transition-transform duration-200 ${
+                        isRadarWordsExpanded ? "rotate-180" : ""
+                      }`}
                     />
                   </div>
                   <AnimatePresence>
@@ -1333,7 +1545,7 @@ export const Settings: React.FC<SettingsProps> = ({
                               value={newRadarWord}
                               onChange={(e) => setNewRadarWord(e.target.value)}
                               onKeyPress={(e) => {
-                                if (e.key === 'Enter') {
+                                if (e.key === "Enter") {
                                   e.preventDefault();
                                   addRadarWord();
                                 }
@@ -1394,18 +1606,26 @@ export const Settings: React.FC<SettingsProps> = ({
                   disabled={isSavingPreferences}
                   className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                 >
-                  {isSavingPreferences ? (
-                    <>
-                      <span className="inline-flex items-center gap-0.5">
-                        <span className="animate-[bounce_1s_infinite]">.</span>
-                        <span className="animate-[bounce_1s_infinite_0.2s]">.</span>
-                        <span className="animate-[bounce_1s_infinite_0.4s]">.</span>
-                      </span>
-                      انتظار
-                    </>
-                  ) : (
-                    'حفظ'
-                  )}
+                  {isSavingPreferences
+                    ? (
+                      <>
+                        <span className="inline-flex items-center gap-0.5">
+                          <span className="animate-[bounce_1s_infinite]">
+                            .
+                          </span>
+                          <span className="animate-[bounce_1s_infinite_0.2s]">
+                            .
+                          </span>
+                          <span className="animate-[bounce_1s_infinite_0.4s]">
+                            .
+                          </span>
+                        </span>
+                        انتظار
+                      </>
+                    )
+                    : (
+                      "حفظ"
+                    )}
                 </button>
               </div>
             </motion.div>
@@ -1415,7 +1635,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
       {/* Phone Verification Modal */}
       <AnimatePresence>
-        {phoneVerificationStep !== 'none' && (
+        {phoneVerificationStep !== "none" && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
@@ -1429,10 +1649,10 @@ export const Settings: React.FC<SettingsProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setPhoneVerificationStep('none');
-                    setPhoneOTP('');
+                    setPhoneVerificationStep("none");
+                    setPhoneOTP("");
                     setPhoneError(null);
-                    setTempPhone('');
+                    setTempPhone("");
                   }}
                   className="p-2 hover:bg-secondary rounded-lg transition-colors"
                 >
@@ -1442,91 +1662,103 @@ export const Settings: React.FC<SettingsProps> = ({
 
               {/* Modal Content */}
               <div className="p-4 space-y-4">
-                {phoneVerificationStep === 'phone' ? (
-                  <>
-                    <p className="text-sm text-muted-foreground">
-                      سيتم إرسال رمز التحقق إلى الرقم: <span className="font-medium text-foreground">{tempPhone}</span>
-                    </p>
-                    {phoneError && (
-                      <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
-                        {phoneError}
+                {phoneVerificationStep === "phone"
+                  ? (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        سيتم إرسال رمز التحقق إلى الرقم:{" "}
+                        <span className="font-medium text-foreground">
+                          {tempPhone}
+                        </span>
+                      </p>
+                      {phoneError && (
+                        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
+                          {phoneError}
+                        </div>
+                      )}
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPhoneVerificationStep("none");
+                            setPhoneError(null);
+                            setTempPhone("");
+                          }}
+                          className="flex-1 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors font-medium"
+                        >
+                          إلغاء
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSendPhoneOTP}
+                          disabled={isSendingOTP}
+                          className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isSendingOTP ? "جاري الإرسال..." : "إرسال الرمز"}
+                        </button>
                       </div>
-                    )}
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPhoneVerificationStep('none');
-                          setPhoneError(null);
-                          setTempPhone('');
-                        }}
-                        className="flex-1 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors font-medium"
-                      >
-                        إلغاء
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSendPhoneOTP}
-                        disabled={isSendingOTP}
-                        className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isSendingOTP ? 'جاري الإرسال...' : 'إرسال الرمز'}
-                      </button>
-                    </div>
-                  </>
-                ) : phoneVerificationStep === 'otp' ? (
-                  <>
-                    <p className="text-sm text-muted-foreground">
-                      أدخل رمز التحقق المرسل إلى: <span className="font-medium text-foreground">{tempPhone}</span>
-                    </p>
-                    <input
-                      type="text"
-                      value={phoneOTP}
-                      onChange={(e) => {
-                        const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-                        setPhoneOTP(value);
-                        setPhoneError(null);
-                      }}
-                      className="w-full h-12 px-4 text-center text-2xl font-bold rounded-lg border-2 border-border bg-background focus:border-primary focus:outline-none"
-                      placeholder="000000"
-                      dir="ltr"
-                      autoFocus
-                      maxLength={6}
-                    />
-                    {phoneError && (
-                      <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
-                        {phoneError}
-                      </div>
-                    )}
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPhoneVerificationStep('phone');
-                          setPhoneOTP('');
+                    </>
+                  )
+                  : phoneVerificationStep === "otp"
+                  ? (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        أدخل رمز التحقق المرسل إلى:{" "}
+                        <span className="font-medium text-foreground">
+                          {tempPhone}
+                        </span>
+                      </p>
+                      <input
+                        type="text"
+                        value={phoneOTP}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, "").slice(
+                            0,
+                            6,
+                          );
+                          setPhoneOTP(value);
                           setPhoneError(null);
                         }}
-                        className="flex-1 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors font-medium"
-                      >
-                        الرجوع
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleVerifyPhoneOTP}
-                        disabled={isVerifyingOTP || phoneOTP.length < 4}
-                        className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isVerifyingOTP ? 'جاري التحقق...' : 'تحقق'}
-                      </button>
-                    </div>
-                  </>
-                ) : null}
+                        className="w-full h-12 px-4 text-center text-2xl font-bold rounded-lg border-2 border-border bg-background focus:border-primary focus:outline-none"
+                        placeholder="000000"
+                        dir="ltr"
+                        autoFocus
+                        maxLength={6}
+                      />
+                      {phoneError && (
+                        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
+                          {phoneError}
+                        </div>
+                      )}
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPhoneVerificationStep("phone");
+                            setPhoneOTP("");
+                            setPhoneError(null);
+                          }}
+                          className="flex-1 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors font-medium"
+                        >
+                          الرجوع
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleVerifyPhoneOTP}
+                          disabled={isVerifyingOTP || phoneOTP.length < 4}
+                          className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isVerifyingOTP ? "جاري التحقق..." : "تحقق"}
+                        </button>
+                      </div>
+                    </>
+                  )
+                  : null}
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-
     </div>
   );
 };

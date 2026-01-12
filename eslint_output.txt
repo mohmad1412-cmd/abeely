@@ -1,0 +1,50 @@
+
+C:\dev\copy-of-copy-of-servicelink-ai-platform\App.tsx
+   184:10  warning  'needsOnboarding' is assigned a value but never used                                                                                      @typescript-eslint/no-unused-vars
+   185:10  warning  'isNewUser' is assigned a value but never used                                                                                            @typescript-eslint/no-unused-vars
+   239:23  warning  'setProfileRole' is assigned a value but never used                                                                                       @typescript-eslint/no-unused-vars
+   290:10  warning  'connectionStatus' is assigned a value but never used                                                                                     @typescript-eslint/no-unused-vars
+   445:9   warning  'notifRef' is assigned a value but never used                                                                                             @typescript-eslint/no-unused-vars
+   533:20  warning  Unexpected any. Specify a different type                                                                                                  @typescript-eslint/no-explicit-any
+   646:57  warning  Unexpected any. Specify a different type                                                                                                  @typescript-eslint/no-explicit-any
+   787:6   warning  React Hook useEffect has a missing dependency: 'handleRouteNavigation'. Either include it or remove the dependency array                  react-hooks/exhaustive-deps
+   836:6   warning  React Hook useEffect has a missing dependency: 'user.id'. Either include it or remove the dependency array                                react-hooks/exhaustive-deps
+   979:34  error    'error' is never reassigned. Use 'const' instead                                                                                          prefer-const
+  1351:6   warning  React Hook useEffect has missing dependencies: 'appView' and 'isInPopup'. Either include them or remove the dependency array              react-hooks/exhaustive-deps
+  1423:19  warning  Unexpected any. Specify a different type                                                                                                  @typescript-eslint/no-explicit-any
+  1567:41  warning  'totalCount' is assigned a value but never used                                                                                           @typescript-eslint/no-unused-vars
+  1612:27  warning  Unexpected any. Specify a different type                                                                                                  @typescript-eslint/no-explicit-any
+  1614:44  warning  Unexpected any. Specify a different type                                                                                                  @typescript-eslint/no-explicit-any
+  1667:6   warning  React Hook useEffect has a missing dependency: 'userPreferences'. Either include it or remove the dependency array                        react-hooks/exhaustive-deps
+  1667:16  warning  React Hook useEffect has a complex expression in the dependency array. Extract it to a separate variable so it can be statically checked  react-hooks/exhaustive-deps
+  1667:36  warning  Unexpected any. Specify a different type                                                                                                  @typescript-eslint/no-explicit-any
+  1891:25  warning  Unexpected any. Specify a different type                                                                                                  @typescript-eslint/no-explicit-any
+  1933:9   error    'intervalId' is never reassigned. Use 'const' instead                                                                                     prefer-const
+  1933:21  warning  Unexpected any. Specify a different type                                                                                                  @typescript-eslint/no-explicit-any
+  1985:16  warning  'err' is defined but never used                                                                                                           @typescript-eslint/no-unused-vars
+  2396:6   warning  React Hook useEffect has a missing dependency: 'myRequestIds'. Either include it or remove the dependency array                           react-hooks/exhaustive-deps
+  2590:6   warning  React Hook useEffect has a missing dependency: 'myRequestIds'. Either include it or remove the dependency array                           react-hooks/exhaustive-deps
+  2872:36  warning  Unexpected any. Specify a different type                                                                                                  @typescript-eslint/no-explicit-any
+  3055:50  warning  'requestId' is defined but never used                                                                                                     @typescript-eslint/no-unused-vars
+  3077:48  warning  'requestId' is defined but never used                                                                                                     @typescript-eslint/no-unused-vars
+  3187:9   warning  'handleUnarchiveRequest' is assigned a value but never used                                                                               @typescript-eslint/no-unused-vars
+  3525:18  warning  'e' is defined but never used                                                                                                             @typescript-eslint/no-unused-vars
+  3562:21  warning  Unexpected any. Specify a different type                                                                                                  @typescript-eslint/no-explicit-any
+  3567:15  warning  Unexpected any. Specify a different type                                                                                                  @typescript-eslint/no-explicit-any
+  3665:16  warning  'e' is defined but never used                                                                                                             @typescript-eslint/no-unused-vars
+  3699:9   error    Unexpected lexical declaration in case block                                                                                              no-case-declarations
+  3985:9   error    Unexpected lexical declaration in case block                                                                                              no-case-declarations
+  4208:51  warning  'offer' is defined but never used                                                                                                         @typescript-eslint/no-unused-vars
+  4424:9   error    Unexpected lexical declaration in case block                                                                                              no-case-declarations
+  4490:9   error    Unexpected lexical declaration in case block                                                                                              no-case-declarations
+  4704:9   error    Unexpected lexical declaration in case block                                                                                              no-case-declarations
+  4797:9   error    Unexpected lexical declaration in case block                                                                                              no-case-declarations
+  4867:9   error    Unexpected lexical declaration in case block                                                                                              no-case-declarations
+  4922:9   error    Unexpected lexical declaration in case block                                                                                              no-case-declarations
+  4976:40  warning  'conversationId' is defined but never used                                                                                                @typescript-eslint/no-unused-vars
+  5027:9   warning  'unreadNotificationsForMyRequests' is assigned a value but never used                                                                     @typescript-eslint/no-unused-vars
+  5034:9   warning  'unreadNotificationsForMyOffers' is assigned a value but never used                                                                       @typescript-eslint/no-unused-vars
+  5040:9   warning  'unreadNotificationsForProfile' is assigned a value but never used                                                                        @typescript-eslint/no-unused-vars
+
+ظ£û 45 problems (10 errors, 35 warnings)
+

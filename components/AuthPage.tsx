@@ -8,13 +8,11 @@ import {
   FileText,
   Lock,
   Mail,
-  Phone,
   Shield,
   User,
   X,
 } from "lucide-react";
 import {
-  isTestPhone,
   isValidSaudiPhone,
   sendOTP,
   signInWithEmail,
@@ -133,12 +131,16 @@ export const AuthPage: React.FC<AuthPageProps> = (
 
   // OTP Cooldown Timer - 60 seconds between resends
   const [resendCooldown, setResendCooldown] = useState(0);
-  const cooldownIntervalRef = React.useRef<any>(null);
+  const cooldownIntervalRef = React.useRef<
+    ReturnType<typeof setInterval> | null
+  >(null);
 
   // Refs للتركيز التلقائي
   const phoneInputRef = React.useRef<HTMLInputElement>(null);
   const otpFirstInputRef = React.useRef<HTMLInputElement>(null);
-  const successTimeoutRef = React.useRef<any>(null);
+  const successTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // Auto-dismiss toast after 4 seconds
   useEffect(() => {
@@ -273,7 +275,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
       const verifyPromise = verifyOTP(phone, otpToVerify);
 
       // استخدام AbortController بدلاً من Promise.race لتحسين التحكم
-      let timeoutId: NodeJS.Timeout | null = null;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
       const timeoutPromise = new Promise<{ success: false; error: string }>((
         resolve,
       ) => {
@@ -673,6 +675,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
                   )}
 
                   <button
+                    type="button"
                     onClick={handlePhoneSubmit}
                     disabled={isLoading || !isValidSaudiPhone(phone)}
                     data-testid="send-otp-button"
@@ -742,6 +745,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
                     <>
                       {/* Google Login */}
                       <button
+                        type="button"
                         onClick={() => handleOAuthSignIn("google")}
                         disabled={isLoading}
                         className="w-full py-3 sm:py-4 px-4 sm:px-6 rounded-xl sm:rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2.5 sm:gap-3 shadow-lg hover:shadow-xl transition-all active:scale-[0.98] disabled:opacity-50 text-sm sm:text-base"
@@ -772,6 +776,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
 
                       {/* Email Login */}
                       <button
+                        type="button"
                         onClick={() => setStep("email")}
                         disabled={isLoading}
                         className="w-full py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 text-sm sm:text-base"
@@ -782,6 +787,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
 
                       {/* Apple Login */}
                       <button
+                        type="button"
                         onClick={() => handleOAuthSignIn("apple")}
                         disabled={isLoading}
                         className="w-full py-2.5 sm:py-3 px-4 sm:px-6 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50 text-sm sm:text-base"
@@ -848,6 +854,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
                   )}
 
                   <button
+                    type="button"
                     onClick={handlePhoneSubmit}
                     disabled={isLoading || !isValidSaudiPhone(phone)}
                     className="w-full py-3 sm:py-4 px-4 sm:px-6 rounded-xl sm:rounded-2xl bg-white text-[#153659] font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] text-sm sm:text-base"
@@ -860,6 +867,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
                   <p className="text-white/60 text-[10px] sm:text-xs text-center leading-relaxed">
                     بتسجيل دخولك، أنت توافق على{" "}
                     <button
+                      type="button"
                       onClick={() => setShowTermsModal(true)}
                       className="text-white/90 underline underline-offset-2 hover:text-white transition-colors"
                     >
@@ -867,6 +875,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
                     </button>{" "}
                     و{" "}
                     <button
+                      type="button"
                       onClick={() => setShowPrivacyModal(true)}
                       className="text-white/90 underline underline-offset-2 hover:text-white transition-colors"
                     >
@@ -1137,6 +1146,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
                         className="flex items-center justify-center gap-1.5 sm:gap-2"
                       >
                         <button
+                          type="button"
                           onClick={() => {
                             if (resendCooldown === 0) {
                               handlePhoneSubmit();
@@ -1167,6 +1177,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
                         </button>
                         <span className="text-white/30">•</span>
                         <button
+                          type="button"
                           onClick={goBack}
                           disabled={isLoading}
                           className="py-1.5 px-3 sm:py-2 sm:px-4 text-white/60 hover:text-white text-xs sm:text-sm transition-colors disabled:opacity-50 hover:underline"
@@ -1210,6 +1221,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
                   )}
 
                   <button
+                    type="button"
                     onClick={handleEmailSubmit}
                     disabled={isLoading || !email.includes("@")}
                     data-testid="send-email-link-button"
@@ -1328,6 +1340,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => setStep("welcome")}
                     className="text-white/60 hover:text-white text-xs sm:text-sm transition-colors"
                   >
@@ -1341,7 +1354,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
       </LayoutGroup>
 
       {/* Security Note - محسن لشاشات 6.3 بوصة */}
-      <div className="pb-4 sm:pb-6 px-4 sm:px-6 text-center pb-[env(safe-area-inset-bottom,0px)]">
+      <div className="pb-[calc(1rem+env(safe-area-inset-bottom,0px))] sm:pb-6 px-4 sm:px-6 text-center">
         <div className="flex items-center justify-center gap-1.5 sm:gap-2 text-white/40 text-[10px] sm:text-xs">
           <Shield size={12} className="sm:w-[14px] sm:h-[14px]" />
           <span>بياناتك محمية ومشفرة بالكامل</span>
@@ -1382,6 +1395,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowTermsModal(false)}
                   className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
                 >
@@ -1465,6 +1479,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
               {/* Footer */}
               <div className="p-4 border-t border-border shrink-0">
                 <button
+                  type="button"
                   onClick={() => setShowTermsModal(false)}
                   className="w-full py-3 rounded-xl bg-primary text-white font-bold hover:bg-primary/90 transition-colors"
                 >
@@ -1512,6 +1527,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowPrivacyModal(false)}
                   className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
                 >
@@ -1597,6 +1613,7 @@ export const AuthPage: React.FC<AuthPageProps> = (
               {/* Footer */}
               <div className="p-4 border-t border-border shrink-0">
                 <button
+                  type="button"
                   onClick={() => setShowPrivacyModal(false)}
                   className="w-full py-3 rounded-xl bg-primary text-white font-bold hover:bg-primary/90 transition-colors"
                 >

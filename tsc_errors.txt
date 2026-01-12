@@ -1,0 +1,543 @@
+App.tsx(2284,44): error TS2367: This comparison appears to be unintentional because the types 'ViewState' and '"requests-mode"' have no overlap.
+App.tsx(2354,44): error TS2367: This comparison appears to be unintentional because the types 'ViewState' and '"requests-mode"' have no overlap.
+App.tsx(3466,19): error TS2345: Argument of type '{ display_name: string; }' is not assignable to parameter of type 'never'.
+App.tsx(3475,21): error TS2345: Argument of type '{ has_onboarded: boolean; }' is not assignable to parameter of type 'never'.
+App.tsx(3597,48): error TS2345: Argument of type '{ has_onboarded: boolean; }' is not assignable to parameter of type 'never'.
+App.tsx(3732,28): error TS2304: Cannot find name 'RequestInsert'.
+App.tsx(3734,48): error TS2339: Property 'id' does not exist on type 'never'.
+App.tsx(4072,19): error TS2322: Type '{ requests: Request[]; archivedRequests: Request[]; receivedOffersMap: Map<string, Offer[]>; onSelectRequest: (req: Request, scrollToOffer?: boolean, fromSidebar?: boolean) => void; ... 24 more ...; radarWords: string[]; }' is not assignable to type 'IntrinsicAttributes & MyRequestsProps'.
+  Property 'radarWords' does not exist on type 'IntrinsicAttributes & MyRequestsProps'.
+App.tsx(4249,23): error TS2322: Type '(request: Request) => void' is not assignable to type '(request: Request) => Promise<boolean>'.
+  Type 'void' is not assignable to type 'Promise<boolean>'.
+App.tsx(4256,23): error TS2322: Type '(requestId: string) => Promise<void>' is not assignable to type '(requestId: string) => Promise<boolean>'.
+  Type 'Promise<void>' is not assignable to type 'Promise<boolean>'.
+    Type 'void' is not assignable to type 'boolean'.
+App.tsx(4263,23): error TS2739: Type 'UserProfile' is missing the following properties from type 'User': app_metadata, user_metadata, aud
+App.tsx(4631,15): error TS2322: Type 'Dispatch<SetStateAction<ViewState>>' is not assignable to type '(view: string) => void'.
+  Types of parameters 'value' and 'view' are incompatible.
+    Type 'string' is not assignable to type 'SetStateAction<ViewState>'.
+App.tsx(4632,15): error TS2322: Type 'Dispatch<SetStateAction<ViewState>>' is not assignable to type '(view: string) => void'.
+  Types of parameters 'value' and 'view' are incompatible.
+    Type 'string' is not assignable to type 'SetStateAction<ViewState>'.
+App.tsx(4634,15): error TS2322: Type 'Notification[]' is not assignable to type '{ [key: string]: unknown; id: string; }[]'.
+  Type 'Notification' is not assignable to type '{ [key: string]: unknown; id: string; }'.
+    Index signature for type 'string' is missing in type 'Notification'.
+App.tsx(4636,15): error TS2322: Type '(notification: Notification) => Promise<void>' is not assignable to type '(notification: { [key: string]: unknown; id: string; }) => void'.
+  Types of parameters 'notification' and 'notification' are incompatible.
+    Type '{ [key: string]: unknown; id: string; }' is missing the following properties from type 'Notification': type, title, message, timestamp, isRead
+App.tsx(5024,9): error TS2322: Type '{ activeTab: BottomNavTab; onTabChange: (tab: BottomNavTab) => void; onCreateRequest: () => void; user: UserProfile; isGuest: boolean; onSignOut: () => void; ... 10 more ...; hideOnMobile: boolean; }' is not assignable to type 'IntrinsicAttributes & BottomNavigationProps'.
+  Property 'unreadMessagesCount' does not exist on type 'IntrinsicAttributes & BottomNavigationProps'.
+components/CreateRequestV2.tsx(2769,9): error TS2304: Cannot find name 'result'.
+components/CreateRequestV2.tsx(2774,12): error TS2304: Cannot find name 'result'.
+components/CreateRequestV2.tsx(4673,33): error TS18047: 'profileData' is possibly 'null'.
+components/CreateRequestV2.tsx(4675,33): error TS18047: 'profileData' is possibly 'null'.
+components/CreateRequestV2.tsx(4677,47): error TS18047: 'profileData' is possibly 'null'.
+components/CreateRequestV2.tsx(4678,33): error TS18047: 'profileData' is possibly 'null'.
+components/CreateRequestV2.tsx(4679,56): error TS18047: 'profileData' is possibly 'null'.
+components/CreateRequestV2.tsx(4682,33): error TS18047: 'profileData' is possibly 'null'.
+components/MyOffers.tsx(775,55): error TS2339: Property 'icon' does not exist on type '{ value: string; label: string; count: number; }'.
+components/MyOffers.tsx(782,59): error TS2339: Property 'icon' does not exist on type '{ value: string; label: string; count: number; }'.
+components/MyRequests.tsx(933,55): error TS2339: Property 'icon' does not exist on type '{ value: string; label: string; count: number; }'.
+components/MyRequests.tsx(940,59): error TS2339: Property 'icon' does not exist on type '{ value: string; label: string; count: number; }'.
+components/Profile.tsx(247,33): error TS2339: Property 'display_name' does not exist on type 'never'.
+components/Profile.tsx(248,25): error TS2339: Property 'bio' does not exist on type 'never'.
+components/Profile.tsx(249,31): error TS2339: Property 'avatar_url' does not exist on type 'never'.
+components/RequestDetail.tsx(341,22): error TS2345: Argument of type '{ success: boolean; canReview: boolean; reason?: string; }' is not assignable to parameter of type 'SetStateAction<boolean>'.
+components/RequestDetail.tsx(1982,34): error TS2304: Cannot find name 'Message'.
+components/RequestDetail.tsx(2044,40): error TS2551: Property 'accepted_offer_id' does not exist on type 'Request'. Did you mean 'acceptedOfferId'?
+components/RequestDetail.tsx(2045,36): error TS2551: Property 'accepted_offer_id' does not exist on type 'Request'. Did you mean 'acceptedOfferId'?
+components/RequestDetail.tsx(3181,15): error TS2322: Type '{ isOpen: boolean; onClose: () => void; requestId: string; revieweeId: any; reviewerId: any; onSuccess: () => void; reviewerName: any; requestTitle: string; }' is not assignable to type 'IntrinsicAttributes & ReviewFormProps'.
+  Property 'onClose' does not exist on type 'IntrinsicAttributes & ReviewFormProps'.
+components/RequestDetail.tsx(4550,35): error TS18047: 'profileData' is possibly 'null'.
+components/RequestDetail.tsx(4552,35): error TS18047: 'profileData' is possibly 'null'.
+components/RequestDetail.tsx(4554,35): error TS18047: 'profileData' is possibly 'null'.
+components/RequestDetail.tsx(4555,38): error TS18047: 'profileData' is possibly 'null'.
+components/RequestDetail.tsx(4556,58): error TS18047: 'profileData' is possibly 'null'.
+components/RequestDetail.tsx(4559,35): error TS18047: 'profileData' is possibly 'null'.
+components/RequestDetail.tsx(4685,52): error TS2339: Property 'catch' does not exist on type 'void'.
+components/RequestDetail.tsx(5094,45): error TS2304: Cannot find name 'activeConversation'.
+components/ui/CityAutocomplete.tsx(813,63): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+components/ui/CityAutocomplete.tsx(833,51): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+components/ui/CityAutocomplete.tsx(837,71): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+components/ui/CityAutocomplete.tsx(841,56): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+components/ui/CityAutocomplete.tsx(878,56): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+components/ui/CityAutocomplete.tsx(882,50): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+components/ui/CompactListView.tsx(152,5): error TS2339: Property 'showCategoriesInStatus' does not exist on type '{ request: Request; myOffer?: Offer; isViewed: boolean; isNew?: boolean; categories?: Category[]; locale?: SupportedLocale; userId?: string; isMyRequest?: boolean; ... 17 more ...; isMyOffersView?: boolean; }'.
+components/ui/CompactListView.tsx(544,15): error TS2322: Type '{ request: Request; myOffer: Offer; isViewed: boolean; isNew: boolean; categories: Category[]; userId: string; isMyRequest: boolean; onBumpRequest: (requestId: string) => void; ... 16 more ...; showCategoriesInStatus: boolean; }' is not assignable to type 'IntrinsicAttributes & { request: Request; myOffer?: Offer; isViewed: boolean; isNew?: boolean; categories?: Category[]; locale?: SupportedLocale; ... 19 more ...; isMyOffersView?: boolean; }'.
+  Property 'showCategoriesInStatus' does not exist on type 'IntrinsicAttributes & { request: Request; myOffer?: Offer; isViewed: boolean; isNew?: boolean; categories?: Category[]; locale?: SupportedLocale; ... 19 more ...; isMyOffersView?: boolean; }'.
+components/ui/InterestToast.tsx(48,32): error TS2551: Property 'categoryIds' does not exist on type 'Request'. Did you mean 'categories'?
+components/ui/InterestToast.tsx(49,55): error TS2551: Property 'categoryIds' does not exist on type 'Request'. Did you mean 'categories'?
+components/ui/OfferSubmissionModal.tsx(1,2): error TS2304: Cannot find name 'NoNewline'.
+data.ts(772,3): error TS2739: Type '{ id: string; authorName: string; rating: number; comment: string; date: Date; role: "requester"; }' is missing the following properties from type 'Review': requestId, reviewerId, revieweeId, reviewerName, createdAt
+data.ts(780,3): error TS2739: Type '{ id: string; authorName: string; rating: number; comment: string; date: Date; role: "requester"; }' is missing the following properties from type 'Review': requestId, reviewerId, revieweeId, reviewerName, createdAt
+hooks/useGoogleMapsLoader.ts(28,40): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+hooks/useGoogleMapsLoader.ts(28,62): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+hooks/useGoogleMapsLoader.ts(47,44): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+hooks/useGoogleMapsLoader.ts(47,66): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+hooks/useGoogleMapsLoader.ts(64,44): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+hooks/useGoogleMapsLoader.ts(64,66): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+hooks/useGoogleMapsLoader.ts(73,44): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+hooks/useGoogleMapsLoader.ts(73,66): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+hooks/useGoogleMapsLoader.ts(139,40): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+hooks/useGoogleMapsLoader.ts(139,62): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+services/authService.ts(132,5): error TS2687: All declarations of 'google' must have identical modifiers.
+services/authService.ts(459,19): error TS2345: Argument of type 'any' is not assignable to parameter of type 'never'.
+services/authService.ts(592,15): error TS2345: Argument of type 'Partial<UserProfile>' is not assignable to parameter of type 'never'.
+services/categoriesService.ts(69,15): error TS2339: Property 'id' does not exist on type 'never'.
+services/categoriesService.ts(70,18): error TS2339: Property 'label' does not exist on type 'never'.
+services/categoriesService.ts(71,21): error TS2339: Property 'label_en' does not exist on type 'never'.
+services/categoriesService.ts(72,21): error TS2339: Property 'label_ur' does not exist on type 'never'.
+services/categoriesService.ts(73,17): error TS2339: Property 'icon' does not exist on type 'never'.
+services/categoriesService.ts(74,18): error TS2339: Property 'emoji' does not exist on type 'never'.
+services/categoriesService.ts(75,24): error TS2339: Property 'description' does not exist on type 'never'.
+services/categoriesService.ts(138,68): error TS2345: Argument of type '{ p_request_id: string; p_category_ids: string[]; }' is not assignable to parameter of type 'never'.
+services/categoriesService.ts(160,74): error TS2345: Argument of type '{ p_request_id: string; }' is not assignable to parameter of type 'never'.
+services/categoriesService.ts(208,15): error TS2339: Property 'id' does not exist on type 'never'.
+services/categoriesService.ts(209,28): error TS2339: Property 'suggested_label' does not exist on type 'never'.
+services/categoriesService.ts(210,28): error TS2339: Property 'suggested_emoji' does not exist on type 'never'.
+services/categoriesService.ts(211,34): error TS2339: Property 'suggested_description' does not exist on type 'never'.
+services/categoriesService.ts(212,23): error TS2339: Property 'request_id' does not exist on type 'never'.
+services/categoriesService.ts(213,19): error TS2339: Property 'status' does not exist on type 'never'.
+services/categoriesService.ts(214,32): error TS2339: Property 'created_at' does not exist on type 'never'.
+services/categoriesService.ts(242,8): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "categories", never, "POST">', gave the following error.
+    Argument of type '{ id: string; label: string; emoji: string; icon: string; description: string; is_active: boolean; sort_order: number; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "categories", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'id' does not exist in type 'never[]'.
+services/categoriesService.ts(260,15): error TS2345: Argument of type '{ status: string; reviewed_at: string; }' is not assignable to parameter of type 'never'.
+services/categoriesService.ts(287,15): error TS2345: Argument of type '{ status: string; admin_notes: string; reviewed_at: string; }' is not assignable to parameter of type 'never'.
+services/categoriesService.ts(316,15): error TS2345: Argument of type '{ status: string; merged_with_category_id: string; reviewed_at: string; }' is not assignable to parameter of type 'never'.
+services/chatConversationsService.ts(41,12): error TS18047: 'data' is possibly 'null'.
+services/chatConversationsService.ts(59,15): error TS2345: Argument of type '{ is_active: boolean; }' is not assignable to parameter of type 'never'.
+services/chatConversationsService.ts(66,8): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "ai_conversations", never, "POST">', gave the following error.
+    Argument of type '{ user_id: string; title: string; is_active: boolean; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "ai_conversations", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'user_id' does not exist in type 'never[]'.
+services/chatConversationsService.ts(79,12): error TS18047: 'data' is possibly 'null'.
+services/chatConversationsService.ts(105,15): error TS2339: Property 'id' does not exist on type 'never'.
+services/chatConversationsService.ts(106,17): error TS2339: Property 'role' does not exist on type 'never'.
+services/chatConversationsService.ts(107,17): error TS2339: Property 'text' does not exist on type 'never'.
+services/chatConversationsService.ts(108,23): error TS2339: Property 'created_at' does not exist on type 'never'.
+services/chatConversationsService.ts(109,21): error TS2339: Property 'metadata' does not exist on type 'never'.
+services/chatConversationsService.ts(129,8): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "ai_conversation_messages", never, "POST">', gave the following error.
+    Argument of type '{ conversation_id: string; role: "user" | "ai"; text: string; metadata: Record<string, any>; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "ai_conversation_messages", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'conversation_id' does not exist in type 'never[]'.
+services/chatConversationsService.ts(143,12): error TS18047: 'data' is possibly 'null'.
+services/chatConversationsService.ts(160,15): error TS2345: Argument of type '{ title: string; }' is not assignable to parameter of type 'never'.
+services/chatConversationsService.ts(190,15): error TS2345: Argument of type 'any' is not assignable to parameter of type 'never'.
+services/hapticService.ts(74,38): error TS2820: Type '"success"' is not assignable to type 'NotificationType'. Did you mean 'NotificationType.Success'?
+services/hapticService.ts(91,38): error TS2820: Type '"error"' is not assignable to type 'NotificationType'. Did you mean 'NotificationType.Error'?
+services/hapticService.ts(108,38): error TS2820: Type '"warning"' is not assignable to type 'NotificationType'. Did you mean 'NotificationType.Warning'?
+services/messagesService.ts(101,31): error TS2339: Property 'participant1_id' does not exist on type 'never'.
+services/messagesService.ts(102,31): error TS2339: Property 'participant2_id' does not exist on type 'never'.
+services/messagesService.ts(113,23): error TS2339: Property 'id' does not exist on type 'never'.
+services/messagesService.ts(118,7): error TS2698: Spread types may only be created from object types.
+services/messagesService.ts(119,38): error TS2339: Property 'participant1_id' does not exist on type 'never'.
+services/messagesService.ts(120,38): error TS2339: Property 'participant2_id' does not exist on type 'never'.
+services/messagesService.ts(144,33): error TS2339: Property 'conversation_id' does not exist on type 'never'.
+services/messagesService.ts(145,36): error TS2339: Property 'conversation_id' does not exist on type 'never'.
+services/messagesService.ts(255,8): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "conversations", never, "POST">', gave the following error.
+    Argument of type '{ participant1_id: string; participant2_id: string; request_id: string; offer_id: string; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "conversations", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'participant1_id' does not exist in type 'never[]'.
+services/messagesService.ts(336,29): error TS18047: 'convData' is possibly 'null'.
+services/messagesService.ts(336,55): error TS18047: 'convData' is possibly 'null'.
+services/messagesService.ts(344,21): error TS2339: Property 'id' does not exist on type 'never'.
+services/messagesService.ts(348,7): error TS2698: Spread types may only be created from object types.
+services/messagesService.ts(349,33): error TS18047: 'convData' is possibly 'null'.
+services/messagesService.ts(350,33): error TS18047: 'convData' is possibly 'null'.
+services/messagesService.ts(408,52): error TS2339: Property 'sender_id' does not exist on type 'never'.
+services/messagesService.ts(417,22): error TS2339: Property 'id' does not exist on type 'never'.
+services/messagesService.ts(422,7): error TS2698: Spread types may only be created from object types.
+services/messagesService.ts(423,28): error TS2339: Property 'sender_id' does not exist on type 'never'.
+services/messagesService.ts(458,13): error TS2339: Property 'participant1_id' does not exist on type 'never'.
+services/messagesService.ts(458,49): error TS2339: Property 'participant2_id' does not exist on type 'never'.
+services/messagesService.ts(485,8): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "messages", never, "POST">', gave the following error.
+    Argument of type '{ conversation_id: string; sender_id: string; content: string; attachments: MessageAttachment[]; audio_url: string; audio_duration: number; message_type: "audio" | "image" | "text" | "mixed" | "file"; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "messages", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'conversation_id' does not exist in type 'never[]'.
+services/messagesService.ts(532,21): error TS2345: Argument of type '{ last_message_at: any; last_message_preview: string; updated_at: string; }' is not assignable to parameter of type 'never'.
+services/messagesService.ts(533,32): error TS18047: 'insertedMsg' is possibly 'null'.
+services/messagesService.ts(543,40): error TS2339: Property 'participant1_id' does not exist on type 'never'.
+services/messagesService.ts(544,24): error TS2339: Property 'participant2_id' does not exist on type 'never'.
+services/messagesService.ts(545,24): error TS2339: Property 'participant1_id' does not exist on type 'never'.
+services/messagesService.ts(562,22): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "notifications", never, "POST">', gave the following error.
+    Argument of type '{ user_id: any; type: string; title: string; message: string; link_to: string; related_message_id: any; related_request_id: any; related_offer_id: any; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "notifications", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'user_id' does not exist in type 'never[]'.
+services/messagesService.ts(568,43): error TS18047: 'insertedMsg' is possibly 'null'.
+services/messagesService.ts(569,48): error TS2339: Property 'request_id' does not exist on type 'never'.
+services/messagesService.ts(570,46): error TS2339: Property 'offer_id' does not exist on type 'never'.
+services/messagesService.ts(584,28): error TS2339: Property 'request_id' does not exist on type 'never'.
+services/messagesService.ts(588,38): error TS2339: Property 'request_id' does not exist on type 'never'.
+services/messagesService.ts(590,57): error TS2339: Property 'title' does not exist on type 'never'.
+services/messagesService.ts(615,7): error TS2698: Spread types may only be created from object types.
+services/messagesService.ts(642,13): error TS2339: Property 'participant1_id' does not exist on type 'never'.
+services/messagesService.ts(642,49): error TS2339: Property 'participant2_id' does not exist on type 'never'.
+services/messagesService.ts(651,15): error TS2345: Argument of type '{ is_read: boolean; read_at: string; }' is not assignable to parameter of type 'never'.
+services/messagesService.ts(665,15): error TS2345: Argument of type '{ updated_at: string; }' is not assignable to parameter of type 'never'.
+services/messagesService.ts(831,22): error TS2339: Property 'offer_id' does not exist on type 'never'.
+services/messagesService.ts(841,17): error TS2345: Argument of type '{ is_closed: boolean; closed_reason: string; updated_at: string; }' is not assignable to parameter of type 'never'.
+services/messagesService.ts(846,24): error TS2339: Property 'id' does not exist on type 'never'.
+services/messagesService.ts(853,16): error TS2339: Property 'id' does not exist on type 'never'.
+services/messagesService.ts(881,8): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "messages", never, "POST">', gave the following error.
+    Argument of type '{ conversation_id: string; sender_id: string; content: string; is_read: boolean; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "messages", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'conversation_id' does not exist in type 'never[]'.
+services/messagesService.ts(898,15): error TS2345: Argument of type '{ last_message_at: string; last_message_preview: string; }' is not assignable to parameter of type 'never'.
+services/messagesService.ts(925,12): error TS18047: 'data' is possibly 'null'.
+services/messagesService.ts(945,12): error TS18047: 'data' is possibly 'null'.
+services/messagesService.ts(1102,56): error TS2339: Property 'id' does not exist on type 'never'.
+services/messagesService.ts(1307,56): error TS2339: Property 'id' does not exist on type 'never'.
+services/messagesService.ts(1349,56): error TS2339: Property 'id' does not exist on type 'never'.
+services/messagesService.ts(1395,56): error TS2339: Property 'id' does not exist on type 'never'.
+services/messagesService.ts(1398,16): error TS2339: Property 'request_id' does not exist on type 'never'.
+services/messagesService.ts(1399,54): error TS2339: Property 'request_id' does not exist on type 'never'.
+services/messagesService.ts(1400,28): error TS2339: Property 'id' does not exist on type 'never'.
+services/messagesService.ts(1401,37): error TS2339: Property 'request_id' does not exist on type 'never'.
+services/messagesService.ts(1419,28): error TS2339: Property 'conversation_id' does not exist on type 'never'.
+services/messagesService.ts(1459,56): error TS2339: Property 'id' does not exist on type 'never'.
+services/messagesService.ts(1462,16): error TS2339: Property 'offer_id' does not exist on type 'never'.
+services/messagesService.ts(1463,52): error TS2339: Property 'offer_id' does not exist on type 'never'.
+services/messagesService.ts(1464,28): error TS2339: Property 'id' does not exist on type 'never'.
+services/messagesService.ts(1465,35): error TS2339: Property 'offer_id' does not exist on type 'never'.
+services/messagesService.ts(1483,28): error TS2339: Property 'conversation_id' does not exist on type 'never'.
+services/messagesService.ts(1524,43): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(28,73): error TS2339: Property 'related_request_id' does not exist on type 'never'.
+services/notificationsService.ts(29,71): error TS2339: Property 'related_offer_id' does not exist on type 'never'.
+services/notificationsService.ts(30,73): error TS2339: Property 'related_message_id' does not exist on type 'never'.
+services/notificationsService.ts(43,53): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(46,65): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/notificationsService.ts(49,54): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(58,49): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(66,53): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(69,65): error TS2339: Property 'sender_id' does not exist on type 'never'.
+services/notificationsService.ts(72,54): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(78,37): error TS2339: Property 'related_request_id' does not exist on type 'never'.
+services/notificationsService.ts(79,33): error TS2339: Property 'related_offer_id' does not exist on type 'never'.
+services/notificationsService.ts(80,37): error TS2339: Property 'related_message_id' does not exist on type 'never'.
+services/notificationsService.ts(83,13): error TS2339: Property 'related_offer_id' does not exist on type 'never'.
+services/notificationsService.ts(88,9): error TS2698: Spread types may only be created from object types.
+services/notificationsService.ts(164,15): error TS2345: Argument of type '{ is_read: boolean; read_at: string; }' is not assignable to parameter of type 'never'.
+services/notificationsService.ts(190,15): error TS2345: Argument of type '{ is_read: boolean; read_at: string; }' is not assignable to parameter of type 'never'.
+services/notificationsService.ts(266,8): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "notifications", never, "POST">', gave the following error.
+    Argument of type '{ user_id: string; type: "message" | "status" | "system" | "offer" | "interest"; title: string; message: string; link_to: string; related_request_id: string; related_offer_id: string; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "notifications", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'user_id' does not exist in type 'never[]'.
+services/notificationsService.ts(324,19): error TS2339: Property 'related_request_id' does not exist on type 'never'.
+services/notificationsService.ts(325,111): error TS2339: Property 'related_request_id' does not exist on type 'never'.
+services/notificationsService.ts(328,21): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/notificationsService.ts(329,108): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/notificationsService.ts(330,28): error TS18047: 'author' is possibly 'null'.
+services/notificationsService.ts(332,40): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(332,55): error TS2339: Property 'title' does not exist on type 'never'.
+services/notificationsService.ts(336,19): error TS2339: Property 'related_offer_id' does not exist on type 'never'.
+services/notificationsService.ts(340,29): error TS2339: Property 'related_offer_id' does not exist on type 'never'.
+services/notificationsService.ts(344,40): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(344,57): error TS2339: Property 'title' does not exist on type 'never'.
+services/notificationsService.ts(344,84): error TS2339: Property 'provider_name' does not exist on type 'never'.
+services/notificationsService.ts(351,19): error TS2339: Property 'related_message_id' does not exist on type 'never'.
+services/notificationsService.ts(352,113): error TS2339: Property 'related_message_id' does not exist on type 'never'.
+services/notificationsService.ts(355,21): error TS2339: Property 'sender_id' does not exist on type 'never'.
+services/notificationsService.ts(356,108): error TS2339: Property 'sender_id' does not exist on type 'never'.
+services/notificationsService.ts(357,28): error TS18047: 'sender' is possibly 'null'.
+services/notificationsService.ts(360,23): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(362,28): error TS2339: Property 'content' does not exist on type 'never'.
+services/notificationsService.ts(362,60): error TS2339: Property 'content' does not exist on type 'never'.
+services/notificationsService.ts(368,21): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(369,23): error TS2339: Property 'type' does not exist on type 'never'.
+services/notificationsService.ts(370,24): error TS2339: Property 'title' does not exist on type 'never'.
+services/notificationsService.ts(371,26): error TS2339: Property 'message' does not exist on type 'never'.
+services/notificationsService.ts(372,37): error TS2339: Property 'created_at' does not exist on type 'never'.
+services/notificationsService.ts(373,25): error TS2339: Property 'is_read' does not exist on type 'never'.
+services/notificationsService.ts(374,25): error TS2339: Property 'link_to' does not exist on type 'never'.
+services/notificationsService.ts(406,19): error TS2339: Property 'related_request_id' does not exist on type 'never'.
+services/notificationsService.ts(407,111): error TS2339: Property 'related_request_id' does not exist on type 'never'.
+services/notificationsService.ts(410,21): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/notificationsService.ts(411,108): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/notificationsService.ts(412,28): error TS18047: 'author' is possibly 'null'.
+services/notificationsService.ts(414,40): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(414,55): error TS2339: Property 'title' does not exist on type 'never'.
+services/notificationsService.ts(418,19): error TS2339: Property 'related_offer_id' does not exist on type 'never'.
+services/notificationsService.ts(422,29): error TS2339: Property 'related_offer_id' does not exist on type 'never'.
+services/notificationsService.ts(426,40): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(426,57): error TS2339: Property 'title' does not exist on type 'never'.
+services/notificationsService.ts(426,84): error TS2339: Property 'provider_name' does not exist on type 'never'.
+services/notificationsService.ts(430,19): error TS2339: Property 'related_message_id' does not exist on type 'never'.
+services/notificationsService.ts(431,113): error TS2339: Property 'related_message_id' does not exist on type 'never'.
+services/notificationsService.ts(434,21): error TS2339: Property 'sender_id' does not exist on type 'never'.
+services/notificationsService.ts(435,108): error TS2339: Property 'sender_id' does not exist on type 'never'.
+services/notificationsService.ts(436,28): error TS18047: 'sender' is possibly 'null'.
+services/notificationsService.ts(439,23): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(441,28): error TS2339: Property 'content' does not exist on type 'never'.
+services/notificationsService.ts(441,60): error TS2339: Property 'content' does not exist on type 'never'.
+services/notificationsService.ts(448,21): error TS2339: Property 'id' does not exist on type 'never'.
+services/notificationsService.ts(449,23): error TS2339: Property 'type' does not exist on type 'never'.
+services/notificationsService.ts(450,24): error TS2339: Property 'title' does not exist on type 'never'.
+services/notificationsService.ts(451,26): error TS2339: Property 'message' does not exist on type 'never'.
+services/notificationsService.ts(452,37): error TS2339: Property 'created_at' does not exist on type 'never'.
+services/notificationsService.ts(453,25): error TS2339: Property 'is_read' does not exist on type 'never'.
+services/notificationsService.ts(454,25): error TS2339: Property 'link_to' does not exist on type 'never'.
+services/placesService.ts(276,44): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+services/placesService.ts(276,66): error TS2339: Property 'maps' does not exist on type '{ accounts: { id: { initialize: (config: GoogleIdConfiguration) => void; prompt: (callback?: (notification: GooglePromptNotification) => void) => void; renderButton: (element: HTMLElement, config: GoogleIdConfiguration) => void; disableAutoSelect: () => void; }; oauth2: { ...; }; }; }'.
+services/placesService.ts(306,26): error TS2503: Cannot find namespace 'google'.
+services/placesService.ts(307,20): error TS2503: Cannot find namespace 'google'.
+services/placesService.ts(311,5): error TS2503: Cannot find namespace 'google'.
+services/placesService.ts(316,31): error TS2304: Cannot find name 'google'.
+services/placesService.ts(321,30): error TS2503: Cannot find namespace 'google'.
+services/placesService.ts(328,25): error TS2304: Cannot find name 'google'.
+services/placesService.ts(372,7): error TS2503: Cannot find namespace 'google'.
+services/placesService.ts(384,26): error TS2304: Cannot find name 'google'.
+services/placesService.ts(388,26): error TS2304: Cannot find name 'google'.
+services/placesService.ts(479,37): error TS2503: Cannot find namespace 'google'.
+services/placesService.ts(495,26): error TS2304: Cannot find name 'google'.
+services/placesService.ts(577,7): error TS2503: Cannot find namespace 'google'.
+services/placesService.ts(589,26): error TS2304: Cannot find name 'google'.
+services/placesService.ts(593,26): error TS2304: Cannot find name 'google'.
+services/placesService.ts(686,26): error TS2304: Cannot find name 'google'.
+services/placesService.ts(688,38): error TS2503: Cannot find namespace 'google'.
+services/placesService.ts(697,26): error TS2304: Cannot find name 'google'.
+services/placesService.ts(797,5): error TS2687: All declarations of 'google' must have identical modifiers.
+services/placesService.ts(797,20): error TS2304: Cannot find name 'google'.
+services/preferencesService.ts(14,36): error TS2345: Argument of type '{ p_user_id: string; }' is not assignable to parameter of type 'never'.
+services/preferencesService.ts(34,34): error TS2339: Property 'interested_categories' does not exist on type 'never'.
+services/preferencesService.ts(35,30): error TS2339: Property 'interested_cities' does not exist on type 'never'.
+services/preferencesService.ts(36,24): error TS2339: Property 'radar_words' does not exist on type 'never'.
+services/preferencesService.ts(37,30): error TS2339: Property 'notify_on_interest' does not exist on type 'never'.
+services/preferencesService.ts(38,22): error TS2339: Property 'role_mode' does not exist on type 'never'.
+services/preferencesService.ts(39,40): error TS2339: Property 'show_name_to_approved_provider' does not exist on type 'never'.
+services/preferencesService.ts(40,23): error TS2339: Property 'home_page' does not exist on type 'never'.
+services/preferencesService.ts(55,39): error TS2345: Argument of type '{ p_user_id: string; p_categories: string[]; p_cities: string[]; p_radar_words: string[]; p_notify_on_interest: boolean; p_role_mode: "provider" | "requester"; p_home_page: HomePageConfig; }' is not assignable to parameter of type 'never'.
+services/preferencesService.ts(71,29): error TS18047: 'data' is possibly 'null'.
+services/preferencesService.ts(72,25): error TS18047: 'data' is possibly 'null'.
+services/preferencesService.ts(73,19): error TS18047: 'data' is possibly 'null'.
+services/preferencesService.ts(74,25): error TS18047: 'data' is possibly 'null'.
+services/preferencesService.ts(75,17): error TS18047: 'data' is possibly 'null'.
+services/preferencesService.ts(76,35): error TS18047: 'data' is possibly 'null'.
+services/preferencesService.ts(77,17): error TS18047: 'data' is possibly 'null'.
+services/preferencesService.ts(193,15): error TS2345: Argument of type 'any' is not assignable to parameter of type 'never'.
+services/preferencesService.ts(212,30): error TS18047: 'data' is possibly 'null'.
+services/preferencesService.ts(213,26): error TS18047: 'data' is possibly 'null'.
+services/preferencesService.ts(214,41): error TS18047: 'data' is possibly 'null'.
+services/preferencesService.ts(215,37): error TS18047: 'data' is possibly 'null'.
+services/preferencesService.ts(254,35): error TS2339: Property 'interested_categories' does not exist on type 'never'.
+services/preferencesService.ts(255,31): error TS2339: Property 'interested_cities' does not exist on type 'never'.
+services/preferencesService.ts(259,42): error TS2339: Property 'interested_cities' does not exist on type 'never'.
+services/preferencesService.ts(260,14): error TS2339: Property 'interested_cities' does not exist on type 'never'.
+services/preferencesService.ts(261,15): error TS2339: Property 'interested_cities' does not exist on type 'never'.
+services/preferencesService.ts(261,41): error TS2339: Property 'interested_cities' does not exist on type 'never'.
+services/preferencesService.ts(269,48): error TS2339: Property 'interested_categories' does not exist on type 'never'.
+services/preferencesService.ts(270,16): error TS2339: Property 'interested_categories' does not exist on type 'never'.
+services/preferencesService.ts(271,17): error TS2339: Property 'interested_categories' does not exist on type 'never'.
+services/preferencesService.ts(271,47): error TS2339: Property 'interested_categories' does not exist on type 'never'.
+services/preferencesService.ts(273,38): error TS2339: Property 'radar_words' does not exist on type 'never'.
+services/preferencesService.ts(274,16): error TS2339: Property 'radar_words' does not exist on type 'never'.
+services/preferencesService.ts(275,17): error TS2339: Property 'radar_words' does not exist on type 'never'.
+services/preferencesService.ts(275,37): error TS2339: Property 'radar_words' does not exist on type 'never'.
+services/preferencesService.ts(276,30): error TS2339: Property 'notify_on_interest' does not exist on type 'never'.
+services/preferencesService.ts(277,22): error TS2339: Property 'role_mode' does not exist on type 'never'.
+services/preferencesService.ts(279,23): error TS2339: Property 'home_page' does not exist on type 'never'.
+services/pushNotificationService.ts(112,8): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { onConflict?: string; ignoreDuplicates?: boolean; count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "fcm_tokens", never, "POST">', gave the following error.
+    Argument of type '{ user_id: string; token: string; device_type: string; updated_at: string; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { onConflict?: string; ignoreDuplicates?: boolean; count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, ... 4 more ..., "POST">', gave the following error.
+    Object literal may only specify known properties, and 'user_id' does not exist in type 'never[]'.
+services/reportsService.ts(80,8): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "reports", never, "POST">', gave the following error.
+    Argument of type '{ reporter_id: string; report_type: ReportType; target_id: string; reason: ReportReason; description: string; status: string; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "reports", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'reporter_id' does not exist in type 'never[]'.
+services/requestsService.ts(6,10): error TS2305: Module '"./storageService"' has no exported member 'storageService'.
+services/requestsService.ts(101,7): error TS2345: Argument of type '"offer_accepted"' is not assignable to parameter of type '"message" | "status" | "system" | "offer" | "interest"'.
+services/requestsService.ts(209,7): error TS2345: Argument of type '"negotiation"' is not assignable to parameter of type '"message" | "status" | "system" | "offer" | "interest"'.
+services/requestsService.ts(302,15): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { onConflict?: string; ignoreDuplicates?: boolean; count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "request_categories", never, "POST">', gave the following error.
+    Argument of type '{ request_id: string; category_id: string; }[]' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { onConflict?: string; ignoreDuplicates?: boolean; count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, ... 4 more ..., "POST">', gave the following error.
+    Argument of type '{ request_id: string; category_id: string; }[]' is not assignable to parameter of type 'never[]'.
+      Type '{ request_id: string; category_id: string; }' is not assignable to type 'never'.
+services/requestsService.ts(315,10): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { onConflict?: string; ignoreDuplicates?: boolean; count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "request_categories", never, "POST">', gave the following error.
+    Argument of type '{ request_id: string; category_id: string; }[]' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { onConflict?: string; ignoreDuplicates?: boolean; count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, ... 4 more ..., "POST">', gave the following error.
+    Type '{ request_id: string; category_id: string; }' is not assignable to type 'never'.
+services/requestsService.ts(351,13): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { onConflict?: string; ignoreDuplicates?: boolean; count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "request_categories", never, "POST">', gave the following error.
+    Argument of type '{ request_id: string; category_id: string; }[]' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { onConflict?: string; ignoreDuplicates?: boolean; count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, ... 4 more ..., "POST">', gave the following error.
+    Argument of type '{ request_id: string; category_id: string; }[]' is not assignable to parameter of type 'never[]'.
+      Type '{ request_id: string; category_id: string; }' is not assignable to type 'never'.
+services/requestsService.ts(417,13): error TS2367: This comparison appears to be unintentional because the types '"both" | "not-specified" | "delivery" | "pickup"' and '"immediate"' have no overlap.
+services/requestsService.ts(419,20): error TS2367: This comparison appears to be unintentional because the types '"both" | "not-specified" | "delivery" | "pickup"' and '"range"' have no overlap.
+services/requestsService.ts(483,9): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "requests", never, "POST">', gave the following error.
+    Argument of type '{ id?: string; author_id?: string; title: string; description: string; status: "active" | "assigned" | "completed" | "archived"; is_public: boolean; budget_min?: string; budget_max?: string; ... 6 more ...; images?: string[]; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "requests", never, "POST">', gave the following error.
+    Argument of type '{ id?: string; author_id?: string; title: string; description: string; status: "active" | "assigned" | "completed" | "archived"; is_public: boolean; budget_min?: string; budget_max?: string; ... 6 more ...; images?: string[]; }' is not assignable to parameter of type 'never[]'.
+      Type '{ id?: string; author_id?: string; title: string; description: string; status: "active" | "assigned" | "completed" | "archived"; is_public: boolean; budget_min?: string; budget_max?: string; budget_type?: "fixed" | ... 1 more ... | "negotiable"; ... 5 more ...; images?: string[]; }' is missing the following properties from type 'never[]': length, pop, push, concat, and 29 more.
+services/requestsService.ts(487,21): error TS18047: 'data' is possibly 'null'.
+services/requestsService.ts(558,41): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(566,35): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(575,25): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(614,17): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "requests", never, "POST">', gave the following error.
+    Argument of type 'RequestInsert' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "requests", never, "POST">', gave the following error.
+    Argument of type 'RequestInsert' is not assignable to parameter of type 'never[]'.
+      Type 'RequestInsert' is missing the following properties from type 'never[]': length, pop, push, concat, and 29 more.
+services/requestsService.ts(618,27): error TS18047: 'insertedData' is possibly 'null'.
+services/requestsService.ts(627,66): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(632,17): error TS2345: Argument of type '{ is_public: boolean; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(633,32): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(645,51): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(651,45): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(674,6): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "offers", never, "POST">', gave the following error.
+    Argument of type '{ request_id: string; provider_id: string; provider_name: string; title: string; description: string; price: string; delivery_time: string; status: "pending"; is_negotiable: boolean; location: string; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "offers", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'request_id' does not exist in type 'never[]'.
+services/requestsService.ts(692,7): error TS18047: 'data' is possibly 'null'.
+services/requestsService.ts(705,29): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(769,41): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/requestsService.ts(811,41): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(828,9): error TS18047: 'providerProfile' is possibly 'null'.
+services/requestsService.ts(829,38): error TS2339: Property 'display_name' does not exist on type 'never'.
+services/requestsService.ts(859,15): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "offers", never, "POST">', gave the following error.
+    Argument of type '{ request_id: string; provider_id: string; provider_name: string; title: string; description: string; price: string; delivery_time: string; status: "pending"; is_negotiable: boolean; location: string; images: string[]; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "offers", never, "POST">', gave the following error.
+    Argument of type '{ request_id: string; provider_id: string; provider_name: string; title: string; description: string; price: string; delivery_time: string; status: "pending"; is_negotiable: boolean; location: string; images: string[]; }' is not assignable to parameter of type 'never[]'.
+      Type '{ request_id: string; provider_id: string; provider_name: string; title: string; description: string; price: string; delivery_time: string; status: "pending"; is_negotiable: boolean; location: string; images: string[]; }' is missing the following properties from type 'never[]': length, pop, push, concat, and 29 more.
+services/requestsService.ts(865,22): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(904,77): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(927,22): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(935,38): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/requestsService.ts(938,37): error TS2339: Property 'title' does not exist on type 'never'.
+services/requestsService.ts(939,36): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/requestsService.ts(941,25): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(987,15): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "offers", never, "POST">', gave the following error.
+    Argument of type 'Record<string, any>' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "offers", never, "POST">', gave the following error.
+    Argument of type 'Record<string, any>' is not assignable to parameter of type 'never[]'.
+      Type 'Record<string, any>' is missing the following properties from type 'never[]': length, pop, push, concat, and 29 more.
+services/requestsService.ts(1012,75): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(1035,15): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "offers", never, "POST">', gave the following error.
+    Argument of type '{ request_id: any; provider_id: any; provider_name: any; title: any; description: any; price: any; status: string; is_negotiable: any; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "offers", never, "POST">', gave the following error.
+    Argument of type '{ request_id: any; provider_id: any; provider_name: any; title: any; description: any; price: any; status: string; is_negotiable: any; }' is not assignable to parameter of type 'never[]'.
+      Type '{ request_id: any; provider_id: any; provider_name: any; title: any; description: any; price: any; status: string; is_negotiable: any; }' is missing the following properties from type 'never[]': length, pop, push, concat, and 29 more.
+services/requestsService.ts(1528,15): error TS2345: Argument of type '{ status: string; is_public: boolean; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(1593,15): error TS2345: Argument of type 'Partial<OfferInsert> & { updated_at: string; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(1624,67): error TS2345: Argument of type '{ request_id_param: string; user_id_param: string; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(1633,17): error TS2345: Argument of type '{ status: string; is_public: boolean; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(1660,69): error TS2345: Argument of type '{ request_id_param: string; user_id_param: string; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(1669,17): error TS2345: Argument of type '{ status: string; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(1715,15): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(1724,28): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(1729,15): error TS2345: Argument of type '{ status: string; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(1737,68): error TS2554: Expected 1-3 arguments, but got 4.
+services/requestsService.ts(1751,9): error TS2554: Expected 1-3 arguments, but got 4.
+services/requestsService.ts(2227,15): error TS2345: Argument of type '{ is_public: boolean; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(2252,15): error TS2345: Argument of type '{ is_public: boolean; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(2277,15): error TS2345: Argument of type '{ updated_at: string; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(2326,25): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/requestsService.ts(2328,42): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/requestsService.ts(2335,25): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2340,25): error TS2339: Property 'accepted_offer_id' does not exist on type 'never'.
+services/requestsService.ts(2347,48): error TS2339: Property 'created_at' does not exist on type 'never'.
+services/requestsService.ts(2367,41): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2376,38): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2377,24): error TS2339: Property 'accepted_offer_id' does not exist on type 'never'.
+services/requestsService.ts(2409,33): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2410,45): error TS2339: Property 'accepted_offer_id' does not exist on type 'never'.
+services/requestsService.ts(2418,15): error TS2345: Argument of type 'Partial<RequestInsert> & { updated_at?: string; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(2502,17): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/requestsService.ts(2510,17): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2510,51): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2531,15): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2531,46): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2541,15): error TS2345: Argument of type '{ status: string; updated_at: string; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(2556,15): error TS2345: Argument of type '{ status: string; updated_at: string; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(2572,15): error TS2345: Argument of type '{ status: string; accepted_offer_id: string; updated_at: string; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(2584,17): error TS2345: Argument of type '{ status: any; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(2584,33): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2594,17): error TS2339: Property 'provider_id' does not exist on type 'never'.
+services/requestsService.ts(2597,33): error TS2339: Property 'title' does not exist on type 'never'.
+services/requestsService.ts(2598,30): error TS2339: Property 'provider_id' does not exist on type 'never'.
+services/requestsService.ts(2648,17): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2651,24): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2653,21): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2660,33): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/requestsService.ts(2663,33): error TS2339: Property 'accepted_offer_id' does not exist on type 'never'.
+services/requestsService.ts(2668,27): error TS2339: Property 'accepted_offer_id' does not exist on type 'never'.
+services/requestsService.ts(2672,20): error TS18047: 'offer' is possibly 'null'.
+services/requestsService.ts(2685,15): error TS2345: Argument of type '{ status: string; updated_at: string; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(2698,19): error TS2339: Property 'accepted_offer_id' does not exist on type 'never'.
+services/requestsService.ts(2702,29): error TS2339: Property 'accepted_offer_id' does not exist on type 'never'.
+services/requestsService.ts(2705,13): error TS18047: 'offer' is possibly 'null'.
+services/requestsService.ts(2708,35): error TS2339: Property 'title' does not exist on type 'never'.
+services/requestsService.ts(2709,34): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/requestsService.ts(2710,31): error TS2339: Property 'provider_id' does not exist on type 'never'.
+services/requestsService.ts(2750,17): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/requestsService.ts(2770,16): error TS2339: Property 'is_negotiable' does not exist on type 'never'.
+services/requestsService.ts(2775,15): error TS2339: Property 'status' does not exist on type 'never'.
+services/requestsService.ts(2785,15): error TS2345: Argument of type '{ status: string; }' is not assignable to parameter of type 'never'.
+services/requestsService.ts(2801,72): error TS2339: Property 'provider_id' does not exist on type 'never'.
+services/requestsService.ts(2801,117): error TS2339: Property 'provider_id' does not exist on type 'never'.
+services/requestsService.ts(2808,39): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(2813,12): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "conversations", never, "POST">', gave the following error.
+    Argument of type '{ participant1_id: string; participant2_id: any; request_id: string; offer_id: string; last_message_preview: string; last_message_at: string; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "conversations", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'participant1_id' does not exist in type 'never[]'.
+services/requestsService.ts(2815,36): error TS2339: Property 'provider_id' does not exist on type 'never'.
+services/requestsService.ts(2825,36): error TS2339: Property 'id' does not exist on type 'never'.
+services/requestsService.ts(2841,29): error TS18047: 'requesterProfile' is possibly 'null'.
+services/requestsService.ts(2846,31): error TS2339: Property 'title' does not exist on type 'never'.
+services/requestsService.ts(2847,28): error TS2339: Property 'provider_id' does not exist on type 'never'.
+services/requestsService.ts(2896,45): error TS2339: Property 'author_id' does not exist on type 'never'.
+services/requestViewsService.ts(13,71): error TS2345: Argument of type '{ request_id_param: string; }' is not assignable to parameter of type 'never'.
+services/requestViewsService.ts(30,69): error TS2345: Argument of type '{ request_id_param: string; }' is not assignable to parameter of type 'never'.
+services/requestViewsService.ts(73,17): error TS2339: Property 'is_read' does not exist on type 'never'.
+services/requestViewsService.ts(224,75): error TS2345: Argument of type '{ request_id_param: string; session_id_param: string; user_agent_param: string; }' is not assignable to parameter of type 'never'.
+services/requestViewsService.ts(233,16): error TS18047: 'data' is possibly 'null'.
+services/requestViewsService.ts(234,18): error TS18047: 'data' is possibly 'null'.
+services/requestViewsService.ts(235,18): error TS18047: 'data' is possibly 'null'.
+services/requestViewsService.ts(248,74): error TS2345: Argument of type '{ request_id_param: string; }' is not assignable to parameter of type 'never'.
+services/requestViewsService.ts(271,74): error TS2345: Argument of type '{ request_id_param: string; }' is not assignable to parameter of type 'never'.
+services/requestViewsService.ts(280,24): error TS2339: Property 'total_views' does not exist on type 'never'.
+services/requestViewsService.ts(281,35): error TS2339: Property 'unique_registered_users' does not exist on type 'never'.
+services/requestViewsService.ts(282,24): error TS2339: Property 'guest_views' does not exist on type 'never'.
+services/requestViewsService.ts(283,26): error TS2339: Property 'views_last_24h' does not exist on type 'never'.
+services/requestViewsService.ts(284,25): error TS2339: Property 'views_last_7d' does not exist on type 'never'.
+services/reviewsService.ts(101,8): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated"; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "reviews", never, "POST">', gave the following error.
+    Argument of type '{ request_id: string; reviewer_id: string; reviewee_id: string; rating: number; comment: string; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated"; defaultToNull?: boolean; }): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "reviews", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'request_id' does not exist in type 'never[]'.
+services/reviewsService.ts(169,47): error TS2339: Property 'created_at' does not exist on type 'never'.
+services/reviewsService.ts(186,15): error TS2345: Argument of type 'Record<string, unknown>' is not assignable to parameter of type 'never'.
+services/reviewsService.ts(382,17): error TS18047: 'data' is possibly 'null'.
+services/reviewsService.ts(383,35): error TS18047: 'data' is possibly 'null'.
+services/reviewsService.ts(384,23): error TS18047: 'data' is possibly 'null'.
+services/reviewsService.ts(385,24): error TS18047: 'data' is possibly 'null'.
+services/reviewsService.ts(386,24): error TS18047: 'data' is possibly 'null'.
+services/reviewsService.ts(387,25): error TS18047: 'data' is possibly 'null'.
+services/reviewsService.ts(388,23): error TS18047: 'data' is possibly 'null'.
+services/reviewsService.ts(389,23): error TS18047: 'data' is possibly 'null'.
+services/reviewsService.ts(390,29): error TS18047: 'data' is possibly 'null'.
+services/reviewsService.ts(420,17): error TS2339: Property 'status' does not exist on type 'never'.
+services/reviewsService.ts(429,33): error TS2339: Property 'user_id' does not exist on type 'never'.
+services/storageService.ts(53,27): error TS2339: Property 'statusCode' does not exist on type 'StorageError'.
+services/storageService.ts(314,77): error TS2554: Expected 1-3 arguments, but got 4.
+services/supabaseClient.ts(83,23): error TS2339: Property 'signal' does not exist on type '{}'.

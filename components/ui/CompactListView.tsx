@@ -1,37 +1,39 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import React, { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Archive,
-  Check,
-  ChevronLeft,
+  CheckCircle,
+  ChevronDown,
   Copy,
   Edit,
   Eye,
   EyeOff,
   Flag,
   MapPin,
+  MessageCircle,
   MoreVertical,
   RefreshCw,
   Share2,
-  Sparkles,
 } from "lucide-react";
+import { Button } from "./Button.tsx";
+import { HighlightedText } from "./HighlightedText.tsx";
+import { RequestExpansion } from "./RequestExpansion.tsx";
 import {
   Category,
   getCategoryLabel,
   Offer,
   Request,
   SupportedLocale,
-} from "../../types";
-import { AVAILABLE_CATEGORIES } from "../../data";
-import { getCurrentLocale } from "../../services/categoriesService";
-import { getKnownCategoryColor } from "../../utils/categoryColors";
-import { CategoryIcon } from "./CategoryIcon";
-import { DropdownMenu, DropdownMenuItem } from "./DropdownMenu";
+} from "../../types.ts";
+import { AVAILABLE_CATEGORIES } from "../../data.ts";
+import { getKnownCategoryColor } from "../../utils/categoryColors.ts";
+import { CategoryIcon } from "./CategoryIcon.tsx";
 import {
   copyShareUrl,
   getRequestShareUrl,
-} from "../../services/routingService";
-import { logger } from "../../utils/logger";
+} from "../../services/routingService.ts";
+import { getCurrentLocale } from "../../services/categoriesService.ts";
+import { logger } from "../../utils/logger.ts";
 
 interface CompactListViewProps {
   requests: Request[];
@@ -44,35 +46,7 @@ interface CompactListViewProps {
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoadingMore?: boolean;
-  // External scroll position (from parent)
-  externalScrollY?: number;
-  // New request IDs for special animation
   newRequestIds?: Set<string>;
-  // Request action handlers for dropdown menu
-  onBumpRequest?: (requestId: string) => void;
-  onEditRequest?: (request: Request) => void;
-  onHideRequest?: (requestId: string) => void;
-  onUnhideRequest?: (requestId: string) => void;
-  onArchiveRequest?: (requestId: string) => void;
-  onReportRequest?: (requestId: string) => void;
-  onRefresh?: () => void; // Callback for refresh after actions
-}
-
-// ============================================
-// Single List Item - Ultra Simple
-// ============================================
-const ListItem: React.FC<{
-  request: Request;
-  onTap: () => void;
-  myOffer?: Offer;
-  isViewed: boolean;
-  index: number;
-  isNew?: boolean; // طلب جديد وصل للتو
-  categories?: Category[]; // التصنيفات من الباك اند
-  locale?: SupportedLocale; // اللغة الحالية
-  userId?: string;
-  isMyRequest?: boolean;
-  // Request action handlers
   onBumpRequest?: (requestId: string) => void;
   onEditRequest?: (request: Request) => void;
   onHideRequest?: (requestId: string) => void;
@@ -80,19 +54,81 @@ const ListItem: React.FC<{
   onArchiveRequest?: (requestId: string) => void;
   onReportRequest?: (requestId: string) => void;
   onRefresh?: () => void;
-  // Action states
+  radarWords?: string[];
+  expandedRequestId?: string | null;
+  onToggleExpand?: (requestId: string) => void;
+  receivedOffersMap?: Map<string, Offer[]>;
+  unreadMessagesPerRequest?: Map<string, number>;
+  unreadMessagesPerOffer?: Map<string, number>;
+  requestsWithNewOffers?: Set<string>;
+  onClearNewOfferHighlight?: (requestId: string) => void;
+  onOpenChat?: (requestId: string, offer: Offer) => void;
+  onSelectOffer?: (offer: Offer) => void;
+  isMyRequestsView?: boolean;
+  isMyOffersView?: boolean;
+  showCategoriesInStatus?: boolean;
+  disablePadding?: boolean;
+}
+
+const getStatusConfig = (request: Request) => {
+  if (request.status === "archived") {
+    return {
+      text: "مؤرشف",
+      icon: <Archive size={12} />,
+      textColor: "text-muted-foreground",
+      borderColor: "border-muted-foreground/20",
+    };
+  }
+  if (!request.isPublic) {
+    return {
+      text: "مخفي",
+      icon: <EyeOff size={12} />,
+      textColor: "text-orange-500",
+      borderColor: "border-orange-500/20",
+    };
+  }
+  return {
+    text: "نشط",
+    icon: <CheckCircle size={12} />,
+    textColor: "text-primary",
+    borderColor: "border-primary/20",
+  };
+};
+
+const ListItem: React.FC<{
+  request: Request;
+  myOffer?: Offer;
+  isViewed: boolean;
+  isNew?: boolean;
+  categories?: Category[];
+  locale?: SupportedLocale;
+  userId?: string;
+  isMyRequest?: boolean;
+  onBumpRequest?: (requestId: string) => void;
+  onEditRequest?: (request: Request) => void;
+  onHideRequest?: (requestId: string) => void;
+  onUnhideRequest?: (requestId: string) => void;
+  onArchiveRequest?: (requestId: string) => void;
+  onReportRequest?: (requestId: string) => void;
   actionState?: { isBumping: boolean; isHiding: boolean; isArchiving: boolean };
   availableAfterHours?: number | null;
+  radarWords?: string[];
+  isExpanded?: boolean;
+  onToggle?: (e: React.MouseEvent) => void;
+  receivedOffers?: Offer[];
+  unreadMessagesPerRequest?: Map<string, number>;
+  unreadMessagesPerOffer?: Map<string, number>;
+  hasNewOffer?: boolean;
+  onOpenChat?: (requestId: string, offer: Offer) => void;
+  onSelectOffer?: (offer: Offer) => void;
+  isMyOffersView?: boolean;
 }> = (
   {
     request,
-    onTap,
     myOffer,
     isViewed,
-    index,
     isNew = false,
     categories = AVAILABLE_CATEGORIES,
-    locale = "ar",
     userId,
     isMyRequest = false,
     onBumpRequest,
@@ -101,9 +137,20 @@ const ListItem: React.FC<{
     onUnhideRequest,
     onArchiveRequest,
     onReportRequest,
-    onRefresh,
     actionState = { isBumping: false, isHiding: false, isArchiving: false },
     availableAfterHours = null,
+    radarWords = [],
+    isExpanded = false,
+    onToggle,
+    receivedOffers = [],
+    unreadMessagesPerRequest = new Map(),
+    unreadMessagesPerOffer = new Map(),
+    hasNewOffer = false,
+    onOpenChat,
+    onSelectOffer,
+    isMyOffersView = false,
+    locale = getCurrentLocale(),
+    showCategoriesInStatus = false,
   },
 ) => {
   const [isPressed, setIsPressed] = useState(false);
@@ -131,348 +178,363 @@ const ListItem: React.FC<{
           url: shareUrl,
         });
       } else {
-        const copied = await copyShareUrl("request", { requestId: request.id });
-        if (copied) {
-          // Could show a toast here, or simplified alert
-          // alert("تم نسخ رابط المشاركة");
-        }
+        await copyShareUrl("request", { requestId: request.id });
       }
     } catch (err) {
       logger.error("Share failed", err);
     }
   };
 
-  // Status
-  const hasOffer = !!myOffer;
-  const offerAccepted = myOffer?.status === "accepted";
-
-  // Calculate if bump is available
   const canBump = availableAfterHours === null;
+  const mainCategory = request.categories?.[0] || "";
 
   return (
     <motion.div
+      layout
       role="button"
       tabIndex={0}
-      className={`w-full text-right p-4 rounded-2xl border transition-all mb-3 overflow-hidden shadow-sm flex items-start gap-3 relative cursor-pointer ${
+      className={`w-full text-right p-4 rounded-2xl border transition-all mb-3 overflow-hidden shadow-sm flex flex-col relative cursor-pointer ${
         isPressed
           ? "bg-primary/5 border-primary/20 scale-[0.98]"
+          : isExpanded
+          ? "bg-primary/5 border-primary/20"
           : "bg-card hover:bg-secondary/10 border-border/40 hover:border-primary/20"
       } ${!isViewed ? "border-primary/20 bg-primary/[0.01]" : ""} ${
-        isNew
+        isNew || hasNewOffer
           ? "ring-2 ring-primary/40 ring-offset-2 ring-offset-background"
           : ""
-      }`}
-      onClick={onTap}
+      } ${hasNewOffer ? "bg-primary/5 border-primary/20 shadow-md" : ""}`}
+      onClick={(e) => onToggle?.(e)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onTap?.();
+          onToggle?.(e as any);
         }
       }}
-      onTouchStart={() => setIsPressed(true)}
-      onTouchEnd={() => setIsPressed(false)}
       onMouseDown={() => setIsPressed(true)}
       onMouseUp={() => setIsPressed(false)}
       onMouseLeave={() => setIsPressed(false)}
-      initial={isNew
-        ? { opacity: 0, scale: 0.9, y: -20 }
-        : { opacity: 0, y: 10 }}
-      animate={isNew
-        ? {
-          opacity: 1,
-          scale: 1,
-          y: 0,
-        }
-        : { opacity: 1, y: 0 }}
-      transition={isNew
-        ? {
-          type: "spring",
-          stiffness: 300,
-          damping: 20,
-          mass: 1,
-        }
-        : {
-          delay: Math.min(index * 0.03, 0.3),
-          type: "spring",
-          stiffness: 400,
-          damping: 30,
-        }}
+      onTouchStart={() => setIsPressed(true)}
+      onTouchEnd={() => setIsPressed(false)}
     >
-      {/* New Request Glow Animation */}
-      {isNew && (
-        <motion.div
-          className="absolute inset-0 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 pointer-events-none"
-          animate={{
-            opacity: [0.3, 0.6, 0.3],
-          }}
-          transition={{
-            duration: 1.5,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        />
-      )}
-      {/* New Request Badge */}
-      {isNew && (
-        <motion.div
-          className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center gap-1 shadow-lg z-10"
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.2, type: "spring", stiffness: 500 }}
-        >
-          <Sparkles size={10} />
-          جديد
-        </motion.div>
-      )}
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        {/* Title */}
-        <h3
-          className={`font-bold text-sm mb-2 line-clamp-1 ${
-            !isViewed ? "text-foreground" : "text-foreground/80"
-          }`}
-        >
-          {request.title || request.description?.slice(0, 40) || "طلب"}
-        </h3>
-
-        {/* المدينة والتصنيفات في سطر واحد - التصنيفات تمتد لأسطر متعددة إذا لزم */}
-        <div className="flex items-center flex-wrap gap-2 mt-2 text-xs">
-          {/* المدينة */}
-          {request.location && (
-            <span className="flex items-center gap-1.5 text-muted-foreground/70 font-medium">
-              <MapPin size={13} className="text-primary/60" />
-              {request.location}
-            </span>
-          )}
-
-          {/* فاصل بين المدينة والتصنيفات */}
-          {request.location && request.categories &&
-            request.categories.length > 0 && (
-            <span className="text-muted-foreground/30">•</span>
-          )}
-
-          {/* التصنيفات - تبدأ بعد المدينة وتمتد لأسطر */}
-          {request.categories && request.categories.length > 0 && (
-            request.categories.map((catLabel, idx) => {
-              const categoryObj = categories.find((c) =>
-                c.label === catLabel || c.id === catLabel
-              );
-              const displayLabel = categoryObj
-                ? getCategoryLabel(categoryObj, locale)
-                : catLabel;
-              const categoryId = categoryObj?.id || catLabel;
-
-              return (
-                <span
-                  key={idx}
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
-                    getKnownCategoryColor(categoryId)
+      <div className="flex items-start gap-4">
+        <div className="flex-1 min-w-0">
+          {isMyOffersView && myOffer ? (
+            <>
+              {/* Offer Title and Price */}
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <h3
+                  className={`font-bold text-sm truncate ${
+                    !isViewed ? "text-primary" : "text-foreground"
                   }`}
                 >
-                  <CategoryIcon
-                    icon={categoryObj?.icon}
-                    emoji={categoryObj?.emoji}
-                    size={12}
-                  />
-                  <span className="truncate max-w-[80px]">
-                    {displayLabel}
-                  </span>
+                  {myOffer.title || "عرضي"}
+                </h3>
+                <span className="text-lg font-black text-primary shrink-0">
+                  {myOffer.price} ر.س
                 </span>
-              );
-            })
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                {/* Offer Status */}
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    myOffer.status === "accepted"
+                      ? "bg-green-500/20 text-green-600"
+                      : myOffer.status === "negotiating"
+                      ? "bg-primary/20 text-primary"
+                      : myOffer.status === "rejected"
+                      ? "bg-red-500/20 text-red-600"
+                      : "bg-secondary/50 text-muted-foreground"
+                  }`}
+                >
+                  {myOffer.status === "accepted"
+                    ? "مقبول ✓"
+                    : myOffer.status === "negotiating"
+                    ? "جاري التفاوض"
+                    : myOffer.status === "rejected"
+                    ? "مرفوض"
+                    : "قيد الانتظار"}
+                </span>
+
+                {/* Offer Location */}
+                {myOffer.location && (
+                  <div className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                    <MapPin size={12} className="text-primary/60" />
+                    <span className="truncate max-w-[100px]">
+                      {myOffer.location}
+                    </span>
+                  </div>
+                )}
+
+                {unreadMessagesPerOffer.get(myOffer.id)
+                  ? (
+                    <div className="bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                      {unreadMessagesPerOffer.get(myOffer.id)}
+                    </div>
+                  )
+                  : null}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <h3
+                  className={`font-bold text-sm truncate ${
+                    !isViewed ? "text-primary" : "text-foreground"
+                  }`}
+                >
+                  <HighlightedText text={request.title} words={radarWords} />
+                </h3>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                {request.location && (
+                  <div className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                    <MapPin size={12} className="text-primary/60" />
+                    <span className="truncate max-w-[100px]">
+                      {request.location}
+                    </span>
+                  </div>
+                )}
+
+                {/* Show categories instead of status badge in "discover" and "my offers" views */}
+                {showCategoriesInStatus && request.categories &&
+                  request.categories.length > 0 && (
+                    request.categories.slice(0, 2).map((catLabel, idx) => {
+                      const categoryObj = categories.find(
+                        (c) => c.label === catLabel || c.id === catLabel,
+                      );
+                      const displayLabel = categoryObj
+                        ? getCategoryLabel(categoryObj, locale)
+                        : catLabel;
+                      const categoryId = categoryObj?.id || catLabel;
+
+                      return (
+                        <span
+                          key={idx}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                            getKnownCategoryColor(categoryId)
+                          }`}
+                        >
+                          <CategoryIcon
+                            icon={categoryObj?.icon}
+                            emoji={categoryObj?.emoji}
+                            size={12}
+                          />
+                          <span className="truncate max-w-[60px]">
+                            {displayLabel}
+                          </span>
+                        </span>
+                      );
+                    })
+                  )}
+
+                {/* Budget badge */}
+                {request.budgetType === "fixed" && request.budgetMin && request.budgetMax && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/30 text-gray-700 dark:text-gray-300">
+                    (ميزانية: {request.budgetMin} - {request.budgetMax} ر.س)
+                  </span>
+                )}
+
+                {/* Show status badge only if not showing categories */}
+                {!showCategoriesInStatus && (() => {
+                  const statusConfig = getStatusConfig(request);
+                  // Only show status badge if status is not "active" (i.e., archived or hidden)
+                  if (statusConfig.text === "نشط") return null;
+                  return (
+                    <div
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold ${statusConfig.borderColor} ${statusConfig.textColor}`}
+                    >
+                      {statusConfig.icon}
+                      {statusConfig.text}
+                    </div>
+                  );
+                })()}
+
+                {unreadMessagesPerRequest.get(request.id)
+                  ? (
+                    <div className="bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                      {unreadMessagesPerRequest.get(request.id)}
+                    </div>
+                  )
+                  : null}
+              </div>
+            </>
           )}
         </div>
-      </div>
 
-      {/* Dropdown Menu - للجميع */}
-      <div className="absolute top-3 right-3 z-[100]">
-        {(() => {
-          const dropdownItems: DropdownMenuItem[] = isMyRequest
-            ? [
-              {
-                id: "bump",
-                label: actionState.isBumping
-                  ? "جاري التحديث..."
-                  : canBump
-                  ? "تحديث الطلب"
-                  : `متاح بعد ${availableAfterHours} س`,
-                icon: (
-                  <RefreshCw
-                    size={16}
-                    className={actionState.isBumping ? "animate-spin" : ""}
-                  />
-                ),
-                onClick: () => {
-                  if (canBump && !actionState.isBumping && onBumpRequest) {
-                    onBumpRequest(request.id);
-                  }
-                },
-                disabled: !canBump || actionState.isBumping,
-                keepOpenOnClick: !canBump, // Keep open if disabled (showing "متاح بعد")
-              },
-              {
-                id: "edit",
-                label: "تعديل الطلب",
-                icon: <Edit size={16} />,
-                onClick: () => {
-                  if (onEditRequest) {
-                    onEditRequest(request);
-                  }
-                },
-              },
-              {
-                id: request.isPublic === false ? "unhide" : "hide",
-                label: request.isPublic === false
-                  ? actionState.isHiding ? "جاري الإظهار..." : "إظهار الطلب"
-                  : actionState.isHiding
-                  ? "جاري الإخفاء..."
-                  : "إخفاء الطلب",
-                icon: request.isPublic === false
-                  ? <Eye size={16} />
-                  : <EyeOff size={16} />,
-                onClick: request.isPublic === false
-                  ? () => {
-                    if (onUnhideRequest && !actionState.isHiding) {
-                      onUnhideRequest(request.id);
-                    }
-                  }
-                  : () => {
-                    if (onHideRequest && !actionState.isHiding) {
-                      onHideRequest(request.id);
-                    }
-                  },
-                disabled: actionState.isHiding,
-              },
-              {
-                id: "archive",
-                label: actionState.isArchiving
-                  ? "جاري الأرشفة..."
-                  : "أرشفة الطلب",
-                icon: <Archive size={16} />,
-                onClick: () => {
-                  if (onArchiveRequest && !actionState.isArchiving) {
-                    if (confirm("هل أنت متأكد من أرشفة هذا الطلب؟")) {
-                      onArchiveRequest(request.id);
-                    }
-                  }
-                },
-                variant: "danger",
-                disabled: actionState.isArchiving,
-                showDivider: true,
-              },
-            ]
-            : [
-              {
-                id: "copy-id",
-                label: isIdCopied
-                  ? "✓ تم النسخ!"
-                  : `رقم الطلب: ${request.id.slice(0, 8)}...`,
-                icon: isIdCopied
-                  ? <Check size={16} className="text-primary" />
-                  : <Copy size={16} />,
-                keepOpenOnClick: true,
-                onClick: handleCopyRequestId,
-              },
-              {
-                id: "share",
-                label: "مشاركة الطلب",
-                icon: <Share2 size={16} className="text-primary" />,
-                onClick: handleShareRequest,
-                showDivider: true,
-              },
-              {
-                id: "report",
-                label: "الإبلاغ عن الطلب",
-                icon: <Flag size={16} />,
-                onClick: () => {
-                  if (onReportRequest) {
-                    onReportRequest(request.id);
-                  }
-                },
-                variant: "danger",
-                showDivider: true,
-              },
-            ];
-
-          return (
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-              }}
-              onTouchEnd={(e) => {
-                e.stopPropagation();
-              }}
-            >
-              <DropdownMenu
-                trigger={
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation();
-                    }}
-                    onTouchEnd={(e) => {
-                      e.stopPropagation();
-                    }}
-                    className="p-1 rounded transition-colors hover:bg-secondary/80 text-muted-foreground hover:text-foreground relative z-[100]"
-                    title="خيارات الطلب"
-                  >
-                    <MoreVertical size={18} />
-                  </button>
-                }
-                items={dropdownItems}
-                align="right"
-              />
-            </div>
-          );
-        })()}
-      </div>
-
-      {/* Right Side - Status & Arrow */}
-      <div className="flex flex-col items-end gap-3 flex-shrink-0 self-center">
-        {hasOffer && (
-          <span
-            className={`px-2.5 py-1 rounded-full text-[10px] font-bold shadow-sm ${
-              offerAccepted
-                ? "bg-primary/10 text-primary border border-primary/20"
-                : "bg-accent/15 text-accent-foreground border border-accent/25"
-            }`}
+        <div className="flex flex-col items-center gap-2">
+          {/* Dot badge - show when not viewed */}
+          {!isViewed && (
+            <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-sm shrink-0" />
+          )}
+          <motion.div
+            animate={{ rotate: isExpanded ? 180 : 0 }}
+            className="text-muted-foreground/40"
           >
-            {offerAccepted ? "✓ معتمد" : "بانتظار"}
-          </span>
-        )}
-
-        <div className="w-8 h-8 rounded-full bg-secondary/30 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-          <ChevronLeft
-            size={16}
-            className="text-muted-foreground/50 group-hover:text-primary/70"
-          />
+            <ChevronDown size={20} />
+          </motion.div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="mt-0 pt-0 cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {isMyOffersView && myOffer ? (
+              <>
+                {/* Request Info Box */}
+                <div className="mt-2 p-4 rounded-xl bg-primary/5 border border-primary/10 flex flex-col gap-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-bold text-foreground">
+                      {request.title}
+                    </h4>
+                  </div>
+                  {request.location && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <MapPin size={12} />
+                      <span>{request.location}</span>
+                    </div>
+                  )}
+                  {showCategoriesInStatus && request.categories &&
+                    request.categories.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {request.categories.slice(0, 2).map((catLabel, idx) => {
+                          const categoryObj = categories.find(
+                            (c) => c.label === catLabel || c.id === catLabel,
+                          );
+                          const displayLabel = categoryObj
+                            ? getCategoryLabel(categoryObj, locale)
+                            : catLabel;
+                          const categoryId = categoryObj?.id || catLabel;
+
+                          return (
+                            <span
+                              key={idx}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                                getKnownCategoryColor(categoryId)
+                              }`}
+                            >
+                              <CategoryIcon
+                                icon={categoryObj?.icon}
+                                emoji={categoryObj?.emoji}
+                                size={12}
+                              />
+                              <span>{displayLabel}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  {request.description && (
+                    <div className="text-sm text-foreground/80 leading-relaxed">
+                      <HighlightedText text={request.description} words={radarWords} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Offer Details and Actions */}
+                {(myOffer.description || myOffer.deliveryTime) && (
+                  <div className="mt-2 p-4 rounded-xl bg-primary/5 border border-primary/10 flex flex-col gap-3">
+                    {myOffer.description && (
+                      <div className="text-sm text-foreground/80 leading-relaxed">
+                        {myOffer.description}
+                      </div>
+                    )}
+                    {myOffer.deliveryTime && (
+                      <div className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap text-right rounded-xl border border-border/40 bg-secondary/20 p-3">
+                        {myOffer.deliveryTime}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2 mt-2">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      onClick={(e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        handleShareRequest();
+                      }}
+                      variant="secondary"
+                      size="icon"
+                      className="w-10 h-10 rounded-2xl shrink-0"
+                      title="مشاركة"
+                    >
+                      <Share2 size={18} />
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={(e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        onReportRequest?.(request.id);
+                      }}
+                      variant="outline"
+                      size="icon"
+                      className="w-10 h-10 rounded-2xl shrink-0 border-border/60"
+                      title="إبلاغ"
+                    >
+                      <Flag size={18} className="text-muted-foreground" />
+                    </Button>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      onOpenChat?.(request.id, myOffer);
+                    }}
+                    variant="primary"
+                    size="icon"
+                    className="w-10 h-10 rounded-2xl shrink-0 relative"
+                    title="فتح المحادثة"
+                  >
+                    <MessageCircle size={18} />
+                    {unreadMessagesPerOffer.get(myOffer.id) && (
+                      <span className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full animate-bounce">
+                        {unreadMessagesPerOffer.get(myOffer.id)}
+                      </span>
+                    )}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <RequestExpansion
+                request={request}
+                isMyRequest={isMyRequest}
+                radarWords={radarWords}
+                onReport={() => onReportRequest?.(request.id)}
+                onEdit={() => onEditRequest?.(request)}
+                onBump={() => onBumpRequest?.(request.id)}
+                onShare={handleShareRequest}
+                receivedOffers={receivedOffers}
+                unreadMessagesPerOffer={unreadMessagesPerOffer}
+                onOpenChat={(offer) => onOpenChat?.(request.id, offer)}
+                onSelectOffer={onSelectOffer}
+                categories={categories}
+                locale={locale}
+                hasMyOffer={!!myOffer}
+              />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
 
-// ============================================
-// Main Component
-// ============================================
 export const CompactListView: React.FC<CompactListViewProps> = ({
   requests,
-  onSelectRequest,
   myOffers = [],
   userId,
-  isGuest = false,
   viewedRequestIds = new Set(),
-  isLoadingViewedRequests = false,
-  onLoadMore,
-  hasMore = false,
   isLoadingMore = false,
-  externalScrollY = 0,
   newRequestIds = new Set(),
   onBumpRequest,
   onEditRequest,
@@ -481,40 +543,42 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
   onArchiveRequest,
   onReportRequest,
   onRefresh,
+  radarWords = [],
+  expandedRequestId: externalExpandedId,
+  onToggleExpand: externalOnToggle,
+  receivedOffersMap = new Map(),
+  unreadMessagesPerRequest = new Map(),
+  unreadMessagesPerOffer = new Map(),
+  requestsWithNewOffers = new Set(),
+  onClearNewOfferHighlight,
+  onOpenChat,
+  onSelectOffer,
+  isMyOffersView = false,
+  showCategoriesInStatus = false,
+  disablePadding = false,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  // استخدام AVAILABLE_CATEGORIES كمصدر موحد - نفس القائمة المستخدمة في OnboardingScreen
-  const [categories, setCategories] = useState<Category[]>(
-    AVAILABLE_CATEGORIES,
+  const [internalExpandedId, setInternalExpandedId] = useState<string | null>(
+    null,
   );
-  const [locale, setLocale] = useState<SupportedLocale>("ar");
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // State tracking for request actions (bump, hide, archive) per request
-  const [requestActionStates, setRequestActionStates] = useState<
-    Map<string, { isBumping: boolean; isHiding: boolean; isArchiving: boolean }>
-  >(new Map());
+  const expandedId = externalExpandedId !== undefined
+    ? externalExpandedId
+    : internalExpandedId;
 
-  const updateRequestActionState = (
-    requestId: string,
-    updates: Partial<{
-      isBumping: boolean;
-      isHiding: boolean;
-      isArchiving: boolean;
-    }>,
-  ) => {
-    setRequestActionStates((prev) => {
-      const newMap = new Map(prev);
-      const current = newMap.get(requestId) || {
-        isBumping: false,
-        isHiding: false,
-        isArchiving: false,
-      };
-      newMap.set(requestId, { ...current, ...updates });
-      return newMap;
-    });
+  const toggleExpand = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (externalOnToggle) {
+      externalOnToggle(id);
+    } else {
+      setInternalExpandedId((prev) => (prev === id ? null : id));
+    }
   };
 
-  // Helper to calculate available after time (5 hours cooldown for bump)
+  const getMyOffer = (requestId: string) => {
+    return myOffers.find((o) => o.requestId === requestId);
+  };
+
   const calculateAvailableAfter = (
     updatedAt?: Date | string,
   ): number | null => {
@@ -522,217 +586,79 @@ export const CompactListView: React.FC<CompactListViewProps> = ({
     const lastUpdated = typeof updatedAt === "string"
       ? new Date(updatedAt)
       : updatedAt;
-    const fiveHoursMs = 5 * 60 * 60 * 1000; // 5 hours in milliseconds
-    const elapsedSinceUpdate = Date.now() - lastUpdated.getTime();
-    const remainingMs = fiveHoursMs - elapsedSinceUpdate;
-
-    if (remainingMs > 0) {
-      const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
-      return remainingHours;
-    }
-    return null;
+    const fiveHoursMs = 5 * 60 * 60 * 1000;
+    const elapsed = Date.now() - lastUpdated.getTime();
+    const remaining = fiveHoursMs - elapsed;
+    return remaining > 0 ? Math.ceil(remaining / (60 * 60 * 1000)) : null;
   };
 
-  // Handlers for request actions
-  const handleBumpRequestInCompact = async (requestId: string) => {
-    if (!onBumpRequest) return;
-    const actionState = requestActionStates.get(requestId);
-    if (actionState?.isBumping) return; // Prevent double-click
-
-    updateRequestActionState(requestId, { isBumping: true });
-    try {
-      const success = await onBumpRequest(requestId);
-      if (success && onRefresh) {
-        setTimeout(() => {
-          onRefresh();
-        }, 500);
-      }
-    } catch (error) {
-      console.error("Failed to bump request in compact view:", error);
-    } finally {
-      setTimeout(() => {
-        updateRequestActionState(requestId, { isBumping: false });
-      }, 300);
-    }
-  };
-
-  const handleEditRequestInCompact = (request: Request) => {
-    if (!onEditRequest) return;
-    onEditRequest(request);
-  };
-
-  const handleHideRequestInCompact = async (requestId: string) => {
-    if (!onHideRequest) return;
-    const actionState = requestActionStates.get(requestId);
-    if (actionState?.isHiding) return; // Prevent double-click
-
-    updateRequestActionState(requestId, { isHiding: true });
-    try {
-      const success = await onHideRequest(requestId);
-      if (success && onRefresh) {
-        setTimeout(() => {
-          onRefresh();
-        }, 500);
-      } else {
-        updateRequestActionState(requestId, { isHiding: false });
-      }
-    } catch (error) {
-      console.error("Failed to hide request in compact view:", error);
-      updateRequestActionState(requestId, { isHiding: false });
-    }
-  };
-
-  const handleUnhideRequestInCompact = async (requestId: string) => {
-    if (!onUnhideRequest) return;
-    const actionState = requestActionStates.get(requestId);
-    if (actionState?.isHiding) return; // Prevent double-click
-
-    updateRequestActionState(requestId, { isHiding: true });
-    try {
-      const success = await onUnhideRequest(requestId);
-      if (success && onRefresh) {
-        setTimeout(() => {
-          onRefresh();
-        }, 500);
-      } else {
-        updateRequestActionState(requestId, { isHiding: false });
-      }
-    } catch (error) {
-      console.error("Failed to unhide request in compact view:", error);
-      updateRequestActionState(requestId, { isHiding: false });
-    }
-  };
-
-  const handleArchiveRequestInCompact = async (requestId: string) => {
-    if (!onArchiveRequest) return;
-    const actionState = requestActionStates.get(requestId);
-    if (actionState?.isArchiving) return; // Prevent double-click
-
-    updateRequestActionState(requestId, { isArchiving: true });
-    try {
-      const success = await onArchiveRequest(requestId);
-      if (success && onRefresh) {
-        setTimeout(() => {
-          onRefresh();
-        }, 500);
-      } else {
-        updateRequestActionState(requestId, { isArchiving: false });
-      }
-    } catch (error) {
-      console.error("Failed to archive request in compact view:", error);
-      updateRequestActionState(requestId, { isArchiving: false });
-    }
-  };
-
-  // استخدام AVAILABLE_CATEGORIES كمصدر موحد
   useEffect(() => {
-    // دائماً استخدام القائمة الشاملة من data.ts
-    setCategories(AVAILABLE_CATEGORIES);
-    setLocale(getCurrentLocale());
-
-    // الاستماع لتغييرات اللغة
-    const handleStorageChange = (e: StorageEvent) => {
+    const handleStorage = (e: StorageEvent) => {
       if (e.key === "locale" && e.newValue) {
-        const newLocale = e.newValue as SupportedLocale;
-        if (newLocale === "ar" || newLocale === "en" || newLocale === "ur") {
-          setLocale(newLocale);
-        }
+        // Handle locale change if needed
       }
     };
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+    globalThis.addEventListener("storage", handleStorage);
+    return () => globalThis.removeEventListener("storage", handleStorage);
   }, []);
 
-  // Get my offer for a request
-  const getMyOffer = useCallback((requestId: string) => {
-    return myOffers.find((o) => o.requestId === requestId);
-  }, [myOffers]);
-
-  // Handle infinite scroll
-  const handleScroll = useCallback(() => {
-    if (!containerRef.current) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-
-    // Load more trigger
-    if (!onLoadMore || isLoadingMore || !hasMore) return;
-    if (scrollHeight - scrollTop - clientHeight < 200) {
-      onLoadMore();
-    }
-  }, [onLoadMore, isLoadingMore, hasMore]);
-
-  // Empty state
-  if (requests.length === 0) {
-    return null;
-  }
+  if (requests.length === 0) return null;
 
   return (
     <div
       ref={containerRef}
-      className="relative w-full"
+      className={`w-full pt-4 pb-20 ${disablePadding ? "" : "px-4"}`}
     >
-      {/* List Content - بدون سكرول داخلي */}
-      <div className="pr-4 pl-2 pt-4 pb-[1px] relative z-[1] w-full">
-        {requests.map((request, index) => {
-          const isViewed = isLoadingViewedRequests ||
-            viewedRequestIds.has(request.id);
-          const isUnread = !isLoadingViewedRequests &&
-            !viewedRequestIds.has(request.id);
-          return (
-            <div key={request.id} className="relative w-full">
-              {/* نقطة غير مقروء - خارج الكرت على اليمين - فقط للجوالات */}
-              {isUnread && (
-                <motion.div
-                  className="absolute -right-3 top-1/2 -translate-y-1/2 z-10 block md:hidden"
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 500,
-                    damping: 25,
-                    delay: Math.min(index * 0.03, 0.3),
-                  }}
-                >
-                  <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(30,150,140,0.6)]" />
-                </motion.div>
-              )}
-              {/* الكرت - في مكانه الطبيعي */}
-              <ListItem
-                request={request}
-                onTap={() => onSelectRequest(request)}
-                myOffer={getMyOffer(request.id)}
-                isViewed={isViewed}
-                index={index}
-                isNew={newRequestIds.has(request.id)}
-                categories={categories}
-                locale={locale}
-                userId={userId}
-                isMyRequest={userId && request.author_id === userId}
-                onBumpRequest={handleBumpRequestInCompact}
-                onEditRequest={handleEditRequestInCompact}
-                onHideRequest={handleHideRequestInCompact}
-                onUnhideRequest={handleUnhideRequestInCompact}
-                onArchiveRequest={handleArchiveRequestInCompact}
-                onReportRequest={onReportRequest}
-                onRefresh={onRefresh}
-                actionState={requestActionStates.get(request.id) || {
-                  isBumping: false,
-                  isHiding: false,
-                  isArchiving: false,
-                }}
-                availableAfterHours={calculateAvailableAfter(
-                  request.updatedAt || request.createdAt,
-                )}
-              />
-            </div>
-          );
-        })}
-      </div>
+      {requests.map((request) => {
+        const isViewed = viewedRequestIds.has(request.id);
+        const receivedOffers = receivedOffersMap.get(request.id) || [];
+        const hasNewOffer = requestsWithNewOffers.has(request.id);
+        const myOffer = getMyOffer(request.id);
+        const isExpanded = expandedId === request.id;
 
-      {/* Load More */}
+        return (
+          <div key={request.id} className="relative">
+            <ListItem
+              request={request}
+              myOffer={myOffer}
+              isViewed={isViewed}
+              isNew={newRequestIds.has(request.id)}
+              categories={AVAILABLE_CATEGORIES}
+              userId={userId}
+              isMyRequest={userId === request.author}
+              onBumpRequest={onBumpRequest}
+              onEditRequest={onEditRequest}
+              onHideRequest={onHideRequest}
+              onUnhideRequest={onUnhideRequest}
+              onArchiveRequest={onArchiveRequest}
+              onReportRequest={onReportRequest}
+              availableAfterHours={calculateAvailableAfter(
+                request.updatedAt || request.createdAt,
+              )}
+              radarWords={radarWords}
+              isExpanded={isExpanded}
+              onToggle={(e) => {
+                if (hasNewOffer && onClearNewOfferHighlight) {
+                  onClearNewOfferHighlight(request.id);
+                }
+                toggleExpand(request.id, e);
+              }}
+              receivedOffers={receivedOffers}
+              unreadMessagesPerRequest={unreadMessagesPerRequest}
+              unreadMessagesPerOffer={unreadMessagesPerOffer}
+              hasNewOffer={hasNewOffer}
+              onOpenChat={onOpenChat}
+              onSelectOffer={onSelectOffer}
+              isMyOffersView={isMyOffersView}
+              showCategoriesInStatus={showCategoriesInStatus}
+            />
+          </div>
+        );
+      })}
+
       {isLoadingMore && (
         <div className="py-4 flex justify-center">
-          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <RefreshCw className="w-6 h-6 animate-spin text-primary" />
         </div>
       )}
     </div>

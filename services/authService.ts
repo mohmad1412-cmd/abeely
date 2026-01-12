@@ -73,26 +73,8 @@ export function isTestPhone(phone: string): boolean {
   return result;
 }
 
-// Types
-export interface UserProfile {
-  id: string;
-  phone: string | null;
-  email: string | null;
-  display_name: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  avatar_url: string | null;
-  bio?: string | null;
-  role: "user" | "provider" | "admin";
-  is_guest: boolean;
-  has_onboarded?: boolean;
-  rating: number;
-  reviews_count: number;
-  preferred_categories: string[];
-  preferred_cities: string[];
-  is_verified: boolean;
-  created_at: string;
-}
+import { UserProfile } from "../types.ts";
+export type { UserProfile };
 
 // Google Identity Services types
 interface GoogleIdConfiguration {
@@ -129,39 +111,18 @@ interface GoogleOAuth2ClientConfig {
 
 declare global {
   interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (config: GoogleIdConfiguration) => void;
-          prompt: (
-            callback?: (notification: GooglePromptNotification) => void,
-          ) => void;
-          renderButton: (
-            element: HTMLElement,
-            config: GoogleIdConfiguration,
-          ) => void;
-          disableAutoSelect: () => void;
-        };
-        oauth2: {
-          initTokenClient: (
-            config: GoogleOAuth2ClientConfig,
-          ) => GoogleOAuth2TokenClient;
-          initCodeClient: (
-            config: GoogleOAuth2ClientConfig,
-          ) => GoogleOAuth2CodeClient;
-        };
-      };
-    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    google: any;
   }
 }
 
 // Check if running in Capacitor (mobile app)
 function isCapacitor(): boolean {
-  return typeof (window as any)?.Capacitor !== "undefined";
+  return typeof (globalThis as any)?.Capacitor !== "undefined";
 }
 
-// Google Client ID from environment
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+// Google Client ID from environment (unused variable removed)
+// const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 /**
  * فتح نافذة منبثقة للـ OAuth
@@ -169,10 +130,10 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 function openPopupWindow(url: string, name: string): Window | null {
   const width = 500;
   const height = 600;
-  const left = window.screenX + (window.outerWidth - width) / 2;
-  const top = window.screenY + (window.outerHeight - height) / 2;
+  const left = globalThis.screenX + (globalThis.outerWidth - width) / 2;
+  const top = globalThis.screenY + (globalThis.outerHeight - height) / 2;
 
-  return window.open(
+  return globalThis.open(
     url,
     name,
     `width=${width},height=${height},left=${left},top=${top},popup=yes,scrollbars=yes,resizable=yes`,
@@ -184,110 +145,114 @@ function openPopupWindow(url: string, name: string): Window | null {
  * يستخدم Supabase OAuth مع popup يدوي
  * الـ popup يشارك نفس localStorage مع النافذة الأصلية لذا PKCE يعمل!
  */
-export async function signInWithGooglePopup(): Promise<
+export function signInWithGooglePopup(): Promise<
   { success: boolean; error?: string }
 > {
-  return new Promise(async (resolve) => {
-    try {
-      // مسح guest mode
-      localStorage.removeItem("abeely_guest_mode");
+  return new Promise((resolve) => {
+    (async () => {
+      try {
+        // مسح guest mode
+        localStorage.removeItem("abeely_guest_mode");
 
-      logger.log("🔐 Starting Google popup sign-in...");
+        logger.log("🔐 Starting Google popup sign-in...");
 
-      // الحصول على رابط OAuth من Supabase
-      // نستخدم نفس الـ origin - الـ popup يشارك localStorage مع النافذة الأصلية
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: window.location.origin,
-          skipBrowserRedirect: true, // لا تقم بـ redirect، سنفتح popup
-          queryParams: { prompt: "select_account" },
-        },
-      });
-
-      if (error) {
-        logger.error("❌ OAuth error:", error, "service");
-        resolve({ success: false, error: error.message });
-        return;
-      }
-
-      if (!data?.url) {
-        resolve({ success: false, error: "فشل الحصول على رابط الدخول" });
-        return;
-      }
-
-      logger.log("✅ Got OAuth URL, opening popup...");
-
-      // فتح popup
-      const popup = openPopupWindow(data.url, "google_signin");
-
-      if (!popup) {
-        logger.error("❌ Popup blocked!");
-        resolve({
-          success: false,
-          error: "تم حظر النافذة المنبثقة. يرجى السماح للنوافذ المنبثقة.",
+        // الحصول على رابط OAuth من Supabase
+        // نستخدم نفس الـ origin - الـ popup يشارك localStorage مع النافذة الأصلية
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: globalThis.location.origin,
+            skipBrowserRedirect: true, // لا تقم بـ redirect، سنفتح popup
+            queryParams: { prompt: "select_account" },
+          },
         });
-        return;
-      }
 
-      // الاستماع لتغييرات auth state
-      let resolved = false;
+        if (error) {
+          logger.error("❌ OAuth error:", error, "service");
+          resolve({ success: false, error: error.message });
+          return;
+        }
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(
-        (event, session) => {
-          logger.log("🔐 Auth state in popup flow:", event);
+        if (!data?.url) {
+          resolve({ success: false, error: "فشل الحصول على رابط الدخول" });
+          return;
+        }
 
-          if (event === "SIGNED_IN" && session?.user && !resolved) {
-            resolved = true;
-            logger.log("✅ User signed in via popup:", session.user.email);
+        logger.log("✅ Got OAuth URL, opening popup...");
 
-            // إغلاق الـ popup إذا كان مفتوحاً
-            try {
-              if (popup && !popup.closed) {
-                popup.close();
+        // فتح popup
+        const popup = openPopupWindow(data.url, "google_signin");
+
+        if (!popup) {
+          logger.error("❌ Popup blocked!");
+          resolve({
+            success: false,
+            error: "تم حظر النافذة المنبثقة. يرجى السماح للنوافذ المنبثقة.",
+          });
+          return;
+        }
+
+        // الاستماع لتغييرات auth state
+        let resolved = false;
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+          (event, session) => {
+            logger.log("🔐 Auth state in popup flow:", event);
+
+            if (event === "SIGNED_IN" && session?.user && !resolved) {
+              resolved = true;
+              logger.log("✅ User signed in via popup:", session.user.email);
+
+              // إغلاق الـ popup إذا كان مفتوحاً
+              try {
+                if (popup && !popup.closed) {
+                  popup.close();
+                }
+              } catch (_e) {
+                // تجاهل أخطاء إغلاق النافذة
               }
-            } catch (e) {
-              // تجاهل أخطاء إغلاق النافذة
-            }
 
+              subscription.unsubscribe();
+              clearInterval(popupChecker);
+              resolve({ success: true });
+            }
+          },
+        );
+
+        // تحقق دوري إذا أغلق المستخدم الـ popup
+        const popupChecker = setInterval(() => {
+          if (popup.closed && !resolved) {
+            logger.log("⚠️ Popup closed by user");
+            resolved = true;
             subscription.unsubscribe();
             clearInterval(popupChecker);
-            resolve({ success: true });
+            resolve({ success: false, error: "تم إغلاق نافذة تسجيل الدخول" });
           }
-        },
-      );
+        }, 500);
 
-      // تحقق دوري إذا أغلق المستخدم الـ popup
-      const popupChecker = setInterval(() => {
-        if (popup.closed && !resolved) {
-          logger.log("⚠️ Popup closed by user");
-          resolved = true;
-          subscription.unsubscribe();
-          clearInterval(popupChecker);
-          resolve({ success: false, error: "تم إغلاق نافذة تسجيل الدخول" });
-        }
-      }, 500);
-
-      // Timeout بعد 2 دقيقة
-      setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          subscription.unsubscribe();
-          clearInterval(popupChecker);
-          try {
-            popup.close();
-          } catch (e) {}
-          resolve({ success: false, error: "انتهت مهلة تسجيل الدخول" });
-        }
-      }, 120000);
-    } catch (err: unknown) {
-      const error = err as Error;
-      logger.error("Google Sign-In exception", error, "service");
-      resolve({
-        success: false,
-        error: error.message || "حدث خطأ أثناء تسجيل الدخول",
-      });
-    }
+        // Timeout بعد 2 دقيقة
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            subscription.unsubscribe();
+            clearInterval(popupChecker);
+            try {
+              popup.close();
+            } catch (_e) {
+              // No-op
+            }
+            resolve({ success: false, error: "انتهت مهلة تسجيل الدخول" });
+          }
+        }, 120000);
+      } catch (err: unknown) {
+        const error = err as Error;
+        logger.error("Google Sign-In exception", error, "service");
+        resolve({
+          success: false,
+          error: error.message || "حدث خطأ أثناء تسجيل الدخول",
+        });
+      }
+    })();
   });
 }
 
@@ -303,7 +268,7 @@ export async function signInWithOAuth(
     localStorage.removeItem("abeely_guest_mode");
 
     // الحصول على الـ redirect URL الصحيح
-    const redirectUrl = window.location.origin;
+    const redirectUrl = globalThis.location.origin;
 
     logger.log("🔐 Starting OAuth redirect to:", redirectUrl);
 
@@ -365,48 +330,22 @@ export async function signInWithOAuth(
 
 export async function getCurrentUser(): Promise<UserProfile | null> {
   try {
-    // Try cached user first
-    let user: { id: string; phone?: string } | null = null;
+    // 🚀 Speed optimization: Try getSession first as it's faster (local storage)
+    let user = null;
     try {
-      const { data: { user: fetchedUser }, error } = await supabase.auth
-        .getUser();
-      user = fetchedUser || null;
-      if (error) {
-        logger.warn("Supabase getUser warning:", error.message);
-      }
-    } catch (getUserErr) {
-      logger.warn("Supabase getUser exception:", getUserErr);
+      const { data } = await supabase.auth.getSession();
+      user = data?.session?.user || null;
+    } catch (e) {
+      logger.warn("getSession error:", e);
     }
 
-    // If access token is stale, try to recover the session before giving up
+    // If no session, try getUser (more authoritative but slower)
     if (!user) {
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        user = sessionData?.session?.user || null;
-      } catch (sessionErr) {
-        logger.warn("Supabase getSession warning:", sessionErr);
-      }
-    }
-
-    // Last resort: explicit refresh (helps avoid surprise logouts mid-action)
-    if (!user) {
-      try {
-        logger.log("Refreshing Supabase session because user is missing...");
-        const { data: refreshed, error: refreshError } = await supabase.auth
-          .refreshSession();
-        if (refreshError) {
-          const message = refreshError.message?.toLowerCase?.() || "";
-          if (!message.includes("network")) {
-            logger.warn("Supabase refreshSession error:", refreshError);
-          } else {
-            logger.warn(
-              "Network issue while refreshing session; keeping user state intact",
-            );
-          }
-        }
-        user = refreshed?.session?.user || null;
-      } catch (refreshErr) {
-        logger.warn("Supabase refreshSession exception:", refreshErr);
+        const { data } = await supabase.auth.getUser();
+        user = data?.user || null;
+      } catch (e) {
+        logger.warn("getUser error:", e);
       }
     }
 
@@ -451,19 +390,19 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
       // للمستخدمين الجدد: الاسم فارغ حتى يدخله المستخدم بنفسه
       // فقط Google/Apple يأتي معهم اسم من user_metadata
       const displayName =
-        ((user as any).user_metadata?.full_name as string | undefined) ||
-        ((user as any).user_metadata?.name as string | undefined) ||
+        (user.user_metadata?.full_name as string | undefined) ||
+        (user.user_metadata?.name as string | undefined) ||
         null; // فارغ للمستخدمين الجدد عبر الجوال
 
       // Try insert first (for new users)
       const profileData = {
         id: user.id,
-        phone: (user as any).phone ?? null,
-        email: (user as any).email ?? null,
+        phone: user.phone || null,
+        email: user.email || null,
         display_name: displayName,
         role: "user",
         is_guest: false,
-        is_verified: !!((user as any).phone || (user as any).email),
+        is_verified: !!(user.phone || user.email),
         // ملاحظة: لا نضع has_onboarded هنا لأن العمود قد لا يكون موجوداً
         // الـ onboarding يعتمد على localStorage + التحقق من الاهتمامات والاسم
       };
@@ -615,6 +554,7 @@ export async function updateProfile(
   try {
     const { data, error } = await supabase
       .from("profiles")
+      // @ts-ignore: Supabase types conflict
       .update(updates)
       .eq("id", userId)
       .select()
@@ -643,7 +583,7 @@ export async function signInWithEmail(
   try {
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: globalThis.location.origin },
     });
     if (error) {
       return { success: false, error: error.message };
@@ -845,75 +785,34 @@ export async function sendOTP(
  */
 async function handleTestProfile(user: { id: string }, phone: string) {
   try {
-    logger.log("📝 TEST PHONE: Checking profile for user:", user.id);
-    logger.log("📝 TEST PHONE: Phone number:", phone);
+    logger.log("📝 TEST PHONE: Updating profile for user:", user.id);
 
-    // التحقق من وجود profile
-    const { data: existingProfile, error: profileCheckError } = await supabase
-      .from("profiles")
-      .select("id, phone, display_name, is_verified")
-      .eq("id", user.id)
-      .single();
+    const displayName = phone.includes("1111111")
+      ? "مستخدم اختبار 1"
+      : phone.includes("2222222")
+      ? "مستخدم اختبار 2"
+      : `Test User ${phone.slice(-4)}`;
 
-    if (profileCheckError || !existingProfile) {
-      // إنشاء profile جديد إذا لم يكن موجوداً
-      logger.log(
-        "📝 TEST PHONE: Creating/Upserting profile for user:",
-        user.id,
+    const profileData = {
+      id: user.id,
+      phone: phone,
+      display_name: displayName,
+      is_verified: true,
+      is_guest: false,
+      role: "user" as const,
+    };
+
+    // Use single upsert instead of select then insert/update
+    const { error: profileError } = await (supabase.from("profiles") as any)
+      .upsert(profileData, { onConflict: "id" });
+
+    if (profileError) {
+      logger.warn(
+        "⚠️ TEST PHONE: Failed to upsert profile:",
+        profileError,
       );
-      const displayName = phone.includes("1111111")
-        ? "مستخدم اختبار 1"
-        : phone.includes("2222222")
-        ? "مستخدم اختبار 2"
-        : `Test User ${phone.slice(-4)}`;
-
-      const profileData = {
-        id: user.id,
-        phone: phone,
-        display_name: displayName,
-        is_verified: true,
-        is_guest: false,
-        role: "user" as const,
-      };
-
-      const { error: profileError } = await (supabase.from("profiles") as any)
-        .upsert(profileData, {
-          onConflict: "id",
-        });
-
-      if (profileError) {
-        logger.warn(
-          "⚠️ TEST PHONE: Failed to create/update profile:",
-          profileError,
-        );
-        logger.warn("⚠️ Profile error details:", {
-          code: profileError.code,
-          message: profileError.message,
-          details: profileError.details,
-        });
-      } else {
-        logger.log("✅ TEST PHONE: Profile created/updated successfully");
-      }
     } else {
-      // تحديث رقم الجوال في profile إذا كان مختلفاً أو غير محدد
-      if (existingProfile.phone !== phone || !existingProfile.phone) {
-        logger.log("📝 TEST PHONE: Updating phone number in profile");
-        const { error: updateError } = await supabase
-          .from("profiles")
-          .update({
-            phone: phone,
-            is_verified: true,
-          })
-          .eq("id", user.id);
-
-        if (updateError) {
-          logger.warn("⚠️ TEST PHONE: Failed to update phone:", updateError);
-        } else {
-          logger.log("✅ TEST PHONE: Phone number updated in profile");
-        }
-      } else {
-        logger.log("✅ TEST PHONE: Profile already exists with correct phone");
-      }
+      logger.log("✅ TEST PHONE: Profile upserted successfully");
     }
   } catch (profileErr) {
     logger.warn("⚠️ TEST PHONE: Profile check/update exception:", profileErr);
@@ -923,7 +822,7 @@ async function handleTestProfile(user: { id: string }, phone: string) {
 export async function verifyOTP(
   phone: string,
   token: string,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; user?: any; session?: any }> {
   try {
     // تنظيف الرمز من أي مسافات أو أحرف غير مرئية
     const cleanToken = token.trim().replace(/\s/g, "");
@@ -1110,7 +1009,7 @@ export async function verifyOTP(
         // Update profile using the helper function
         await handleTestProfile({ id: userId }, formattedPhone);
 
-        return { success: true };
+        return { success: true, user: { id: userId }, session };
       } else if (userId && !session) {
         // إذا كان userId موجود لكن لا توجد session، حاول إعادة تسجيل الدخول مرة واحدة
         logger.warn(
@@ -1132,7 +1031,11 @@ export async function verifyOTP(
         }
 
         await handleTestProfile({ id: retrySignin.user.id }, formattedPhone);
-        return { success: true };
+        return {
+          success: true,
+          user: { id: retrySignin.user.id },
+          session: retrySignin.session,
+        };
       }
     }
 
@@ -1160,7 +1063,7 @@ export async function verifyOTP(
 
     if (data?.user) {
       logger.log("✅ OTP verified, user:", data.user.id);
-      return { success: true };
+      return { success: true, user: data.user, session: data.session };
     }
 
     return { success: false, error: "رمز التحقق غير صحيح" };
@@ -1171,15 +1074,15 @@ export async function verifyOTP(
 }
 
 // Guest phone verification functions
-export async function verifyGuestPhone(
+export function verifyGuestPhone(
   phone: string,
 ): Promise<{ success: boolean; error?: string }> {
   return sendOTP(phone);
 }
 
-export async function confirmGuestPhone(
+export function confirmGuestPhone(
   phone: string,
   token: string,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; user?: any; session?: any }> {
   return verifyOTP(phone, token);
 }

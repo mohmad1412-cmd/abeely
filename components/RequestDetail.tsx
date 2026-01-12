@@ -1,8 +1,6 @@
 import {
   canUserReviewRequest,
-  createReview,
   getReviewsForUser,
-  updateReview,
 } from "../services/reviewsService.ts";
 import { ReviewForm } from "./ReviewForm.tsx";
 import { Review } from "../types.ts";
@@ -14,14 +12,19 @@ import React, {
   useState,
 } from "react";
 import { logger } from "../utils/logger.ts";
-import { AppMode, Message as LocalMessage, Offer, Request } from "../types.ts";
+import {
+  AppMode,
+  AppNotification,
+  Offer,
+  Request,
+  UserProfile,
+} from "../types.ts";
 import { Button } from "./ui/Button.tsx";
 import { Badge } from "./ui/Badge.tsx";
 import {
   AlertCircle,
   AlertTriangle,
   Archive,
-  ArrowRight,
   Bell,
   BellOff,
   Calendar,
@@ -41,9 +44,6 @@ import {
   EyeOff,
   FileText,
   Flag,
-  ImageIcon,
-  Info,
-  Link,
   Loader2,
   Lock,
   MapPin,
@@ -53,7 +53,6 @@ import {
   MoreVertical,
   Paperclip,
   RefreshCw,
-  Search,
   Send,
   Share2,
   Sparkles,
@@ -115,7 +114,7 @@ import {
   validateFile,
 } from "../services/storageService.ts";
 import { supabase } from "../services/supabaseClient.ts";
-import { DEFAULT_SAUDI_CITIES } from "../services/placesService.ts";
+// import { DEFAULT_SAUDI_CITIES } from "../services/placesService.ts";
 import { CityAutocomplete } from "./ui/CityAutocomplete.tsx";
 import { AVAILABLE_CATEGORIES } from "../data.ts";
 import { getCategoryLabel, SupportedLocale } from "../types.ts";
@@ -173,13 +172,13 @@ interface RequestDetailProps {
   isModeSwitching: boolean;
   unreadCount: number;
   hasUnreadMessages: boolean;
-  user: any;
+  user: UserProfile | null;
   setView: (view: any) => void;
   setPreviousView: (view: any) => void;
   titleKey: number;
-  notifications: any[];
+  notifications: AppNotification[];
   onMarkAsRead: (id: string) => void;
-  onNotificationClick?: (notification: any) => void;
+  onNotificationClick?: (notification: AppNotification) => void;
   onClearAll: () => void;
   onSignOut: () => void;
   onMarkRequestAsRead?: (id: string) => void;
@@ -212,16 +211,16 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     toggleTheme,
     onOpenLanguagePopup,
     scrollToOfferSection = false,
-    navigatedFromSidebar = false,
+    _navigatedFromSidebar = false,
     highlightOfferId = null,
     receivedOffersMap = new Map(),
-    onNavigateToMessages,
+    _onNavigateToMessages,
     autoTranslateRequests = false,
     currentLanguage = "ar",
     onCompleteRequest,
     savedOfferForm,
     onOfferFormChange,
-    savedScrollPosition = 0,
+    _savedScrollPosition = 0,
     onScrollPositionChange,
     // Unified Header Props
     toggleMode,
@@ -290,11 +289,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   >({}); // track local status changes
   const [chatMessage, setChatMessage] = useState("");
   const [isSendingChat, setIsSendingChat] = useState(false);
-  const [isShared, setIsShared] = useState(false);
+  const [_isShared, setIsShared] = useState(false);
   const [isIdCopied, setIsIdCopied] = useState(false);
   const [showOfferPulse, setShowOfferPulse] = useState(false);
   const [flashKey, setFlashKey] = useState(0);
-  const [showStatusPulse, setShowStatusPulse] = useState(false);
+  const [_showStatusPulse, _setShowStatusPulse] = useState(false);
   const [clickedIcons, setClickedIcons] = useState<{ [key: string]: boolean }>(
     {},
   );
@@ -329,7 +328,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [isCancellingOffer, setIsCancellingOffer] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
-  const [userReview, setUserReview] = useState<Review | null>(null);
+  const [_userReview, _setUserReview] = useState<Review | null>(null);
   const [canReview, setCanReview] = useState(false);
 
   // Check if user can review this request
@@ -342,7 +341,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
         // Check if already reviewed
         if (canReviewResult) {
-          const reviews = await getReviewsForUser(
+          const _reviews = await getReviewsForUser(
             request.author === user.id
               ? (request.acceptedOfferId
                 ? request.acceptedOfferProvider || ""
@@ -772,6 +771,36 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const getEffectiveOfferStatus = (offer: Offer): string => {
     return localOfferStatuses[offer.id] || offer.status;
   };
+
+  const sortedOffers = useMemo(() => {
+    if (allOffers.length === 0) return [];
+
+    const statusPriority: Record<Offer["status"], number> = {
+      accepted: 0,
+      negotiating: 1,
+      pending: 2,
+      completed: 3,
+      rejected: 4,
+      cancelled: 5,
+    };
+
+    return [...allOffers].sort((a, b) => {
+      const statusA = getEffectiveOfferStatus(a) as Offer["status"];
+      const statusB = getEffectiveOfferStatus(b) as Offer["status"];
+      const statusDiff = (statusPriority[statusA] ?? 99) -
+        (statusPriority[statusB] ?? 99);
+      if (statusDiff !== 0) return statusDiff;
+
+      const unreadA = unreadMessagesPerOffer.get(a.id) || 0;
+      const unreadB = unreadMessagesPerOffer.get(b.id) || 0;
+      if (unreadA !== unreadB) return unreadB - unreadA;
+
+      const createdA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const createdB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return createdB - createdA;
+    });
+  }, [allOffers, localOfferStatuses, unreadMessagesPerOffer]);
+
 
   // State لقبول العرض
   const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
@@ -1638,7 +1667,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         logger.error("Submit offer error:", err, "service");
         const errorMessage = err?.message || err?.error?.message ||
           "حدث خطأ في إرسال العرض. حاول مرة أخرى.";
-        console.error("Full error details:", err);
+        logger.error("Error sending offer", err, "RequestDetail");
         alert(
           `حدث خطأ في إرسال العرض:\n${errorMessage}\n\nتحقق من Console لمزيد من التفاصيل.`,
         );
@@ -2169,8 +2198,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       }
     } catch (error) {
       clearTimeout(timeoutId);
-      logger.error("Error sending chat message:", error, "service");
-      console.error("Send chat error", error);
+      logger.error("Error sending chat message", error, "RequestDetail");
       alert("حدث خطأ أثناء إرسال الرسالة. يرجى المحاولة مرة أخرى.");
     } finally {
       setIsSendingChat(false);
@@ -2400,6 +2428,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   {/* Translation Toggle */}
                   {autoTranslateRequests && (
                     <button
+                      type="button"
                       onClick={() => setIsShowingOriginal(!isShowingOriginal)}
                       className="absolute top-4 right-4 text-xs text-white/80 hover:text-white z-20 underline underline-offset-2 px-3 py-1 rounded-md bg-black/20 backdrop-blur-sm transition-colors"
                     >
@@ -2832,7 +2861,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       }}
                       className="space-y-4"
                     >
-                      {allOffers.map((offer, index) => (
+                      {sortedOffers.map((offer, index) => (
                         <motion.div
                           key={offer.id}
                           id={`offer-${offer.id}`}
@@ -2960,8 +2989,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                               <>
                                 {/* 1. Accept Button (Appears Right in RTL because it's first) */}
                                 <Button
+                                  type="button"
                                   size="sm"
-                                  className="flex-1 bg-primary hover:bg-primary/90 text-white shadow-sm h-10 text-sm font-bold disabled:opacity-50"
+                                  variant="gradient"
+                                  className="flex-1 h-11 text-sm font-bold rounded-xl shadow-md"
                                   onClick={() => handleAcceptOffer(offer.id)}
                                   disabled={isAcceptingOffer || isGuest}
                                 >
@@ -2972,7 +3003,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                         className="animate-spin ml-2"
                                       />
                                     )
-                                    : null}
+                                    : (
+                                      <CheckCircle size={18} className="ml-2" />
+                                    )}
                                   قبول العرض
                                 </Button>
 
@@ -2980,8 +3013,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                 {offer.isNegotiable
                                   ? (
                                     <Button
+                                      type="button"
                                       size="sm"
-                                      className="flex-1 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border-transparent h-10 text-sm font-bold shadow-sm disabled:opacity-70"
+                                      variant="outline"
+                                      className="flex-1 h-11 text-sm font-bold rounded-xl border-primary/30 text-primary hover:bg-primary/5 shadow-sm disabled:opacity-70"
                                       onClick={() =>
                                         handleStartNegotiation(offer.id)}
                                       disabled={isStartingNegotiation ||
@@ -3004,9 +3039,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                   )
                                   : (
                                     <Button
+                                      type="button"
                                       size="sm"
                                       disabled
-                                      className="flex-1 bg-orange-100 text-orange-700 border-transparent h-10 text-sm font-bold shadow-sm disabled:opacity-100 hover:bg-orange-100 cursor-not-allowed"
+                                      className="flex-1 h-11 rounded-xl border border-border/60 bg-secondary/40 text-muted-foreground text-sm font-bold shadow-none disabled:opacity-100 cursor-not-allowed"
                                     >
                                       <Lock size={18} className="ml-2" />
                                       غير قابل للتفاوض
@@ -3034,9 +3070,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                               (
                                 <>
                                   <Button
+                                    type="button"
                                     size="sm"
-                                    variant="secondary"
-                                    className="relative flex-1 border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 h-10 overflow-visible"
+                                    variant="outline"
+                                    className="relative flex-1 h-11 rounded-xl border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 overflow-visible"
                                     onClick={() => {
                                       setActiveOfferId(offer.id);
                                       setNegotiationOpen(true);
@@ -3069,9 +3106,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                     </div>
                                   </Button>
                                   <Button
+                                    type="button"
                                     size="sm"
                                     variant="success"
-                                    className="flex-1 shadow-sm h-10 disabled:opacity-50"
+                                    className="flex-1 h-11 rounded-xl shadow-md disabled:opacity-50"
                                     onClick={() => handleAcceptOffer(offer.id)}
                                     disabled={isAcceptingOffer || isGuest}
                                   >
@@ -3105,6 +3143,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                       request.isCreatedViaWhatsApp) &&
                                     (
                                       <Button
+                                        type="button"
                                         size="sm"
                                         className="flex-1 bg-primary hover:bg-primary/90 text-white h-10"
                                         onClick={() =>
@@ -3130,6 +3169,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                       request.contactMethod === "both" ||
                                       !request.contactMethod)) && (
                                     <Button
+                                      type="button"
                                       size="sm"
                                       className="flex-1 bg-primary hover:bg-primary/90 h-10"
                                       onClick={() => {
@@ -3161,6 +3201,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
                     {canReview && (
                       <Button
+                        type="button"
                         size="lg"
                         className="w-full bg-yellow-500 hover:bg-yellow-600 text-white shadow-md animate-in fade-in zoom-in duration-3000"
                         onClick={() => setShowReviewForm(true)}
@@ -3256,6 +3297,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         request.isCreatedViaWhatsApp) &&
                       (
                         <Button
+                          type="button"
                           size="sm"
                           className="w-full bg-[#25D366] hover:bg-[#20BD5A] text-white gap-2 h-10"
                           onClick={() =>
@@ -3530,6 +3572,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                               </div>
                               <div className="flex gap-3">
                                 <Button
+                                  type="button"
                                   variant="secondary"
                                   className="flex-1"
                                   onClick={() => setShowCancelConfirm(false)}
@@ -3537,6 +3580,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                   تراجع
                                 </Button>
                                 <Button
+                                  type="button"
                                   variant="danger"
                                   className="flex-1"
                                   isLoading={isCancellingOffer}
@@ -4114,7 +4158,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         }
                       }}
                       disabled={isStartingNegotiation || isGuest}
-                      className={`relative inline-flex items-center justify-center gap-2 rounded-2xl font-bold text-base transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 overflow-hidden active:scale-[0.96] select-none touch-manipulation bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-lg shadow-lg w-full py-4 px-4`}
+                      className={`relative inline-flex items-center justify-center gap-2 rounded-2xl font-bold text-base transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 overflow-hidden active:scale-[0.96] select-none touch-manipulation bg-gradient-to-r from-primary via-primary to-accent text-white shadow-xl shadow-primary/30 hover:shadow-2xl w-full py-4 px-4`}
                     >
                       {isStartingNegotiation
                         ? (
@@ -4189,9 +4233,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   !isSubmittingOffer && !offerSubmitted}
                 className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg ${
                   !isOfferSectionVisible
-                    ? "bg-primary text-white hover:bg-primary/90 shadow-primary/30"
+                    ? "bg-gradient-to-r from-primary via-primary to-accent text-white shadow-primary/40 hover:shadow-xl"
                     : (offerPrice && offerTitle) && !isSubmittingOffer
-                    ? "bg-primary text-white hover:bg-primary/90 shadow-primary/30"
+                    ? "bg-gradient-to-r from-primary via-primary to-accent text-white shadow-primary/40 hover:shadow-xl"
                     : "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none"
                 }`}
               >
@@ -4272,7 +4316,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       setNegotiationOpen(true);
                     }}
                     disabled={isGuest}
-                    className={`relative inline-flex items-center justify-center gap-2 rounded-2xl font-bold text-base transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 overflow-visible active:scale-[0.96] select-none touch-manipulation bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-lg shadow-lg w-full py-4 px-4`}
+                    className={`relative inline-flex items-center justify-center gap-2 rounded-2xl font-bold text-base transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 overflow-visible active:scale-[0.96] select-none touch-manipulation bg-gradient-to-r from-primary via-primary to-accent text-white shadow-xl shadow-primary/30 hover:shadow-2xl w-full py-4 px-4`}
                   >
                     <div className="inline-flex items-center justify-center gap-2">
                       {isNegotiating || offerStatus === "accepted" ||
@@ -4654,7 +4698,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                   providerId: userId,
                                   providerName: userProfile.display_name ||
                                     "مزود خدمة",
-                                  providerAvatar: userProfile.avatar_url,
+                                  providerAvatar: userProfile.avatar_url ||
+                                    undefined,
                                   title: offerTitle.trim(),
                                   description: offerDescription.trim() || "",
                                   price: offerPrice.trim(),
@@ -4722,7 +4767,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                               const errorMessage = err?.message ||
                                 err?.error?.message ||
                                 "حدث خطأ في إرسال العرض. حاول مرة أخرى.";
-                              console.error("Full error details:", err);
+                              logger.error(
+                                "Error sending guest offer",
+                                err,
+                                "RequestDetail",
+                              );
                               setGuestOfferError(
                                 `حدث خطأ في إرسال العرض:\n${errorMessage}`,
                               );
@@ -5086,11 +5135,14 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       onClick={() => {
                         if (navigator.vibrate) navigator.vibrate(10);
                         setIsConversationMuted((prev) => !prev);
-                        // TODO: Implement mute notifications functionality
+                        // Note: Mute state is currently UI-only.
+                        // Future enhancement: persist to database and filter notifications server-side
                         logger.log(
                           `Conversation notifications ${
                             !isConversationMuted ? "muted" : "unmuted"
                           }`,
+                          { conversationId: activeConversation?.id },
+                          "RequestDetail",
                         );
                       }}
                       whileHover={{ scale: 1.05 }}

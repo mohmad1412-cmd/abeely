@@ -1,10 +1,18 @@
-import React, { useEffect, useRef, useState } from "react";
-import { logger } from "../utils/logger";
-import { Review, UserPreferences } from "../types";
-import { Badge } from "./ui/Badge";
-import { supabase } from "../services/supabaseClient";
+import React, { SetStateAction, useEffect, useRef, useState } from "react";
+import { logger } from "../utils/logger.ts";
 import {
-  Bell,
+  AppNotification,
+  Category,
+  Request,
+  Review,
+  UserPreferences,
+  UserProfile,
+  ViewState,
+} from "../types.ts";
+import { Badge } from "./ui/Badge.tsx";
+import { supabase } from "../services/supabaseClient.ts";
+import {
+  Bell as _Bell,
   Calendar,
   Camera,
   Check,
@@ -13,18 +21,18 @@ import {
   Edit2,
   Filter,
   MapPin,
-  Plus,
+  Plus as _Plus,
   Search,
   Star,
   User,
   X,
 } from "lucide-react";
-import { Button } from "./ui/Button";
-import { UnifiedHeader } from "./ui/UnifiedHeader";
+import { Button } from "./ui/Button.tsx";
+import { UnifiedHeader } from "./ui/UnifiedHeader.tsx";
 import { AnimatePresence, motion } from "framer-motion";
-import { uploadAvatar } from "../services/storageService";
-import { AVAILABLE_CATEGORIES } from "../data";
-// import { CityAutocomplete } from "./ui/CityAutocomplete";
+import { uploadAvatar } from "../services/storageService.ts";
+import { AVAILABLE_CATEGORIES } from "../data.ts";
+import { CityAutocomplete } from "./ui/CityAutocomplete.tsx";
 import { createPortal } from "react-dom";
 
 interface ProfileProps {
@@ -40,30 +48,30 @@ interface ProfileProps {
   isModeSwitching: boolean;
   unreadCount: number;
   hasUnreadMessages: boolean;
-  user: any;
-  onUpdateProfile?: (updates: any) => Promise<void>;
+  user: UserProfile | null;
+  onUpdateProfile?: (updates: Partial<UserProfile>) => Promise<void>;
   userPreferences?: UserPreferences;
   onUpdatePreferences?: (prefs: UserPreferences) => void;
-  setView: (view: any) => void;
-  setPreviousView: (view: any) => void;
+  setView: (view: SetStateAction<ViewState>) => void;
+  setPreviousView: (view: SetStateAction<ViewState | null>) => void;
   titleKey: number;
-  notifications: any[];
+  notifications: AppNotification[];
   onMarkAsRead: (id: string) => void;
-  onNotificationClick?: (notification: any) => void;
+  onNotificationClick?: (notification: AppNotification) => void;
   onClearAll: () => void;
   onSignOut: () => void;
   onBack: () => void;
   isGuest?: boolean;
   onNavigateToProfile?: () => void;
   onNavigateToSettings?: () => void;
-  onSelectRequest?: (req: any) => void; // Added for request navigation
+  onSelectRequest?: (req: Request) => void; // Added for request navigation
   viewingUserId?: string | null; // معرف المستخدم المراد عرض ملفه الشخصي (null = الملف الشخصي الحالي)
 }
 
 export const Profile: React.FC<ProfileProps> = ({
   userReviews,
   userRating,
-  profileRole,
+  profileRole: _profileRole,
   isDarkMode,
   toggleTheme,
   onOpenLanguagePopup,
@@ -100,7 +108,7 @@ export const Profile: React.FC<ProfileProps> = ({
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [displayName, setDisplayName] = useState(user?.display_name || "");
-  const [bio, setBio] = useState((user as any)?.bio || "");
+  const [bio, setBio] = useState((user as UserProfile | null)?.bio || "");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || "");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -112,7 +120,7 @@ export const Profile: React.FC<ProfileProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // State for viewing another user's profile
-  const [viewingUser, setViewingUser] = useState<any>(null);
+  const [viewingUser, setViewingUser] = useState<UserProfile | null>(null);
   const [isLoadingViewingUser, setIsLoadingViewingUser] = useState(false);
 
   // Determine if we're viewing another user's profile
@@ -144,10 +152,10 @@ export const Profile: React.FC<ProfileProps> = ({
           onSignOut={onSignOut}
           backButton
           onBack={onBack}
-          showBackButtonOnDesktop={true}
+          showBackButtonOnDesktop
           title="الملف الشخصي"
           currentView="profile"
-          hideModeToggle={true}
+          hideModeToggle
           isGuest={isGuest}
           onNavigateToProfile={onNavigateToProfile}
           onNavigateToSettings={onNavigateToSettings}
@@ -187,10 +195,10 @@ export const Profile: React.FC<ProfileProps> = ({
           onSignOut={onSignOut}
           backButton
           onBack={onBack}
-          showBackButtonOnDesktop={true}
+          showBackButtonOnDesktop
           title="الملف الشخصي"
           currentView="profile"
-          hideModeToggle={true}
+          hideModeToggle
           isGuest={isGuest}
           onNavigateToProfile={onNavigateToProfile}
           onNavigateToSettings={onNavigateToSettings}
@@ -220,7 +228,7 @@ export const Profile: React.FC<ProfileProps> = ({
   );
   const [tempCities, setTempCities] = useState<string[]>(selectedCities);
   const [categorySearch, setCategorySearch] = useState("");
-  const [citySearch, setCitySearch] = useState("");
+  const [_citySearch, setCitySearch] = useState("");
   const [isCategoriesExpanded, setIsCategoriesExpanded] = useState(false);
   const [isCitiesExpanded, setIsCitiesExpanded] = useState(false);
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
@@ -268,7 +276,7 @@ export const Profile: React.FC<ProfileProps> = ({
   useEffect(() => {
     if (!isViewingOtherUser) {
       setDisplayName(user?.display_name || "");
-      setBio((user as any)?.bio || "");
+      setBio((user as UserProfile | null)?.bio || "");
       setAvatarUrl(user?.avatar_url || "");
     }
   }, [user, isViewingOtherUser]);
@@ -329,7 +337,7 @@ export const Profile: React.FC<ProfileProps> = ({
     });
   };
 
-  const filteredCategories = AVAILABLE_CATEGORIES.filter((cat) =>
+  const filteredCategories = AVAILABLE_CATEGORIES.filter((cat: Category) =>
     cat.label.toLowerCase().includes(categorySearch.toLowerCase())
   );
 
@@ -469,10 +477,10 @@ export const Profile: React.FC<ProfileProps> = ({
         onSignOut={onSignOut}
         backButton
         onBack={onBack}
-        showBackButtonOnDesktop={true}
+        showBackButtonOnDesktop
         title="الملف الشخصي"
         currentView="profile"
-        hideModeToggle={true}
+        hideModeToggle
         isGuest={isGuest}
         onNavigateToProfile={onNavigateToProfile}
         onNavigateToSettings={onNavigateToSettings}
@@ -690,32 +698,35 @@ export const Profile: React.FC<ProfileProps> = ({
                       )}
                   </div>
 
-                  {(currentUser?.created_at || user?.created_at) && (
-                    <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
-                      <Badge variant="outline">
-                        <Calendar size={12} className="ml-1" />
-                        عضو منذ{" "}
-                        {new Date(currentUser?.created_at || user?.created_at)
-                          .getFullYear()}
-                      </Badge>
-                      {currentUser?.is_verified && (
-                        <Badge variant="default" className="bg-primary">
-                          <Check size={12} className="ml-1" />
-                          معتمد
-                        </Badge>
-                      )}
-                      {currentUser?.rating && currentUser.rating > 0 && (
+                  {(() => {
+                    const createdAt = currentUser?.created_at ||
+                      user?.created_at;
+                    if (!createdAt) return null;
+                    return (
+                      <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
                         <Badge variant="outline">
-                          <Star
-                            size={12}
-                            className="ml-1 fill-yellow-400 text-yellow-400"
-                          />
-                          {currentUser.rating.toFixed(1)}{" "}
-                          ({currentUser.reviews_count || 0} تقييم)
+                          <Calendar size={12} className="ml-1" />
+                          عضو منذ {new Date(createdAt).getFullYear()}
                         </Badge>
-                      )}
-                    </div>
-                  )}
+                        {currentUser?.is_verified && (
+                          <Badge variant="default" className="bg-primary">
+                            <Check size={12} className="ml-1" />
+                            معتمد
+                          </Badge>
+                        )}
+                        {currentUser?.rating && currentUser.rating > 0 && (
+                          <Badge variant="outline">
+                            <Star
+                              size={12}
+                              className="ml-1 fill-yellow-400 text-yellow-400"
+                            />
+                            {currentUser.rating.toFixed(1)}{" "}
+                            ({currentUser.reviews_count || 0} تقييم)
+                          </Badge>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -785,7 +796,9 @@ export const Profile: React.FC<ProfileProps> = ({
                           whileTap={{ scale: 0.95 }}
                           onClick={() => {
                             setIsEditingBio(false);
-                            setBio((currentUser as any)?.bio || "");
+                            setBio(
+                              (currentUser as UserProfile | null)?.bio || "",
+                            );
                           }}
                           className="px-4 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors text-sm font-medium flex items-center gap-2"
                         >
@@ -886,7 +899,7 @@ export const Profile: React.FC<ProfileProps> = ({
                       </h4>
                       <div className="flex flex-wrap gap-2">
                         {selectedCategories.map((catId) => {
-                          const cat = AVAILABLE_CATEGORIES.find((c) =>
+                          const cat = AVAILABLE_CATEGORIES.find((c: Category) =>
                             c.id === catId
                           );
                           return cat
@@ -1008,7 +1021,10 @@ export const Profile: React.FC<ProfileProps> = ({
                     </div>
                   ))}
                   {userReviews.length > 3 && (
-                    <button className="w-full text-center text-sm text-primary hover:underline py-2">
+                    <button
+                      type="button"
+                      className="w-full text-center text-sm text-primary hover:underline py-2"
+                    >
                       عرض كل التقييمات ({userReviews.length})
                     </button>
                   )}
@@ -1056,6 +1072,7 @@ export const Profile: React.FC<ProfileProps> = ({
                   إدارة الاهتمامات
                 </h2>
                 <button
+                  type="button"
                   onClick={() => setIsManageInterestsOpen(false)}
                   className="p-2 hover:bg-secondary rounded-full transition-colors"
                 >
@@ -1068,6 +1085,7 @@ export const Profile: React.FC<ProfileProps> = ({
                 {/* Categories - Collapsible */}
                 <div className="space-y-3">
                   <button
+                    type="button"
                     onClick={() => {
                       const newState = !isCategoriesExpanded;
                       setIsCategoriesExpanded(newState);
@@ -1123,8 +1141,9 @@ export const Profile: React.FC<ProfileProps> = ({
                           />
                         </div>
                         <div className="flex flex-wrap justify-start gap-2 max-h-48 overflow-y-auto no-scrollbar w-full">
-                          {filteredCategories.map((cat) => (
+                          {filteredCategories.map((cat: Category) => (
                             <button
+                              type="button"
                               key={cat.id}
                               onClick={() => toggleCategory(cat.id)}
                               className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${
@@ -1148,6 +1167,7 @@ export const Profile: React.FC<ProfileProps> = ({
                 {/* Cities - Collapsible */}
                 <div className="space-y-3">
                   <button
+                    type="button"
                     onClick={() => {
                       const newState = !isCitiesExpanded;
                       setIsCitiesExpanded(newState);
@@ -1193,6 +1213,7 @@ export const Profile: React.FC<ProfileProps> = ({
                         {/* Options: جميع المدن or مدن محددة */}
                         <div className="flex gap-2 mt-3 w-full">
                           <button
+                            type="button"
                             onClick={() => {
                               if (navigator.vibrate) navigator.vibrate(10);
                               setTempCities([
@@ -1219,6 +1240,7 @@ export const Profile: React.FC<ProfileProps> = ({
                             </div>
                           </button>
                           <button
+                            type="button"
                             onClick={() => {
                               if (navigator.vibrate) navigator.vibrate(10);
                               if (tempCities.includes("كل المدن")) {
@@ -1242,18 +1264,13 @@ export const Profile: React.FC<ProfileProps> = ({
                         </div>
 
                         {/* City Autocomplete - فقط عندما تكون "مدن محددة" */}
-                        {/* CityAutocomplete temporarily disabled due to 500 error */}
                         {!tempCities.includes("كل المدن") && (
-                          <div className="p-4 bg-secondary/30 rounded-xl text-center text-muted-foreground text-sm">
-                            جاري صيانة البحث عن المدن...
-                          </div>
-                          /*
                           <CityAutocomplete
                             value=""
                             onChange={() => {}}
                             placeholder="ابحث عن مدن، معالم، أو محلات..."
-                            multiSelect={true}
-                            showAllCitiesOption={true}
+                            multiSelect
+                            showAllCitiesOption
                             selectedCities={tempCities}
                             onSelectCity={(city) => {
                               if (navigator.vibrate) navigator.vibrate(10);
@@ -1263,19 +1280,18 @@ export const Profile: React.FC<ProfileProps> = ({
                               if (navigator.vibrate) navigator.vibrate(10);
                               toggleCity(city);
                             }}
-                            showRemoteOption={true}
-                            showGPSOption={true}
-                            showMapOption={true}
+                            showRemoteOption
+                            showGPSOption
+                            showMapOption
                             onOpenMap={() => {
                               if (navigator.vibrate) navigator.vibrate(10);
                               const mapsUrl =
                                 `https://www.google.com/maps/search/?api=1&query=المملكة+العربية+السعودية`;
-                              window.open(mapsUrl, "_blank");
+                              globalThis.open(mapsUrl, "_blank");
                             }}
-                            hideChips={true}
+                            hideChips
                             dropdownDirection="up"
                           />
-                        */
                         )}
                       </motion.div>
                     )}
@@ -1287,6 +1303,7 @@ export const Profile: React.FC<ProfileProps> = ({
               <div className="border-t border-border/50 bg-card/95 backdrop-blur-xl px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
                 <div className="flex gap-3">
                   <button
+                    type="button"
                     onClick={() => setIsManageInterestsOpen(false)}
                     className="flex-1 h-12 px-4 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors font-bold text-sm"
                   >

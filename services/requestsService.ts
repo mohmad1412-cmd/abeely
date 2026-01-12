@@ -1,6 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { AIDraft, classifyAndDraft } from "./aiService";
-import { Offer, Request } from "../types";
+import { Offer, OfferInsert, Request, RequestInsert } from "../types";
 import { getCategoryIdsByLabels } from "./categoriesService";
 import { logger } from "../utils/logger";
 import { storageService as _storageService } from "./storageService";
@@ -235,45 +235,6 @@ async function sendPushNotificationForNegotiationStarted(params: {
     );
   }
 }
-
-export type RequestInsert = {
-  id?: string;
-  author_id?: string;
-  title: string;
-  description: string;
-  status: "active" | "assigned" | "completed" | "archived";
-  is_public: boolean;
-  budget_min?: string;
-  budget_max?: string;
-  budget_type?: "not-specified" | "negotiable" | "fixed";
-  location?: string;
-  delivery_type?: "not-specified" | "pickup" | "delivery" | "both";
-  delivery_from?: string;
-  delivery_to?: string;
-  seriousness?: number;
-  images?: string[]; // صور الطلب
-};
-
-export type OfferInsert = {
-  id?: string;
-  request_id: string;
-  provider_id: string;
-  provider_name: string;
-  title: string;
-  description: string;
-  price?: string;
-  delivery_time?: string;
-  status:
-    | "pending"
-    | "accepted"
-    | "rejected"
-    | "negotiating"
-    | "cancelled"
-    | "completed";
-  is_negotiable: boolean;
-  location?: string;
-  images?: string[];
-};
 
 /**
  * ربط التصنيفات بالطلب - نستخدم الآن getCategoryIdsByLabels للتحويل الآمن
@@ -824,12 +785,16 @@ export async function createOffer(
       .select("display_name")
       .eq("id", input.providerId.trim())
       .single();
-    
+
     if (providerProfile?.display_name) {
       providerName = providerProfile.display_name;
     }
   } catch (profileError) {
-    logger.warn("Failed to fetch provider profile name, using default", profileError, "createOffer");
+    logger.warn(
+      "Failed to fetch provider profile name, using default",
+      profileError,
+      "createOffer",
+    );
     // نستخدم القيمة الافتراضية في حالة الخطأ
   }
 
@@ -1322,30 +1287,37 @@ export async function fetchOffersForRequest(
 
   // جلب أسماء المزودين من profiles للأعروض التي لا تحتوي على provider_name
   const offersWithMissingNames = (data || []).filter(
-    (offer: Record<string, any>) => !offer.provider_name || offer.provider_name === "مزود خدمة"
+    (offer: Record<string, any>) =>
+      !offer.provider_name || offer.provider_name === "مزود خدمة",
   );
-  
+
   const providerIds = offersWithMissingNames
     .map((offer: Record<string, any>) => offer.provider_id)
     .filter((id: string) => id) as string[];
 
-  let providerNamesMap: Map<string, string> = new Map();
+  const providerNamesMap: Map<string, string> = new Map();
   if (providerIds.length > 0) {
     try {
       const { data: profiles } = await supabase
         .from("profiles")
         .select("id, display_name")
         .in("id", providerIds);
-      
+
       if (profiles) {
-        profiles.forEach((profile: { id: string; display_name: string | null }) => {
-          if (profile.display_name) {
-            providerNamesMap.set(profile.id, profile.display_name);
-          }
-        });
+        profiles.forEach(
+          (profile: { id: string; display_name: string | null }) => {
+            if (profile.display_name) {
+              providerNamesMap.set(profile.id, profile.display_name);
+            }
+          },
+        );
       }
     } catch (profileError) {
-      logger.warn("Failed to fetch provider names, using stored values", profileError, "fetchOffersForRequest");
+      logger.warn(
+        "Failed to fetch provider names, using stored values",
+        profileError,
+        "fetchOffersForRequest",
+      );
     }
   }
 
@@ -1696,19 +1668,18 @@ export async function archiveOffer(
       .single();
 
     if (fetchError || !offer) {
-      console.error("❌ Error fetching offer:", fetchError);
-      logger.error("Error fetching offer:", fetchError);
+      logger.error("Error fetching offer", fetchError, "archiveOffer");
       return false;
     }
 
     // Check if already archived
     if (offer.status === "archived") {
-      console.log("⚠️ Offer is already archived:", offerId);
+      logger.log("Offer is already archived", { offerId }, "archiveOffer");
       return true; // Consider it a success
     }
 
     // Soft delete: Update status to 'archived' instead of deleting
-    console.log("🔄 Attempting to archive offer:", {
+    logger.log("Attempting to archive offer", {
       offerId,
       userId,
       currentStatus: offer.status,
@@ -1723,32 +1694,33 @@ export async function archiveOffer(
       .eq("provider_id", userId)
       .select();
 
-    console.log("📊 Update result:", { updateResult, error });
-
     if (error) {
-      console.error("❌ Error archiving offer:", error);
-      console.error("❌ Error details:", JSON.stringify(error, null, 2));
-      console.error("❌ Update query params:", { offerId, userId });
-      logger.error("Error archiving offer:", error);
+      logger.error("Error archiving offer", error, "archiveOffer", {
+        updateResult,
+        offerId,
+        userId,
+      });
       return false;
     }
 
     // Check if any rows were actually updated
     if (!updateResult || updateResult.length === 0) {
-      console.error(
-        "❌ No rows updated - offer may not exist or user doesn't own it",
+      logger.error(
+        "No rows updated - offer may not exist or user doesn't own it",
+        undefined,
+        "archiveOffer",
+        { offerId, userId },
       );
       return false;
     }
 
-    console.log("✅ Offer archived successfully (soft delete):", {
-      offerId,
-      userId,
-    });
-    logger.log("Offer archived successfully", { offerId });
+    logger.log(
+      "Offer archived successfully",
+      { offerId, userId },
+      "archiveOffer",
+    );
     return true;
   } catch (err: unknown) {
-    console.error("❌ Exception in archiveOffer:", err);
     logger.error("Error archiving offer", err as Error, "archiveOffer");
     return false;
   }
@@ -1932,11 +1904,11 @@ async function matchesUserInterests(
 
     const request = transformRequest(data);
 
-    // Check categories match
+    // Check category match
+    let hasMatchingCategory = false;
     if (interestedCategories.length > 0) {
       const requestCategories = request.categories || [];
-      const hasMatchingCategory = requestCategories.some((catLabel: string) => {
-        // البحث عن category object من request category label
+      hasMatchingCategory = requestCategories.some((catLabel: string) => {
         const requestCategoryObj = AVAILABLE_CATEGORIES.find((c) =>
           c.label === catLabel || c.label_en === catLabel ||
           c.label_ur === catLabel
@@ -1944,26 +1916,20 @@ async function matchesUserInterests(
         const requestCategoryId = requestCategoryObj?.id;
 
         return interestedCategories.some((interestId: string) => {
-          // المطابقة المباشرة: ID === ID
-          if (requestCategoryId === interestId) {
-            return true;
-          }
+          if (requestCategoryId === interestId) return true;
 
-          // المطابقة النصية: البحث عن category object للاهتمام
           const interestCategoryObj = AVAILABLE_CATEGORIES.find((c) =>
             c.id === interestId
           );
           if (!interestCategoryObj) return false;
 
-          // جمع جميع labels للاهتمام (عربي، إنجليزي، أوردي)
           const interestLabels = [
-            interestId, // ID نفسه
-            interestCategoryObj.label, // Label العربي
+            interestId,
+            interestCategoryObj.label,
             interestCategoryObj.label_en,
             interestCategoryObj.label_ur,
           ].filter(Boolean);
 
-          // إضافة مصطلحات ذات صلة للتصنيفات المتعلقة بالسيارات
           if (interestId.startsWith("car-")) {
             interestLabels.push(
               "سيارات",
@@ -1977,7 +1943,6 @@ async function matchesUserInterests(
             );
           }
 
-          // المطابقة النصية: البحث في label الطلب
           const catLabelLower = catLabel.toLowerCase();
           return interestLabels.some((label) => {
             if (!label) return false;
@@ -1990,32 +1955,53 @@ async function matchesUserInterests(
           });
         });
       });
-      if (!hasMatchingCategory) return false;
-    }
-
-    // Check city match
-    // إذا تم اختيار "كل المدن" أو "جميع المدن (شامل عن بعد)" أو لم يتم اختيار أي مدينة، نتخطى الفلترة
-    // إذا كان المستخدم اختار "كل المدن"، نعرض جميع الطلبات بغض النظر عن المدينة
-    if (!hasAllCities && actualCities.length > 0 && request.location) {
-      const requestCity = request.location.split("،").pop()?.trim() ||
-        request.location;
-      const hasMatchingCity = actualCities.some((city: string) =>
-        requestCity.includes(city) || city.includes(requestCity)
-      );
-      if (!hasMatchingCity) return false;
+    } else {
+      // If no categories selected, we consider it a match to allow filtering by city or radar only
+      hasMatchingCategory = true;
     }
 
     // Check radar words match (title/description)
+    let hasRadarMatch = false;
     if (radarWords.length > 0) {
       const searchText = `${request.title} ${request.description || ""}`
         .toLowerCase();
-      const hasRadarMatch = radarWords.some((word: string) =>
+      hasRadarMatch = radarWords.some((word: string) =>
         searchText.includes(word.toLowerCase())
       );
-      if (!hasRadarMatch) return false;
+    } else {
+      // If no radar words selected, we consider it a match (meaning no filtering by radar words)
+      hasRadarMatch = false; // Note: we'll use this in the final logic
     }
 
-    return true;
+    // Logic: (Category Match OR Radar Word Match) AND City Match
+    // If no categories AND no radar words, it passed the initial check at line 1908
+
+    // Check city match
+    let hasMatchingCity = true;
+    if (!hasAllCities && actualCities.length > 0 && request.location) {
+      const requestCity = request.location.split("،").pop()?.trim() ||
+        request.location;
+      hasMatchingCity = actualCities.some((city: string) =>
+        requestCity.includes(city) || city.includes(requestCity)
+      );
+    }
+
+    // Final flexible matching:
+    // 1. If categories AND radar words are set: match EITHER (flexible)
+    // 2. If only one is set: match that one
+    // 3. If neither: match everything in city
+    const hasCatSelection = interestedCategories.length > 0;
+    const hasRadarSelection = radarWords.length > 0;
+
+    let interestMatch = false;
+    if (!hasCatSelection && !hasRadarSelection) {
+      interestMatch = true;
+    } else {
+      interestMatch = (hasCatSelection && hasMatchingCategory) ||
+        (hasRadarSelection && hasRadarMatch);
+    }
+
+    return interestMatch && hasMatchingCity;
   } catch (error) {
     logger.error("Error checking user interests:", error);
     return false;

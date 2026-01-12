@@ -292,3 +292,55 @@ export const getPreferencesDirect = async (
     return null;
   }
 };
+
+// حفظ آخر طلب مفتوح
+export const saveLastExpandedRequestId = async (
+  userId: string,
+  requestId: string | null,
+): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ last_expanded_request_id: requestId })
+      .eq("id", userId);
+
+    if (error) {
+      console.error(
+        "[saveLastExpandedRequestId] Error saving expanded request ID:",
+        error,
+      );
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error("Error in saveLastExpandedRequestId:", err);
+    return false;
+  }
+};
+
+// الحصول على آخر طلب مفتوح
+export const getLastExpandedRequestId = async (
+  userId: string,
+): Promise<string | null> => {
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("last_expanded_request_id")
+      .eq("id", userId)
+      .single();
+
+    if (error) {
+      console.error(
+        "[getLastExpandedRequestId] Error fetching expanded request ID:",
+        error,
+      );
+      return null;
+    }
+
+    return data?.last_expanded_request_id || null;
+  } catch (err) {
+    console.error("Error in getLastExpandedRequestId:", err);
+    return null;
+  }
+};

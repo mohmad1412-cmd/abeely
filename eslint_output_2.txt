@@ -1,0 +1,40 @@
+
+C:\dev\copy-of-copy-of-servicelink-ai-platform\App.tsx
+   184:10  warning  'needsOnboarding' is assigned a value but never used                                                                          @typescript-eslint/no-unused-vars
+   184:27  warning  '_setNeedsOnboarding' is assigned a value but never used                                                                      @typescript-eslint/no-unused-vars
+   185:10  warning  'isNewUser' is assigned a value but never used                                                                                @typescript-eslint/no-unused-vars
+   185:21  warning  '_setIsNewUser' is assigned a value but never used                                                                            @typescript-eslint/no-unused-vars
+   288:10  warning  'connectionStatus' is assigned a value but never used                                                                         @typescript-eslint/no-unused-vars
+   288:28  warning  '_setConnectionStatus' is assigned a value but never used                                                                     @typescript-eslint/no-unused-vars
+   443:9   warning  '_notifRef' is assigned a value but never used                                                                                @typescript-eslint/no-unused-vars
+   788:6   warning  React Hook useEffect has a missing dependency: 'handleRouteNavigation'. Either include it or remove the dependency array      react-hooks/exhaustive-deps
+   837:6   warning  React Hook useEffect has a missing dependency: 'user.id'. Either include it or remove the dependency array                    react-hooks/exhaustive-deps
+   980:34  error    'error' is never reassigned. Use 'const' instead                                                                              prefer-const
+  1352:6   warning  React Hook useEffect has missing dependencies: 'appView' and 'isInPopup'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  1568:41  warning  'totalCount' is assigned a value but never used                                                                               @typescript-eslint/no-unused-vars
+  1934:9   error    'intervalId' is never reassigned. Use 'const' instead                                                                         prefer-const
+  1986:16  warning  'err' is defined but never used                                                                                               @typescript-eslint/no-unused-vars
+  2397:6   warning  React Hook useEffect has a missing dependency: 'myRequestIds'. Either include it or remove the dependency array               react-hooks/exhaustive-deps
+  2591:6   warning  React Hook useEffect has a missing dependency: 'myRequestIds'. Either include it or remove the dependency array               react-hooks/exhaustive-deps
+  3103:17  warning  'senderName' is assigned a value but never used                                                                               @typescript-eslint/no-unused-vars
+  3114:50  warning  'requestId' is defined but never used                                                                                         @typescript-eslint/no-unused-vars
+  3136:48  warning  'requestId' is defined but never used                                                                                         @typescript-eslint/no-unused-vars
+  3246:9   warning  'handleUnarchiveRequest' is assigned a value but never used                                                                   @typescript-eslint/no-unused-vars
+  3584:18  warning  'e' is defined but never used                                                                                                 @typescript-eslint/no-unused-vars
+  3724:16  warning  'e' is defined but never used                                                                                                 @typescript-eslint/no-unused-vars
+  3758:9   error    Unexpected lexical declaration in case block                                                                                  no-case-declarations
+  4044:9   error    Unexpected lexical declaration in case block                                                                                  no-case-declarations
+  4267:51  warning  'offer' is defined but never used                                                                                             @typescript-eslint/no-unused-vars
+  4483:9   error    Unexpected lexical declaration in case block                                                                                  no-case-declarations
+  4549:9   error    Unexpected lexical declaration in case block                                                                                  no-case-declarations
+  4763:9   error    Unexpected lexical declaration in case block                                                                                  no-case-declarations
+  4856:9   error    Unexpected lexical declaration in case block                                                                                  no-case-declarations
+  4926:9   error    Unexpected lexical declaration in case block                                                                                  no-case-declarations
+  4981:9   error    Unexpected lexical declaration in case block                                                                                  no-case-declarations
+  5035:40  warning  'conversationId' is defined but never used                                                                                    @typescript-eslint/no-unused-vars
+  5086:9   warning  'unreadNotificationsForMyRequests' is assigned a value but never used                                                         @typescript-eslint/no-unused-vars
+  5093:9   warning  'unreadNotificationsForMyOffers' is assigned a value but never used                                                           @typescript-eslint/no-unused-vars
+  5099:9   warning  'unreadNotificationsForProfile' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+
+ظ£û 35 problems (10 errors, 25 warnings)
+

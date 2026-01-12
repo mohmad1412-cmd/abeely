@@ -1,15 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Offer, Request } from "../types";
-import { logger } from "../utils/logger";
+import { Offer, Request, UserProfile } from "../types.ts";
+import { logger } from "../utils/logger.ts";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Archive,
-  ArchiveRestore,
-  ArrowUpDown,
   Calendar,
   CheckCircle,
   ChevronDown,
-  Clock,
   Edit,
   Eye,
   EyeOff,
@@ -25,11 +22,11 @@ import {
   User,
   X,
 } from "lucide-react";
-import { FaHandPointUp } from "react-icons/fa";
-import { formatTimeAgo } from "../utils/timeFormat";
-import { UnifiedFilterIsland } from "./ui/UnifiedFilterIsland";
-import { AVAILABLE_CATEGORIES } from "../data";
-import { DropdownMenu, DropdownMenuItem } from "./ui/DropdownMenu";
+
+import { formatTimeAgo } from "../utils/timeFormat.ts";
+import { DropdownMenu, DropdownMenuItem } from "./ui/DropdownMenu.tsx";
+import { UnifiedFilterIsland } from "./ui/UnifiedFilterIsland.tsx";
+import { CompactListView } from "./ui/CompactListView.tsx";
 
 type RequestFilter = "active" | "approved" | "all" | "completed";
 type SortOrder = "updatedAt" | "createdAt";
@@ -51,7 +48,7 @@ interface MyRequestsProps {
   unreadMessagesPerRequest?: Map<string, number>; // عدد الرسائل غير المقروءة لكل طلب
   unreadMessagesPerOffer?: Map<string, number>; // عدد الرسائل غير المقروءة لكل عرض (للعرض المقبول)
   // Profile dropdown props
-  user?: any;
+  user?: UserProfile | null;
   isGuest?: boolean;
   onNavigateToProfile?: () => void;
   onNavigateToSettings?: () => void;
@@ -71,6 +68,7 @@ interface MyRequestsProps {
   // تتبع الطلبات مع عروض جديدة
   requestsWithNewOffers?: Set<string>;
   onClearNewOfferHighlight?: (requestId: string) => void;
+  radarWords?: string[];
 }
 
 export const MyRequests: React.FC<MyRequestsProps> = ({
@@ -89,14 +87,14 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   viewedRequestIds = new Set(),
   unreadMessagesPerRequest = new Map(),
   unreadMessagesPerOffer = new Map(),
-  user,
-  isGuest = false,
-  onNavigateToProfile,
-  onNavigateToSettings,
-  onSignOut,
-  isDarkMode = false,
-  toggleTheme,
-  onOpenLanguagePopup,
+  user: _user,
+  isGuest: _isGuest = false,
+  onNavigateToProfile: _onNavigateToProfile,
+  onNavigateToSettings: _onNavigateToSettings,
+  onSignOut: _onSignOut,
+  isDarkMode: _isDarkMode = false,
+  toggleTheme: _toggleTheme,
+  onOpenLanguagePopup: _onOpenLanguagePopup,
   onCreateRequest,
   isActive = true,
   defaultFilter,
@@ -272,7 +270,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
 
   const handleArchiveRequest = async (requestId: string) => {
     if (!onArchiveRequest) return;
-    const confirmDelete = window.confirm(
+    const confirmDelete = globalThis.confirm(
       "سيتم حذف/أرشفة هذا الطلب. هل أنت متأكد؟",
     );
     if (!confirmDelete) return;
@@ -930,7 +928,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                                             }`}
                                           >
                                             <div className="flex items-center gap-2.5 text-right">
-                                              {option.icon && (
+                                              {(option as any).icon && (
                                                 <span
                                                   className={filter.value ===
                                                       option.value
@@ -982,6 +980,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
 
               {/* Search Button - Moves from right to left when clicked */}
               <button
+                type="button"
                 onClick={() => {
                   if (navigator.vibrate) navigator.vibrate(10);
                   if (!isSearchInputOpen && !searchTerm) {
@@ -1123,12 +1122,8 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
       </AnimatePresence>
 
       {/* Content */}
-      <div className="px-4 pb-24">
-        <div
-          key={reqFilter}
-          className="grid grid-cols-1 gap-6 min-h-[100px] pt-2"
-        >
-          {filteredRequests.length === 0 && (
+      <div className="pb-24">
+        {filteredRequests.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center min-h-[50vh]">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-secondary mb-4">
                 {reqFilter === "all"
@@ -1155,6 +1150,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
               </p>
               {reqFilter === "all" && onCreateRequest && (
                 <button
+                  type="button"
                   onClick={onCreateRequest}
                   className="mt-6 px-4 py-2 rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-colors flex items-center gap-2"
                 >
@@ -1163,540 +1159,38 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                 </button>
               )}
             </div>
+          ) : (
+            <CompactListView
+              requests={filteredRequests}
+              userId={userId}
+              isGuest={isGuest}
+              viewedRequestIds={viewedRequestIds}
+              receivedOffersMap={receivedOffersMap}
+              unreadMessagesPerRequest={unreadMessagesPerRequest}
+              unreadMessagesPerOffer={unreadMessagesPerOffer}
+              requestsWithNewOffers={requestsWithNewOffers}
+              onClearNewOfferHighlight={onClearNewOfferHighlight}
+              onSelectRequest={onSelectRequest}
+              onBumpRequest={onBumpRequest}
+              onEditRequest={onEditRequest}
+              onHideRequest={onHideRequest}
+              onUnhideRequest={onUnhideRequest}
+              onArchiveRequest={onArchiveRequest}
+              onOpenChat={onOpenChat}
+              onSelectOffer={(offer) => {
+                // Find the request for this offer and select it
+                const request = filteredRequests.find((r) => r.id === offer.requestId);
+                if (request) {
+                  onSelectRequest(request);
+                }
+              }}
+              isMyRequestsView={true}
+              showCategoriesInStatus={true}
+              radarWords={radarWords}
+              onRefresh={onRefresh}
+              disablePadding={true}
+            />
           )}
-          {filteredRequests.map((req, index) => {
-            // جلب العروض من receivedOffersMap
-            // محاولة البحث باستخدام ID الكامل أولاً
-            let allRequestOffers = receivedOffersMap.get(req.id) || [];
-
-            // إذا لم توجد عروض، نحاول البحث بطريقة أخرى (للتحقق من تطابق IDs)
-            if (allRequestOffers.length === 0 && receivedOffersMap.size > 0) {
-              // البحث في جميع المفاتيح للتحقق من تطابق IDs
-              const matchingKey = Array.from(receivedOffersMap.keys()).find(
-                (key) => {
-                  // مقارنة دقيقة للأرقام الأخيرة فقط للتأكد
-                  const reqIdSuffix = req.id.slice(-8); // آخر 8 أرقام
-                  const keySuffix = key.slice(-8);
-                  return reqIdSuffix === keySuffix;
-                },
-              );
-
-              if (matchingKey) {
-                logger.warn(
-                  `⚠️ Request ID mismatch detected! Using matching key instead`,
-                  {
-                    requestId: req.id,
-                    requestIdSuffix: req.id.slice(-8),
-                    matchingKey: matchingKey,
-                    matchingKeySuffix: matchingKey.slice(-8),
-                  },
-                );
-                allRequestOffers = receivedOffersMap.get(matchingKey) || [];
-              }
-            }
-
-            // Debug: Log دائماً للتحقق من العروض
-            if (receivedOffersMap.size > 0 || allRequestOffers.length > 0) {
-              logger.log(
-                `🔍 MyRequests: Checking offers for request ${
-                  req.id.slice(-4)
-                }`,
-                {
-                  requestId: req.id,
-                  requestIdShort: req.id.slice(-4),
-                  mapSize: receivedOffersMap.size,
-                  mapKeys: Array.from(receivedOffersMap.keys()).map((id) =>
-                    id.slice(-4)
-                  ),
-                  offersInMap: allRequestOffers.length,
-                  offersDetails: allRequestOffers.map((o) => ({
-                    id: o.id.slice(-4),
-                    status: o.status,
-                    title: o.title,
-                    requestId: o.requestId?.slice(-4),
-                  })),
-                },
-              );
-            }
-
-            // استثناء العروض المؤرشفة
-            const requestOffers = allRequestOffers.filter(
-              (o) => o.status !== "archived",
-            );
-
-            // Log النتيجة النهائية
-            if (requestOffers.length > 0) {
-              logger.log(
-                `✅ Request ${
-                  req.id.slice(-4)
-                } WILL DISPLAY ${requestOffers.length} offers`,
-                {
-                  offers: requestOffers.map((o) => ({
-                    id: o.id.slice(-4),
-                    status: o.status,
-                    title: o.title,
-                  })),
-                  willRender: true,
-                },
-              );
-            } else if (allRequestOffers.length > 0) {
-              logger.warn(
-                `⚠️ Request ${
-                  req.id.slice(-4)
-                } has ${allRequestOffers.length} offers but all are archived!`,
-                {
-                  allOffers: allRequestOffers.map((o) => ({
-                    id: o.id.slice(-4),
-                    status: o.status,
-                  })),
-                },
-              );
-            } else if (receivedOffersMap.size > 0) {
-              logger.warn(
-                `⚠️ Request ${
-                  req.id.slice(-4)
-                } has NO offers in receivedOffersMap`,
-                {
-                  requestId: req.id,
-                  mapKeys: Array.from(receivedOffersMap.keys()),
-                  mapKeysShort: Array.from(receivedOffersMap.keys()).map((id) =>
-                    id.slice(-4)
-                  ),
-                  mapSize: receivedOffersMap.size,
-                },
-              );
-            }
-            const acceptedOffer = requestOffers.find((o) =>
-              o.status === "accepted"
-            );
-            const pendingOffers = requestOffers.filter((o) =>
-              o.status === "pending" || o.status === "negotiating"
-            );
-            const requestNumber = req.requestNumber ||
-              req.id.slice(-4).toUpperCase();
-            const statusConfig = getStatusConfig(req);
-            const isHidden = req.isPublic === false;
-            // Helper to calculate available after time (5 hours cooldown for bump)
-            const calculateAvailableAfter = (
-              updatedAt?: Date | string,
-            ): number | null => {
-              if (!updatedAt) return null;
-              const lastUpdated = typeof updatedAt === "string"
-                ? new Date(updatedAt)
-                : updatedAt;
-              const fiveHoursMs = 5 * 60 * 60 * 1000; // 5 hours in milliseconds
-              const elapsedSinceUpdate = Date.now() - lastUpdated.getTime();
-              const remainingMs = fiveHoursMs - elapsedSinceUpdate;
-
-              if (remainingMs > 0) {
-                const remainingHours = Math.ceil(
-                  remainingMs / (60 * 60 * 1000),
-                );
-                return remainingHours;
-              }
-              return null;
-            };
-
-            const availableAfterHours = calculateAvailableAfter(
-              req.updatedAt || req.createdAt,
-            );
-            const canBump = availableAfterHours === null;
-            const unreadCount = unreadMessagesPerRequest?.get(req.id) || 0;
-            const hasNewOffer = requestsWithNewOffers.has(req.id);
-
-            return (
-              <motion.div
-                key={req.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{
-                  delay: Math.min(index * 0.05, 0.4),
-                  type: "spring",
-                  stiffness: 400,
-                  damping: 30,
-                }}
-                whileHover={{ y: -8, scale: 1.02 }}
-                className={`bg-card border-border rounded-2xl p-4 pt-5 transition-all cursor-pointer relative shadow-sm group text-right ${
-                  hasNewOffer
-                    ? "ring-2 ring-primary/40 bg-primary/5 border-primary/20 shadow-md"
-                    : "border"
-                }`}
-                onClick={(e) => {
-                  // Prevent click if pull-to-refresh was active
-                  if (preventClickAfterPullRef.current) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                  }
-                  // Don't handle click if clicking on dropdown menu
-                  const target = e.target as HTMLElement;
-                  if (target.closest("[data-dropdown-menu]")) {
-                    return; // Let dropdown handle its own events
-                  }
-
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (hasNewOffer && onClearNewOfferHighlight) {
-                    onClearNewOfferHighlight(req.id);
-                  }
-                  onSelectRequest(req);
-                }}
-                onTouchStart={(e) => {
-                  // Don't prevent if clicking on dropdown menu
-                  const target = e.target as HTMLElement;
-                  if (target.closest("[data-dropdown-menu]")) {
-                    return;
-                  }
-                  // حفظ موقع اللمس للتفريق بين السكرول والضغط
-                  cardTouchStartRef.current = {
-                    x: e.touches[0].clientX,
-                    y: e.touches[0].clientY,
-                  };
-                }}
-                onTouchEnd={(e) => {
-                  // Prevent click if pull-to-refresh was active
-                  if (preventClickAfterPullRef.current) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    cardTouchStartRef.current = null;
-                    return;
-                  }
-
-                  // Don't prevent if clicking on dropdown menu
-                  const target = e.target as HTMLElement;
-                  if (target.closest("[data-dropdown-menu]")) {
-                    cardTouchStartRef.current = null;
-                    return;
-                  }
-
-                  // التحقق من أن هذا ضغط وليس سكرول (الفرق أقل من 15 بكسل)
-                  if (cardTouchStartRef.current && e.changedTouches[0]) {
-                    const deltaX = Math.abs(
-                      e.changedTouches[0].clientX - cardTouchStartRef.current.x,
-                    );
-                    const deltaY = Math.abs(
-                      e.changedTouches[0].clientY - cardTouchStartRef.current.y,
-                    );
-                    if (deltaX > 15 || deltaY > 15) {
-                      // هذا سكرول - لا نفتح التفاصيل
-                      cardTouchStartRef.current = null;
-                      return;
-                    }
-                  }
-                  cardTouchStartRef.current = null;
-
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (hasNewOffer && onClearNewOfferHighlight) {
-                    onClearNewOfferHighlight(req.id);
-                  }
-                  // Force state update to ensure request opens
-                  setTimeout(() => {
-                    onSelectRequest(req);
-                  }, 0);
-                }}
-              >
-                {/* Floating Label */}
-                <div className="absolute -top-3 right-4 flex items-center gap-1.5">
-                  <span className="bg-card px-2 py-0.5 text-[11px] font-bold text-primary flex items-center gap-1 rounded-full border border-border">
-                    <span className={statusConfig.color.split(" ")[1]}>
-                      {statusConfig.icon}
-                    </span>
-                    {statusConfig.text}
-                  </span>
-                </div>
-
-                {/* Badge for new offers */}
-                {hasNewOffer && (
-                  <motion.div
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="absolute top-3 left-3 z-20 px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center gap-1 shadow-lg ring-2 ring-background"
-                  >
-                    عرض جديد! 🎉
-                  </motion.div>
-                )}
-
-                {/* Title & Status */}
-                <div className="flex items-start justify-between mb-2">
-                  <span className="font-bold text-sm truncate text-primary max-w-[70%]">
-                    {req.title}
-                  </span>
-                  <div className="flex items-center gap-1.5 relative">
-                    {isHidden && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
-                        مخفي
-                      </span>
-                    )}
-                    <div className="relative" data-dropdown-menu>
-                      {(() => {
-                        const isBumping = isBumpingMap.get(req.id) || false;
-                        const isHiding = isHidingMap.get(req.id) || false;
-                        const isUnhiding = isUnhidingMap.get(req.id) || false;
-                        const isArchiving = isArchivingMap.get(req.id) || false;
-
-                        const dropdownItems: DropdownMenuItem[] = [
-                          {
-                            id: "refresh",
-                            label: isBumping
-                              ? "جاري التحديث..."
-                              : canBump
-                              ? "تحديث الطلب"
-                              : `متاح بعد ${availableAfterHours} س`,
-                            icon: (
-                              <RefreshCw
-                                size={16}
-                                className={isBumping ? "animate-spin" : ""}
-                              />
-                            ),
-                            onClick: () => {
-                              if (
-                                canBump && !isBumping &&
-                                req.status !== "archived"
-                              ) {
-                                handleBumpRequest(req.id);
-                              }
-                            },
-                            disabled: isBumping || !canBump ||
-                              req.status === "archived",
-                            keepOpenOnClick: !canBump, // Keep open if disabled (showing "متاح بعد")
-                          },
-                          {
-                            id: "edit",
-                            label: "تعديل الطلب",
-                            icon: <Edit size={16} />,
-                            onClick: () => handleEditRequest(req),
-                          },
-                          {
-                            id: req.isPublic === false ? "unhide" : "hide",
-                            label: req.isPublic === false
-                              ? (isUnhiding ? "جاري الإظهار..." : "إظهار الطلب")
-                              : (isHiding ? "جاري الإخفاء..." : "إخفاء الطلب"),
-                            icon: req.isPublic === false
-                              ? <Eye size={16} />
-                              : <EyeOff size={16} />,
-                            onClick: req.isPublic === false
-                              ? () => handleUnhideRequest(req.id)
-                              : () => handleHideRequest(req.id),
-                            disabled: isHiding || isUnhiding,
-                          },
-                          {
-                            id: "archive",
-                            label: isArchiving
-                              ? "جاري الأرشفة..."
-                              : "أرشفة الطلب",
-                            icon: <Archive size={16} />,
-                            onClick: () => handleArchiveRequest(req.id),
-                            variant: "danger",
-                            disabled: isArchiving,
-                            showDivider: true,
-                          },
-                        ];
-
-                        return (
-                          <div
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                            }}
-                            onTouchStart={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                            }}
-                            onTouchEnd={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                            }}
-                          >
-                            <DropdownMenu
-                              trigger={
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    if (navigator.vibrate) {
-                                      navigator.vibrate(10);
-                                    }
-                                  }}
-                                  onTouchStart={(e) => {
-                                    e.stopPropagation();
-                                  }}
-                                  onTouchEnd={(e) => {
-                                    e.stopPropagation();
-                                  }}
-                                  className="p-1 rounded transition-colors hover:bg-secondary/80 text-muted-foreground hover:text-foreground relative z-[100]"
-                                  style={{
-                                    pointerEvents: "auto",
-                                    touchAction: "manipulation",
-                                  }}
-                                  title="خيارات الطلب"
-                                  type="button"
-                                >
-                                  <MoreVertical size={16} />
-                                </button>
-                              }
-                              items={dropdownItems}
-                              align="left"
-                            />
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Location & Date */}
-                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 flex-wrap">
-                  {req.location && (
-                    <span className="flex items-center gap-1">
-                      <MapPin size={14} />
-                      {req.location}
-                    </span>
-                  )}
-                  {/* Show single date: "منشور منذ X" if not updated, or "محدّث منذ X" if updated */}
-                  {(() => {
-                    const isUpdated = req.updatedAt &&
-                      new Date(req.updatedAt).getTime() !==
-                        new Date(req.createdAt).getTime();
-                    const dateToShow = isUpdated
-                      ? req.updatedAt
-                      : req.createdAt;
-
-                    if (!dateToShow) return null;
-
-                    return (
-                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-foreground">
-                        {isUpdated
-                          ? <RefreshCw size={12} />
-                          : <Calendar size={12} />}
-                        {isUpdated ? "محدّث " : "منشور "}
-                        {formatTimeAgo(new Date(dateToShow), true)}
-                      </span>
-                    );
-                  })()}
-                </div>
-
-                {/* Budget */}
-                {(req.budgetMin || req.budgetMax) && (
-                  <div className="flex items-center gap-2 text-sm mb-2 flex-wrap">
-                    <span className="text-muted-foreground">الميزانية:</span>
-                    <span className="font-bold text-foreground">
-                      {req.budgetMin && req.budgetMax
-                        ? `${req.budgetMin} - ${req.budgetMax} ر.س`
-                        : req.budgetMax
-                        ? `حتى ${req.budgetMax} ر.س`
-                        : `من ${req.budgetMin} ر.س`}
-                    </span>
-                  </div>
-                )}
-
-                {/* Offers Summary Box - Always show if there are offers */}
-                {requestOffers.length > 0
-                  ? (
-                    <div className="mt-3 p-2.5 pt-3 rounded-lg bg-secondary/50 border border-border/50 space-y-1.5 relative">
-                      <span className="absolute -top-2.5 right-3 bg-card px-2 text-[11px] font-bold text-muted-foreground">
-                        العروض المستلمة ({requestOffers.length})
-                      </span>
-
-                      <div className="flex flex-wrap gap-2 text-xs">
-                        {pendingOffers.length > 0 && (
-                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400">
-                            ⏳ {pendingOffers.length} قيد الانتظار
-                          </span>
-                        )}
-                        {acceptedOffer && (
-                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/15 text-primary">
-                            ✅ عرض معتمد
-                          </span>
-                        )}
-                      </div>
-
-                      {acceptedOffer && (
-                        <div className="mt-2 pt-2 border-t border-border/50">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">
-                              العرض المعتمد:
-                            </span>
-                            <span className="font-bold text-primary">
-                              {acceptedOffer.price} ر.س
-                            </span>
-                          </div>
-                          {acceptedOffer.providerName && (
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                              <User size={12} />
-                              <span>{acceptedOffer.providerName}</span>
-                            </div>
-                          )}
-                          {onOpenChat &&
-                            (req.contactMethod === "chat" ||
-                              req.contactMethod === "both" ||
-                              !req.contactMethod) &&
-                            (
-                              <div className="flex items-center gap-1.5 mt-2 justify-end">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onOpenChat(req.id, acceptedOffer);
-                                  }}
-                                  className="relative flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-primary hover:bg-primary/90 active:scale-95 text-primary-foreground transition-all shadow-sm"
-                                  title="فتح المحادثة"
-                                >
-                                  <MessageCircle size={12} />
-                                  محادثة
-                                  {/* Badge للرسائل غير المقروءة للعرض المقبول */}
-                                  {acceptedOffer?.id &&
-                                    unreadMessagesPerOffer?.has(
-                                      acceptedOffer.id,
-                                    ) &&
-                                    (unreadMessagesPerOffer.get(
-                                        acceptedOffer.id,
-                                      ) || 0) > 0 &&
-                                    (
-                                      <motion.span
-                                        initial={{ scale: 0 }}
-                                        animate={{ scale: 1 }}
-                                        className="absolute -top-1.5 -right-3 min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow-md"
-                                      >
-                                        {unreadMessagesPerOffer.get(
-                                            acceptedOffer.id,
-                                          )! > 99
-                                          ? "99+"
-                                          : unreadMessagesPerOffer.get(
-                                            acceptedOffer.id,
-                                          )}
-                                      </motion.span>
-                                    )}
-                                </button>
-                              </div>
-                            )}
-                        </div>
-                      )}
-
-                      {!acceptedOffer && pendingOffers.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-border/50">
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>أقل عرض:</span>
-                            <span className="font-bold text-foreground">
-                              {Math.min(...pendingOffers.map((o) =>
-                                parseFloat(o.price) || 0
-                              ))} ر.س
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                  : null}
-
-                {requestOffers.length === 0 && req.status === "active" && (
-                  <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
-                    <span className="text-accent">⏳</span>
-                    <span>بانتظار العروض...</span>
-                  </div>
-                )}
-              </motion.div>
-            );
-          })}
         </div>
       </div>
     </div>

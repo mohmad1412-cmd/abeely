@@ -13,6 +13,7 @@ import {
   User,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { HighlightedText } from "./ui/HighlightedText";
 
 interface ServiceCardProps {
   req: Request;
@@ -27,6 +28,7 @@ interface ServiceCardProps {
   setTouchHoveredCardId: (id: string | null) => void;
   isGuest: boolean;
   setGuestViewedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  radarWords?: string[];
 }
 
 export const ServiceCard: React.FC<ServiceCardProps> = ({
@@ -42,6 +44,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
   setTouchHoveredCardId,
   isGuest,
   setGuestViewedIds,
+  radarWords = [],
 }) => {
   return (
     <motion.div
@@ -170,10 +173,10 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
       {/* Title & Description */}
       <div className="px-5 pt-3 pb-1">
         <h3 className="text-base font-bold text-foreground line-clamp-1">
-          {req.title}
+          <HighlightedText text={req.title} words={radarWords} />
         </h3>
         <p className="text-muted-foreground text-xs line-clamp-2 leading-relaxed mt-1">
-          {req.description}
+          <HighlightedText text={req.description} words={radarWords} />
         </p>
 
         {/* Categories Labels */}

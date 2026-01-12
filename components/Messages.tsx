@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { logger } from "../utils/logger";
+import { logger } from "../utils/logger.ts";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
@@ -31,10 +31,14 @@ import {
   subscribeToMessages,
   uploadMessageAttachments,
   uploadVoiceMessage,
-} from "../services/messagesService";
-import { getCurrentUser } from "../services/authService";
-import { ChatMessageSkeleton, ListItemSkeleton } from "./ui/LoadingSkeleton";
-import { UnifiedHeader } from "./ui/UnifiedHeader";
+} from "../services/messagesService.ts";
+import { AppNotification } from "../types.ts";
+import { getCurrentUser } from "../services/authService.ts";
+import {
+  ChatMessageSkeleton,
+  ListItemSkeleton,
+} from "./ui/LoadingSkeleton.tsx";
+import { UnifiedHeader } from "./ui/UnifiedHeader.tsx";
 
 // Audio Player Component for Voice Messages
 const AudioPlayer: React.FC<{ url: string; duration?: number }> = (
@@ -92,7 +96,9 @@ const AudioPlayer: React.FC<{ url: string; duration?: number }> = (
       if (isPlaying) {
         audioRef.pause();
       } else {
-        audioRef.play().catch(console.error);
+        audioRef.play().catch((err) => {
+          logger.error("Error playing audio", err, "Messages");
+        });
       }
       setIsPlaying(!isPlaying);
     }
@@ -209,9 +215,9 @@ interface MessagesProps {
   setView: (view: any) => void;
   setPreviousView: (view: any) => void;
   titleKey: number;
-  notifications: any[];
+  notifications: AppNotification[];
   onMarkAsRead: (id: string) => void;
-  onNotificationClick?: (notification: any) => void;
+  onNotificationClick?: (notification: AppNotification) => void;
   onClearAll: () => void;
   onSignOut: () => void;
   isGuest?: boolean;
@@ -293,7 +299,9 @@ export const Messages: React.FC<MessagesProps> = ({
 
         // If initial conversation ID provided, select it
         if (initialConversationId) {
-          const conv = convs.find((c) => c.id === initialConversationId);
+          const conv = convs.find((c: Conversation) =>
+            c.id === initialConversationId
+          );
           if (conv) {
             setSelectedConversation(conv);
           }
@@ -308,26 +316,29 @@ export const Messages: React.FC<MessagesProps> = ({
     loadConversations();
 
     // Subscribe to conversation updates
-    const unsubscribe = subscribeToConversations(user.id, (updatedConv) => {
-      setConversations((prev) => {
-        const index = prev.findIndex((c) => c.id === updatedConv.id);
-        if (index >= 0) {
-          const updated = [...prev];
-          updated[index] = updatedConv;
-          return updated.sort((a, b) => {
-            const aTime = a.last_message_at
-              ? new Date(a.last_message_at).getTime()
-              : 0;
-            const bTime = b.last_message_at
-              ? new Date(b.last_message_at).getTime()
-              : 0;
-            return bTime - aTime;
-          });
-        } else {
-          return [updatedConv, ...prev];
-        }
-      });
-    });
+    const unsubscribe = subscribeToConversations(
+      user.id,
+      (updatedConv: Conversation) => {
+        setConversations((prev) => {
+          const index = prev.findIndex((c) => c.id === updatedConv.id);
+          if (index >= 0) {
+            const updated = [...prev];
+            updated[index] = updatedConv;
+            return updated.sort((a, b) => {
+              const aTime = a.last_message_at
+                ? new Date(a.last_message_at).getTime()
+                : 0;
+              const bTime = b.last_message_at
+                ? new Date(b.last_message_at).getTime()
+                : 0;
+              return bTime - aTime;
+            });
+          } else {
+            return [updatedConv, ...prev];
+          }
+        });
+      },
+    );
 
     return () => {
       unsubscribe();
@@ -346,11 +357,11 @@ export const Messages: React.FC<MessagesProps> = ({
       try {
         // تحديث فوري: تحديد الرسائل كمقروءة فوراً عند فتح المحادثة
         // قبل تحميل الرسائل لتحديث الـ badges فوراً
-        markMessagesAsRead(selectedConversation.id).catch((err) => {
+        markMessagesAsRead(selectedConversation.id).catch((err: any) => {
           logger.error("Error marking messages as read:", err, "service");
         });
 
-        const msgs = await getMessages(selectedConversation.id);
+        const msgs: Message[] = await getMessages(selectedConversation.id);
         setMessages(msgs);
 
         // Update conversation unread count فوراً
@@ -371,7 +382,7 @@ export const Messages: React.FC<MessagesProps> = ({
     // Subscribe to new messages
     const unsubscribe = subscribeToMessages(
       selectedConversation.id,
-      (newMsg, eventType) => {
+      (newMsg: Message, eventType: string) => {
         if (eventType === "INSERT") {
           setMessages((prev) => {
             // Avoid duplicates (optimistic update might have already added it)
@@ -383,7 +394,11 @@ export const Messages: React.FC<MessagesProps> = ({
           if (newMsg.sender_id !== user?.id) {
             // تحديث فوري بدون انتظار
             markMessagesAsRead(selectedConversation.id).catch((err) => {
-              logger.error("Error marking new message as read:", err, "service");
+              logger.error(
+                "Error marking new message as read:",
+                err,
+                "service",
+              );
             });
           }
 
@@ -411,7 +426,7 @@ export const Messages: React.FC<MessagesProps> = ({
 
   // Recording timer
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
     if (isRecording) {
       setRecordingTime(0);
       interval = setInterval(() => {
@@ -533,7 +548,7 @@ export const Messages: React.FC<MessagesProps> = ({
     }
 
     setIsSending(true);
-    
+
     // Safety timeout: reset isSending after 30 seconds even if operation doesn't complete
     const timeoutId = setTimeout(() => {
       logger.warn("Message send timeout - resetting isSending state");
@@ -831,7 +846,10 @@ export const Messages: React.FC<MessagesProps> = ({
                       {/* Attachments */}
                       {hasAttachments && (
                         <div className="flex flex-col gap-2 mb-2">
-                          {msg.attachments!.map((att, idx) => (
+                          {msg.attachments!.map((
+                            att: MessageAttachment,
+                            idx: number,
+                          ) => (
                             <AttachmentPreview
                               key={idx}
                               attachment={att}
@@ -1017,7 +1035,8 @@ export const Messages: React.FC<MessagesProps> = ({
               {/* Voice recording button */}
               <button
                 onClick={isRecording ? stopRecording : startRecording}
-                disabled={isSending || (recordedAudioUrl !== null && !isRecording)}
+                disabled={isSending ||
+                  (recordedAudioUrl !== null && !isRecording)}
                 className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   isRecording
                     ? "bg-red-500 text-white animate-pulse"
@@ -1027,7 +1046,9 @@ export const Messages: React.FC<MessagesProps> = ({
               >
                 <Mic
                   size={18}
-                  className={isRecording ? "text-white" : "text-muted-foreground"}
+                  className={isRecording
+                    ? "text-white"
+                    : "text-muted-foreground"}
                 />
               </button>
 
@@ -1038,11 +1059,11 @@ export const Messages: React.FC<MessagesProps> = ({
                   !recordedAudioBlob) || isSending || isRecording}
                 className="w-9 h-9 rounded-lg bg-primary text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
                 whileHover={(!newMessage.trim() && attachedFiles.length === 0 &&
-                  !recordedAudioBlob) || isSending || isRecording
+                    !recordedAudioBlob) || isSending || isRecording
                   ? {}
                   : { scale: 1.05 }}
                 whileTap={(!newMessage.trim() && attachedFiles.length === 0 &&
-                  !recordedAudioBlob) || isSending || isRecording
+                    !recordedAudioBlob) || isSending || isRecording
                   ? {}
                   : { scale: 0.95 }}
                 aria-label="إرسال الرسالة"
