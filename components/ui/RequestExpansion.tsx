@@ -244,14 +244,14 @@ export const RequestExpansion: React.FC<RequestExpansionProps> = ({
                 <button
                   type="button"
                   onClick={prevImage}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/20 backdrop-blur-md flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all border border-white/10 hidden md:flex"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/20 backdrop-blur-md items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all border border-white/10 hidden md:flex"
                 >
                   <ChevronLeft size={18} />
                 </button>
                 <button
                   type="button"
                   onClick={nextImage}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/20 backdrop-blur-md flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all border border-white/10 hidden md:flex"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/20 backdrop-blur-md items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all border border-white/10 hidden md:flex"
                 >
                   <ChevronRight size={18} />
                 </button>

@@ -109,10 +109,8 @@ import {
   startNegotiation,
 } from "../services/requestsService.ts";
 import {
-  formatFileSize,
   isImageFile,
   uploadOfferAttachments,
-  validateFile,
 } from "../services/storageService.ts";
 import { supabase } from "../services/supabaseClient.ts";
 // import { DEFAULT_SAUDI_CITIES } from "../services/placesService.ts";
@@ -134,14 +132,7 @@ interface RequestDetailProps {
   toggleTheme?: () => void;
   onOpenLanguagePopup?: () => void;
   scrollToOfferSection?: boolean;
-  navigatedFromSidebar?: boolean; // لتحديد إذا كان التنقل من الشريط الجانبي
   highlightOfferId?: string | null; // لتمييز عرض معين عند النقر على إشعار
-  onNavigateToMessages?: (
-    conversationId?: string,
-    userId?: string,
-    requestId?: string,
-    offerId?: string,
-  ) => void;
   autoTranslateRequests?: boolean;
   currentLanguage?: "ar" | "en" | "ur";
   onCompleteRequest?: (requestId: string) => void;
@@ -167,7 +158,6 @@ interface RequestDetailProps {
     guestPhone?: string;
     guestOTP?: string;
   }) => void;
-  savedScrollPosition?: number;
   onScrollPositionChange?: (pos: number) => void;
   // Unified Header Props
   toggleMode: () => void;
@@ -175,8 +165,8 @@ interface RequestDetailProps {
   unreadCount: number;
   hasUnreadMessages: boolean;
   user: UserProfile | null;
-  setView: (view: any) => void;
-  setPreviousView: (view: any) => void;
+  setView: (view: unknown) => void;
+  setPreviousView: (view: unknown) => void;
   titleKey: number;
   notifications: AppNotification[];
   onMarkAsRead: (id: string) => void;
@@ -213,16 +203,13 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     toggleTheme,
     onOpenLanguagePopup,
     scrollToOfferSection = false,
-    navigatedFromSidebar = false,
     highlightOfferId = null,
     receivedOffersMap = new Map(),
-    onNavigateToMessages,
     autoTranslateRequests = false,
     currentLanguage = "ar",
     onCompleteRequest,
     savedOfferForm,
     onOfferFormChange,
-    savedScrollPosition = 0,
     onScrollPositionChange,
     // Unified Header Props
     toggleMode,
@@ -276,12 +263,35 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         }
       }
     };
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+    globalThis.addEventListener("storage", handleStorageChange);
+    return () => globalThis.removeEventListener("storage", handleStorageChange);
   }, []);
 
   const [negotiationOpen, setNegotiationOpen] = useState(
     !!initialActiveOfferId,
+  );
+  // AI Assist State
+  const [aiInput, setAiInput] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [showAIAssist, setShowAIAssist] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+
+  // Additional Offer State
+  const [isNegotiable, setIsNegotiable] = useState(true);
+
+  // Image Search State
+  const [selectedImageUrls, setSelectedImageUrls] = useState<string[]>([]);
+  const [searchedImages, setSearchedImages] = useState<any[]>([]);
+  const [selectedSearchImages, setSelectedSearchImages] = useState<any[]>([]);
+
+  const [offerPrice, setOfferPrice] = useState(savedOfferForm?.price || "");
+  const [offerDuration, setOfferDuration] = useState(
+    savedOfferForm?.duration || "",
+  );
+  const [offerCity, setOfferCity] = useState(savedOfferForm?.city || "");
+  const [offerTitle, setOfferTitle] = useState(savedOfferForm?.title || "");
+  const [offerDescription, setOfferDescription] = useState(
+    savedOfferForm?.description || "",
   );
   const [activeOfferId, setActiveOfferId] = useState<string | null>(
     initialActiveOfferId,
@@ -293,9 +303,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [_isShared, setIsShared] = useState(false);
   const [isIdCopied, setIsIdCopied] = useState(false);
-  const [showOfferPulse, setShowOfferPulse] = useState(false);
-  const [flashKey, setFlashKey] = useState(0);
-  const [_showStatusPulse, _setShowStatusPulse] = useState(false);
   const [clickedIcons, setClickedIcons] = useState<{ [key: string]: boolean }>(
     {},
   );
@@ -447,37 +454,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const imageContainerRef = useRef<HTMLDivElement>(null);
 
   // Refined Image Swipe
-  const [imgTouchStart, setImgTouchStart] = useState<
-    { x: number; y: number } | null
-  >(null);
-
-  // AI Assist State
-  const [showAIAssist, setShowAIAssist] = useState(false);
-  const [aiInput, setAiInput] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-
-  // Form State - Initialize from saved form if available
-  const [offerPrice, setOfferPrice] = useState(savedOfferForm?.price || "");
-  const [offerDuration, setOfferDuration] = useState(
-    savedOfferForm?.duration || "",
-  );
-  const [offerCity, setOfferCity] = useState(savedOfferForm?.city || "");
-  const [offerTitle, setOfferTitle] = useState(savedOfferForm?.title || "");
-  const [offerDescription, setOfferDescription] = useState(
-    savedOfferForm?.description || "",
-  );
-  const [isNegotiable, setIsNegotiable] = useState(true);
-  const [isAttachmentsExpanded, setIsAttachmentsExpanded] = useState(false);
   const [offerAttachments, setOfferAttachments] = useState<File[]>([]);
-  const [selectedImageUrls, setSelectedImageUrls] = useState<string[]>([]);
-  const [searchedImages, setSearchedImages] = useState<string[]>([]);
-  const [selectedSearchImages, setSelectedSearchImages] = useState<Set<string>>(
-    new Set(),
-  );
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const offerFileInputRef = useRef<HTMLInputElement>(null);
-  const [isLinkCopied, setIsLinkCopied] = useState(false);
 
   // Report modal state
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -495,120 +474,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const [isTitleFocused, setIsTitleFocused] = useState(false);
   const [isDescriptionFocused, setIsDescriptionFocused] = useState(false);
 
-  // Smart resize hint for description textarea
-  const [showDescResizeHint, setShowDescResizeHint] = useState(false);
-  const [isDescResizing, setIsDescResizing] = useState(false);
-  const [descTextareaHeight, setDescTextareaHeight] = useState<number | null>(
-    null,
-  );
-  const descTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const descHintIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
-  const descHintTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hasShownDescFirstHint = useRef(false);
-  const DESC_MIN_HEIGHT = 128;
-  const isDescResizingRef = useRef(false);
-
-  useEffect(() => {
-    isDescResizingRef.current = isDescResizing;
-  }, [isDescResizing]);
-
-  const triggerDescResizeHint = useCallback(() => {
-    setShowDescResizeHint(true);
-    if (descHintTimeoutRef.current) clearTimeout(descHintTimeoutRef.current);
-    descHintTimeoutRef.current = setTimeout(
-      () => setShowDescResizeHint(false),
-      1500,
-    );
-  }, []);
-
-  // Shake animation states for required fields
-  const [shakingFields, setShakingFields] = useState({
-    price: false,
-    title: false,
-  });
-
-  useEffect(() => {
-    if (
-      offerDescription.length >= 3 && isDescriptionFocused &&
-      !hasShownDescFirstHint.current
-    ) {
-      hasShownDescFirstHint.current = true;
-      triggerDescResizeHint();
-    }
-  }, [isDescriptionFocused, offerDescription, triggerDescResizeHint]);
-
-  useEffect(() => {
-    descHintIntervalRef.current = setInterval(() => {
-      if (isDescResizingRef.current) return;
-      triggerDescResizeHint();
-    }, 40000);
-
-    return () => {
-      if (descHintIntervalRef.current) {
-        clearInterval(descHintIntervalRef.current);
-      }
-      if (descHintTimeoutRef.current) clearTimeout(descHintTimeoutRef.current);
-    };
-  }, [triggerDescResizeHint]);
-
-  // Reset first hint tracker when description is cleared
-  useEffect(() => {
-    if (!offerDescription) {
-      hasShownDescFirstHint.current = false;
-    }
-  }, [offerDescription]);
-
-  // Custom resize handler for description textarea
-  const handleDescResizeStart = useCallback(
-    (e: React.MouseEvent | React.TouchEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      // Immediate haptic feedback on touch
-      if (navigator.vibrate) {
-        navigator.vibrate(10);
-      }
-
-      setIsDescResizing(true);
-      const startY = "touches" in e ? e.touches[0].clientY : e.clientY;
-      const startHeight = descTextareaRef.current?.offsetHeight ||
-        DESC_MIN_HEIGHT;
-
-      const handleMove = (moveEvent: MouseEvent | TouchEvent) => {
-        moveEvent.preventDefault();
-        moveEvent.stopPropagation();
-        const currentY = "touches" in moveEvent
-          ? moveEvent.touches[0].clientY
-          : moveEvent.clientY;
-        const delta = currentY - startY;
-        const newHeight = Math.max(DESC_MIN_HEIGHT, startHeight + delta);
-        setDescTextareaHeight(newHeight);
-      };
-
-      const handleEnd = () => {
-        setIsDescResizing(false);
-        document.removeEventListener("mousemove", handleMove);
-        document.removeEventListener("mouseup", handleEnd);
-        document.removeEventListener("touchmove", handleMove);
-        document.removeEventListener("touchend", handleEnd);
-        // Re-enable body scroll
-        document.body.style.overflow = "";
-        document.body.style.touchAction = "";
-      };
-
-      // Disable body scroll during resize
-      document.body.style.overflow = "hidden";
-      document.body.style.touchAction = "none";
-
-      document.addEventListener("mousemove", handleMove, { passive: false });
-      document.addEventListener("mouseup", handleEnd);
-      document.addEventListener("touchmove", handleMove, { passive: false });
-      document.addEventListener("touchend", handleEnd);
-    },
-    [],
-  );
+  // Custom resize handler for description textarea (removed unused complex logic)
 
   // Real Messages System
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -636,9 +502,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     string | null
   >(null);
 
-  // للتحقق من وجود محادثة سابقة (لمقدم العرض)
   const [hasExistingConversation, setHasExistingConversation] = useState(false);
-  const [isCheckingConversation, setIsCheckingConversation] = useState(false);
 
   // State لكتم إشعارات المحادثة
   const [isConversationMuted, setIsConversationMuted] = useState(false);
@@ -1126,7 +990,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     const shareUrl = getRequestShareUrl(request.id);
 
     // تحديث URL في المتصفح
-    window.history.pushState({}, "", shareUrl);
+    globalThis.history.pushState({}, "", shareUrl);
 
     try {
       // Try to generate share image
@@ -1135,7 +999,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
       if (shareCardElement) {
         try {
-          const canvas = await html2canvas(shareCardElement, {
+          const canvas = await (html2canvas as any)(shareCardElement, {
             scale: 2,
             backgroundColor: "#ffffff",
             useCORS: true,
@@ -1193,16 +1057,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   };
 
   // Handle copy link with visual feedback
-  const handleCopyLink = async () => {
-    try {
-      const shareUrl = getRequestShareUrl(request.id);
-      await navigator.clipboard.writeText(shareUrl);
-      setIsLinkCopied(true);
-      setTimeout(() => setIsLinkCopied(false), 2000);
-    } catch (err) {
-      logger.error("Failed to copy:", err, "service");
-    }
-  };
 
   // Handle report submission
   const handleSubmitReport = async () => {
@@ -1233,7 +1087,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   };
 
   // --- Better Image Carousel Swipe ---
-  const [dragProgress, setDragProgress] = useState(0);
 
   const nextImage = () => {
     if (request.images && request.images.length > 1) {
@@ -1271,7 +1124,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       setIsListening(false);
     } else {
       setIsListening(true);
-      if ("webkitSpeechRecognition" in window) {
+      if (
+        typeof window !== "undefined" && "webkitSpeechRecognition" in window
+      ) {
         const recognition = new (window as any).webkitSpeechRecognition();
         recognition.lang = "ar-SA";
         recognition.onresult = (event: any) => {
@@ -1406,7 +1261,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<number | null>(null);
   const lastScrollPosRef = useRef<number>(0);
-  const [isOfferSectionVisible, setIsOfferSectionVisible] = useState(false);
+  const [isOfferSectionVisible, _setIsOfferSectionVisible] = useState(false);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -1516,7 +1371,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   ]);
 
   // View count state
-  const [viewCount, setViewCount] = useState<number>(0);
+  const [_viewCount, setViewCount] = useState<number>(0);
 
   // Mark request as viewed and increment view count when component mounts
   useEffect(() => {
@@ -2220,864 +2075,762 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         transition={{ duration: 0.2, ease: "easeOut" }}
         className="flex-1 bg-background flex flex-col overflow-y-auto overflow-x-hidden"
       >
-      {/* Unified Header */}
-      <UnifiedHeader
-        mode={mode}
-        toggleMode={toggleMode}
-        isModeSwitching={isModeSwitching}
-        unreadCount={unreadCount}
-        hasUnreadMessages={hasUnreadMessages}
-        user={user}
-        isDarkMode={isDarkMode}
-        toggleTheme={toggleTheme}
-        onOpenLanguagePopup={onOpenLanguagePopup}
-        setView={setView}
-        setPreviousView={setPreviousView}
-        titleKey={titleKey}
-        notifications={notifications}
-        onMarkAsRead={onMarkAsRead}
-        onNotificationClick={onNotificationClick}
-        onClearAll={onClearAll}
-        onSignOut={onSignOut}
-        backButton
-        onBack={onBack}
-        showBackButtonOnDesktop={true}
-        title={request.title}
-        isScrolled={isScrolled}
-        currentView="request-detail"
-        showScrollToOffer={!isMyRequest && !isMyOffer &&
-          request.status === "active"}
-        onScrollToOffer={handleScrollToOfferSection}
-        isOfferSectionVisible={isOfferSectionVisible}
-        canSubmitOffer={!!(offerPrice && offerTitle)}
-        onSubmitOffer={handleSubmitOfferFromHeader}
-        isSubmittingOffer={isSubmittingOffer}
-        offerSubmitSuccess={offerSubmitted}
-        showMyRequestButton={isMyRequest}
-        myRequestOffersCount={allOffers.length}
-        onMyRequestClick={() => {
-          // Scroll to top to see offers
-          if (scrollContainerRef.current) {
-            scrollContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
-          }
-        }}
-        onNavigateToProfile={onNavigateToProfile}
-        onNavigateToSettings={onNavigateToSettings}
-        showThreeDotsMenu={true}
-        threeDotsMenuItems={dropdownItems}
-      />
+        {/* Unified Header */}
+        <UnifiedHeader
+          mode={mode}
+          toggleMode={toggleMode}
+          isModeSwitching={isModeSwitching}
+          unreadCount={unreadCount}
+          hasUnreadMessages={hasUnreadMessages}
+          user={user}
+          isDarkMode={isDarkMode}
+          toggleTheme={toggleTheme}
+          onOpenLanguagePopup={onOpenLanguagePopup}
+          setView={setView}
+          setPreviousView={setPreviousView}
+          titleKey={titleKey}
+          notifications={notifications}
+          onMarkAsRead={onMarkAsRead}
+          onNotificationClick={onNotificationClick}
+          onClearAll={onClearAll}
+          onSignOut={onSignOut}
+          backButton
+          onBack={onBack}
+          showBackButtonOnDesktop={true}
+          title={request.title}
+          isScrolled={isScrolled}
+          currentView="request-detail"
+          showScrollToOffer={!isMyRequest && !isMyOffer &&
+            request.status === "active"}
+          onScrollToOffer={handleScrollToOfferSection}
+          isOfferSectionVisible={isOfferSectionVisible}
+          canSubmitOffer={!!(offerPrice && offerTitle)}
+          onSubmitOffer={handleSubmitOfferFromHeader}
+          isSubmittingOffer={isSubmittingOffer}
+          offerSubmitSuccess={offerSubmitted}
+          showMyRequestButton={isMyRequest}
+          myRequestOffersCount={allOffers.length}
+          onMyRequestClick={() => {
+            // Scroll to top to see offers
+            if (scrollContainerRef.current) {
+              scrollContainerRef.current.scrollTo({
+                top: 0,
+                behavior: "smooth",
+              });
+            }
+          }}
+          onNavigateToProfile={onNavigateToProfile}
+          onNavigateToSettings={onNavigateToSettings}
+          showThreeDotsMenu={true}
+          threeDotsMenuItems={dropdownItems}
+        />
 
-      {/* Spacer below header */}
-      <div className="h-6" />
+        {/* Spacer below header */}
+        <div className="h-6" />
 
-      <div className="container mx-auto max-w-5xl flex-1 flex flex-col md:flex-row gap-6 min-h-0 px-4">
-        {/* Main Content (Left Side) */}
-        <div className="flex-1 pb-20">
-          {/* Hero Card Container */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className="bg-card rounded-2xl overflow-hidden shadow-sm mb-6 border border-border"
-          >
-            {/* Images Carousel */}
-            {request.images && request.images.length > 0
-              ? (
-                <div
-                  className="relative h-72 w-full bg-secondary overflow-hidden group touch-pan-y"
-                  ref={imageContainerRef}
-                >
-                  <motion.div
-                    className="flex h-full cursor-grab active:cursor-grabbing"
-                    drag={request.images.length > 1 ? "x" : false}
-                    dragConstraints={{ left: 0, right: 0 }}
-                    dragElastic={0.2}
-                    onDragEnd={(_, info) => {
-                      if (request.images && request.images.length > 1) {
-                        const swipeThreshold = 50;
-                        if (info.offset.x < -swipeThreshold) {
-                          nextImage();
-                        } else if (info.offset.x > swipeThreshold) {
-                          prevImage();
-                        }
-                      }
-                    }}
-                    animate={{ x: `-${currentImageIndex * 100}%` }}
-                    transition={{
-                      type: "spring",
-                      stiffness: 300,
-                      damping: 30,
-                    }}
-                    style={{ width: `${request.images.length * 100}%` }}
+        <div className="container mx-auto max-w-5xl flex-1 flex flex-col md:flex-row gap-6 min-h-0 px-4">
+          {/* Main Content (Left Side) */}
+          <div className="flex-1 pb-20">
+            {/* Hero Card Container */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="bg-card rounded-2xl overflow-hidden shadow-sm mb-6 border border-border"
+            >
+              {/* Images Carousel */}
+              {request.images && request.images.length > 0
+                ? (
+                  <div
+                    className="relative h-72 w-full bg-secondary overflow-hidden group touch-pan-y"
+                    ref={imageContainerRef}
                   >
-                    {request.images.map((img, idx) => (
-                      <div
-                        key={idx}
-                        className="w-full h-full relative flex-shrink-0"
-                        onClick={() => setExpandedImageIndex(idx)}
-                      >
-                        <motion.img
-                          layoutId={`request-image-${request.id}-${idx}`}
-                          src={img}
-                          alt={`Image ${idx + 1}`}
-                          className="w-full h-full object-cover select-none pointer-events-none"
-                        />
-                        {/* Gradient Overlay for better text visibility */}
-                        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
-                      </div>
-                    ))}
-                  </motion.div>
-
-                  {/* Status Badge - Bottom Left (Moved slightly for better visibility) */}
-                  {request.status === "active" && (
                     <motion.div
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="absolute bottom-4 left-4 z-20"
-                    >
-                      {isMyRequest
-                        ? (
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-accent/20 text-accent-foreground border border-accent/30 backdrop-blur-md shadow-lg">
-                            <Check
-                              size={14}
-                              strokeWidth={3}
-                              className="text-accent"
-                            />
-                            <span>طلبك</span>
-                          </div>
-                        )
-                        : isMyOffer
-                        ? (
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-white/90 dark:bg-black/80 border border-border text-primary backdrop-blur-md shadow-lg">
-                            <Check
-                              size={14}
-                              strokeWidth={3}
-                              className="text-primary"
-                            />
-                            <span>قدمت عرضاً</span>
-                          </div>
-                        )
-                        : (
-                          <Badge
-                            variant="info"
-                            size="lg"
-                            className="backdrop-blur-md bg-primary/20 border-primary/40 text-primary dark:text-primary font-bold shadow-lg"
-                          >
-                            ينتظر عرضك!
-                          </Badge>
-                        )}
-                    </motion.div>
-                  )}
-
-                  {/* Translation Toggle */}
-                  {autoTranslateRequests && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsShowingOriginal(!isShowingOriginal);
+                      className="flex h-full cursor-grab active:cursor-grabbing"
+                      drag={request.images.length > 1 ? "x" : false}
+                      dragConstraints={{ left: 0, right: 0 }}
+                      dragElastic={0.2}
+                      onDragEnd={(_, info) => {
+                        if (request.images && request.images.length > 1) {
+                          const swipeThreshold = 50;
+                          if (info.offset.x < -swipeThreshold) {
+                            nextImage();
+                          } else if (info.offset.x > swipeThreshold) {
+                            prevImage();
+                          }
+                        }
                       }}
-                      className="absolute top-4 right-4 text-[10px] font-bold text-white z-20 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md hover:bg-black/60 transition-colors border border-white/20"
+                      animate={{ x: `-${currentImageIndex * 100}%` }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 30,
+                      }}
+                      style={{ width: `${request.images.length * 100}%` }}
                     >
-                      {isShowingOriginal
-                        ? `عرض بـ ${languageNames[currentLanguage]}`
-                        : "عرض اللغة الأصلية"}
-                    </button>
-                  )}
-
-                  {/* Zoom Hint Icon */}
-                  <div className="absolute top-4 left-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                    <div className="bg-black/30 backdrop-blur-sm p-2 rounded-full border border-white/20 text-white">
-                      <ExternalLink size={16} />
-                    </div>
-                  </div>
-
-                  {request.images.length > 1 && (
-                    <>
-                      {/* Desktop Navigation Arrows */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          prevImage();
-                        }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-black/20 hover:bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all z-10 hidden md:flex border border-white/10"
-                      >
-                        <ChevronRight size={20} />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          nextImage();
-                        }}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-black/20 hover:bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all z-10 hidden md:flex border border-white/10"
-                      >
-                        <ChevronLeft size={20} />
-                      </button>
-
-                      {/* Pagination Indicators - Better Visuals */}
-                      <div className="absolute bottom-4 right-1/2 translate-x-1/2 flex gap-1.5 z-20 bg-black/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-                        {request.images.map((_, index) => (
-                          <button
-                            key={index}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCurrentImageIndex(index);
-                            }}
-                            className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
-                              index === currentImageIndex
-                                ? "bg-white w-4"
-                                : "bg-white/40 hover:bg-white/60"
-                            }`}
+                      {request.images.map((img, idx) => (
+                        <div
+                          key={idx}
+                          className="w-full h-full relative flex-shrink-0"
+                          onClick={() => setExpandedImageIndex(idx)}
+                        >
+                          <motion.img
+                            layoutId={`request-image-${request.id}-${idx}`}
+                            src={img}
+                            alt={`Image ${idx + 1}`}
+                            className="w-full h-full object-cover select-none pointer-events-none"
                           />
-                        ))}
-                      </div>
-
-                      {/* Photo Counter Label */}
-                      <div className="absolute bottom-4 left-4 z-20 bg-black/30 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10 text-[10px] font-bold text-white/90">
-                        {currentImageIndex + 1} / {request.images.length}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )
-              : (
-                <div className="relative h-64 w-full overflow-hidden">
-                  {/* Simple Gray Background - Empty State */}
-                  <div className="absolute inset-0 bg-muted/8" />
-
-                  {/* Very Subtle Dashed Pattern - Slow Rain Animation */}
-                  <motion.div
-                    className="absolute -inset-20 opacity-[0.08]"
-                    style={{
-                      backgroundImage:
-                        `repeating-linear-gradient(45deg, currentColor, currentColor 0.5px, transparent 0.5px, transparent 11.5px)`,
-                      backgroundSize: "40px 40px",
-                    }}
-                    animate={{
-                      backgroundPosition: ["0px 0px", "40px 40px"],
-                    }}
-                    transition={{
-                      duration: 8,
-                      repeat: Infinity,
-                      ease: "linear",
-                    }}
-                  />
-
-                  {/* Center Content - Call to Add Images */}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
-                    {/* Info Text - Simple */}
-                    <div className="text-center px-4 space-y-1">
-                      <p className="text-xs text-muted-foreground/80">
-                        لا توجد صور توضيحية
-                      </p>
-                      <p className="text-xs text-muted-foreground/70">
-                        اطلب تفاصيل أكثر من صاحب الطلب
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Status Badge - Bottom Left */}
-                  {request.status === "active" && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="absolute bottom-8 left-4 z-20"
-                    >
-                      {isMyRequest
-                        ? (
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-accent/15 text-accent-foreground border border-accent/25 backdrop-blur-md">
-                            <Check
-                              size={14}
-                              strokeWidth={2.5}
-                              className="text-accent"
-                            />
-                            <span>طلبك</span>
-                          </div>
-                        )
-                        : isMyOffer
-                        ? (
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-card border border-border text-primary backdrop-blur-md">
-                            <Check
-                              size={14}
-                              strokeWidth={2.5}
-                              className="text-primary"
-                            />
-                            <span>لقد قدمت عرض</span>
-                          </div>
-                        )
-                        : (
-                          <Badge
-                            variant="info"
-                            size="lg"
-                            className="backdrop-blur-md bg-white/20 dark:bg-white/10 border-primary/30 text-primary dark:text-primary"
-                          >
-                            ينتظر عرضك!
-                          </Badge>
-                        )}
+                          {/* Gradient Overlay for better text visibility */}
+                          <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
+                        </div>
+                      ))}
                     </motion.div>
-                  )}
 
-                  {/* Translation Toggle (No Images State) */}
-                  {autoTranslateRequests && (
-                    <button
-                      onClick={() => setIsShowingOriginal(!isShowingOriginal)}
-                      className="absolute top-4 right-4 text-xs text-white/80 hover:text-white z-20 underline underline-offset-2 px-3 py-1 rounded-md bg-black/20 backdrop-blur-sm transition-colors"
-                    >
-                      {isShowingOriginal
-                        ? `استعرض الطلب بـ${languageNames[currentLanguage]}`
-                        : "استعرض الطلب باللغة الأصلية"}
-                    </button>
-                  )}
-                </div>
-              )}
-
-            <div className="p-6 border border-t-0 border-border rounded-b-xl">
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="flex flex-col gap-4 mb-6 p-4 rounded-xl border"
-                style={{
-                  background:
-                    "linear-gradient(135deg, rgba(30, 150, 140, 0.08) 0%, rgba(30, 150, 140, 0.04) 50%, rgba(21, 54, 89, 0.08) 100%)",
-                  borderColor: "rgba(30, 150, 140, 0.15)",
-                }}
-              >
-                {/* Location - First Row */}
-                <div className="flex flex-col gap-1.5 w-full">
-                  <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium whitespace-nowrap">
-                    <MapPin
-                      size={18}
-                      className="text-red-500"
-                    />{" "}
-                    الموقع
-                  </span>
-                  <span className="font-bold text-sm flex items-center gap-1.5 whitespace-nowrap">
-                    {request.location && request.location !== "غير محدد"
-                      ? (() => {
-                        // Parse location: "حي النرجس، الرياض" or "الرياض"
-                        const locationParts = request.location.split("،").map(
-                          (s) => s.trim(),
-                        );
-                        const city = locationParts.length > 1
-                          ? locationParts[locationParts.length - 1]
-                          : locationParts[0];
-                        const neighborhood = locationParts.length > 1
-                          ? locationParts.slice(0, -1).join("، ")
-                          : null;
-
-                        return (
-                          <>
-                            <span>{city}</span>
-                            {neighborhood && (
-                              <>
-                                <span className="text-muted-foreground/50 font-normal">
-                                  •
-                                </span>
-                                <span className="text-muted-foreground font-normal">
-                                  {neighborhood}
-                                </span>
-                              </>
-                            )}
-                          </>
-                        );
-                      })()
-                      : <span className="text-muted-foreground">غير محدد</span>}
-                    {/* Map Link Icon - Show when locationCoords exists */}
-                    {request.locationCoords && request.location &&
-                      request.location !== "غير محدد" && (
-                      <a
-                        href={`https://www.google.com/maps?q=${request.locationCoords.lat},${request.locationCoords.lng}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-0.5 text-primary hover:text-primary/80 transition-colors"
-                        title="فتح الموقع في خرائط جوجل"
-                        onClick={(e) => e.stopPropagation()}
+                    {/* Status Badge - Bottom Left (Moved slightly for better visibility) */}
+                    {request.status === "active" && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="absolute bottom-4 left-4 z-20"
                       >
-                        <ExternalLink size={12} strokeWidth={2.5} />
-                      </a>
+                        {isMyRequest
+                          ? (
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-accent/20 text-accent-foreground border border-accent/30 backdrop-blur-md shadow-lg">
+                              <Check
+                                size={14}
+                                strokeWidth={3}
+                                className="text-accent"
+                              />
+                              <span>طلبك</span>
+                            </div>
+                          )
+                          : isMyOffer
+                          ? (
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-white/90 dark:bg-black/80 border border-border text-primary backdrop-blur-md shadow-lg">
+                              <Check
+                                size={14}
+                                strokeWidth={3}
+                                className="text-primary"
+                              />
+                              <span>قدمت عرضاً</span>
+                            </div>
+                          )
+                          : (
+                            <Badge
+                              variant="info"
+                              size="lg"
+                              className="backdrop-blur-md bg-primary/20 border-primary/40 text-primary dark:text-primary font-bold shadow-lg"
+                            >
+                              ينتظر عرضك!
+                            </Badge>
+                          )}
+                      </motion.div>
                     )}
-                  </span>
-                </div>
 
-                {/* Published Date / Last Updated - Second Row */}
-                <div className="flex flex-col gap-1.5 w-full">
-                  <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                    <Calendar size={18} />{" "}
-                    {request.updatedAt ? "آخر تحديث" : "تاريخ النشر"}
-                  </span>
-                  <div className="flex flex-col gap-1">
-                    {request.updatedAt
-                      ? (
-                        <>
-                          <span className="font-bold text-sm">
-                            {formatTimeAgo(request.updatedAt, false)}
+                    {/* Translation Toggle */}
+                    {autoTranslateRequests && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsShowingOriginal(!isShowingOriginal);
+                        }}
+                        className="absolute top-4 right-4 text-[10px] font-bold text-white z-20 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md hover:bg-black/60 transition-colors border border-white/20"
+                      >
+                        {isShowingOriginal
+                          ? `عرض بـ ${languageNames[currentLanguage]}`
+                          : "عرض اللغة الأصلية"}
+                      </button>
+                    )}
+
+                    {/* Zoom Hint Icon */}
+                    <div className="absolute top-4 left-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                      <div className="bg-black/30 backdrop-blur-sm p-2 rounded-full border border-white/20 text-white">
+                        <ExternalLink size={16} />
+                      </div>
+                    </div>
+
+                    {request.images.length > 1 && (
+                      <>
+                        {/* Desktop Navigation Arrows */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            prevImage();
+                          }}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 items-center justify-center bg-black/20 hover:bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all z-10 hidden md:flex border border-white/10"
+                        >
+                          <ChevronRight size={20} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            nextImage();
+                          }}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 items-center justify-center bg-black/20 hover:bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all z-10 hidden md:flex border border-white/10"
+                        >
+                          <ChevronLeft size={20} />
+                        </button>
+
+                        {/* Pagination Indicators - Better Visuals */}
+                        <div className="absolute bottom-4 right-1/2 translate-x-1/2 flex gap-1.5 z-20 bg-black/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+                          {request.images.map((_, index) => (
+                            <button
+                              key={index}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCurrentImageIndex(index);
+                              }}
+                              className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+                                index === currentImageIndex
+                                  ? "bg-white w-4"
+                                  : "bg-white/40 hover:bg-white/60"
+                              }`}
+                            />
+                          ))}
+                        </div>
+
+                        {/* Photo Counter Label */}
+                        <div className="absolute bottom-4 left-4 z-20 bg-black/30 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10 text-[10px] font-bold text-white/90">
+                          {currentImageIndex + 1} / {request.images.length}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+                : (
+                  <div className="relative h-64 w-full overflow-hidden">
+                    {/* Simple Gray Background - Empty State */}
+                    <div className="absolute inset-0 bg-muted/8" />
+
+                    {/* Very Subtle Dashed Pattern - Slow Rain Animation */}
+                    <motion.div
+                      className="absolute -inset-20 opacity-[0.08]"
+                      style={{
+                        backgroundImage:
+                          `repeating-linear-gradient(45deg, currentColor, currentColor 0.5px, transparent 0.5px, transparent 11.5px)`,
+                        backgroundSize: "40px 40px",
+                      }}
+                      animate={{
+                        backgroundPosition: ["0px 0px", "40px 40px"],
+                      }}
+                      transition={{
+                        duration: 8,
+                        repeat: Infinity,
+                        ease: "linear",
+                      }}
+                    />
+
+                    {/* Center Content - Call to Add Images */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
+                      {/* Info Text - Simple */}
+                      <div className="text-center px-4 space-y-1">
+                        <p className="text-xs text-muted-foreground/80">
+                          لا توجد صور توضيحية
+                        </p>
+                        <p className="text-xs text-muted-foreground/70">
+                          اطلب تفاصيل أكثر من صاحب الطلب
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Status Badge - Bottom Left */}
+                    {request.status === "active" && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="absolute bottom-8 left-4 z-20"
+                      >
+                        {isMyRequest
+                          ? (
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-accent/15 text-accent-foreground border border-accent/25 backdrop-blur-md">
+                              <Check
+                                size={14}
+                                strokeWidth={2.5}
+                                className="text-accent"
+                              />
+                              <span>طلبك</span>
+                            </div>
+                          )
+                          : isMyOffer
+                          ? (
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-card border border-border text-primary backdrop-blur-md">
+                              <Check
+                                size={14}
+                                strokeWidth={2.5}
+                                className="text-primary"
+                              />
+                              <span>لقد قدمت عرض</span>
+                            </div>
+                          )
+                          : (
+                            <Badge
+                              variant="info"
+                              size="lg"
+                              className="backdrop-blur-md bg-white/20 dark:bg-white/10 border-primary/30 text-primary dark:text-primary"
+                            >
+                              ينتظر عرضك!
+                            </Badge>
+                          )}
+                      </motion.div>
+                    )}
+
+                    {/* Translation Toggle (No Images State) */}
+                    {autoTranslateRequests && (
+                      <button
+                        onClick={() => setIsShowingOriginal(!isShowingOriginal)}
+                        className="absolute top-4 right-4 text-xs text-white/80 hover:text-white z-20 underline underline-offset-2 px-3 py-1 rounded-md bg-black/20 backdrop-blur-sm transition-colors"
+                      >
+                        {isShowingOriginal
+                          ? `استعرض الطلب بـ${languageNames[currentLanguage]}`
+                          : "استعرض الطلب باللغة الأصلية"}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+              <div className="p-6 border border-t-0 border-border rounded-b-xl">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="flex flex-col gap-4 mb-6 p-4 rounded-xl border"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(30, 150, 140, 0.08) 0%, rgba(30, 150, 140, 0.04) 50%, rgba(21, 54, 89, 0.08) 100%)",
+                    borderColor: "rgba(30, 150, 140, 0.15)",
+                  }}
+                >
+                  {/* Location - First Row */}
+                  <div className="flex flex-col gap-1.5 w-full">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium whitespace-nowrap">
+                      <MapPin
+                        size={18}
+                        className="text-red-500"
+                      />{" "}
+                      الموقع
+                    </span>
+                    <span className="font-bold text-sm flex items-center gap-1.5 whitespace-nowrap">
+                      {request.location && request.location !== "غير محدد"
+                        ? (() => {
+                          // Parse location: "حي النرجس، الرياض" or "الرياض"
+                          const locationParts = request.location.split("،").map(
+                            (s) => s.trim(),
+                          );
+                          const city = locationParts.length > 1
+                            ? locationParts[locationParts.length - 1]
+                            : locationParts[0];
+                          const neighborhood = locationParts.length > 1
+                            ? locationParts.slice(0, -1).join("، ")
+                            : null;
+
+                          return (
+                            <>
+                              <span>{city}</span>
+                              {neighborhood && (
+                                <>
+                                  <span className="text-muted-foreground/50 font-normal">
+                                    •
+                                  </span>
+                                  <span className="text-muted-foreground font-normal">
+                                    {neighborhood}
+                                  </span>
+                                </>
+                              )}
+                            </>
+                          );
+                        })()
+                        : (
+                          <span className="text-muted-foreground">
+                            غير محدد
                           </span>
-                          <span className="text-xs text-muted-foreground">
-                            النشر: {formatTimeAgo(request.createdAt, false)}
-                          </span>
-                        </>
-                      )
-                      : (
-                        <span className="font-bold text-sm">
-                          {formatTimeAgo(request.createdAt, false)}
-                        </span>
+                        )}
+                      {/* Map Link Icon - Show when locationCoords exists */}
+                      {request.locationCoords && request.location &&
+                        request.location !== "غير محدد" && (
+                        <a
+                          href={`https://www.google.com/maps?q=${request.locationCoords.lat},${request.locationCoords.lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-0.5 text-primary hover:text-primary/80 transition-colors"
+                          title="فتح الموقع في خرائط جوجل"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink size={12} strokeWidth={2.5} />
+                        </a>
                       )}
-                  </div>
-                </div>
-
-                {/* Budget - Third Row */}
-                {(request.budgetMin || request.budgetMax) && (
-                  <div className="flex flex-col gap-1.5 w-full">
-                    <span
-                      className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
-                      onClick={() =>
-                        setClickedIcons((prev) => ({
-                          ...prev,
-                          budget: !prev.budget,
-                        }))}
-                    >
-                      <DollarSign
-                        size={18}
-                        className={clickedIcons.budget
-                          ? "text-primary"
-                          : "text-primary"}
-                      />{" "}
-                      الميزانية
-                    </span>
-                    <span className="font-bold text-sm text-primary">
-                      {request.budgetMin && request.budgetMax
-                        ? `${request.budgetMin} - ${request.budgetMax} ر.س`
-                        : request.budgetMax
-                        ? `حتى ${request.budgetMax} ر.س`
-                        : `من ${request.budgetMin} ر.س`}
                     </span>
                   </div>
-                )}
 
-                {/* Delivery Time - Fourth Row */}
-                {request.deliveryTimeFrom && (
-                  <div className="flex flex-col gap-1.5 w-full">
-                    <span
-                      className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
-                      onClick={() =>
-                        setClickedIcons((prev) => ({
-                          ...prev,
-                          delivery: !prev.delivery,
-                        }))}
-                    >
-                      <Clock
-                        size={18}
-                        className={clickedIcons.delivery
-                          ? "text-primary"
-                          : "text-primary"}
-                      />{" "}
-                      مدة التنفيذ
-                    </span>
-                    <span className="font-bold text-sm text-muted-foreground">
-                      {request.deliveryTimeFrom}
-                    </span>
-                  </div>
-                )}
-
-                {/* Categories - Fifth Row (only for Marketplace and MyOffers, not MyRequests) */}
-                {shouldShowCategories && (
+                  {/* Published Date / Last Updated - Second Row */}
                   <div className="flex flex-col gap-1.5 w-full">
                     <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                      <FileText size={18} /> التصنيفات
+                      <Calendar size={18} />{" "}
+                      {request.updatedAt ? "آخر تحديث" : "تاريخ النشر"}
                     </span>
-                    <div className="flex flex-wrap gap-2">
-                      {categoriesDisplay.map((cat) => (
-                        <span
-                          key={cat.key}
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${cat.color}`}
-                        >
-                          <CategoryIcon
-                            icon={cat.icon}
-                            emoji={cat.emoji}
-                            size={12}
-                          />
-                          {cat.label}
-                        </span>
-                      ))}
+                    <div className="flex flex-col gap-1">
+                      {request.updatedAt
+                        ? (
+                          <>
+                            <span className="font-bold text-sm">
+                              {formatTimeAgo(request.updatedAt, false)}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              النشر: {formatTimeAgo(request.createdAt, false)}
+                            </span>
+                          </>
+                        )
+                        : (
+                          <span className="font-bold text-sm">
+                            {formatTimeAgo(request.createdAt, false)}
+                          </span>
+                        )}
                     </div>
                   </div>
-                )}
 
-                {/* Available After - Sixth Row (only for my requests) */}
-                {isMyRequest && request.status === "active" && (() => {
-                  const lastUpdated = request.updatedAt
-                    ? new Date(request.updatedAt)
-                    : new Date(request.createdAt);
-                  const sixHoursMs = 6 * 60 * 60 * 1000;
-                  const elapsedSinceUpdate = Date.now() - lastUpdated.getTime();
-                  const canBump = elapsedSinceUpdate >= sixHoursMs;
-                  const bumpHoursLeft = Math.max(
-                    0,
-                    Math.ceil(
-                      (sixHoursMs - elapsedSinceUpdate) / (60 * 60 * 1000),
-                    ),
-                  );
-
-                  if (!canBump) {
-                    return (
-                      <div className="flex flex-col gap-1.5 w-full">
-                        <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                          <RefreshCw size={18} className="text-primary" />{" "}
-                          متاح بعد
-                        </span>
-                        <span className="font-bold text-sm text-muted-foreground">
-                          {bumpHoursLeft} س
-                        </span>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="prose dark:prose-invert max-w-none text-lg leading-relaxed text-foreground/80"
-              >
-                <p className="whitespace-pre-line">{request.description}</p>
-              </motion.div>
-            </div>
-          </motion.div>
-
-          {/* ================= REQUESTER VIEW ================= */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-          >
-            {isMyRequest && (
-              <div className="space-y-4">
-                {/* Complete Request Button for Requester - After approving an offer */}
-                {request.status === "assigned" && onCompleteRequest && (
-                  <motion.button
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => onCompleteRequest(request.id)}
-                    className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-primary text-white font-bold shadow-lg hover:shadow-xl transition-all mb-4"
-                  >
-                    <CheckCircle size={20} />
-                    <span>تم إكمال الطلب</span>
-                  </motion.button>
-                )}
-
-                <h3 className="font-bold text-lg flex items-center gap-2">
-                  {request.status === "assigned" ? <>العرض المعتمد</> : (
-                    <>
-                      العروض المستلمة
-                      <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-primary/10 text-primary px-1.5 text-[11px] font-bold">
-                        {allOffers.length}
-                      </span>
-                    </>
-                  )}
-                </h3>
-                {isLoadingOffers
-                  ? (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="text-center p-8 bg-card rounded-2xl border border-dashed"
-                    >
-                      <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-primary" />
-                      <p className="text-muted-foreground">
-                        جاري تحميل العروض...
-                      </p>
-                    </motion.div>
-                  )
-                  : allOffers.length === 0
-                  ? (
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-center p-8 bg-card rounded-2xl border border-dashed"
-                    >
-                      {/* Brand character for empty state */}
-                      <motion.div
-                        className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-brand flex items-center justify-center"
-                        animate={{ scale: [1, 1.05, 1], rotate: [0, 3, -3, 0] }}
-                        transition={{ duration: 2, repeat: Infinity }}
+                  {/* Budget - Third Row */}
+                  {(request.budgetMin || request.budgetMax) && (
+                    <div className="flex flex-col gap-1.5 w-full">
+                      <span
+                        className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
+                        onClick={() =>
+                          setClickedIcons((prev) => ({
+                            ...prev,
+                            budget: !prev.budget,
+                          }))}
                       >
-                        <span className="text-2xl font-black text-white">
-                          أ
-                        </span>
-                      </motion.div>
-                      <p className="text-muted-foreground">لم تصلك عروض بعد</p>
-                      <p className="text-xs text-muted-foreground/60 mt-1">
-                        سنخبرك عند وصول العروض ✨
-                      </p>
-                    </motion.div>
-                  )
-                  : (
-                    <motion.div
-                      initial="hidden"
-                      animate="show"
-                      variants={{
-                        hidden: { opacity: 0 },
-                        show: {
-                          opacity: 1,
-                          transition: { staggerChildren: 0.1 },
-                        },
-                      }}
-                      className="space-y-4"
+                        <DollarSign
+                          size={18}
+                          className={clickedIcons.budget
+                            ? "text-primary"
+                            : "text-primary"}
+                        />{" "}
+                        الميزانية
+                      </span>
+                      <span className="font-bold text-sm text-primary">
+                        {request.budgetMin && request.budgetMax
+                          ? `${request.budgetMin} - ${request.budgetMax} ر.س`
+                          : request.budgetMax
+                          ? `حتى ${request.budgetMax} ر.س`
+                          : `من ${request.budgetMin} ر.س`}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Delivery Time - Fourth Row */}
+                  {request.deliveryTimeFrom && (
+                    <div className="flex flex-col gap-1.5 w-full">
+                      <span
+                        className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium cursor-pointer transition-colors hover:text-foreground"
+                        onClick={() =>
+                          setClickedIcons((prev) => ({
+                            ...prev,
+                            delivery: !prev.delivery,
+                          }))}
+                      >
+                        <Clock
+                          size={18}
+                          className={clickedIcons.delivery
+                            ? "text-primary"
+                            : "text-primary"}
+                        />{" "}
+                        مدة التنفيذ
+                      </span>
+                      <span className="font-bold text-sm text-muted-foreground">
+                        {request.deliveryTimeFrom}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Categories - Fifth Row (only for Marketplace and MyOffers, not MyRequests) */}
+                  {shouldShowCategories && (
+                    <div className="flex flex-col gap-1.5 w-full">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                        <FileText size={18} /> التصنيفات
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {categoriesDisplay.map((cat) => (
+                          <span
+                            key={cat.key}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${cat.color}`}
+                          >
+                            <CategoryIcon
+                              icon={cat.icon}
+                              emoji={cat.emoji}
+                              size={12}
+                            />
+                            {cat.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Available After - Sixth Row (only for my requests) */}
+                  {isMyRequest && request.status === "active" && (() => {
+                    const lastUpdated = request.updatedAt
+                      ? new Date(request.updatedAt)
+                      : new Date(request.createdAt);
+                    const sixHoursMs = 6 * 60 * 60 * 1000;
+                    const elapsedSinceUpdate = Date.now() -
+                      lastUpdated.getTime();
+                    const canBump = elapsedSinceUpdate >= sixHoursMs;
+                    const bumpHoursLeft = Math.max(
+                      0,
+                      Math.ceil(
+                        (sixHoursMs - elapsedSinceUpdate) / (60 * 60 * 1000),
+                      ),
+                    );
+
+                    if (!canBump) {
+                      return (
+                        <div className="flex flex-col gap-1.5 w-full">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                            <RefreshCw size={18} className="text-primary" />
+                            {" "}
+                            متاح بعد
+                          </span>
+                          <span className="font-bold text-sm text-muted-foreground">
+                            {bumpHoursLeft} س
+                          </span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="prose dark:prose-invert max-w-none text-lg leading-relaxed text-foreground/80"
+                >
+                  <p className="whitespace-pre-line">{request.description}</p>
+                </motion.div>
+              </div>
+            </motion.div>
+
+            {/* ================= REQUESTER VIEW ================= */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+            >
+              {isMyRequest && (
+                <div className="space-y-4">
+                  {/* Complete Request Button for Requester - After approving an offer */}
+                  {request.status === "assigned" && onCompleteRequest && (
+                    <motion.button
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => onCompleteRequest(request.id)}
+                      className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-primary text-white font-bold shadow-lg hover:shadow-xl transition-all mb-4"
                     >
-                      {sortedOffers.map((offer, index) => (
+                      <CheckCircle size={20} />
+                      <span>تم إكمال الطلب</span>
+                    </motion.button>
+                  )}
+
+                  <h3 className="font-bold text-lg flex items-center gap-2">
+                    {request.status === "assigned" ? <>العرض المعتمد</> : (
+                      <>
+                        العروض المستلمة
+                        <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-primary/10 text-primary px-1.5 text-[11px] font-bold">
+                          {allOffers.length}
+                        </span>
+                      </>
+                    )}
+                  </h3>
+                  {isLoadingOffers
+                    ? (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="text-center p-8 bg-card rounded-2xl border border-dashed"
+                      >
+                        <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-primary" />
+                        <p className="text-muted-foreground">
+                          جاري تحميل العروض...
+                        </p>
+                      </motion.div>
+                    )
+                    : allOffers.length === 0
+                    ? (
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-center p-8 bg-card rounded-2xl border border-dashed"
+                      >
+                        {/* Brand character for empty state */}
                         <motion.div
-                          key={offer.id}
-                          id={`offer-${offer.id}`}
-                          variants={{
-                            hidden: { opacity: 0, y: 20, scale: 0.95 },
-                            show: { opacity: 1, y: 0, scale: 1 },
+                          className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-brand flex items-center justify-center"
+                          animate={{
+                            scale: [1, 1.05, 1],
+                            rotate: [0, 3, -3, 0],
                           }}
-                          whileHover={{ scale: 1.01, y: -2 }}
-                          animate={highlightOfferId === offer.id
-                            ? {
-                              boxShadow: [
-                                "0 0 0 0 rgba(var(--primary-rgb), 0)",
-                                "0 0 20px 4px rgba(var(--primary-rgb), 0.6)",
-                                "0 0 30px 8px rgba(var(--primary-rgb), 0.4)",
-                                "0 0 20px 4px rgba(var(--primary-rgb), 0.6)",
-                                "0 0 0 0 rgba(var(--primary-rgb), 0)",
-                              ],
-                              scale: [1, 1.02, 1, 1.01, 1],
-                              borderColor: [
-                                "rgb(var(--border))",
-                                "rgb(var(--primary))",
-                                "rgb(var(--primary))",
-                                "rgb(var(--primary))",
-                                "rgb(var(--border))",
-                              ],
-                            }
-                            : undefined}
-                          transition={highlightOfferId === offer.id
-                            ? {
-                              duration: 2,
-                              ease: "easeInOut",
-                              times: [0, 0.25, 0.5, 0.75, 1],
-                            }
-                            : undefined}
-                          className={`bg-card border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all relative ${
-                            highlightOfferId === offer.id
-                              ? "border-primary ring-2 ring-primary/30"
-                              : "border-border"
-                          }`}
+                          transition={{ duration: 2, repeat: Infinity }}
                         >
-                          <div className="flex justify-between items-start mb-2">
-                            <div className="flex items-center gap-3">
-                              <div
-                                className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary cursor-pointer hover:bg-primary/20 transition-colors"
-                                onClick={() => {
-                                  if (
-                                    offer.providerId && onNavigateToUserProfile
-                                  ) {
-                                    onNavigateToUserProfile(offer.providerId);
-                                  }
-                                }}
-                                title="عرض ملف المزود الشخصي"
-                              >
-                                {offer.providerName.charAt(0)}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => {
-                                      if (
-                                        offer.providerId &&
-                                        onNavigateToUserProfile
-                                      ) {
-                                        onNavigateToUserProfile(
-                                          offer.providerId,
-                                        );
-                                      }
-                                    }}
-                                    className="font-bold text-sm hover:text-primary transition-colors cursor-pointer text-left"
-                                    title="عرض ملف المزود الشخصي"
-                                    data-provider-id={offer.providerId}
-                                    data-provider-name={offer.providerName ||
-                                      "مزود خدمة"}
-                                    aria-label={`عرض ملف ${
-                                      offer.providerName || "مزود خدمة"
-                                    }`}
-                                  >
-                                    {offer.providerName || "مزود خدمة"}
-                                  </button>
-                                </div>
-                                <span className="text-xs text-muted-foreground">
-                                  {format(offer.createdAt, "PP", {
-                                    locale: ar,
-                                  })}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="text-left">
-                              <div className="font-bold text-primary">
-                                {offer.price} ر.س
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {offer.deliveryTime}
-                              </div>
-                            </div>
-                          </div>
-                          <p className="text-sm text-muted-foreground bg-secondary/30 p-3 rounded-lg mb-3">
-                            {offer.description}
-                          </p>
-
-                          {/* Offer Images */}
-                          {offer.images && offer.images.length > 0 && (
-                            <div className="mb-3 flex gap-2 overflow-x-auto pb-2">
-                              {offer.images.map((imageUrl, imgIndex) => (
-                                <motion.img
-                                  key={imgIndex}
-                                  src={imageUrl}
-                                  alt={`صورة ${imgIndex + 1}`}
-                                  className="w-24 h-24 rounded-lg object-cover border border-border shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                          <span className="text-2xl font-black text-white">
+                            أ
+                          </span>
+                        </motion.div>
+                        <p className="text-muted-foreground">
+                          لم تصلك عروض بعد
+                        </p>
+                        <p className="text-xs text-muted-foreground/60 mt-1">
+                          سنخبرك عند وصول العروض ✨
+                        </p>
+                      </motion.div>
+                    )
+                    : (
+                      <motion.div
+                        initial="hidden"
+                        animate="show"
+                        variants={{
+                          hidden: { opacity: 0 },
+                          show: {
+                            opacity: 1,
+                            transition: { staggerChildren: 0.1 },
+                          },
+                        }}
+                        className="space-y-4"
+                      >
+                        {sortedOffers.map((offer, index) => (
+                          <motion.div
+                            key={offer.id}
+                            id={`offer-${offer.id}`}
+                            variants={{
+                              hidden: { opacity: 0, y: 20, scale: 0.95 },
+                              show: { opacity: 1, y: 0, scale: 1 },
+                            }}
+                            whileHover={{ scale: 1.01, y: -2 }}
+                            animate={highlightOfferId === offer.id
+                              ? {
+                                boxShadow: [
+                                  "0 0 0 0 rgba(var(--primary-rgb), 0)",
+                                  "0 0 20px 4px rgba(var(--primary-rgb), 0.6)",
+                                  "0 0 30px 8px rgba(var(--primary-rgb), 0.4)",
+                                  "0 0 20px 4px rgba(var(--primary-rgb), 0.6)",
+                                  "0 0 0 0 rgba(var(--primary-rgb), 0)",
+                                ],
+                                scale: [1, 1.02, 1, 1.01, 1],
+                                borderColor: [
+                                  "rgb(var(--border))",
+                                  "rgb(var(--primary))",
+                                  "rgb(var(--primary))",
+                                  "rgb(var(--primary))",
+                                  "rgb(var(--border))",
+                                ],
+                              }
+                              : undefined}
+                            transition={highlightOfferId === offer.id
+                              ? {
+                                duration: 2,
+                                ease: "easeInOut",
+                                times: [0, 0.25, 0.5, 0.75, 1],
+                              }
+                              : undefined}
+                            className={`bg-card border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all relative ${
+                              highlightOfferId === offer.id
+                                ? "border-primary ring-2 ring-primary/30"
+                                : "border-border"
+                            }`}
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary cursor-pointer hover:bg-primary/20 transition-colors"
                                   onClick={() => {
-                                    // يمكن إضافة modal لعرض الصورة بالحجم الكامل
-                                    window.open(imageUrl, "_blank");
+                                    if (
+                                      offer.providerId &&
+                                      onNavigateToUserProfile
+                                    ) {
+                                      onNavigateToUserProfile(offer.providerId);
+                                    }
                                   }}
-                                  initial={{ opacity: 0, scale: 0.9 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  transition={{ delay: imgIndex * 0.1 }}
-                                />
-                              ))}
-                            </div>
-                          )}
-
-                          <div className="flex gap-3">
-                            {/* PENDING ACTIONS */}
-                            {getEffectiveOfferStatus(offer) === "pending" && (
-                              <>
-                                {/* 1. Accept Button (Appears Right in RTL because it's first) */}
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="gradient"
-                                  className="flex-1 h-11 text-sm font-bold rounded-xl shadow-md"
-                                  onClick={() => handleAcceptOffer(offer.id)}
-                                  disabled={isAcceptingOffer || isGuest}
+                                  title="عرض ملف المزود الشخصي"
                                 >
-                                  {isAcceptingOffer
-                                    ? (
-                                      <Loader2
-                                        size={18}
-                                        className="animate-spin ml-2"
-                                      />
-                                    )
-                                    : (
-                                      <CheckCircle size={18} className="ml-2" />
-                                    )}
-                                  قبول العرض
-                                </Button>
-
-                                {/* Negotiation Button/Badge */}
-                                {offer.isNegotiable
-                                  ? (
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      className="flex-1 h-11 text-sm font-bold rounded-xl border-primary/30 text-primary hover:bg-primary/5 shadow-sm disabled:opacity-70"
-                                      onClick={() =>
-                                        handleStartNegotiation(offer.id)}
-                                      disabled={isStartingNegotiation ||
-                                        isGuest}
+                                  {offer.providerName.charAt(0)}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        if (
+                                          offer.providerId &&
+                                          onNavigateToUserProfile
+                                        ) {
+                                          onNavigateToUserProfile(
+                                            offer.providerId,
+                                          );
+                                        }
+                                      }}
+                                      className="font-bold text-sm hover:text-primary transition-colors cursor-pointer text-left"
+                                      title="عرض ملف المزود الشخصي"
+                                      data-provider-id={offer.providerId}
+                                      data-provider-name={offer.providerName ||
+                                        "مزود خدمة"}
+                                      aria-label={`عرض ملف ${
+                                        offer.providerName || "مزود خدمة"
+                                      }`}
                                     >
-                                      {isStartingNegotiation
-                                        ? (
-                                          <Loader2
-                                            size={18}
-                                            className="animate-spin ml-2"
-                                          />
-                                        )
-                                        : (
-                                          <MessageCircle
-                                            size={18}
-                                            className="ml-2"
-                                          />
-                                        )} بدء التفاوض
-                                    </Button>
-                                  )
-                                  : (
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      disabled
-                                      className="flex-1 h-11 rounded-xl border border-border/60 bg-secondary/40 text-muted-foreground text-sm font-bold shadow-none disabled:opacity-100 cursor-not-allowed"
-                                    >
-                                      <Lock size={18} className="ml-2" />
-                                      غير قابل للتفاوض
-                                    </Button>
-                                  )}
-                              </>
-                            )}
-
-                            {/* عرض رسائل الأخطاء */}
-                            {acceptOfferError && (
-                              <div className="w-full mt-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-xs flex items-center gap-2">
-                                <AlertCircle size={14} />
-                                {acceptOfferError}
+                                      {offer.providerName || "مزود خدمة"}
+                                    </button>
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">
+                                    {format(offer.createdAt, "PP", {
+                                      locale: ar,
+                                    })}
+                                  </span>
+                                </div>
                               </div>
-                            )}
-                            {startNegotiationError && (
-                              <div className="w-full mt-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-xs flex items-center gap-2">
-                                <AlertCircle size={14} />
-                                {startNegotiationError}
+                              <div className="text-left">
+                                <div className="font-bold text-primary">
+                                  {offer.price} ر.س
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {offer.deliveryTime}
+                                </div>
                               </div>
-                            )}
+                            </div>
+                            <p className="text-sm text-muted-foreground bg-secondary/30 p-3 rounded-lg mb-3">
+                              {offer.description}
+                            </p>
 
-                            {/* NEGOTIATING ACTIONS */}
-                            {getEffectiveOfferStatus(offer) === "negotiating" &&
-                              (
-                                <>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    className="relative flex-1 h-11 rounded-xl border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 overflow-visible"
+                            {/* Offer Images */}
+                            {offer.images && offer.images.length > 0 && (
+                              <div className="mb-3 flex gap-2 overflow-x-auto pb-2">
+                                {offer.images.map((imageUrl, imgIndex) => (
+                                  <motion.img
+                                    key={imgIndex}
+                                    src={imageUrl}
+                                    alt={`صورة ${imgIndex + 1}`}
+                                    className="w-24 h-24 rounded-lg object-cover border border-border shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
                                     onClick={() => {
-                                      setActiveOfferId(offer.id);
-                                      setNegotiationOpen(true);
+                                      // يمكن إضافة modal لعرض الصورة بالحجم الكامل
+                                      window.open(imageUrl, "_blank");
                                     }}
-                                  >
-                                    <div className="inline-flex items-center justify-center gap-2">
-                                      <MessageSquare
-                                        size={18}
-                                        className="ml-2"
-                                      />{" "}
-                                      متابعة التفاوض
-                                      {unreadMessagesPerOffer?.has(offer.id) &&
-                                        (unreadMessagesPerOffer.get(offer.id) ||
-                                            0) > 0 &&
-                                        (
-                                          <motion.span
-                                            initial={{ scale: 0, opacity: 0 }}
-                                            animate={{ scale: 1, opacity: 1 }}
-                                            className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-gradient-to-br from-red-500 to-red-600 text-white text-[11px] font-bold shadow-md border border-red-400/30 dark:border-red-700/50 ring-2 ring-red-500/20 dark:ring-red-500/30"
-                                          >
-                                            {unreadMessagesPerOffer.get(
-                                                offer.id,
-                                              )! > 99
-                                              ? "99+"
-                                              : unreadMessagesPerOffer.get(
-                                                offer.id,
-                                              )}
-                                          </motion.span>
-                                        )}
-                                    </div>
-                                  </Button>
+                                    initial={{ opacity: 0, scale: 0.9 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    transition={{ delay: imgIndex * 0.1 }}
+                                  />
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="flex gap-3">
+                              {/* PENDING ACTIONS */}
+                              {getEffectiveOfferStatus(offer) === "pending" && (
+                                <>
+                                  {/* 1. Accept Button (Appears Right in RTL because it's first) */}
                                   <Button
                                     type="button"
                                     size="sm"
-                                    variant="success"
-                                    className="flex-1 h-11 rounded-xl shadow-md disabled:opacity-50"
+                                    variant="gradient"
+                                    className="flex-1 h-11 text-sm font-bold rounded-xl shadow-md"
                                     onClick={() => handleAcceptOffer(offer.id)}
                                     disabled={isAcceptingOffer || isGuest}
                                   >
@@ -3088,1969 +2841,2147 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                                           className="animate-spin ml-2"
                                         />
                                       )
-                                      : null}
+                                      : (
+                                        <CheckCircle
+                                          size={18}
+                                          className="ml-2"
+                                        />
+                                      )}
                                     قبول العرض
                                   </Button>
-                                </>
-                              )}
 
-                            {/* ACCEPTED STATUS - Enhanced with contact options */}
-                            {getEffectiveOfferStatus(offer) === "accepted" && (
-                              <div className="w-full space-y-3">
-                                {/* Status Badge */}
-                                <div className="bg-primary/10 text-primary rounded-lg text-sm font-bold flex items-center justify-center gap-2 border border-primary/20 px-4 py-2.5">
-                                  <CheckCircle size={20} /> ✅ العرض مقبول
-                                </div>
-
-                                {/* Contact Buttons */}
-                                <div className="flex items-center gap-2">
-                                  {/* WhatsApp Button - Show if request has whatsappNumber */}
-                                  {request.whatsappNumber &&
-                                    (request.contactMethod === "whatsapp" ||
-                                      request.contactMethod === "both" ||
-                                      request.isCreatedViaWhatsApp) &&
-                                    (
+                                  {/* Negotiation Button/Badge */}
+                                  {offer.isNegotiable
+                                    ? (
                                       <Button
                                         type="button"
                                         size="sm"
-                                        className="flex-1 bg-primary hover:bg-primary/90 text-white h-10"
+                                        variant="outline"
+                                        className="flex-1 h-11 text-sm font-bold rounded-xl border-primary/30 text-primary hover:bg-primary/5 shadow-sm disabled:opacity-70"
                                         onClick={() =>
-                                          window.open(
-                                            `https://wa.me/${request.whatsappNumber}`,
-                                            "_blank",
-                                          )}
+                                          handleStartNegotiation(offer.id)}
+                                        disabled={isStartingNegotiation ||
+                                          isGuest}
                                       >
-                                        <svg
-                                          className="w-4 h-4 ml-2"
-                                          viewBox="0 0 24 24"
-                                          fill="currentColor"
-                                        >
-                                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
-                                        </svg>
-                                        تواصل واتساب
+                                        {isStartingNegotiation
+                                          ? (
+                                            <Loader2
+                                              size={18}
+                                              className="animate-spin ml-2"
+                                            />
+                                          )
+                                          : (
+                                            <MessageCircle
+                                              size={18}
+                                              className="ml-2"
+                                            />
+                                          )} بدء التفاوض
+                                      </Button>
+                                    )
+                                    : (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        disabled
+                                        className="flex-1 h-11 rounded-xl border border-border/60 bg-secondary/40 text-muted-foreground text-sm font-bold shadow-none disabled:opacity-100 cursor-not-allowed"
+                                      >
+                                        <Lock size={18} className="ml-2" />
+                                        غير قابل للتفاوض
                                       </Button>
                                     )}
+                                </>
+                              )}
 
-                                  {/* In-App Chat Button - Show if contact method allows chat */}
-                                  {(!request.isCreatedViaWhatsApp &&
-                                    (request.contactMethod === "chat" ||
-                                      request.contactMethod === "both" ||
-                                      !request.contactMethod)) && (
+                              {/* عرض رسائل الأخطاء */}
+                              {acceptOfferError && (
+                                <div className="w-full mt-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-xs flex items-center gap-2">
+                                  <AlertCircle size={14} />
+                                  {acceptOfferError}
+                                </div>
+                              )}
+                              {startNegotiationError && (
+                                <div className="w-full mt-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-xs flex items-center gap-2">
+                                  <AlertCircle size={14} />
+                                  {startNegotiationError}
+                                </div>
+                              )}
+
+                              {/* NEGOTIATING ACTIONS */}
+                              {getEffectiveOfferStatus(offer) ===
+                                  "negotiating" &&
+                                (
+                                  <>
                                     <Button
                                       type="button"
                                       size="sm"
-                                      className="flex-1 bg-primary hover:bg-primary/90 h-10"
+                                      variant="outline"
+                                      className="relative flex-1 h-11 rounded-xl border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 overflow-visible"
                                       onClick={() => {
                                         setActiveOfferId(offer.id);
                                         setNegotiationOpen(true);
                                       }}
                                     >
-                                      <MessageCircle
-                                        size={18}
-                                        className="ml-2"
-                                      />
-                                      محادثة داخلية
+                                      <div className="inline-flex items-center justify-center gap-2">
+                                        <MessageSquare
+                                          size={18}
+                                          className="ml-2"
+                                        />{" "}
+                                        متابعة التفاوض
+                                        {unreadMessagesPerOffer?.has(
+                                          offer.id,
+                                        ) &&
+                                          (unreadMessagesPerOffer.get(
+                                              offer.id,
+                                            ) ||
+                                              0) > 0 &&
+                                          (
+                                            <motion.span
+                                              initial={{ scale: 0, opacity: 0 }}
+                                              animate={{ scale: 1, opacity: 1 }}
+                                              className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-gradient-to-br from-red-500 to-red-600 text-white text-[11px] font-bold shadow-md border border-red-400/30 dark:border-red-700/50 ring-2 ring-red-500/20 dark:ring-red-500/30"
+                                            >
+                                              {unreadMessagesPerOffer.get(
+                                                  offer.id,
+                                                )! > 99
+                                                ? "99+"
+                                                : unreadMessagesPerOffer.get(
+                                                  offer.id,
+                                                )}
+                                            </motion.span>
+                                          )}
+                                      </div>
                                     </Button>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      ))}
-                    </motion.div>
-                  )}
-                {/* COMPLETED STATUS - Add Review Button */}
-                {request.status === "completed" && (
-                  <div className="w-full space-y-3 mt-4">
-                    <div className="bg-green-500/10 text-green-600 rounded-lg text-sm font-bold flex items-center justify-center gap-2 border border-green-500/20 px-4 py-3">
-                      <CheckCircle size={20} /> تم إكمال الطلب بنجاح
-                    </div>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="success"
+                                      className="flex-1 h-11 rounded-xl shadow-md disabled:opacity-50"
+                                      onClick={() =>
+                                        handleAcceptOffer(offer.id)}
+                                      disabled={isAcceptingOffer || isGuest}
+                                    >
+                                      {isAcceptingOffer
+                                        ? (
+                                          <Loader2
+                                            size={18}
+                                            className="animate-spin ml-2"
+                                          />
+                                        )
+                                        : null}
+                                      قبول العرض
+                                    </Button>
+                                  </>
+                                )}
 
-                    {canReview && (
-                      <Button
-                        type="button"
-                        size="lg"
-                        className="w-full bg-yellow-500 hover:bg-yellow-600 text-white shadow-md animate-in fade-in zoom-in duration-3000"
-                        onClick={() => setShowReviewForm(true)}
-                      >
-                        <div className="flex items-center justify-center gap-2">
-                          <Star size={20} className="fill-white" />
-                          <span>تقييم مقدم الخدمة</span>
-                        </div>
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+                              {/* ACCEPTED STATUS - Enhanced with contact options */}
+                              {getEffectiveOfferStatus(offer) === "accepted" &&
+                                (
+                                  <div className="w-full space-y-3">
+                                    {/* Status Badge */}
+                                    <div className="bg-primary/10 text-primary rounded-lg text-sm font-bold flex items-center justify-center gap-2 border border-primary/20 px-4 py-2.5">
+                                      <CheckCircle size={20} /> ✅ العرض مقبول
+                                    </div>
 
-            {/* Review Form Modal */}
-            <ReviewForm
-              isOpen={showReviewForm}
-              onCancel={() => setShowReviewForm(false)}
-              requestId={request.id}
-              // For Requester: We need the provider's ID.
-              // We have `request.accepted_offer_id`. We can find the offer in `receivedOffersMap` or `loadedOffers`.
-              revieweeId={isMyRequest
-                ? (loadedOffers.find((o) => o.id === request.acceptedOfferId)
-                  ?.providerId ||
-                  Array.from(receivedOffersMap.values()).flat().find((o) =>
-                    o.id === request.acceptedOfferId
-                  )?.providerId || "")
-                : request.author}
-              onSuccess={() => {
-                setShowReviewForm(false);
-                setCanReview(false); // Hide button after review
-                // Maybe refresh reviews?
-              }}
-            />
+                                    {/* Contact Buttons */}
+                                    <div className="flex items-center gap-2">
+                                      {/* WhatsApp Button - Show if request has whatsappNumber */}
+                                      {request.whatsappNumber &&
+                                        (request.contactMethod === "whatsapp" ||
+                                          request.contactMethod === "both" ||
+                                          request.isCreatedViaWhatsApp) &&
+                                        (
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            className="flex-1 bg-primary hover:bg-primary/90 text-white h-10"
+                                            onClick={() =>
+                                              window.open(
+                                                `https://wa.me/${request.whatsappNumber}`,
+                                                "_blank",
+                                              )}
+                                          >
+                                            <svg
+                                              className="w-4 h-4 ml-2"
+                                              viewBox="0 0 24 24"
+                                              fill="currentColor"
+                                            >
+                                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                                            </svg>
+                                            تواصل واتساب
+                                          </Button>
+                                        )}
 
-            {!isMyRequest && (
-              <>
-                {/* CASE 1: I ALREADY HAVE AN OFFER */}
-                {isMyOffer && myOffer && (
-                  <div className="space-y-4 mt-4">
-                    {/* Negotiation Started Alert - Show when requester started negotiation */}
-                    {myOffer.status === "negotiating" && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        className="p-4 rounded-xl bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-200 dark:border-blue-800"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-                            <MessageCircle
-                              size={20}
-                              className="text-primary dark:text-primary"
-                            />
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="font-bold text-primary text-sm">
-                              🎉 صاحب الطلب بدأ التفاوض معك!
-                            </h4>
-                            <p className="text-xs text-primary/80 dark:text-primary/70 mt-0.5">
-                              يمكنك الآن التواصل والتفاوض على التفاصيل
-                            </p>
-                          </div>
-                        </div>
+                                      {/* In-App Chat Button - Show if contact method allows chat */}
+                                      {(!request.isCreatedViaWhatsApp &&
+                                        (request.contactMethod === "chat" ||
+                                          request.contactMethod === "both" ||
+                                          !request.contactMethod)) && (
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          className="flex-1 bg-primary hover:bg-primary/90 h-10"
+                                          onClick={() => {
+                                            setActiveOfferId(offer.id);
+                                            setNegotiationOpen(true);
+                                          }}
+                                        >
+                                          <MessageCircle
+                                            size={18}
+                                            className="ml-2"
+                                          />
+                                          محادثة داخلية
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                            </div>
+                          </motion.div>
+                        ))}
                       </motion.div>
                     )}
+                  {/* COMPLETED STATUS - Add Review Button */}
+                  {request.status === "completed" && (
+                    <div className="w-full space-y-3 mt-4">
+                      <div className="bg-green-500/10 text-green-600 rounded-lg text-sm font-bold flex items-center justify-center gap-2 border border-green-500/20 px-4 py-3">
+                        <CheckCircle size={20} /> تم إكمال الطلب بنجاح
+                      </div>
 
-                    {/* Complete Request Button - Only for accepted offers */}
-                    {myOffer.status === "accepted" &&
-                      request.status === "assigned" && onCompleteRequest && (
-                      <motion.button
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => onCompleteRequest(request.id)}
-                        className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-primary text-white font-bold shadow-lg hover:shadow-xl transition-all"
-                      >
-                        <CheckCircle size={20} />
-                        <span>تم إكمال الطلب</span>
-                      </motion.button>
-                    )}
-
-                    {/* WhatsApp Button - Only for negotiating/accepted (when available) */}
-                    {(myOffer.status === "negotiating" ||
-                      myOffer.status === "accepted") &&
-                      request.whatsappNumber &&
-                      (request.contactMethod === "whatsapp" ||
-                        request.contactMethod === "both" ||
-                        request.isCreatedViaWhatsApp) &&
-                      (
+                      {canReview && (
                         <Button
                           type="button"
-                          size="sm"
-                          className="w-full bg-[#25D366] hover:bg-[#20BD5A] text-white gap-2 h-10"
-                          onClick={() =>
-                            window.open(
-                              `https://wa.me/${request.whatsappNumber}`,
-                              "_blank",
-                            )}
+                          size="lg"
+                          className="w-full bg-yellow-500 hover:bg-yellow-600 text-white shadow-md animate-in fade-in zoom-in duration-3000"
+                          onClick={() => setShowReviewForm(true)}
                         >
-                          <svg
-                            className="w-4 h-4"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                          >
-                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
-                          </svg>
-                          واتساب
+                          <div className="flex items-center justify-center gap-2">
+                            <Star size={20} className="fill-white" />
+                            <span>تقييم مقدم الخدمة</span>
+                          </div>
                         </Button>
                       )}
-
-                    {/* My Offer Box - Clean Design */}
-                    <div className="bg-card border border-border rounded-xl p-5 pt-6 shadow-sm relative">
-                      {/* Header with Floating Status */}
-                      <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-2 text-primary">
-                          <FileText size={14} />
-                          <span className="text-sm font-bold">تفاصيل عرضي</span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                          {/* Status Badge */}
-                          {(() => {
-                            const status = myOffer?.status || "pending";
-                            const config = getOfferStatusConfig(status);
-
-                            // Get appropriate icon for each status
-                            let icon = null;
-                            let displayText = config.label;
-
-                            switch (status) {
-                              case "accepted":
-                                icon = <CheckCircle size={14} />;
-                                displayText = "عرض مقبول";
-                                break;
-                              case "negotiating":
-                                icon = <MessageCircle size={14} />;
-                                break;
-                              case "pending":
-                                icon = <Clock size={14} />;
-                                break;
-                              case "completed":
-                                icon = <CheckCircle size={14} />;
-                                break;
-                              case "rejected":
-                                icon = <X size={14} />;
-                                displayText = "منتهي";
-                                break;
-                              case "cancelled":
-                                icon = <X size={14} />;
-                                break;
-                              default:
-                                icon = <Clock size={14} />;
-                            }
-
-                            return (
-                              <span
-                                className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 border ${config.bgColor} ${config.textColor} ${config.borderColor}`}
-                              >
-                                {icon}
-                                {displayText}
-                              </span>
-                            );
-                          })()}
-
-                          {/* Three Dots Menu */}
-                          {myOffer.status === "pending" && (
-                            <DropdownMenu
-                              trigger={
-                                <button className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground">
-                                  <MoreVertical size={14} strokeWidth={2.5} />
-                                </button>
-                              }
-                              items={[
-                                {
-                                  id: "cancel",
-                                  label: "حذف العرض",
-                                  icon: <Trash2 size={16} />,
-                                  onClick: () => setShowCancelConfirm(true),
-                                  variant: "danger",
-                                },
-                              ]}
-                            />
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Offer Title */}
-                      {myOffer?.title && (
-                        <div className="mb-4">
-                          <h4 className="text-base font-bold text-foreground break-words">
-                            {myOffer.title}
-                          </h4>
-                        </div>
-                      )}
-
-                      {/* Info Grid - Same Layout as Request Info */}
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 rounded-xl border"
-                        style={{
-                          background:
-                            "linear-gradient(135deg, rgba(30, 150, 140, 0.08) 0%, rgba(30, 150, 140, 0.04) 50%, rgba(21, 54, 89, 0.08) 100%)",
-                          borderColor: "rgba(30, 150, 140, 0.15)",
-                        }}
-                      >
-                        {/* Price - First */}
-                        <div className="flex flex-col gap-1.5">
-                          <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                            <DollarSign size={18} className="text-primary" />
-                            {" "}
-                            السعر
-                          </span>
-                          <span className="font-bold text-sm text-primary">
-                            {myOffer.price} ر.س
-                          </span>
-                        </div>
-
-                        {/* Duration - Second */}
-                        <div className="flex flex-col gap-1.5">
-                          <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                            <Clock size={18} className="text-primary" /> المدة
-                          </span>
-                          <span className="font-bold text-sm">
-                            {myOffer.deliveryTime}
-                          </span>
-                        </div>
-
-                        {/* Location - Third (if exists) */}
-                        {myOffer.location
-                          ? (
-                            <div className="flex flex-col gap-1.5">
-                              <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                                <MapPin size={18} className="text-red-500" />
-                                {" "}
-                                الموقع
-                              </span>
-                              <span className="font-bold text-sm">
-                                {myOffer.location}
-                              </span>
-                            </div>
-                          )
-                          : (
-                            <div className="flex flex-col gap-1.5">
-                              <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                                <MapPin size={18} className="text-red-500" />
-                                {" "}
-                                الموقع
-                              </span>
-                              <span className="font-bold text-sm text-muted-foreground">
-                                غير محدد
-                              </span>
-                            </div>
-                          )}
-
-                        {/* Negotiable Status - Fourth */}
-                        <div className="flex flex-col gap-1.5">
-                          <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                            {myOffer.status === "negotiating"
-                              ? (
-                                <MessageCircle
-                                  size={18}
-                                  className="text-primary"
-                                />
-                              )
-                              : myOffer.isNegotiable
-                              ? <RefreshCw size={18} className="text-primary" />
-                              : (
-                                <Lock
-                                  size={18}
-                                  className="text-muted-foreground/50"
-                                />
-                              )} التفاوض
-                          </span>
-                          <span
-                            className={`font-bold text-sm ${
-                              myOffer.status === "negotiating" ||
-                                myOffer.isNegotiable
-                                ? "text-primary"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            {myOffer.status === "negotiating"
-                              ? "جاري التفاوض"
-                              : myOffer.isNegotiable
-                              ? "قابل للتفاوض"
-                              : "نهائي"}
-                          </span>
-                        </div>
-                      </motion.div>
-
-                      <p className="text-sm text-muted-foreground bg-secondary/30 p-3 rounded-lg mb-4">
-                        {myOffer.description}
-                      </p>
-
-                      {/* My Offer Images */}
-                      {myOffer.images && myOffer.images.length > 0 && (
-                        <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
-                          {myOffer.images.map((imageUrl, imgIndex) => (
-                            <motion.img
-                              key={imgIndex}
-                              src={imageUrl}
-                              alt={`صورة ${imgIndex + 1}`}
-                              className="w-24 h-24 rounded-lg object-cover border border-border shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-                              onClick={() => {
-                                // يمكن إضافة modal لعرض الصورة بالحجم الكامل
-                                window.open(imageUrl, "_blank");
-                              }}
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={{ delay: imgIndex * 0.1 }}
-                            />
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Cancel Confirmation Modal */}
-                      <AnimatePresence>
-                        {showCancelConfirm &&
-                          ReactDOM.createPortal(
-                            <motion.div
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
-                              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4"
-                              onClick={() => setShowCancelConfirm(false)}
-                            >
-                              <motion.div
-                                initial={{ scale: 0.9, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ scale: 0.9, opacity: 0 }}
-                                className="bg-card rounded-2xl p-6 max-w-sm w-full shadow-2xl"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div className="text-center mb-6">
-                                  <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
-                                    <AlertCircle className="w-8 h-8 text-red-500" />
-                                  </div>
-                                  <h3 className="text-lg font-bold mb-2">
-                                    إلغاء العرض
-                                  </h3>
-                                  <p className="text-muted-foreground text-sm">
-                                    هل أنت متأكد من إلغاء هذا العرض؟ لا يمكن
-                                    التراجع عن هذا الإجراء.
-                                  </p>
-                                </div>
-                                <div className="flex gap-3">
-                                  <Button
-                                    type="button"
-                                    variant="secondary"
-                                    className="flex-1"
-                                    onClick={() => setShowCancelConfirm(false)}
-                                  >
-                                    تراجع
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="danger"
-                                    className="flex-1"
-                                    isLoading={isCancellingOffer}
-                                    onClick={async () => {
-                                      if (onCancelOffer && myOffer) {
-                                        setIsCancellingOffer(true);
-                                        try {
-                                          await onCancelOffer(myOffer.id);
-                                          setShowCancelConfirm(false);
-                                          // Haptic feedback
-                                          if (navigator.vibrate) {
-                                            navigator.vibrate(100);
-                                          }
-                                        } catch (error) {
-                                          logger.error(
-                                            "Error cancelling offer:",
-                                            error,
-                                            "service",
-                                          );
-                                        } finally {
-                                          setIsCancellingOffer(false);
-                                        }
-                                      }
-                                    }}
-                                  >
-                                    نعم، إلغاء العرض
-                                  </Button>
-                                </div>
-                              </motion.div>
-                            </motion.div>,
-                            document.body,
-                          )}
-                      </AnimatePresence>
                     </div>
-                  </div>
-                )}
-
-                {/* CASE 2: NO OFFER YET (AND REQUEST IS ACTIVE) - MOVED TO MODAL */}
-                {/* Removed inline form */}
-
-                {/* CASE 3: CLOSED REQUEST */}
-                {!isMyRequest && !isMyOffer && request.status !== "active" && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="bg-muted/30 border border-border rounded-xl px-4 py-3 mt-4 flex items-center gap-3"
-                  >
-                    <Lock
-                      size={18}
-                      className="text-muted-foreground shrink-0"
-                    />
-                    <span className="font-medium text-sm text-muted-foreground">
-                      الطلب منتهي - تم اختيار عارض
-                    </span>
-                  </motion.div>
-                )}
-              </>
-            )}
-          </motion.div>
-
-        {/* Floating Buttons - Submit Offer and Negotiate */}
-        {!isMyRequest && !isMyOffer && request.status === "active" && (
-          <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            transition={{
-              type: "spring",
-              stiffness: 400,
-              damping: 35,
-              mass: 0.8,
-            }}
-            className="fixed bottom-0 left-0 right-0 md:right-72 z-[110] bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4"
-          >
-            <div className="flex flex-col gap-2">
-              {/* زر التفاوض - ثابت عندما يكون هناك عرض قابل للتفاوض */}
-              {(() => {
-                // البحث عن أول عرض قابل للتفاوض لم يتم قبوله
-                const negotiableOffer = allOffers.find(
-                  (offer) =>
-                    offer.isNegotiable &&
-                    getEffectiveOfferStatus(offer) !== "accepted" &&
-                    getEffectiveOfferStatus(offer) !== "rejected",
-                );
-
-                if (negotiableOffer) {
-                  const offerStatus = getEffectiveOfferStatus(negotiableOffer);
-                  const isNegotiating = offerStatus === "negotiating";
-
-                  return (
-                    <motion.button
-                      layout
-                      onClick={() => {
-                        setActiveOfferId(negotiableOffer.id);
-                        if (isNegotiating) {
-                          setNegotiationOpen(true);
-                        } else {
-                          handleStartNegotiation(negotiableOffer.id);
-                        }
-                      }}
-                      disabled={isStartingNegotiation || isGuest}
-                      className={`relative inline-flex items-center justify-center gap-2 rounded-2xl font-bold text-base transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 overflow-hidden active:scale-[0.96] select-none touch-manipulation bg-gradient-to-r from-primary via-primary to-accent text-white shadow-xl shadow-primary/30 hover:shadow-2xl w-full py-4 px-4`}
-                    >
-                      {isStartingNegotiation
-                        ? (
-                          <>
-                            <Loader2 size={20} className="animate-spin" />
-                            <span>جاري بدء التفاوض...</span>
-                          </>
-                        )
-                        : isNegotiating
-                        ? (
-                          <>
-                            <MessageSquare size={20} />
-                            <span>متابعة التفاوض</span>
-                          </>
-                        )
-                        : (
-                          <>
-                            <MessageCircle size={20} />
-                            <span>تفاوض</span>
-                          </>
-                        )}
-                    </motion.button>
-                  );
-                }
-                return null;
-              })()}
-
-              {/* زر إرسال العرض */}
-              <motion.button
-                layout
-                onClick={() => setIsOfferModalOpen(true)}
-                disabled={!isSubmittingOffer && offerSubmitted}
-                className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg bg-gradient-to-r from-primary via-primary to-accent text-white shadow-primary/40 hover:shadow-xl`}
-              >
-                {offerSubmitted
-                  ? (
-                    <>
-                      <Check size={20} />
-                      <span>تم الإرسال!</span>
-                    </>
-                  )
-                  : (
-                    <>
-                      <span>قدّم عرضك</span>
-                      <motion.div
-                        animate={{ y: [0, 4, 0] }}
-                        transition={{
-                          duration: 1.5,
-                          repeat: Infinity,
-                          ease: "easeInOut",
-                        }}
-                      >
-                        <ChevronsDown size={20} />
-                      </motion.div>
-                    </>
                   )}
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
+                </div>
+              )}
 
-        {/* زر التفاوض الثابت - لمقدم العرض (Provider) عندما يكون لديه عرض قابل للتفاوض */}
-        {isMyOffer && myOffer && myOffer.isNegotiable &&
-          request.status === "active" && canProviderChat() && (
-          <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            transition={{
-              type: "spring",
-              stiffness: 400,
-              damping: 35,
-              mass: 0.8,
-            }}
-            className="fixed bottom-0 left-0 right-0 md:right-72 z-[110] bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4"
-          >
-            <div className="flex flex-col gap-2">
-              {(() => {
-                const offerStatus = myOffer.status || "pending";
-                const isNegotiating = offerStatus === "negotiating";
-                // حساب عدد الرسائل غير المقروءة (من الرسائل المحملة قبل قراءتها)
-                const unreadMessagesCount = chatMessages.filter(
-                  (msg) => !msg.is_read && msg.sender_id !== user?.id,
-                ).length || 0;
-
-                return (
-                  <motion.button
-                    layout
-                    onClick={() => {
-                      if (myOffer) setActiveOfferId(myOffer.id);
-                      setNegotiationOpen(true);
-                    }}
-                    disabled={isGuest}
-                    className={`relative inline-flex items-center justify-center gap-2 rounded-2xl font-bold text-base transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 overflow-visible active:scale-[0.96] select-none touch-manipulation bg-gradient-to-r from-primary via-primary to-accent text-white shadow-xl shadow-primary/30 hover:shadow-2xl w-full py-4 px-4`}
-                  >
-                    <div className="inline-flex items-center justify-center gap-2">
-                      {isNegotiating || offerStatus === "accepted" ||
-                          hasExistingConversation
-                        ? (
-                          <>
-                            <MessageSquare size={20} />
-                            <span>متابعة التفاوض</span>
-                          </>
-                        )
-                        : (
-                          <>
-                            <MessageCircle size={20} />
-                            <span>تفاوض</span>
-                          </>
-                        )}
-                      {unreadMessagesCount > 0 && (
-                        <motion.span
-                          initial={{ scale: 0, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-gradient-to-br from-red-500 to-red-600 text-white text-[11px] font-bold shadow-md border border-red-400/30 dark:border-red-700/50 ring-2 ring-red-500/20 dark:ring-red-500/30"
-                        >
-                          {unreadMessagesCount > 99
-                            ? "99+"
-                            : unreadMessagesCount}
-                        </motion.span>
-                      )}
-                    </div>
-                  </motion.button>
-                );
-              })()}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Guest Offer Verification Modal */}
-        {isGuest && guestOfferVerificationStep !== "none" &&
-          ReactDOM.createPortal(
-            <>
-              {/* Backdrop */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => {
-                  setGuestOfferVerificationStep("none");
-                  setGuestOfferPhone("");
-                  setGuestOfferOTP("");
-                  setGuestOfferError(null);
+              {/* Review Form Modal */}
+              <ReviewForm
+                isOpen={showReviewForm}
+                onCancel={() => setShowReviewForm(false)}
+                requestId={request.id}
+                // For Requester: We need the provider's ID.
+                // We have `request.accepted_offer_id`. We can find the offer in `receivedOffersMap` or `loadedOffers`.
+                revieweeId={isMyRequest
+                  ? (loadedOffers.find((o) => o.id === request.acceptedOfferId)
+                    ?.providerId ||
+                    Array.from(receivedOffersMap.values()).flat().find((o) =>
+                      o.id === request.acceptedOfferId
+                    )?.providerId || "")
+                  : request.author}
+                onSuccess={() => {
+                  setShowReviewForm(false);
+                  setCanReview(false); // Hide button after review
+                  // Maybe refresh reviews?
                 }}
-                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[129]"
               />
 
-              {/* Modal - Bottom Sheet on Mobile, Centered on Desktop */}
-              <motion.div
-                initial={{ opacity: 0, y: "100%" }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: "100%" }}
-                transition={{
-                  type: "spring",
-                  damping: 35,
-                  stiffness: 400,
-                  mass: 0.8,
-                }}
-                drag="y"
-                dragConstraints={{ top: 0, bottom: 0 }}
-                dragElastic={{ top: 0, bottom: 0.3 }}
-                dragMomentum={false}
-                onDragEnd={(_, info) => {
-                  const velocityThreshold = 800;
-                  const offsetThreshold = 150;
-                  const shouldClose = info.offset.y > offsetThreshold ||
-                    info.velocity.y > velocityThreshold;
-
-                  if (shouldClose) {
-                    setGuestOfferVerificationStep("none");
-                    setGuestOfferPhone("");
-                    setGuestOfferOTP("");
-                    setGuestOfferError(null);
-                  }
-                }}
-                className="fixed inset-x-0 bottom-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 max-w-md w-full mx-auto bg-card border-t sm:border border-border rounded-t-3xl sm:rounded-2xl shadow-2xl z-[130] max-h-[90vh] flex flex-col"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Drag Handle - Mobile Only */}
-                <div className="sm:hidden flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none shrink-0">
-                  <div className="w-20 h-1 bg-muted-foreground/40 dark:bg-muted-foreground/50 rounded-full transition-colors duration-200 active:bg-muted-foreground/60" />
-                </div>
-
-                <div className="p-6 overflow-y-auto flex-1">
-                  {guestOfferVerificationStep === "phone" && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-bold text-right">
-                        التحقق من رقم الجوال
-                      </h3>
-                      <p className="text-sm text-muted-foreground text-right">
-                        لتقديم عرض، نحتاج للتحقق من رقم جوالك. سيتم إرسال رمز
-                        تحقق على رقمك.
-                      </p>
-                      <div
-                        className={`relative flex items-center gap-2 border-2 rounded-lg bg-background px-4 h-12 focus-within:border-primary transition-all min-w-0 overflow-hidden ${
-                          guestOfferError ? "border-red-500" : "border-border"
-                        }`}
-                      >
-                        <span className="text-muted-foreground font-medium shrink-0">
-                          +966
-                        </span>
-                        <input
-                          type="tel"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          value={guestOfferPhone}
-                          onChange={(e) => {
-                            // السماح بـ 0 في البداية أو بدون
-                            const value = e.target.value.replace(/\D/g, "");
-                            // يقبل حتى 10 أرقام (مع 0) أو 9 (بدون 0)
-                            if (value.length <= 10) {
-                              setGuestOfferPhone(value);
-                              setGuestOfferError(null);
-                            }
-                          }}
-                          placeholder="0501234567"
-                          className="flex-1 h-full bg-transparent text-base outline-none text-left min-w-0"
-                          dir="ltr"
-                          maxLength={10}
-                          autoFocus
-                        />
-                      </div>
-
-                      {/* عرض رسالة الخطأ */}
-                      <AnimatePresence>
-                        {guestOfferError && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
-                          >
-                            <div className="flex items-start gap-2">
-                              <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                              <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
-                                {guestOfferError}
+              {!isMyRequest && (
+                <>
+                  {/* CASE 1: I ALREADY HAVE AN OFFER */}
+                  {isMyOffer && myOffer && (
+                    <div className="space-y-4 mt-4">
+                      {/* Negotiation Started Alert - Show when requester started negotiation */}
+                      {myOffer.status === "negotiating" && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          className="p-4 rounded-xl bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-200 dark:border-blue-800"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                              <MessageCircle
+                                size={20}
+                                className="text-primary dark:text-primary"
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <h4 className="font-bold text-primary text-sm">
+                                🎉 صاحب الطلب بدأ التفاوض معك!
+                              </h4>
+                              <p className="text-xs text-primary/80 dark:text-primary/70 mt-0.5">
+                                يمكنك الآن التواصل والتفاوض على التفاصيل
                               </p>
                             </div>
-                          </motion.div>
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {/* Complete Request Button - Only for accepted offers */}
+                      {myOffer.status === "accepted" &&
+                        request.status === "assigned" && onCompleteRequest && (
+                        <motion.button
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => onCompleteRequest(request.id)}
+                          className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-primary text-white font-bold shadow-lg hover:shadow-xl transition-all"
+                        >
+                          <CheckCircle size={20} />
+                          <span>تم إكمال الطلب</span>
+                        </motion.button>
+                      )}
+
+                      {/* WhatsApp Button - Only for negotiating/accepted (when available) */}
+                      {(myOffer.status === "negotiating" ||
+                        myOffer.status === "accepted") &&
+                        request.whatsappNumber &&
+                        (request.contactMethod === "whatsapp" ||
+                          request.contactMethod === "both" ||
+                          request.isCreatedViaWhatsApp) &&
+                        (
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="w-full bg-[#25D366] hover:bg-[#20BD5A] text-white gap-2 h-10"
+                            onClick={() =>
+                              window.open(
+                                `https://wa.me/${request.whatsappNumber}`,
+                                "_blank",
+                              )}
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                            >
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                            </svg>
+                            واتساب
+                          </Button>
                         )}
-                      </AnimatePresence>
 
-                      <div className="flex gap-2">
-                        <button
-                          onClick={async () => {
-                            if (!guestOfferPhone.trim()) {
-                              setGuestOfferError("يرجى إدخال رقم الجوال");
-                              return;
-                            }
-                            setIsSendingOfferOTP(true);
-                            setGuestOfferError(null);
-                            const result = await verifyGuestPhone(
-                              guestOfferPhone,
-                            );
-                            setIsSendingOfferOTP(false);
-                            if (result.success) {
-                              setGuestOfferVerificationStep("otp");
-                              setGuestOfferError(null);
-                            } else {
-                              const translatedError = translateAuthError(
-                                result.error || "فشل إرسال رمز التحقق",
+                      {/* My Offer Box - Clean Design */}
+                      <div className="bg-card border border-border rounded-xl p-5 pt-6 shadow-sm relative">
+                        {/* Header with Floating Status */}
+                        <div className="flex justify-between items-center mb-4">
+                          <div className="flex items-center gap-2 text-primary">
+                            <FileText size={14} />
+                            <span className="text-sm font-bold">
+                              تفاصيل عرضي
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {/* Status Badge */}
+                            {(() => {
+                              const status = myOffer?.status || "pending";
+                              const config = getOfferStatusConfig(status);
+
+                              // Get appropriate icon for each status
+                              let icon = null;
+                              let displayText = config.label;
+
+                              switch (status) {
+                                case "accepted":
+                                  icon = <CheckCircle size={14} />;
+                                  displayText = "عرض مقبول";
+                                  break;
+                                case "negotiating":
+                                  icon = <MessageCircle size={14} />;
+                                  break;
+                                case "pending":
+                                  icon = <Clock size={14} />;
+                                  break;
+                                case "completed":
+                                  icon = <CheckCircle size={14} />;
+                                  break;
+                                case "rejected":
+                                  icon = <X size={14} />;
+                                  displayText = "منتهي";
+                                  break;
+                                case "cancelled":
+                                  icon = <X size={14} />;
+                                  break;
+                                default:
+                                  icon = <Clock size={14} />;
+                              }
+
+                              return (
+                                <span
+                                  className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 border ${config.bgColor} ${config.textColor} ${config.borderColor}`}
+                                >
+                                  {icon}
+                                  {displayText}
+                                </span>
                               );
-                              setGuestOfferError(translatedError);
-                            }
-                          }}
-                          disabled={isSendingOfferOTP}
-                          className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
-                        >
-                          {isSendingOfferOTP
-                            ? "جاري الإرسال..."
-                            : "إرسال رمز التحقق"}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setGuestOfferVerificationStep("none");
-                            setGuestOfferPhone("");
-                            setGuestOfferError(null);
-                          }}
-                          className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
-                        >
-                          إلغاء
-                        </button>
-                      </div>
+                            })()}
 
-                      {/* نص الموافقة على الشروط */}
-                      <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
-                        بتسجيلك للدخول فأنت توافق على{" "}
-                        <button
-                          onClick={() => setShowTermsModal(true)}
-                          className="text-primary hover:underline font-medium"
+                            {/* Three Dots Menu */}
+                            {myOffer.status === "pending" && (
+                              <DropdownMenu
+                                trigger={
+                                  <button className="p-1 hover:bg-secondary/80 rounded transition-colors text-muted-foreground hover:text-foreground">
+                                    <MoreVertical size={14} strokeWidth={2.5} />
+                                  </button>
+                                }
+                                items={[
+                                  {
+                                    id: "cancel",
+                                    label: "حذف العرض",
+                                    icon: <Trash2 size={16} />,
+                                    onClick: () => setShowCancelConfirm(true),
+                                    variant: "danger",
+                                  },
+                                ]}
+                              />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Offer Title */}
+                        {myOffer?.title && (
+                          <div className="mb-4">
+                            <h4 className="text-base font-bold text-foreground break-words">
+                              {myOffer.title}
+                            </h4>
+                          </div>
+                        )}
+
+                        {/* Info Grid - Same Layout as Request Info */}
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.1 }}
+                          className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 rounded-xl border"
+                          style={{
+                            background:
+                              "linear-gradient(135deg, rgba(30, 150, 140, 0.08) 0%, rgba(30, 150, 140, 0.04) 50%, rgba(21, 54, 89, 0.08) 100%)",
+                            borderColor: "rgba(30, 150, 140, 0.15)",
+                          }}
                         >
-                          شروط الاستخدام
-                        </button>{" "}
-                        و{" "}
-                        <button
-                          onClick={() => setShowPrivacyModal(true)}
-                          className="text-primary hover:underline font-medium"
-                        >
-                          سياسة الخصوصية
-                        </button>
-                      </p>
+                          {/* Price - First */}
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                              <DollarSign size={18} className="text-primary" />
+                              {" "}
+                              السعر
+                            </span>
+                            <span className="font-bold text-sm text-primary">
+                              {myOffer.price} ر.س
+                            </span>
+                          </div>
+
+                          {/* Duration - Second */}
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                              <Clock size={18} className="text-primary" /> المدة
+                            </span>
+                            <span className="font-bold text-sm">
+                              {myOffer.deliveryTime}
+                            </span>
+                          </div>
+
+                          {/* Location - Third (if exists) */}
+                          {myOffer.location
+                            ? (
+                              <div className="flex flex-col gap-1.5">
+                                <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                                  <MapPin size={18} className="text-red-500" />
+                                  {" "}
+                                  الموقع
+                                </span>
+                                <span className="font-bold text-sm">
+                                  {myOffer.location}
+                                </span>
+                              </div>
+                            )
+                            : (
+                              <div className="flex flex-col gap-1.5">
+                                <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                                  <MapPin size={18} className="text-red-500" />
+                                  {" "}
+                                  الموقع
+                                </span>
+                                <span className="font-bold text-sm text-muted-foreground">
+                                  غير محدد
+                                </span>
+                              </div>
+                            )}
+
+                          {/* Negotiable Status - Fourth */}
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                              {myOffer.status === "negotiating"
+                                ? (
+                                  <MessageCircle
+                                    size={18}
+                                    className="text-primary"
+                                  />
+                                )
+                                : myOffer.isNegotiable
+                                ? (
+                                  <RefreshCw
+                                    size={18}
+                                    className="text-primary"
+                                  />
+                                )
+                                : (
+                                  <Lock
+                                    size={18}
+                                    className="text-muted-foreground/50"
+                                  />
+                                )} التفاوض
+                            </span>
+                            <span
+                              className={`font-bold text-sm ${
+                                myOffer.status === "negotiating" ||
+                                  myOffer.isNegotiable
+                                  ? "text-primary"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              {myOffer.status === "negotiating"
+                                ? "جاري التفاوض"
+                                : myOffer.isNegotiable
+                                ? "قابل للتفاوض"
+                                : "نهائي"}
+                            </span>
+                          </div>
+                        </motion.div>
+
+                        <p className="text-sm text-muted-foreground bg-secondary/30 p-3 rounded-lg mb-4">
+                          {myOffer.description}
+                        </p>
+
+                        {/* My Offer Images */}
+                        {myOffer.images && myOffer.images.length > 0 && (
+                          <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
+                            {myOffer.images.map((imageUrl, imgIndex) => (
+                              <motion.img
+                                key={imgIndex}
+                                src={imageUrl}
+                                alt={`صورة ${imgIndex + 1}`}
+                                className="w-24 h-24 rounded-lg object-cover border border-border shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                                onClick={() => {
+                                  // يمكن إضافة modal لعرض الصورة بالحجم الكامل
+                                  window.open(imageUrl, "_blank");
+                                }}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: imgIndex * 0.1 }}
+                              />
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Cancel Confirmation Modal */}
+                        <AnimatePresence>
+                          {showCancelConfirm &&
+                            ReactDOM.createPortal(
+                              <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4"
+                                onClick={() => setShowCancelConfirm(false)}
+                              >
+                                <motion.div
+                                  initial={{ scale: 0.9, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  exit={{ scale: 0.9, opacity: 0 }}
+                                  className="bg-card rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="text-center mb-6">
+                                    <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+                                      <AlertCircle className="w-8 h-8 text-red-500" />
+                                    </div>
+                                    <h3 className="text-lg font-bold mb-2">
+                                      إلغاء العرض
+                                    </h3>
+                                    <p className="text-muted-foreground text-sm">
+                                      هل أنت متأكد من إلغاء هذا العرض؟ لا يمكن
+                                      التراجع عن هذا الإجراء.
+                                    </p>
+                                  </div>
+                                  <div className="flex gap-3">
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      className="flex-1"
+                                      onClick={() =>
+                                        setShowCancelConfirm(false)}
+                                    >
+                                      تراجع
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="danger"
+                                      className="flex-1"
+                                      isLoading={isCancellingOffer}
+                                      onClick={async () => {
+                                        if (onCancelOffer && myOffer) {
+                                          setIsCancellingOffer(true);
+                                          try {
+                                            await onCancelOffer(myOffer.id);
+                                            setShowCancelConfirm(false);
+                                            // Haptic feedback
+                                            if (navigator.vibrate) {
+                                              navigator.vibrate(100);
+                                            }
+                                          } catch (error) {
+                                            logger.error(
+                                              "Error cancelling offer:",
+                                              error,
+                                              "service",
+                                            );
+                                          } finally {
+                                            setIsCancellingOffer(false);
+                                          }
+                                        }
+                                      }}
+                                    >
+                                      نعم، إلغاء العرض
+                                    </Button>
+                                  </div>
+                                </motion.div>
+                              </motion.div>,
+                              document.body,
+                            )}
+                        </AnimatePresence>
+                      </div>
                     </div>
                   )}
 
-                  {guestOfferVerificationStep === "otp" && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-bold text-right">
-                        أدخل رمز التحقق
-                      </h3>
-                      <p className="text-sm text-muted-foreground text-right">
-                        تم إرسال رمز التحقق إلى {guestOfferPhone}
-                      </p>
-                      <input
-                        type="text"
-                        value={guestOfferOTP}
-                        onChange={(e) => {
-                          setGuestOfferOTP(
-                            e.target.value.replace(/\D/g, "").slice(0, 4),
-                          );
-                          setGuestOfferError(null); // مسح الخطأ عند الكتابة
-                        }}
-                        placeholder="0000"
-                        className={`w-full h-14 px-4 text-center rounded-xl border-2 bg-background text-3xl font-black tracking-[0.5em] outline-none transition-all focus:border-primary ${
-                          guestOfferError ? "border-red-500" : "border-border"
-                        }`}
-                        dir="ltr"
-                        maxLength={4}
-                        autoFocus
-                      />
+                  {/* CASE 2: NO OFFER YET (AND REQUEST IS ACTIVE) - MOVED TO MODAL */}
+                  {/* Removed inline form */}
 
-                      {/* عرض رسالة الخطأ */}
-                      <AnimatePresence>
-                        {guestOfferError && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
-                          >
-                            <div className="flex items-start gap-2">
-                              <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                              <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
-                                {guestOfferError}
-                              </p>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                  {/* CASE 3: CLOSED REQUEST */}
+                  {!isMyRequest && !isMyOffer && request.status !== "active" &&
+                    (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-muted/30 border border-border rounded-xl px-4 py-3 mt-4 flex items-center gap-3"
+                      >
+                        <Lock
+                          size={18}
+                          className="text-muted-foreground shrink-0"
+                        />
+                        <span className="font-medium text-sm text-muted-foreground">
+                          الطلب منتهي - تم اختيار عارض
+                        </span>
+                      </motion.div>
+                    )}
+                </>
+              )}
+            </motion.div>
 
-                      <div className="flex gap-2">
-                        <button
-                          onClick={async () => {
-                            if (guestOfferOTP.length !== 4) {
-                              setGuestOfferError(
-                                "يرجى إدخال رمز التحقق المكون من 4 أرقام",
-                              );
-                              return;
+            {/* Floating Buttons - Submit Offer and Negotiate */}
+            {!isMyRequest && !isMyOffer && request.status === "active" && (
+              <motion.div
+                initial={{ y: 100, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 100, opacity: 0 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 400,
+                  damping: 35,
+                  mass: 0.8,
+                }}
+                className="fixed bottom-0 left-0 right-0 md:right-72 z-[110] bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4"
+              >
+                <div className="flex flex-col gap-2">
+                  {/* زر التفاوض - ثابت عندما يكون هناك عرض قابل للتفاوض */}
+                  {(() => {
+                    // البحث عن أول عرض قابل للتفاوض لم يتم قبوله
+                    const negotiableOffer = allOffers.find(
+                      (offer) =>
+                        offer.isNegotiable &&
+                        getEffectiveOfferStatus(offer) !== "accepted" &&
+                        getEffectiveOfferStatus(offer) !== "rejected",
+                    );
+
+                    if (negotiableOffer) {
+                      const offerStatus = getEffectiveOfferStatus(
+                        negotiableOffer,
+                      );
+                      const isNegotiating = offerStatus === "negotiating";
+
+                      return (
+                        <motion.button
+                          layout
+                          onClick={() => {
+                            setActiveOfferId(negotiableOffer.id);
+                            if (isNegotiating) {
+                              setNegotiationOpen(true);
+                            } else {
+                              handleStartNegotiation(negotiableOffer.id);
                             }
-                            setIsVerifyingOfferOTP(true);
-                            setGuestOfferError(null);
-                            const result = await confirmGuestPhone(
-                              guestOfferPhone,
-                              guestOfferOTP,
-                            );
-                            setIsVerifyingOfferOTP(false);
-                            if (result.success) {
-                              // Haptic feedback - positive send pattern
-                              if (navigator.vibrate) {
-                                navigator.vibrate([30, 50, 30]);
-                              }
+                          }}
+                          disabled={isStartingNegotiation || isGuest}
+                          className={`relative inline-flex items-center justify-center gap-2 rounded-2xl font-bold text-base transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 overflow-hidden active:scale-[0.96] select-none touch-manipulation bg-gradient-to-r from-primary via-primary to-accent text-white shadow-xl shadow-primary/30 hover:shadow-2xl w-full py-4 px-4`}
+                        >
+                          {isStartingNegotiation
+                            ? (
+                              <>
+                                <Loader2 size={20} className="animate-spin" />
+                                <span>جاري بدء التفاوض...</span>
+                              </>
+                            )
+                            : isNegotiating
+                            ? (
+                              <>
+                                <MessageSquare size={20} />
+                                <span>متابعة التفاوض</span>
+                              </>
+                            )
+                            : (
+                              <>
+                                <MessageCircle size={20} />
+                                <span>تفاوض</span>
+                              </>
+                            )}
+                        </motion.button>
+                      );
+                    }
+                    return null;
+                  })()}
 
-                              // بعد التحقق الناجح، تحقق من حالة Onboarding
-                              const userProfile = await getCurrentUser();
-                              if (!userProfile?.id) {
-                                setGuestOfferError(
-                                  "فشل تسجيل الدخول. حاول مرة أخرى.",
-                                );
-                                return;
-                              }
+                  {/* زر إرسال العرض */}
+                  <motion.button
+                    layout
+                    onClick={() => setIsOfferModalOpen(true)}
+                    disabled={!isSubmittingOffer && offerSubmitted}
+                    className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg bg-gradient-to-r from-primary via-primary to-accent text-white shadow-primary/40 hover:shadow-xl`}
+                  >
+                    {offerSubmitted
+                      ? (
+                        <>
+                          <Check size={20} />
+                          <span>تم الإرسال!</span>
+                        </>
+                      )
+                      : (
+                        <>
+                          <span>قدّم عرضك</span>
+                          <motion.div
+                            animate={{ y: [0, 4, 0] }}
+                            transition={{
+                              duration: 1.5,
+                              repeat: Infinity,
+                              ease: "easeInOut",
+                            }}
+                          >
+                            <ChevronsDown size={20} />
+                          </motion.div>
+                        </>
+                      )}
+                  </motion.button>
+                </div>
+              </motion.div>
+            )}
 
-                              // التحقق من أن المستخدم لا يقدم عرض على طلبه الخاص
-                              const requestAuthorId = request.author;
-                              if (
-                                requestAuthorId &&
-                                userProfile.id === requestAuthorId
-                              ) {
-                                setGuestOfferError(
-                                  "لا يمكنك تقديم عرض على طلبك الخاص",
+            {/* زر التفاوض الثابت - لمقدم العرض (Provider) عندما يكون لديه عرض قابل للتفاوض */}
+            {isMyOffer && myOffer && myOffer.isNegotiable &&
+              request.status === "active" && canProviderChat() && (
+              <motion.div
+                initial={{ y: 100, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 100, opacity: 0 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 400,
+                  damping: 35,
+                  mass: 0.8,
+                }}
+                className="fixed bottom-0 left-0 right-0 md:right-72 z-[110] bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4"
+              >
+                <div className="flex flex-col gap-2">
+                  {(() => {
+                    const offerStatus = myOffer.status || "pending";
+                    const isNegotiating = offerStatus === "negotiating";
+                    // حساب عدد الرسائل غير المقروءة (من الرسائل المحملة قبل قراءتها)
+                    const unreadMessagesCount = chatMessages.filter(
+                      (msg) => !msg.is_read && msg.sender_id !== user?.id,
+                    ).length || 0;
+
+                    return (
+                      <motion.button
+                        layout
+                        onClick={() => {
+                          if (myOffer) setActiveOfferId(myOffer.id);
+                          setNegotiationOpen(true);
+                        }}
+                        disabled={isGuest}
+                        className={`relative inline-flex items-center justify-center gap-2 rounded-2xl font-bold text-base transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 overflow-visible active:scale-[0.96] select-none touch-manipulation bg-gradient-to-r from-primary via-primary to-accent text-white shadow-xl shadow-primary/30 hover:shadow-2xl w-full py-4 px-4`}
+                      >
+                        <div className="inline-flex items-center justify-center gap-2">
+                          {isNegotiating || offerStatus === "accepted" ||
+                              hasExistingConversation
+                            ? (
+                              <>
+                                <MessageSquare size={20} />
+                                <span>متابعة التفاوض</span>
+                              </>
+                            )
+                            : (
+                              <>
+                                <MessageCircle size={20} />
+                                <span>تفاوض</span>
+                              </>
+                            )}
+                          {unreadMessagesCount > 0 && (
+                            <motion.span
+                              initial={{ scale: 0, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-gradient-to-br from-red-500 to-red-600 text-white text-[11px] font-bold shadow-md border border-red-400/30 dark:border-red-700/50 ring-2 ring-red-500/20 dark:ring-red-500/30"
+                            >
+                              {unreadMessagesCount > 99
+                                ? "99+"
+                                : unreadMessagesCount}
+                            </motion.span>
+                          )}
+                        </div>
+                      </motion.button>
+                    );
+                  })()}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Guest Offer Verification Modal */}
+            {isGuest && guestOfferVerificationStep !== "none" &&
+              ReactDOM.createPortal(
+                <>
+                  {/* Backdrop */}
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => {
+                      setGuestOfferVerificationStep("none");
+                      setGuestOfferPhone("");
+                      setGuestOfferOTP("");
+                      setGuestOfferError(null);
+                    }}
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[129]"
+                  />
+
+                  {/* Modal - Bottom Sheet on Mobile, Centered on Desktop */}
+                  <motion.div
+                    initial={{ opacity: 0, y: "100%" }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: "100%" }}
+                    transition={{
+                      type: "spring",
+                      damping: 35,
+                      stiffness: 400,
+                      mass: 0.8,
+                    }}
+                    drag="y"
+                    dragConstraints={{ top: 0, bottom: 0 }}
+                    dragElastic={{ top: 0, bottom: 0.3 }}
+                    dragMomentum={false}
+                    onDragEnd={(_, info) => {
+                      const velocityThreshold = 800;
+                      const offsetThreshold = 150;
+                      const shouldClose = info.offset.y > offsetThreshold ||
+                        info.velocity.y > velocityThreshold;
+
+                      if (shouldClose) {
+                        setGuestOfferVerificationStep("none");
+                        setGuestOfferPhone("");
+                        setGuestOfferOTP("");
+                        setGuestOfferError(null);
+                      }
+                    }}
+                    className="fixed inset-x-0 bottom-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 max-w-md w-full mx-auto bg-card border-t sm:border border-border rounded-t-3xl sm:rounded-2xl shadow-2xl z-[130] max-h-[90vh] flex flex-col"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Drag Handle - Mobile Only */}
+                    <div className="sm:hidden flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none shrink-0">
+                      <div className="w-20 h-1 bg-muted-foreground/40 dark:bg-muted-foreground/50 rounded-full transition-colors duration-200 active:bg-muted-foreground/60" />
+                    </div>
+
+                    <div className="p-6 overflow-y-auto flex-1">
+                      {guestOfferVerificationStep === "phone" && (
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-bold text-right">
+                            التحقق من رقم الجوال
+                          </h3>
+                          <p className="text-sm text-muted-foreground text-right">
+                            لتقديم عرض، نحتاج للتحقق من رقم جوالك. سيتم إرسال
+                            رمز تحقق على رقمك.
+                          </p>
+                          <div
+                            className={`relative flex items-center gap-2 border-2 rounded-lg bg-background px-4 h-12 focus-within:border-primary transition-all min-w-0 overflow-hidden ${
+                              guestOfferError
+                                ? "border-red-500"
+                                : "border-border"
+                            }`}
+                          >
+                            <span className="text-muted-foreground font-medium shrink-0">
+                              +966
+                            </span>
+                            <input
+                              type="tel"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              value={guestOfferPhone}
+                              onChange={(e) => {
+                                // السماح بـ 0 في البداية أو بدون
+                                const value = e.target.value.replace(/\D/g, "");
+                                // يقبل حتى 10 أرقام (مع 0) أو 9 (بدون 0)
+                                if (value.length <= 10) {
+                                  setGuestOfferPhone(value);
+                                  setGuestOfferError(null);
+                                }
+                              }}
+                              placeholder="0501234567"
+                              className="flex-1 h-full bg-transparent text-base outline-none text-left min-w-0"
+                              dir="ltr"
+                              maxLength={10}
+                              autoFocus
+                            />
+                          </div>
+
+                          {/* عرض رسالة الخطأ */}
+                          <AnimatePresence>
+                            {guestOfferError && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+                              >
+                                <div className="flex items-start gap-2">
+                                  <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                                  <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
+                                    {guestOfferError}
+                                  </p>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+
+                          <div className="flex gap-2">
+                            <button
+                              onClick={async () => {
+                                if (!guestOfferPhone.trim()) {
+                                  setGuestOfferError("يرجى إدخال رقم الجوال");
+                                  return;
+                                }
+                                setIsSendingOfferOTP(true);
+                                setGuestOfferError(null);
+                                const result = await verifyGuestPhone(
+                                  guestOfferPhone,
                                 );
+                                setIsSendingOfferOTP(false);
+                                if (result.success) {
+                                  setGuestOfferVerificationStep("otp");
+                                  setGuestOfferError(null);
+                                } else {
+                                  const translatedError = translateAuthError(
+                                    result.error || "فشل إرسال رمز التحقق",
+                                  );
+                                  setGuestOfferError(translatedError);
+                                }
+                              }}
+                              disabled={isSendingOfferOTP}
+                              className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                            >
+                              {isSendingOfferOTP
+                                ? "جاري الإرسال..."
+                                : "إرسال رمز التحقق"}
+                            </button>
+                            <button
+                              onClick={() => {
                                 setGuestOfferVerificationStep("none");
                                 setGuestOfferPhone("");
-                                setGuestOfferOTP("");
-                                return;
-                              }
+                                setGuestOfferError(null);
+                              }}
+                              className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
+                            >
+                              إلغاء
+                            </button>
+                          </div>
 
-                              // التحقق من حالة Onboarding
-                              const userOnboardedKey =
-                                `abeely_onboarded_${userProfile.id}`;
-                              const localOnboarded =
-                                localStorage.getItem(userOnboardedKey) ===
-                                  "true";
-                              const hasName = !!userProfile.display_name
-                                ?.trim();
+                          {/* نص الموافقة على الشروط */}
+                          <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
+                            بتسجيلك للدخول فأنت توافق على{" "}
+                            <button
+                              onClick={() => setShowTermsModal(true)}
+                              className="text-primary hover:underline font-medium"
+                            >
+                              شروط الاستخدام
+                            </button>{" "}
+                            و{" "}
+                            <button
+                              onClick={() => setShowPrivacyModal(true)}
+                              className="text-primary hover:underline font-medium"
+                            >
+                              سياسة الخصوصية
+                            </button>
+                          </p>
+                        </div>
+                      )}
 
-                              // التحقق من قاعدة البيانات إذا لم يكن هناك علامة محلية
-                              let needsOnboarding = !localOnboarded || !hasName;
-                              if (!localOnboarded) {
-                                try {
-                                  const { data: profileData } = await supabase
-                                    .from("profiles")
-                                    .select(
-                                      "interested_categories, interested_cities, display_name, has_onboarded",
-                                    )
-                                    .eq("id", userProfile.id)
-                                    .single();
+                      {guestOfferVerificationStep === "otp" && (
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-bold text-right">
+                            أدخل رمز التحقق
+                          </h3>
+                          <p className="text-sm text-muted-foreground text-right">
+                            تم إرسال رمز التحقق إلى {guestOfferPhone}
+                          </p>
+                          <input
+                            type="text"
+                            value={guestOfferOTP}
+                            onChange={(e) => {
+                              setGuestOfferOTP(
+                                e.target.value.replace(/\D/g, "").slice(0, 4),
+                              );
+                              setGuestOfferError(null); // مسح الخطأ عند الكتابة
+                            }}
+                            placeholder="0000"
+                            className={`w-full h-14 px-4 text-center rounded-xl border-2 bg-background text-3xl font-black tracking-[0.5em] outline-none transition-all focus:border-primary ${
+                              guestOfferError
+                                ? "border-red-500"
+                                : "border-border"
+                            }`}
+                            dir="ltr"
+                            maxLength={4}
+                            autoFocus
+                          />
 
-                                  const hasInterests = Array.isArray(
-                                    profileData?.interested_categories,
-                                  ) &&
-                                    profileData.interested_categories.length >
-                                      0;
-                                  const hasCities = Array.isArray(
-                                    profileData?.interested_cities,
-                                  ) && profileData.interested_cities.length > 0;
-                                  const hasProfileName = !!profileData
-                                    ?.display_name?.trim();
-                                  const alreadyOnboarded =
-                                    profileData?.has_onboarded === true;
+                          {/* عرض رسالة الخطأ */}
+                          <AnimatePresence>
+                            {guestOfferError && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+                              >
+                                <div className="flex items-start gap-2">
+                                  <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                                  <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
+                                    {guestOfferError}
+                                  </p>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
 
-                                  needsOnboarding = !(alreadyOnboarded ||
-                                    (hasProfileName &&
-                                      (hasInterests || hasCities)));
-                                } catch (err) {
-                                  logger.error(
-                                    "Error checking onboarding status:",
-                                    err,
-                                    "service",
+                          <div className="flex gap-2">
+                            <button
+                              onClick={async () => {
+                                if (guestOfferOTP.length !== 4) {
+                                  setGuestOfferError(
+                                    "يرجى إدخال رمز التحقق المكون من 4 أرقام",
                                   );
-                                  // في حالة الخطأ، نعتبر أن المستخدم يحتاج onboarding إذا لم يكن هناك اسم
-                                  needsOnboarding = !hasName;
+                                  return;
                                 }
-                              }
-
-                              if (needsOnboarding) {
-                                // المستخدم يحتاج إلى Onboarding - احفظ البيانات وانتقل إلى Onboarding
-                                // Save offer form data
-                                if (onOfferFormChange) {
-                                  onOfferFormChange({
-                                    price: offerPrice,
-                                    duration: offerDuration,
-                                    city: offerCity,
-                                    title: offerTitle,
-                                    description: offerDescription,
-                                    attachments: offerAttachments,
-                                    guestVerificationStep:
-                                      guestOfferVerificationStep,
-                                    guestPhone: guestOfferPhone,
-                                    guestOTP: guestOfferOTP,
-                                  });
-                                }
-                                localStorage.setItem(
-                                  "abeely_requires_onboarding",
-                                  "true",
+                                setIsVerifyingOfferOTP(true);
+                                setGuestOfferError(null);
+                                const result = await confirmGuestPhone(
+                                  guestOfferPhone,
+                                  guestOfferOTP,
                                 );
-                                localStorage.setItem(
-                                  "abeely_pending_action",
-                                  "submit_offer",
-                                );
-                                // إعادة تحميل الصفحة للانتقال إلى OnboardingScreen
-                                window.location.reload();
-                                return;
-                              }
-
-                              setGuestOfferVerificationStep("none");
-                              setGuestOfferError(null);
-
-                              // Submit offer after successful verification
-                              try {
-                                const userId = userProfile.id;
-
-                                setIsSubmittingOffer(true);
-
-                                // Upload attachments if any
-                                let uploadedImageUrls: string[] = [];
-                                if (offerAttachments.length > 0) {
-                                  setIsUploadingAttachments(true);
-                                  const tempId = `${userId}-${Date.now()}`;
-                                  uploadedImageUrls =
-                                    await uploadOfferAttachments(
-                                      offerAttachments,
-                                      tempId,
-                                    );
-                                  setIsUploadingAttachments(false);
-                                }
-
-                                // Create the offer
-                                const offerResult = await createOffer({
-                                  requestId: request.id,
-                                  providerId: userId,
-                                  title: offerTitle.trim(),
-                                  description: offerDescription.trim() ||
-                                    undefined,
-                                  price: offerPrice.trim(),
-                                  deliveryTime: offerDuration.trim() ||
-                                    undefined,
-                                  location: offerCity.trim() || undefined,
-                                  isNegotiable,
-                                  images: uploadedImageUrls.length > 0
-                                    ? uploadedImageUrls
-                                    : undefined,
-                                });
-
-                                if (offerResult) {
-                                  // Haptic feedback - success
+                                setIsVerifyingOfferOTP(false);
+                                if (result.success) {
+                                  // Haptic feedback - positive send pattern
                                   if (navigator.vibrate) {
                                     navigator.vibrate([30, 50, 30]);
                                   }
 
-                                  // ✅ Optimistic Update: إضافة العرض مباشرة إلى الواجهة بدون انتظار
-                                  const newOffer: Offer = {
-                                    id: offerResult.id,
-                                    requestId: request.id,
-                                    providerId: userId,
-                                    providerName: userProfile.display_name ||
-                                      "مزود خدمة",
-                                    providerAvatar: userProfile.avatar_url ||
-                                      undefined,
-                                    title: offerTitle.trim(),
-                                    description: offerDescription.trim() || "",
-                                    price: offerPrice.trim(),
-                                    deliveryTime: offerDuration.trim() || "",
-                                    status: "pending",
-                                    createdAt: new Date(),
-                                    isNegotiable,
-                                    location: offerCity.trim() || undefined,
-                                    images: uploadedImageUrls.length > 0
-                                      ? uploadedImageUrls
-                                      : undefined,
-                                  };
+                                  // بعد التحقق الناجح، تحقق من حالة Onboarding
+                                  const userProfile = await getCurrentUser();
+                                  if (!userProfile?.id) {
+                                    setGuestOfferError(
+                                      "فشل تسجيل الدخول. حاول مرة أخرى.",
+                                    );
+                                    return;
+                                  }
 
-                                  // إضافة العرض مباشرة إلى loadedOffers
-                                  setLoadedOffers((prev) => {
-                                    // التحقق من عدم وجود العرض مسبقاً (لتجنب التكرار)
-                                    if (
-                                      prev.some((o) => o.id === offerResult.id)
-                                    ) {
-                                      return prev;
-                                    }
-                                    return [newOffer, ...prev];
-                                  });
+                                  // التحقق من أن المستخدم لا يقدم عرض على طلبه الخاص
+                                  const requestAuthorId = request.author;
+                                  if (
+                                    requestAuthorId &&
+                                    userProfile.id === requestAuthorId
+                                  ) {
+                                    setGuestOfferError(
+                                      "لا يمكنك تقديم عرض على طلبك الخاص",
+                                    );
+                                    setGuestOfferVerificationStep("none");
+                                    setGuestOfferPhone("");
+                                    setGuestOfferOTP("");
+                                    return;
+                                  }
 
-                                  setOfferSubmitted(true);
+                                  // التحقق من حالة Onboarding
+                                  const userOnboardedKey =
+                                    `abeely_onboarded_${userProfile.id}`;
+                                  const localOnboarded =
+                                    localStorage.getItem(userOnboardedKey) ===
+                                      "true";
+                                  const hasName = !!userProfile.display_name
+                                    ?.trim();
 
-                                  // Notify parent (في الخلفية)
-                                  if (onOfferCreated) {
+                                  // التحقق من قاعدة البيانات إذا لم يكن هناك علامة محلية
+                                  let needsOnboarding = !localOnboarded ||
+                                    !hasName;
+                                  if (!localOnboarded) {
                                     try {
-                                      onOfferCreated();
-                                    } catch (error) {
+                                      const { data: profileData } =
+                                        await supabase
+                                          .from("profiles")
+                                          .select(
+                                            "interested_categories, interested_cities, display_name, has_onboarded",
+                                          )
+                                          .eq("id", userProfile.id)
+                                          .single();
+
+                                      const hasInterests = Array.isArray(
+                                        profileData?.interested_categories,
+                                      ) &&
+                                        profileData.interested_categories
+                                            .length >
+                                          0;
+                                      const hasCities = Array.isArray(
+                                        profileData?.interested_cities,
+                                      ) &&
+                                        profileData.interested_cities.length >
+                                          0;
+                                      const hasProfileName = !!profileData
+                                        ?.display_name?.trim();
+                                      const alreadyOnboarded =
+                                        profileData?.has_onboarded === true;
+
+                                      needsOnboarding = !(alreadyOnboarded ||
+                                        (hasProfileName &&
+                                          (hasInterests || hasCities)));
+                                    } catch (err) {
                                       logger.error(
-                                        "Error in onOfferCreated callback:",
-                                        error,
+                                        "Error checking onboarding status:",
+                                        err,
                                         "service",
                                       );
+                                      // في حالة الخطأ، نعتبر أن المستخدم يحتاج onboarding إذا لم يكن هناك اسم
+                                      needsOnboarding = !hasName;
                                     }
                                   }
 
-                                  // Reset form
-                                  setOfferPrice("");
-                                  setOfferTitle("");
-                                  setOfferDescription("");
-                                  setOfferDuration("");
-                                  setOfferCity("");
-                                  setOfferAttachments([]);
-                                  setSelectedImageUrls([]);
-                                  setSearchedImages([]);
-                                  setSelectedSearchImages(new Set());
-                                  setGuestOfferPhone("");
-                                  setGuestOfferOTP("");
+                                  if (needsOnboarding) {
+                                    // المستخدم يحتاج إلى Onboarding - احفظ البيانات وانتقل إلى Onboarding
+                                    // Save offer form data
+                                    if (onOfferFormChange) {
+                                      onOfferFormChange({
+                                        price: offerPrice,
+                                        duration: offerDuration,
+                                        city: offerCity,
+                                        title: offerTitle,
+                                        description: offerDescription,
+                                        attachments: offerAttachments,
+                                        guestVerificationStep:
+                                          guestOfferVerificationStep,
+                                        guestPhone: guestOfferPhone,
+                                        guestOTP: guestOfferOTP,
+                                      });
+                                    }
+                                    localStorage.setItem(
+                                      "abeely_requires_onboarding",
+                                      "true",
+                                    );
+                                    localStorage.setItem(
+                                      "abeely_pending_action",
+                                      "submit_offer",
+                                    );
+                                    // إعادة تحميل الصفحة للانتقال إلى OnboardingScreen
+                                    window.location.reload();
+                                    return;
+                                  }
 
-                                  setTimeout(() => {
-                                    setOfferSubmitted(false);
-                                  }, 2000);
+                                  setGuestOfferVerificationStep("none");
+                                  setGuestOfferError(null);
+
+                                  // Submit offer after successful verification
+                                  try {
+                                    const userId = userProfile.id;
+
+                                    setIsSubmittingOffer(true);
+
+                                    // Upload attachments if any
+                                    let uploadedImageUrls: string[] = [];
+                                    if (offerAttachments.length > 0) {
+                                      setIsUploadingAttachments(true);
+                                      const tempId = `${userId}-${Date.now()}`;
+                                      uploadedImageUrls =
+                                        await uploadOfferAttachments(
+                                          offerAttachments,
+                                          tempId,
+                                        );
+                                      setIsUploadingAttachments(false);
+                                    }
+
+                                    // Create the offer
+                                    const offerResult = await createOffer({
+                                      requestId: request.id,
+                                      providerId: userId,
+                                      title: offerTitle.trim(),
+                                      description: offerDescription.trim() ||
+                                        undefined,
+                                      price: offerPrice.trim(),
+                                      deliveryTime: offerDuration.trim() ||
+                                        undefined,
+                                      location: offerCity.trim() || undefined,
+                                      isNegotiable,
+                                      images: uploadedImageUrls.length > 0
+                                        ? uploadedImageUrls
+                                        : undefined,
+                                    });
+
+                                    if (offerResult) {
+                                      // Haptic feedback - success
+                                      if (navigator.vibrate) {
+                                        navigator.vibrate([30, 50, 30]);
+                                      }
+
+                                      // ✅ Optimistic Update: إضافة العرض مباشرة إلى الواجهة بدون انتظار
+                                      const newOffer: Offer = {
+                                        id: offerResult.id,
+                                        requestId: request.id,
+                                        providerId: userId,
+                                        providerName:
+                                          userProfile.display_name ||
+                                          "مزود خدمة",
+                                        providerAvatar:
+                                          userProfile.avatar_url ||
+                                          undefined,
+                                        title: offerTitle.trim(),
+                                        description: offerDescription.trim() ||
+                                          "",
+                                        price: offerPrice.trim(),
+                                        deliveryTime: offerDuration.trim() ||
+                                          "",
+                                        status: "pending",
+                                        createdAt: new Date(),
+                                        isNegotiable,
+                                        location: offerCity.trim() || undefined,
+                                        images: uploadedImageUrls.length > 0
+                                          ? uploadedImageUrls
+                                          : undefined,
+                                      };
+
+                                      // إضافة العرض مباشرة إلى loadedOffers
+                                      setLoadedOffers((prev) => {
+                                        // التحقق من عدم وجود العرض مسبقاً (لتجنب التكرار)
+                                        if (
+                                          prev.some((o) =>
+                                            o.id === offerResult.id
+                                          )
+                                        ) {
+                                          return prev;
+                                        }
+                                        return [newOffer, ...prev];
+                                      });
+
+                                      setOfferSubmitted(true);
+
+                                      // Notify parent (في الخلفية)
+                                      if (onOfferCreated) {
+                                        try {
+                                          onOfferCreated();
+                                        } catch (error) {
+                                          logger.error(
+                                            "Error in onOfferCreated callback:",
+                                            error,
+                                            "service",
+                                          );
+                                        }
+                                      }
+
+                                      // Reset form
+                                      setOfferPrice("");
+                                      setOfferTitle("");
+                                      setOfferDescription("");
+                                      setOfferDuration("");
+                                      setOfferCity("");
+                                      setOfferAttachments([]);
+                                      setSelectedImageUrls([]);
+                                      setSearchedImages([]);
+                                      setSelectedSearchImages(new Set());
+                                      setGuestOfferPhone("");
+                                      setGuestOfferOTP("");
+
+                                      setTimeout(() => {
+                                        setOfferSubmitted(false);
+                                      }, 2000);
+                                    } else {
+                                      setGuestOfferError(
+                                        "حدث خطأ في إرسال العرض. حاول مرة أخرى.",
+                                      );
+                                    }
+                                  } catch (err: any) {
+                                    logger.error(
+                                      "Submit offer error:",
+                                      err,
+                                      "service",
+                                    );
+                                    const errorMessage = err?.message ||
+                                      err?.error?.message ||
+                                      "حدث خطأ في إرسال العرض. حاول مرة أخرى.";
+                                    logger.error(
+                                      "Error sending guest offer",
+                                      err,
+                                      "RequestDetail",
+                                    );
+                                    setGuestOfferError(
+                                      `حدث خطأ في إرسال العرض:\n${errorMessage}`,
+                                    );
+                                  } finally {
+                                    setIsSubmittingOffer(false);
+                                    setIsUploadingAttachments(false);
+                                  }
                                 } else {
-                                  setGuestOfferError(
-                                    "حدث خطأ في إرسال العرض. حاول مرة أخرى.",
+                                  // ترجمة رسالة الخطأ للعربية
+                                  const translatedError = translateAuthError(
+                                    result.error || "رمز التحقق غير صحيح",
                                   );
-                                }
-                              } catch (err: any) {
-                                logger.error(
-                                  "Submit offer error:",
-                                  err,
-                                  "service",
-                                );
-                                const errorMessage = err?.message ||
-                                  err?.error?.message ||
-                                  "حدث خطأ في إرسال العرض. حاول مرة أخرى.";
-                                logger.error(
-                                  "Error sending guest offer",
-                                  err,
-                                  "RequestDetail",
-                                );
-                                setGuestOfferError(
-                                  `حدث خطأ في إرسال العرض:\n${errorMessage}`,
-                                );
-                              } finally {
-                                setIsSubmittingOffer(false);
-                                setIsUploadingAttachments(false);
-                              }
-                            } else {
-                              // ترجمة رسالة الخطأ للعربية
-                              const translatedError = translateAuthError(
-                                result.error || "رمز التحقق غير صحيح",
-                              );
-                              setGuestOfferError(translatedError);
-                              setGuestOfferOTP("");
-                            }
-                          }}
-                          disabled={isVerifyingOfferOTP}
-                          className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
-                        >
-                          {isVerifyingOfferOTP
-                            ? "جاري التحقق..."
-                            : "تحقق وإرسال العرض"}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setGuestOfferVerificationStep("phone");
-                            setGuestOfferOTP("");
-                            setGuestOfferError(null);
-                          }}
-                          className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
-                        >
-                          رجوع
-                        </button>
-                      </div>
-
-                      {/* زر إعادة إرسال الرمز */}
-                      <button
-                        onClick={async () => {
-                          setIsSendingOfferOTP(true);
-                          setGuestOfferError(null);
-                          const result = await verifyGuestPhone(
-                            guestOfferPhone,
-                          );
-                          setIsSendingOfferOTP(false);
-                          if (result.success) {
-                            setGuestOfferOTP("");
-                            // إظهار رسالة نجاح مؤقتة
-                            setGuestOfferError(null);
-                          } else {
-                            const translatedError = translateAuthError(
-                              result.error || "فشل إرسال رمز التحقق",
-                            );
-                            setGuestOfferError(translatedError);
-                          }
-                        }}
-                        disabled={isSendingOfferOTP}
-                        className="w-full text-center text-sm text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
-                      >
-                        {isSendingOfferOTP
-                          ? "جاري إعادة الإرسال..."
-                          : "لم يصلك الرمز؟ إعادة الإرسال"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            </>,
-            document.body,
-          )}
-
-        {/* Terms of Service Modal */}
-        {showTermsModal && ReactDOM.createPortal(
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card rounded-2xl max-w-lg w-full max-h-[80vh] shadow-2xl border border-border flex flex-col"
-            >
-              <div className="flex items-center justify-between p-4 border-b border-border">
-                <h3 className="text-lg font-bold">شروط الاستخدام</h3>
-                <button
-                  onClick={() => setShowTermsModal(false)}
-                  className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="p-5 overflow-y-auto text-sm text-muted-foreground space-y-4 leading-relaxed text-right">
-                <div className="text-center mb-6">
-                  <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
-                    <FileText size={32} className="text-primary" />
-                  </div>
-                  <h4 className="font-bold text-foreground text-base">
-                    شروط استخدام أبيلي
-                  </h4>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    آخر تحديث: يناير 2026
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <h5 className="font-bold text-foreground mb-2">
-                      1. القبول بالشروط
-                    </h5>
-                    <p>
-                      باستخدامك لمنصة أبيلي، فإنك توافق على الالتزام بهذه الشروط
-                      والأحكام. إذا كنت لا توافق على أي جزء منها، يرجى عدم استخدام
-                      المنصة.
-                    </p>
-                  </div>
-
-                  <div>
-                    <h5 className="font-bold text-foreground mb-2">
-                      2. طبيعة الخدمة
-                    </h5>
-                    <p>
-                      أبيلي منصة وسيطة تربط بين طالبي الخدمات ومزوديها. نحن لسنا
-                      طرفاً في أي اتفاق يتم بين المستخدمين، ولا نتحمل مسؤولية جودة
-                      الخدمات المقدمة.
-                    </p>
-                  </div>
-
-                  <div>
-                    <h5 className="font-bold text-foreground mb-2">
-                      3. التزامات المستخدم
-                    </h5>
-                    <ul className="list-disc list-inside space-y-1 mr-2">
-                      <li>تقديم معلومات صحيحة ودقيقة</li>
-                      <li>عدم نشر محتوى مخالف أو مسيء</li>
-                      <li>احترام الآخرين والتواصل بلباقة</li>
-                      <li>عدم استخدام المنصة لأغراض غير مشروعة</li>
-                    </ul>
-                  </div>
-
-                  <div>
-                    <h5 className="font-bold text-foreground mb-2">
-                      4. المسؤولية
-                    </h5>
-                    <p>
-                      المنصة غير مسؤولة عن أي خلافات تنشأ بين المستخدمين. ننصح
-                      بالتحقق من هوية الطرف الآخر والاتفاق على التفاصيل قبل البدء.
-                    </p>
-                  </div>
-
-                  <div>
-                    <h5 className="font-bold text-foreground mb-2">
-                      5. حقوق الملكية
-                    </h5>
-                    <p>
-                      جميع حقوق الملكية الفكرية للمنصة محفوظة. يُحظر نسخ أو توزيع
-                      أي محتوى دون إذن كتابي.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="p-4 border-t border-border">
-                <button
-                  onClick={() => setShowTermsModal(false)}
-                  className="w-full py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary/90 transition-colors"
-                >
-                  فهمت، موافق
-                </button>
-              </div>
-            </motion.div>
-          </div>,
-          document.body,
-        )}
-
-        {/* Privacy Policy Modal */}
-        {showPrivacyModal && ReactDOM.createPortal(
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card rounded-2xl max-w-lg w-full max-h-[80vh] shadow-2xl border border-border flex flex-col"
-            >
-              <div className="flex items-center justify-between p-4 border-b border-border">
-                <h3 className="text-lg font-bold">سياسة الخصوصية</h3>
-                <button
-                  onClick={() => setShowPrivacyModal(false)}
-                  className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="p-5 overflow-y-auto text-sm text-muted-foreground space-y-4 leading-relaxed text-right">
-                <div className="text-center mb-6">
-                  <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
-                    <Lock size={32} className="text-primary" />
-                  </div>
-                  <h4 className="font-bold text-foreground text-base">
-                    سياسة خصوصية أبيلي
-                  </h4>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    آخر تحديث: يناير 2026
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <h5 className="font-bold text-foreground mb-2">
-                      1. البيانات التي نجمعها
-                    </h5>
-                    <ul className="list-disc list-inside space-y-1 mr-2">
-                      <li>رقم الجوال للتحقق من الهوية</li>
-                      <li>معلومات الطلبات والعروض</li>
-                      <li>المحادثات بين المستخدمين</li>
-                      <li>بيانات الاستخدام لتحسين الخدمة</li>
-                    </ul>
-                  </div>
-
-                  <div>
-                    <h5 className="font-bold text-foreground mb-2">
-                      2. كيف نستخدم بياناتك
-                    </h5>
-                    <ul className="list-disc list-inside space-y-1 mr-2">
-                      <li>تقديم الخدمة وتحسينها</li>
-                      <li>إرسال إشعارات مهمة</li>
-                      <li>حماية المستخدمين من الاحتيال</li>
-                      <li>تحليل الاستخدام لتطوير المنصة</li>
-                    </ul>
-                  </div>
-
-                  <div>
-                    <h5 className="font-bold text-foreground mb-2">
-                      3. مشاركة البيانات
-                    </h5>
-                    <p>
-                      لا نشارك بياناتك الشخصية مع أطراف ثالثة إلا في الحالات
-                      التالية:
-                    </p>
-                    <ul className="list-disc list-inside space-y-1 mr-2 mt-2">
-                      <li>بموافقتك الصريحة</li>
-                      <li>للامتثال للقوانين السارية</li>
-                      <li>لحماية حقوقنا أو سلامة المستخدمين</li>
-                    </ul>
-                  </div>
-
-                  <div>
-                    <h5 className="font-bold text-foreground mb-2">
-                      4. أمان البيانات
-                    </h5>
-                    <p>
-                      نستخدم تقنيات تشفير متقدمة لحماية بياناتك. نحتفظ بالبيانات
-                      فقط للمدة اللازمة لتقديم الخدمة.
-                    </p>
-                  </div>
-
-                  <div>
-                    <h5 className="font-bold text-foreground mb-2">5. حقوقك</h5>
-                    <p>
-                      يمكنك طلب الاطلاع على بياناتك أو تعديلها أو حذفها في أي وقت
-                      من خلال التواصل معنا.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="p-4 border-t border-border">
-                <button
-                  onClick={() => setShowPrivacyModal(false)}
-                  className="w-full py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary/90 transition-colors"
-                >
-                  فهمت، موافق
-                </button>
-              </div>
-            </motion.div>
-          </div>,
-          document.body,
-        )}
-
-        {/* Chat Bottom Sheet */}
-        <AnimatePresence>
-          {negotiationOpen && (
-            <>
-              {/* Backdrop */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setNegotiationOpen(false)}
-                className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-sm"
-              />
-
-              {/* Bottom Sheet */}
-              <motion.div
-                initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "100%" }}
-                transition={{
-                  type: "spring",
-                  damping: 35,
-                  stiffness: 400,
-                  mass: 0.8,
-                }}
-                drag="y"
-                dragConstraints={{ top: 0, bottom: 0 }}
-                dragElastic={{ top: 0, bottom: 0.3 }}
-                dragMomentum={false}
-                onDragEnd={(_, info) => {
-                  const velocityThreshold = 800;
-                  const offsetThreshold = 150;
-                  const shouldClose = info.offset.y > offsetThreshold ||
-                    info.velocity.y > velocityThreshold;
-
-                  if (shouldClose) {
-                    setNegotiationOpen(false);
-                  }
-                }}
-                className="fixed bottom-0 left-0 right-0 z-[120] bg-card rounded-t-3xl flex flex-col max-h-[90vh] shadow-2xl"
-              >
-                {/* Drag Handle - أعلى البوتوم شيت */}
-                <div className="flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none shrink-0">
-                  <div className="w-20 h-1 bg-muted-foreground/40 dark:bg-muted-foreground/50 rounded-full transition-colors duration-200 active:bg-muted-foreground/60" />
-                </div>
-
-                {/* Chat Header */}
-                <div className="px-5 pb-4 border-b border-border flex items-center justify-between">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="flex-1 min-w-0">
-                      {(() => {
-                        // عندما يكون المستخدم صاحب طلب، عرض اسم العارض. وإلا عرض عنوان الطلب
-                        if (isMyRequest || mode === "requests") {
-                          // البحث عن العرض النشط أو المقبول للحصول على اسم العارض
-                          const activeOffer = activeOfferId
-                            ? allOffers.find((o) => o.id === activeOfferId)
-                            : allOffers.find((o) => o.status === "accepted") ||
-                              allOffers[0];
-
-                          const providerName = activeOffer?.providerName ||
-                            "مقدم خدمة";
-
-                          return (
-                            <>
-                              <h4 className="font-bold text-base truncate">
-                                {providerName}
-                              </h4>
-                              <span className="text-xs text-muted-foreground">
-                                التواصل مع مقدم الخدمة
-                              </span>
-                            </>
-                          );
-                        } else {
-                          // عندما يكون المستخدم مقدم خدمة، عرض عنوان الطلب
-                          return (
-                            <>
-                              <h4 className="font-bold text-base truncate">
-                                {request.title}
-                              </h4>
-                              <span className="text-xs text-muted-foreground">
-                                التواصل مع صاحب الطلب
-                              </span>
-                            </>
-                          );
-                        }
-                      })()}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {/* Mute Notifications Button */}
-                    <motion.button
-                      onClick={() => {
-                        if (navigator.vibrate) navigator.vibrate(10);
-                        setIsConversationMuted((prev) => !prev);
-                        // Note: Mute state is currently UI-only.
-                        // Future enhancement: persist to database and filter notifications server-side
-                        logger.log(
-                          `Conversation notifications ${
-                            !isConversationMuted ? "muted" : "unmuted"
-                          }`,
-                          { conversationId: currentConversation?.id },
-                          "RequestDetail",
-                        );
-                      }}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
-                      title={isConversationMuted
-                        ? "إلغاء كتم الإشعارات"
-                        : "كتم إشعارات المحادثة"}
-                    >
-                      {isConversationMuted
-                        ? <BellOff size={18} className="text-red-500" />
-                        : <Bell size={18} />}
-                    </motion.button>
-                    {/* Close Button */}
-                    <motion.button
-                      onClick={() => setNegotiationOpen(false)}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
-                    >
-                      <X size={18} />
-                    </motion.button>
-                  </div>
-                </div>
-
-                {/* Messages Area */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-background/50 min-h-[300px] max-h-[50vh]">
-                  {isGuest || !user?.id
-                    ? (
-                      <div className="text-center py-12 text-muted-foreground">
-                        <Lock size={40} className="mx-auto mb-4 opacity-30" />
-                        <p className="text-sm font-medium">
-                          تحتاج لتسجيل الدخول
-                        </p>
-                        <p className="text-xs mt-1">
-                          سجل دخولك لبدء المحادثة مع الطرف الآخر
-                        </p>
-                      </div>
-                    )
-                    : isChatLoading
-                    ? (
-                      <div className="flex items-center justify-center py-12">
-                        <Loader2
-                          className="animate-spin text-primary"
-                          size={24}
-                        />
-                        <span className="mr-2 text-sm text-muted-foreground">
-                          جاري تحميل المحادثة...
-                        </span>
-                      </div>
-                    )
-                    : (
-                      <>
-                        {/* رسالة إغلاق المحادثة */}
-                        {isConversationClosed && (
-                          <div className="bg-accent/10 border border-accent/20 rounded-xl p-4 text-center mb-4">
-                            <Lock
-                              size={24}
-                              className="mx-auto mb-2 text-accent-foreground"
-                            />
-                            <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                              هذه المحادثة مغلقة
-                            </p>
-                            <p className="text-xs text-accent-foreground mt-1">
-                              {conversationClosedReason ||
-                                "تم إغلاق هذه المحادثة"}
-                            </p>
-                          </div>
-                        )}
-
-                        {chatMessages.length === 0 && !isConversationClosed
-                          ? (
-                            <div className="text-center py-12 text-muted-foreground">
-                              <MessageCircle
-                                size={40}
-                                className="mx-auto mb-4 opacity-30"
-                              />
-                              <p className="text-sm">لا توجد رسائل بعد</p>
-                              <p className="text-xs mt-1">
-                                ابدأ المحادثة بإرسال رسالة
-                              </p>
-                            </div>
-                          )
-                          : (
-                            chatMessages.map((msg) => (
-                              <div
-                                key={msg.id}
-                                className={`flex flex-col w-full ${
-                                  msg.sender_id === user?.id
-                                    ? "items-start"
-                                    : "items-end"
-                                }`}
-                              >
-                                {/* رسالة نظام */}
-                                {msg.content.startsWith("🔔")
-                                  ? (
-                                    <div className="bg-muted/50 border border-border rounded-lg px-4 py-2 text-center w-full">
-                                      <p className="text-xs text-muted-foreground">
-                                        {msg.content}
-                                      </p>
-                                    </div>
-                                  )
-                                  : (
-                                    <>
-                                      <div
-                                        className={`px-4 py-3 rounded-2xl max-w-[80%] text-base leading-relaxed shadow-sm ${
-                                          msg.sender_id === user?.id
-                                            ? "bg-primary text-primary-foreground rounded-br-md rounded-tr-none"
-                                            : "bg-card border border-border rounded-bl-md rounded-tl-none"
-                                        }`}
-                                      >
-                                        {/* Voice Message */}
-                                        {msg.audio_url && (
-                                          <div className="mb-2">
-                                            <audio
-                                              src={msg.audio_url}
-                                              controls
-                                              className="w-full h-8 rounded-lg"
-                                            />
-                                          </div>
-                                        )}
-                                        {/* Text Content */}
-                                        {msg.content && (
-                                          <p className="whitespace-pre-wrap">
-                                            {msg.content}
-                                          </p>
-                                        )}
-                                      </div>
-                                      <span className="text-[10px] text-muted-foreground mt-1.5 px-2">
-                                        {format(new Date(msg.created_at), "p", {
-                                          locale: ar,
-                                        })}
-                                      </span>
-                                    </>
-                                  )}
-                              </div>
-                            ))
-                          )}
-                      </>
-                    )}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                {/* Chat Input Area */}
-                <div className="p-4 border-t border-border bg-card">
-                  {isGuest || !user?.id
-                    ? (
-                      <div className="text-center py-2 text-muted-foreground text-sm">
-                        سجل دخولك لإرسال رسائل
-                      </div>
-                    )
-                    : isConversationClosed
-                    ? (
-                      <div className="text-center py-2 text-accent-foreground text-sm flex items-center justify-center gap-2">
-                        <Lock size={16} />
-                        لا يمكن إرسال رسائل في محادثة مغلقة
-                      </div>
-                    )
-                    : (
-                      <>
-                        {/* Recording indicator */}
-                        <AnimatePresence>
-                          {isRecordingVoice && (
-                            <motion.div
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: 10 }}
-                              className="flex items-center justify-between mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl"
-                            >
-                              <button
-                                onClick={cancelRecordingVoiceChat}
-                                className="p-2 hover:bg-red-500/20 rounded-full transition-colors"
-                              >
-                                <X size={18} className="text-red-500" />
-                              </button>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium">
-                                  {formatRecordingTime(recordingTimeVoice)}
-                                </span>
-                                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                              </div>
-                              <button
-                                onClick={stopRecordingVoiceChat}
-                                className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 transition-colors"
-                              >
-                                إيقاف
-                              </button>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
-                        {/* Recorded audio preview */}
-                        <AnimatePresence>
-                          {recordedAudioUrlChat && !isRecordingVoice && (
-                            <motion.div
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: 10 }}
-                              className="flex items-center gap-2 mb-3 p-3 bg-primary/10 border border-primary/20 rounded-xl"
-                            >
-                              <button
-                                onClick={cancelRecordingVoiceChat}
-                                className="p-2 hover:bg-primary/20 rounded-full transition-colors"
-                              >
-                                <Trash2
-                                  size={16}
-                                  className="text-destructive"
-                                />
-                              </button>
-                              <div className="flex-1">
-                                <audio
-                                  src={recordedAudioUrlChat}
-                                  controls
-                                  className="w-full h-8"
-                                />
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
-                        <div className="flex items-center gap-2 bg-secondary/30 rounded-2xl border border-border p-2">
-                          {/* Attachment Button */}
-                          <button className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
-                            <Paperclip
-                              size={18}
-                              className="text-muted-foreground"
-                            />
-                          </button>
-
-                          {/* Input Field with buttons inside */}
-                          <div className="flex-1 relative">
-                            <input
-                              type="text"
-                              dir="rtl"
-                              className="w-full py-3 pl-20 pr-4 rounded-xl bg-secondary border border-border focus:outline-none focus:border-primary text-base disabled:opacity-50 disabled:cursor-not-allowed"
-                              placeholder="اكتب رسالتك..."
-                              value={chatMessage}
-                              onChange={(e) => setChatMessage(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleSendChat();
+                                  setGuestOfferError(translatedError);
+                                  setGuestOfferOTP("");
                                 }
                               }}
-                              disabled={isRecordingVoice || isSendingChat}
+                              disabled={isVerifyingOfferOTP}
+                              className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                            >
+                              {isVerifyingOfferOTP
+                                ? "جاري التحقق..."
+                                : "تحقق وإرسال العرض"}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setGuestOfferVerificationStep("phone");
+                                setGuestOfferOTP("");
+                                setGuestOfferError(null);
+                              }}
+                              className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
+                            >
+                              رجوع
+                            </button>
+                          </div>
+
+                          {/* زر إعادة إرسال الرمز */}
+                          <button
+                            onClick={async () => {
+                              setIsSendingOfferOTP(true);
+                              setGuestOfferError(null);
+                              const result = await verifyGuestPhone(
+                                guestOfferPhone,
+                              );
+                              setIsSendingOfferOTP(false);
+                              if (result.success) {
+                                setGuestOfferOTP("");
+                                // إظهار رسالة نجاح مؤقتة
+                                setGuestOfferError(null);
+                              } else {
+                                const translatedError = translateAuthError(
+                                  result.error || "فشل إرسال رمز التحقق",
+                                );
+                                setGuestOfferError(translatedError);
+                              }
+                            }}
+                            disabled={isSendingOfferOTP}
+                            className="w-full text-center text-sm text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+                          >
+                            {isSendingOfferOTP
+                              ? "جاري إعادة الإرسال..."
+                              : "لم يصلك الرمز؟ إعادة الإرسال"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                </>,
+                document.body,
+              )}
+
+            {/* Terms of Service Modal */}
+            {showTermsModal && ReactDOM.createPortal(
+              <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-card rounded-2xl max-w-lg w-full max-h-[80vh] shadow-2xl border border-border flex flex-col"
+                >
+                  <div className="flex items-center justify-between p-4 border-b border-border">
+                    <h3 className="text-lg font-bold">شروط الاستخدام</h3>
+                    <button
+                      onClick={() => setShowTermsModal(false)}
+                      className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                  <div className="p-5 overflow-y-auto text-sm text-muted-foreground space-y-4 leading-relaxed text-right">
+                    <div className="text-center mb-6">
+                      <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                        <FileText size={32} className="text-primary" />
+                      </div>
+                      <h4 className="font-bold text-foreground text-base">
+                        شروط استخدام أبيلي
+                      </h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        آخر تحديث: يناير 2026
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <h5 className="font-bold text-foreground mb-2">
+                          1. القبول بالشروط
+                        </h5>
+                        <p>
+                          باستخدامك لمنصة أبيلي، فإنك توافق على الالتزام بهذه
+                          الشروط والأحكام. إذا كنت لا توافق على أي جزء منها، يرجى
+                          عدم استخدام المنصة.
+                        </p>
+                      </div>
+
+                      <div>
+                        <h5 className="font-bold text-foreground mb-2">
+                          2. طبيعة الخدمة
+                        </h5>
+                        <p>
+                          أبيلي منصة وسيطة تربط بين طالبي الخدمات ومزوديها. نحن
+                          لسنا طرفاً في أي اتفاق يتم بين المستخدمين، ولا نتحمل
+                          مسؤولية جودة الخدمات المقدمة.
+                        </p>
+                      </div>
+
+                      <div>
+                        <h5 className="font-bold text-foreground mb-2">
+                          3. التزامات المستخدم
+                        </h5>
+                        <ul className="list-disc list-inside space-y-1 mr-2">
+                          <li>تقديم معلومات صحيحة ودقيقة</li>
+                          <li>عدم نشر محتوى مخالف أو مسيء</li>
+                          <li>احترام الآخرين والتواصل بلباقة</li>
+                          <li>عدم استخدام المنصة لأغراض غير مشروعة</li>
+                        </ul>
+                      </div>
+
+                      <div>
+                        <h5 className="font-bold text-foreground mb-2">
+                          4. المسؤولية
+                        </h5>
+                        <p>
+                          المنصة غير مسؤولة عن أي خلافات تنشأ بين المستخدمين.
+                          ننصح بالتحقق من هوية الطرف الآخر والاتفاق على التفاصيل
+                          قبل البدء.
+                        </p>
+                      </div>
+
+                      <div>
+                        <h5 className="font-bold text-foreground mb-2">
+                          5. حقوق الملكية
+                        </h5>
+                        <p>
+                          جميع حقوق الملكية الفكرية للمنصة محفوظة. يُحظر نسخ أو
+                          توزيع أي محتوى دون إذن كتابي.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-4 border-t border-border">
+                    <button
+                      onClick={() => setShowTermsModal(false)}
+                      className="w-full py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary/90 transition-colors"
+                    >
+                      فهمت، موافق
+                    </button>
+                  </div>
+                </motion.div>
+              </div>,
+              document.body,
+            )}
+
+            {/* Privacy Policy Modal */}
+            {showPrivacyModal && ReactDOM.createPortal(
+              <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-card rounded-2xl max-w-lg w-full max-h-[80vh] shadow-2xl border border-border flex flex-col"
+                >
+                  <div className="flex items-center justify-between p-4 border-b border-border">
+                    <h3 className="text-lg font-bold">سياسة الخصوصية</h3>
+                    <button
+                      onClick={() => setShowPrivacyModal(false)}
+                      className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                  <div className="p-5 overflow-y-auto text-sm text-muted-foreground space-y-4 leading-relaxed text-right">
+                    <div className="text-center mb-6">
+                      <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                        <Lock size={32} className="text-primary" />
+                      </div>
+                      <h4 className="font-bold text-foreground text-base">
+                        سياسة خصوصية أبيلي
+                      </h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        آخر تحديث: يناير 2026
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <h5 className="font-bold text-foreground mb-2">
+                          1. البيانات التي نجمعها
+                        </h5>
+                        <ul className="list-disc list-inside space-y-1 mr-2">
+                          <li>رقم الجوال للتحقق من الهوية</li>
+                          <li>معلومات الطلبات والعروض</li>
+                          <li>المحادثات بين المستخدمين</li>
+                          <li>بيانات الاستخدام لتحسين الخدمة</li>
+                        </ul>
+                      </div>
+
+                      <div>
+                        <h5 className="font-bold text-foreground mb-2">
+                          2. كيف نستخدم بياناتك
+                        </h5>
+                        <ul className="list-disc list-inside space-y-1 mr-2">
+                          <li>تقديم الخدمة وتحسينها</li>
+                          <li>إرسال إشعارات مهمة</li>
+                          <li>حماية المستخدمين من الاحتيال</li>
+                          <li>تحليل الاستخدام لتطوير المنصة</li>
+                        </ul>
+                      </div>
+
+                      <div>
+                        <h5 className="font-bold text-foreground mb-2">
+                          3. مشاركة البيانات
+                        </h5>
+                        <p>
+                          لا نشارك بياناتك الشخصية مع أطراف ثالثة إلا في الحالات
+                          التالية:
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 mr-2 mt-2">
+                          <li>بموافقتك الصريحة</li>
+                          <li>للامتثال للقوانين السارية</li>
+                          <li>لحماية حقوقنا أو سلامة المستخدمين</li>
+                        </ul>
+                      </div>
+
+                      <div>
+                        <h5 className="font-bold text-foreground mb-2">
+                          4. أمان البيانات
+                        </h5>
+                        <p>
+                          نستخدم تقنيات تشفير متقدمة لحماية بياناتك. نحتفظ
+                          بالبيانات فقط للمدة اللازمة لتقديم الخدمة.
+                        </p>
+                      </div>
+
+                      <div>
+                        <h5 className="font-bold text-foreground mb-2">
+                          5. حقوقك
+                        </h5>
+                        <p>
+                          يمكنك طلب الاطلاع على بياناتك أو تعديلها أو حذفها في أي
+                          وقت من خلال التواصل معنا.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-4 border-t border-border">
+                    <button
+                      onClick={() => setShowPrivacyModal(false)}
+                      className="w-full py-3 bg-primary text-white rounded-xl font-bold hover:bg-primary/90 transition-colors"
+                    >
+                      فهمت، موافق
+                    </button>
+                  </div>
+                </motion.div>
+              </div>,
+              document.body,
+            )}
+
+            {/* Chat Bottom Sheet */}
+            <AnimatePresence>
+              {negotiationOpen && (
+                <>
+                  {/* Backdrop */}
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setNegotiationOpen(false)}
+                    className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-sm"
+                  />
+
+                  {/* Bottom Sheet */}
+                  <motion.div
+                    initial={{ y: "100%" }}
+                    animate={{ y: 0 }}
+                    exit={{ y: "100%" }}
+                    transition={{
+                      type: "spring",
+                      damping: 35,
+                      stiffness: 400,
+                      mass: 0.8,
+                    }}
+                    drag="y"
+                    dragConstraints={{ top: 0, bottom: 0 }}
+                    dragElastic={{ top: 0, bottom: 0.3 }}
+                    dragMomentum={false}
+                    onDragEnd={(_, info) => {
+                      const velocityThreshold = 800;
+                      const offsetThreshold = 150;
+                      const shouldClose = info.offset.y > offsetThreshold ||
+                        info.velocity.y > velocityThreshold;
+
+                      if (shouldClose) {
+                        setNegotiationOpen(false);
+                      }
+                    }}
+                    className="fixed bottom-0 left-0 right-0 z-[120] bg-card rounded-t-3xl flex flex-col max-h-[90vh] shadow-2xl"
+                  >
+                    {/* Drag Handle - أعلى البوتوم شيت */}
+                    <div className="flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none shrink-0">
+                      <div className="w-20 h-1 bg-muted-foreground/40 dark:bg-muted-foreground/50 rounded-full transition-colors duration-200 active:bg-muted-foreground/60" />
+                    </div>
+
+                    {/* Chat Header */}
+                    <div className="px-5 pb-4 border-b border-border flex items-center justify-between">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="flex-1 min-w-0">
+                          {(() => {
+                            // عندما يكون المستخدم صاحب طلب، عرض اسم العارض. وإلا عرض عنوان الطلب
+                            if (isMyRequest || mode === "requests") {
+                              // البحث عن العرض النشط أو المقبول للحصول على اسم العارض
+                              const activeOffer = activeOfferId
+                                ? allOffers.find((o) => o.id === activeOfferId)
+                                : allOffers.find((o) =>
+                                  o.status === "accepted"
+                                ) ||
+                                  allOffers[0];
+
+                              const providerName = activeOffer?.providerName ||
+                                "مقدم خدمة";
+
+                              return (
+                                <>
+                                  <h4 className="font-bold text-base truncate">
+                                    {providerName}
+                                  </h4>
+                                  <span className="text-xs text-muted-foreground">
+                                    التواصل مع مقدم الخدمة
+                                  </span>
+                                </>
+                              );
+                            } else {
+                              // عندما يكون المستخدم مقدم خدمة، عرض عنوان الطلب
+                              return (
+                                <>
+                                  <h4 className="font-bold text-base truncate">
+                                    {request.title}
+                                  </h4>
+                                  <span className="text-xs text-muted-foreground">
+                                    التواصل مع صاحب الطلب
+                                  </span>
+                                </>
+                              );
+                            }
+                          })()}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {/* Mute Notifications Button */}
+                        <motion.button
+                          onClick={() => {
+                            if (navigator.vibrate) navigator.vibrate(10);
+                            setIsConversationMuted((prev) => !prev);
+                            // Note: Mute state is currently UI-only.
+                            // Future enhancement: persist to database and filter notifications server-side
+                            logger.log(
+                              `Conversation notifications ${
+                                !isConversationMuted ? "muted" : "unmuted"
+                              }`,
+                              { conversationId: currentConversation?.id },
+                              "RequestDetail",
+                            );
+                          }}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
+                          title={isConversationMuted
+                            ? "إلغاء كتم الإشعارات"
+                            : "كتم إشعارات المحادثة"}
+                        >
+                          {isConversationMuted
+                            ? <BellOff size={18} className="text-red-500" />
+                            : <Bell size={18} />}
+                        </motion.button>
+                        {/* Close Button */}
+                        <motion.button
+                          onClick={() => setNegotiationOpen(false)}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
+                        >
+                          <X size={18} />
+                        </motion.button>
+                      </div>
+                    </div>
+
+                    {/* Messages Area */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-background/50 min-h-[300px] max-h-[50vh]">
+                      {isGuest || !user?.id
+                        ? (
+                          <div className="text-center py-12 text-muted-foreground">
+                            <Lock
+                              size={40}
+                              className="mx-auto mb-4 opacity-30"
                             />
-                            {/* Buttons inside input field (on the left side for RTL) */}
-                            <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10">
-                              {/* Voice recording button */}
-                              <button
-                                onClick={isRecordingVoice
-                                  ? stopRecordingVoiceChat
-                                  : startRecordingVoiceChat}
-                                disabled={isSendingChat ||
-                                  (recordedAudioUrlChat !== null &&
-                                    !isRecordingVoice)}
-                                className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                                  isRecordingVoice
-                                    ? "bg-red-500 text-white animate-pulse"
-                                    : "bg-transparent hover:bg-secondary/80 text-muted-foreground"
-                                }`}
-                                aria-label={isRecordingVoice
-                                  ? "إيقاف التسجيل"
-                                  : "تسجيل رسالة صوتية"}
-                              >
-                                <Mic
+                            <p className="text-sm font-medium">
+                              تحتاج لتسجيل الدخول
+                            </p>
+                            <p className="text-xs mt-1">
+                              سجل دخولك لبدء المحادثة مع الطرف الآخر
+                            </p>
+                          </div>
+                        )
+                        : isChatLoading
+                        ? (
+                          <div className="flex items-center justify-center py-12">
+                            <Loader2
+                              className="animate-spin text-primary"
+                              size={24}
+                            />
+                            <span className="mr-2 text-sm text-muted-foreground">
+                              جاري تحميل المحادثة...
+                            </span>
+                          </div>
+                        )
+                        : (
+                          <>
+                            {/* رسالة إغلاق المحادثة */}
+                            {isConversationClosed && (
+                              <div className="bg-accent/10 border border-accent/20 rounded-xl p-4 text-center mb-4">
+                                <Lock
+                                  size={24}
+                                  className="mx-auto mb-2 text-accent-foreground"
+                                />
+                                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                                  هذه المحادثة مغلقة
+                                </p>
+                                <p className="text-xs text-accent-foreground mt-1">
+                                  {conversationClosedReason ||
+                                    "تم إغلاق هذه المحادثة"}
+                                </p>
+                              </div>
+                            )}
+
+                            {chatMessages.length === 0 && !isConversationClosed
+                              ? (
+                                <div className="text-center py-12 text-muted-foreground">
+                                  <MessageCircle
+                                    size={40}
+                                    className="mx-auto mb-4 opacity-30"
+                                  />
+                                  <p className="text-sm">لا توجد رسائل بعد</p>
+                                  <p className="text-xs mt-1">
+                                    ابدأ المحادثة بإرسال رسالة
+                                  </p>
+                                </div>
+                              )
+                              : (
+                                chatMessages.map((msg) => (
+                                  <div
+                                    key={msg.id}
+                                    className={`flex flex-col w-full ${
+                                      msg.sender_id === user?.id
+                                        ? "items-start"
+                                        : "items-end"
+                                    }`}
+                                  >
+                                    {/* رسالة نظام */}
+                                    {msg.content.startsWith("🔔")
+                                      ? (
+                                        <div className="bg-muted/50 border border-border rounded-lg px-4 py-2 text-center w-full">
+                                          <p className="text-xs text-muted-foreground">
+                                            {msg.content}
+                                          </p>
+                                        </div>
+                                      )
+                                      : (
+                                        <>
+                                          <div
+                                            className={`px-4 py-3 rounded-2xl max-w-[80%] text-base leading-relaxed shadow-sm ${
+                                              msg.sender_id === user?.id
+                                                ? "bg-primary text-primary-foreground rounded-br-md rounded-tr-none"
+                                                : "bg-card border border-border rounded-bl-md rounded-tl-none"
+                                            }`}
+                                          >
+                                            {/* Voice Message */}
+                                            {msg.audio_url && (
+                                              <div className="mb-2">
+                                                <audio
+                                                  src={msg.audio_url}
+                                                  controls
+                                                  className="w-full h-8 rounded-lg"
+                                                />
+                                              </div>
+                                            )}
+                                            {/* Text Content */}
+                                            {msg.content && (
+                                              <p className="whitespace-pre-wrap">
+                                                {msg.content}
+                                              </p>
+                                            )}
+                                          </div>
+                                          <span className="text-[10px] text-muted-foreground mt-1.5 px-2">
+                                            {format(
+                                              new Date(msg.created_at),
+                                              "p",
+                                              {
+                                                locale: ar,
+                                              },
+                                            )}
+                                          </span>
+                                        </>
+                                      )}
+                                  </div>
+                                ))
+                              )}
+                          </>
+                        )}
+                      <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* Chat Input Area */}
+                    <div className="p-4 border-t border-border bg-card">
+                      {isGuest || !user?.id
+                        ? (
+                          <div className="text-center py-2 text-muted-foreground text-sm">
+                            سجل دخولك لإرسال رسائل
+                          </div>
+                        )
+                        : isConversationClosed
+                        ? (
+                          <div className="text-center py-2 text-accent-foreground text-sm flex items-center justify-center gap-2">
+                            <Lock size={16} />
+                            لا يمكن إرسال رسائل في محادثة مغلقة
+                          </div>
+                        )
+                        : (
+                          <>
+                            {/* Recording indicator */}
+                            <AnimatePresence>
+                              {isRecordingVoice && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: 10 }}
+                                  className="flex items-center justify-between mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl"
+                                >
+                                  <button
+                                    onClick={cancelRecordingVoiceChat}
+                                    className="p-2 hover:bg-red-500/20 rounded-full transition-colors"
+                                  >
+                                    <X size={18} className="text-red-500" />
+                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium">
+                                      {formatRecordingTime(recordingTimeVoice)}
+                                    </span>
+                                    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                                  </div>
+                                  <button
+                                    onClick={stopRecordingVoiceChat}
+                                    className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 transition-colors"
+                                  >
+                                    إيقاف
+                                  </button>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+
+                            {/* Recorded audio preview */}
+                            <AnimatePresence>
+                              {recordedAudioUrlChat && !isRecordingVoice && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: 10 }}
+                                  className="flex items-center gap-2 mb-3 p-3 bg-primary/10 border border-primary/20 rounded-xl"
+                                >
+                                  <button
+                                    onClick={cancelRecordingVoiceChat}
+                                    className="p-2 hover:bg-primary/20 rounded-full transition-colors"
+                                  >
+                                    <Trash2
+                                      size={16}
+                                      className="text-destructive"
+                                    />
+                                  </button>
+                                  <div className="flex-1">
+                                    <audio
+                                      src={recordedAudioUrlChat}
+                                      controls
+                                      className="w-full h-8"
+                                    />
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+
+                            <div className="flex items-center gap-2 bg-secondary/30 rounded-2xl border border-border p-2">
+                              {/* Attachment Button */}
+                              <button className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
+                                <Paperclip
                                   size={18}
-                                  className={isRecordingVoice
-                                    ? "text-white"
-                                    : "text-muted-foreground"}
+                                  className="text-muted-foreground"
                                 />
                               </button>
 
-                              {/* Send button */}
-                              <motion.button
-                                onClick={handleSendChat}
-                                disabled={(!chatMessage.trim() &&
-                                  !recordedAudioBlobChat) ||
-                                  isSendingChat || isRecordingVoice}
-                                className="w-9 h-9 rounded-lg bg-primary text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
-                                whileHover={(!chatMessage.trim() &&
-                                    !recordedAudioBlobChat) ||
-                                    isSendingChat || isRecordingVoice
-                                  ? {}
-                                  : { scale: 1.05 }}
-                                whileTap={(!chatMessage.trim() &&
-                                    !recordedAudioBlobChat) ||
-                                    isSendingChat || isRecordingVoice
-                                  ? {}
-                                  : { scale: 0.95 }}
-                                aria-label="إرسال الرسالة"
-                              >
-                                {isSendingChat
-                                  ? (
-                                    <Loader2
-                                      size={16}
-                                      className="animate-spin"
+                              {/* Input Field with buttons inside */}
+                              <div className="flex-1 relative">
+                                <input
+                                  type="text"
+                                  dir="rtl"
+                                  className="w-full py-3 pl-20 pr-4 rounded-xl bg-secondary border border-border focus:outline-none focus:border-primary text-base disabled:opacity-50 disabled:cursor-not-allowed"
+                                  placeholder="اكتب رسالتك..."
+                                  value={chatMessage}
+                                  onChange={(e) =>
+                                    setChatMessage(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                      e.preventDefault();
+                                      handleSendChat();
+                                    }
+                                  }}
+                                  disabled={isRecordingVoice || isSendingChat}
+                                />
+                                {/* Buttons inside input field (on the left side for RTL) */}
+                                <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10">
+                                  {/* Voice recording button */}
+                                  <button
+                                    onClick={isRecordingVoice
+                                      ? stopRecordingVoiceChat
+                                      : startRecordingVoiceChat}
+                                    disabled={isSendingChat ||
+                                      (recordedAudioUrlChat !== null &&
+                                        !isRecordingVoice)}
+                                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                      isRecordingVoice
+                                        ? "bg-red-500 text-white animate-pulse"
+                                        : "bg-transparent hover:bg-secondary/80 text-muted-foreground"
+                                    }`}
+                                    aria-label={isRecordingVoice
+                                      ? "إيقاف التسجيل"
+                                      : "تسجيل رسالة صوتية"}
+                                  >
+                                    <Mic
+                                      size={18}
+                                      className={isRecordingVoice
+                                        ? "text-white"
+                                        : "text-muted-foreground"}
                                     />
-                                  )
-                                  : <Send size={16} className="-rotate-90" />}
-                              </motion.button>
+                                  </button>
+
+                                  {/* Send button */}
+                                  <motion.button
+                                    onClick={handleSendChat}
+                                    disabled={(!chatMessage.trim() &&
+                                      !recordedAudioBlobChat) ||
+                                      isSendingChat || isRecordingVoice}
+                                    className="w-9 h-9 rounded-lg bg-primary text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
+                                    whileHover={(!chatMessage.trim() &&
+                                        !recordedAudioBlobChat) ||
+                                        isSendingChat || isRecordingVoice
+                                      ? {}
+                                      : { scale: 1.05 }}
+                                    whileTap={(!chatMessage.trim() &&
+                                        !recordedAudioBlobChat) ||
+                                        isSendingChat || isRecordingVoice
+                                      ? {}
+                                      : { scale: 0.95 }}
+                                    aria-label="إرسال الرسالة"
+                                  >
+                                    {isSendingChat
+                                      ? (
+                                        <Loader2
+                                          size={16}
+                                          className="animate-spin"
+                                        />
+                                      )
+                                      : (
+                                        <Send
+                                          size={16}
+                                          className="-rotate-90"
+                                        />
+                                      )}
+                                  </motion.button>
+                                </div>
+                              </div>
                             </div>
+                          </>
+                        )}
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+
+            {/* AI Offer Assist Modal */}
+            {showAIAssist &&
+              ReactDOM.createPortal(
+                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+                  <div className="bg-card w-full max-w-lg rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[80vh]">
+                    <div className="p-4 border-b border-border bg-gradient-to-r from-indigo-500/10 to-purple-500/10 flex justify-between items-center">
+                      <h3 className="font-bold flex items-center gap-2 text-indigo-600">
+                        <Sparkles size={22} /> مساعد العروض الذكي
+                      </h3>
+                      <button onClick={() => setShowAIAssist(false)}>
+                        <X size={22} />
+                      </button>
+                    </div>
+
+                    <div className="flex-1 p-6 overflow-y-auto no-scrollbar">
+                      <div className="flex gap-3 mb-4">
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                          <Wand2 size={24} />
+                        </div>
+                        <div className="bg-secondary p-3 rounded-2xl rounded-tr-none text-sm">
+                          أهلاً بك! قرأت تفاصيل طلب "{request.title}". كيف تبي
+                          يكون عرضك؟
+                        </div>
+                      </div>
+                      {isGenerating && (
+                        <div className="flex gap-3 mb-4 animate-pulse">
+                          <div className="w-10 h-10 rounded-full bg-indigo-100 shrink-0">
+                          </div>
+                          <div className="h-10 bg-secondary rounded-2xl w-32">
                           </div>
                         </div>
-                      </>
-                    )}
-                </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
-
-        {/* AI Offer Assist Modal */}
-        {showAIAssist &&
-          ReactDOM.createPortal(
-            <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-              <div className="bg-card w-full max-w-lg rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[80vh]">
-                <div className="p-4 border-b border-border bg-gradient-to-r from-indigo-500/10 to-purple-500/10 flex justify-between items-center">
-                  <h3 className="font-bold flex items-center gap-2 text-indigo-600">
-                    <Sparkles size={22} /> مساعد العروض الذكي
-                  </h3>
-                  <button onClick={() => setShowAIAssist(false)}>
-                    <X size={22} />
-                  </button>
-                </div>
-
-                <div className="flex-1 p-6 overflow-y-auto no-scrollbar">
-                  <div className="flex gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
-                      <Wand2 size={24} />
+                      )}
                     </div>
-                    <div className="bg-secondary p-3 rounded-2xl rounded-tr-none text-sm">
-                      أهلاً بك! قرأت تفاصيل طلب "{request.title}". كيف تبي يكون
-                      عرضك؟
+
+                    <div className="p-4 border-t border-border bg-secondary/20">
+                      <div className="flex gap-2 relative">
+                        <input
+                          className="flex-1 border border-border rounded-full px-4 py-3 focus:border-primary outline-none pl-12 bg-background text-foreground text-base"
+                          placeholder="اكتب فكرتك أو سجلها صوتياً..."
+                          value={aiInput}
+                          onChange={(e) => setAiInput(e.target.value)}
+                          onKeyDown={(e) =>
+                            e.key === "Enter" && handleAIGenerate()}
+                        />
+                        <button
+                          onClick={toggleVoiceInput}
+                          className={`absolute left-14 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors ${
+                            isListening ? "text-red-500 animate-pulse" : ""
+                          }`}
+                        >
+                          <Mic size={28} />
+                        </button>
+                        <button
+                          onClick={handleAIGenerate}
+                          className="w-10 h-10 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition-all active:scale-95 shadow-md"
+                        >
+                          <Send size={18} className="-rotate-90" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  {isGenerating && (
-                    <div className="flex gap-3 mb-4 animate-pulse">
-                      <div className="w-10 h-10 rounded-full bg-indigo-100 shrink-0">
-                      </div>
-                      <div className="h-10 bg-secondary rounded-2xl w-32"></div>
+                </div>,
+                document.body,
+              )}
+
+            {/* Hidden Share Card Preview - Used for generating share image */}
+            <div
+              id="share-card-preview"
+              className="fixed -left-[9999px] w-[400px] bg-white rounded-2xl overflow-hidden shadow-2xl"
+              style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}
+            >
+              {/* Header with Logo */}
+              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
+                    <span className="text-white font-bold text-xl">أ</span>
+                  </div>
+                  <div className="text-white">
+                    <div className="font-bold text-lg">أبيلي</div>
+                    <div className="text-white/80 text-xs">
+                      السوق العكسي الذكي
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Request Image or Placeholder */}
+              <div className="h-40 bg-gray-100 flex items-center justify-center">
+                {request.images && request.images.length > 0
+                  ? (
+                    <img
+                      src={request.images[0]}
+                      alt={request.title}
+                      className="w-full h-full object-cover"
+                      crossOrigin="anonymous"
+                    />
+                  )
+                  : (
+                    <div className="text-gray-400 flex flex-col items-center gap-2">
+                      <Camera size={40} strokeWidth={1} />
+                      <span className="text-sm">لا توجد صور</span>
+                    </div>
+                  )}
+              </div>
+
+              {/* Request Details */}
+              <div className="p-5">
+                <h2 className="font-bold text-xl text-gray-900 mb-2 line-clamp-2">
+                  {request.title}
+                </h2>
+                <p className="text-gray-600 text-sm line-clamp-3 mb-4">
+                  {request.description}
+                </p>
+
+                {/* Info Row */}
+                <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
+                  {request.location && (
+                    <div className="flex items-center gap-1">
+                      <MapPin size={14} />
+                      <span>{request.location.split("،")[0]}</span>
+                    </div>
+                  )}
+                  {request.budgetType === "fixed" && (
+                    <div className="flex items-center gap-1">
+                      <DollarSign size={14} />
+                      <span>{request.budgetMin}-{request.budgetMax} ر.س</span>
                     </div>
                   )}
                 </div>
 
-                <div className="p-4 border-t border-border bg-secondary/20">
-                  <div className="flex gap-2 relative">
-                    <input
-                      className="flex-1 border border-border rounded-full px-4 py-3 focus:border-primary outline-none pl-12 bg-background text-foreground text-base"
-                      placeholder="اكتب فكرتك أو سجلها صوتياً..."
-                      value={aiInput}
-                      onChange={(e) => setAiInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleAIGenerate()}
-                    />
-                    <button
-                      onClick={toggleVoiceInput}
-                      className={`absolute left-14 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors ${
-                        isListening ? "text-red-500 animate-pulse" : ""
-                      }`}
-                    >
-                      <Mic size={28} />
-                    </button>
-                    <button
-                      onClick={handleAIGenerate}
-                      className="w-10 h-10 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition-all active:scale-95 shadow-md"
-                    >
-                      <Send size={18} className="-rotate-90" />
-                    </button>
-                  </div>
+                {/* CTA */}
+                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-center py-3 rounded-xl font-bold">
+                  حمّل أبيلي الآن وقدم عرضك! 🚀
                 </div>
               </div>
-            </div>,
-            document.body,
-          )}
-
-      {/* Hidden Share Card Preview - Used for generating share image */}
-      <div
-        id="share-card-preview"
-        className="fixed -left-[9999px] w-[400px] bg-white rounded-2xl overflow-hidden shadow-2xl"
-        style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}
-      >
-        {/* Header with Logo */}
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
-              <span className="text-white font-bold text-xl">أ</span>
-            </div>
-            <div className="text-white">
-              <div className="font-bold text-lg">أبيلي</div>
-              <div className="text-white/80 text-xs">السوق العكسي الذكي</div>
             </div>
           </div>
         </div>
-
-        {/* Request Image or Placeholder */}
-        <div className="h-40 bg-gray-100 flex items-center justify-center">
-          {request.images && request.images.length > 0
-            ? (
-              <img
-                src={request.images[0]}
-                alt={request.title}
-                className="w-full h-full object-cover"
-                crossOrigin="anonymous"
-              />
-            )
-            : (
-              <div className="text-gray-400 flex flex-col items-center gap-2">
-                <Camera size={40} strokeWidth={1} />
-                <span className="text-sm">لا توجد صور</span>
-              </div>
-            )}
-        </div>
-
-        {/* Request Details */}
-        <div className="p-5">
-          <h2 className="font-bold text-xl text-gray-900 mb-2 line-clamp-2">
-            {request.title}
-          </h2>
-          <p className="text-gray-600 text-sm line-clamp-3 mb-4">
-            {request.description}
-          </p>
-
-          {/* Info Row */}
-          <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
-            {request.location && (
-              <div className="flex items-center gap-1">
-                <MapPin size={14} />
-                <span>{request.location.split("،")[0]}</span>
-              </div>
-            )}
-            {request.budgetType === "fixed" && (
-              <div className="flex items-center gap-1">
-                <DollarSign size={14} />
-                <span>{request.budgetMin}-{request.budgetMax} ر.س</span>
-              </div>
-            )}
-          </div>
-
-          {/* CTA */}
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-center py-3 rounded-xl font-bold">
-            حمّل أبيلي الآن وقدم عرضك! 🚀
-          </div>
-        </div>
-      </div>
+      </motion.div>
 
       {/* Report Modal - Bottom Sheet Style for Mobile */}
       {isReportModalOpen &&
@@ -5690,11 +5621,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     ) {
                       // Prev
                       if (request.images && request.images.length > 1) {
-                        setExpandedImageIndex((prev) =>
-                          prev !== null
-                            ? (prev - 1 + request.images!.length) %
-                              request.images!.length
-                            : 0
+                        setExpandedImageIndex((prev) => prev !== null
+                          ? (prev - 1 + request.images!.length) %
+                            request.images!.length
+                          : 0
                         );
                       }
                     }
@@ -5733,9 +5663,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   onClick={(e) => {
                     e.stopPropagation();
                     setExpandedImageIndex((prev) =>
-                      prev !== null
-                        ? (prev + 1) % request.images!.length
-                        : 0
+                      prev !== null ? (prev + 1) % request.images!.length : 0
                     );
                   }}
                   className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white hidden md:flex items-center justify-center transition-all backdrop-blur-sm active:scale-95"

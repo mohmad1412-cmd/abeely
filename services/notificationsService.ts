@@ -3,6 +3,65 @@ import { AppNotification } from "../types.ts";
 import { logger } from "../utils/logger.ts";
 
 // ==========================================
+// Type Definitions for Database Tables
+// ==========================================
+
+/**
+ * نوع الإشعار في قاعدة البيانات
+ */
+interface NotificationRow {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  link_to?: string | null;
+  related_request_id?: string | null;
+  related_offer_id?: string | null;
+  related_message_id?: string | null;
+  is_read: boolean;
+  read_at?: string | null;
+  created_at: string;
+  data?: Record<string, unknown> | null;
+}
+
+/**
+ * نوع الطلب المختصر
+ */
+interface RequestRow {
+  id: string;
+  title: string;
+  author_id?: string | null;
+}
+
+/**
+ * نوع العرض المختصر
+ */
+interface OfferRow {
+  id: string;
+  title: string;
+  provider_name: string;
+  status: string;
+}
+
+/**
+ * نوع الرسالة المختصرة
+ */
+interface MessageRow {
+  id: string;
+  content: string;
+  sender_id?: string | null;
+}
+
+/**
+ * نوع الملف الشخصي المختصر
+ */
+interface ProfileRow {
+  id: string;
+  display_name?: string | null;
+}
+
+// ==========================================
 // Notifications
 // ==========================================
 
@@ -25,53 +84,64 @@ export async function getNotifications(limit = 50): Promise<AppNotification[]> {
 
     if (notificationsError) throw notificationsError;
 
+    // Type assertion for notifications data
+    const notifications = (notificationsData || []) as NotificationRow[];
+
     // Collect related IDs
     const requestIds = [
       ...new Set(
-        (notificationsData || []).map((n) => n.related_request_id).filter(
-          Boolean,
+        notifications.map((n) => n.related_request_id).filter(
+          (id): id is string => Boolean(id),
         ),
       ),
     ];
     const offerIds = [
       ...new Set(
-        (notificationsData || []).map((n) => n.related_offer_id).filter(
-          Boolean,
+        notifications.map((n) => n.related_offer_id).filter(
+          (id): id is string => Boolean(id),
         ),
       ),
     ];
     const messageIds = [
       ...new Set(
-        (notificationsData || []).map((n) => n.related_message_id).filter(
-          Boolean,
+        notifications.map((n) => n.related_message_id).filter(
+          (id): id is string => Boolean(id),
         ),
       ),
     ];
 
     // Fetch related data separately
-    const requestsMap: Record<string, any> = {};
-    const offersMap: Record<string, any> = {};
-    const messagesMap: Record<string, any> = {};
-    const profilesMap: Record<string, any> = {};
+    const requestsMap: Record<string, RequestRow> = {};
+    const offersMap: Record<string, OfferRow> = {};
+    const messagesMap: Record<string, MessageRow> = {};
+    const profilesMap: Record<string, ProfileRow> = {};
 
     if (requestIds.length > 0) {
       const { data: requests } = await supabase
         .from("requests")
         .select("id, title, author_id")
         .in("id", requestIds);
-      (requests || []).forEach((r) => {
+
+      const requestRows = (requests || []) as RequestRow[];
+      requestRows.forEach((r) => {
         requestsMap[r.id] = r;
       });
 
       // Fetch author profiles
       const authorIds = [
-        ...new Set((requests || []).map((r) => r.author_id).filter(Boolean)),
+        ...new Set(
+          requestRows.map((r) => r.author_id).filter(
+            (id): id is string => Boolean(id),
+          ),
+        ),
       ];
       if (authorIds.length > 0) {
         const { data: authors } = await supabase.from("profiles").select(
           "id, display_name",
         ).in("id", authorIds);
-        (authors || []).forEach((p) => {
+
+        const authorRows = (authors || []) as ProfileRow[];
+        authorRows.forEach((p) => {
           profilesMap[p.id] = p;
         });
       }
@@ -82,7 +152,9 @@ export async function getNotifications(limit = 50): Promise<AppNotification[]> {
         .from("offers")
         .select("id, title, provider_name, status")
         .in("id", offerIds);
-      (offers || []).forEach((o) => {
+
+      const offerRows = (offers || []) as OfferRow[];
+      offerRows.forEach((o) => {
         offersMap[o.id] = o;
       });
     }
@@ -92,29 +164,41 @@ export async function getNotifications(limit = 50): Promise<AppNotification[]> {
         .from("messages")
         .select("id, content, sender_id")
         .in("id", messageIds);
-      (messages || []).forEach((m) => {
+
+      const messageRows = (messages || []) as MessageRow[];
+      messageRows.forEach((m) => {
         messagesMap[m.id] = m;
       });
 
       // Fetch sender profiles
       const senderIds = [
-        ...new Set((messages || []).map((m) => m.sender_id).filter(Boolean)),
+        ...new Set(
+          messageRows.map((m) => m.sender_id).filter(
+            (id): id is string => Boolean(id),
+          ),
+        ),
       ];
       if (senderIds.length > 0) {
         const { data: senders } = await supabase.from("profiles").select(
           "id, display_name",
         ).in("id", senderIds);
-        (senders || []).forEach((p) => {
+
+        const senderRows = (senders || []) as ProfileRow[];
+        senderRows.forEach((p) => {
           profilesMap[p.id] = p;
         });
       }
     }
 
     // Transform data and filter out notifications with archived/deleted offers
-    const data = (notificationsData || []).map((n) => {
-      const request = requestsMap[n.related_request_id];
-      const offer = offersMap[n.related_offer_id];
-      const message = messagesMap[n.related_message_id];
+    const transformedData = notifications.map((n) => {
+      const request = n.related_request_id
+        ? requestsMap[n.related_request_id]
+        : null;
+      const offer = n.related_offer_id ? offersMap[n.related_offer_id] : null;
+      const message = n.related_message_id
+        ? messagesMap[n.related_message_id]
+        : null;
 
       // استثناء الإشعارات المرتبطة بعروض مؤرشفة أو محذوفة
       if (n.related_offer_id && !offer) {
@@ -126,20 +210,20 @@ export async function getNotifications(limit = 50): Promise<AppNotification[]> {
         related_request: request
           ? {
             ...request,
-            author: profilesMap[request.author_id] || null,
+            author: request.author_id ? profilesMap[request.author_id] : null,
           }
           : null,
         related_offer: offer || null,
         related_message: message
           ? {
             ...message,
-            sender: profilesMap[message.sender_id] || null,
+            sender: message.sender_id ? profilesMap[message.sender_id] : null,
           }
           : null,
       };
-    }).filter(Boolean); // إزالة القيم null
+    }).filter((n): n is NonNullable<typeof n> => n !== null);
 
-    return (data || []).map((n: any) => ({
+    return transformedData.map((n) => ({
       id: n.id,
       type: n.type as AppNotification["type"],
       title: n.title,
@@ -214,7 +298,7 @@ export async function markNotificationAsRead(
       .update({
         is_read: true,
         read_at: new Date().toISOString(),
-      })
+      } as Record<string, unknown>)
       .eq("id", notificationId)
       .eq("user_id", user.id);
 
@@ -244,7 +328,7 @@ export async function markAllNotificationsAsRead(): Promise<boolean> {
       .update({
         is_read: true,
         read_at: new Date().toISOString(),
-      })
+      } as Record<string, unknown>)
       .eq("user_id", user.id)
       .eq("is_read", false);
 
@@ -321,17 +405,19 @@ export async function createNotification(
   relatedOfferId?: string,
 ): Promise<boolean> {
   try {
+    const notificationData: Record<string, unknown> = {
+      user_id: userId,
+      type,
+      title,
+      message,
+      link_to: linkTo || null,
+      related_request_id: relatedRequestId || null,
+      related_offer_id: relatedOfferId || null,
+    };
+
     const { error } = await supabase
       .from("notifications")
-      .insert({
-        user_id: userId,
-        type,
-        title,
-        message,
-        link_to: linkTo || null,
-        related_request_id: relatedRequestId || null,
-        related_offer_id: relatedOfferId || null,
-      });
+      .insert(notificationData);
 
     if (error) throw error;
 
@@ -365,35 +451,40 @@ export function subscribeToNotifications(
         filter: `user_id=eq.${userId}`,
       },
       async (payload) => {
-        const n = payload.new as any;
+        const n = payload.new as NotificationRow;
 
         // Fetch notification data without foreign key joins
-        const { data: notif } = await supabase
+        const { data: notifData } = await supabase
           .from("notifications")
           .select("*")
           .eq("id", n.id)
           .single();
 
-        if (!notif) return;
+        if (!notifData) return;
+
+        const notif = notifData as NotificationRow;
 
         // Fetch related data if needed
-        let relatedRequest: any = undefined;
-        let relatedOffer: any = undefined;
-        let relatedMessage: any = undefined;
+        let relatedRequest: AppNotification["relatedRequest"] = undefined;
+        let relatedOffer: AppNotification["relatedOffer"] = undefined;
+        let relatedMessage: AppNotification["relatedMessage"] = undefined;
 
         if (notif.related_request_id) {
           const { data: req } = await supabase.from("requests").select(
             "id, title, author_id",
           ).eq("id", notif.related_request_id).single();
+
           if (req) {
+            const reqRow = req as RequestRow;
             let authorName: string | undefined;
-            if (req.author_id) {
+            if (reqRow.author_id) {
               const { data: author } = await supabase.from("profiles").select(
                 "display_name",
-              ).eq("id", req.author_id).single();
-              authorName = author?.display_name || undefined;
+              ).eq("id", reqRow.author_id).single();
+              const authorProfile = author as ProfileRow | null;
+              authorName = authorProfile?.display_name || undefined;
             }
-            relatedRequest = { id: req.id, title: req.title, authorName };
+            relatedRequest = { id: reqRow.id, title: reqRow.title, authorName };
           }
         }
 
@@ -404,11 +495,13 @@ export function subscribeToNotifications(
             .eq("id", notif.related_offer_id)
             .neq("status", "archived") // استثناء العروض المؤرشفة
             .single();
+
           if (offer) {
+            const offerRow = offer as OfferRow;
             relatedOffer = {
-              id: offer.id,
-              title: offer.title,
-              providerName: offer.provider_name,
+              id: offerRow.id,
+              title: offerRow.title,
+              providerName: offerRow.provider_name,
             };
           } else {
             // العرض مؤرشف أو محذوف، لا نرسل الإشعار
@@ -420,19 +513,22 @@ export function subscribeToNotifications(
           const { data: msg } = await supabase.from("messages").select(
             "id, content, sender_id",
           ).eq("id", notif.related_message_id).single();
+
           if (msg) {
+            const msgRow = msg as MessageRow;
             let senderName = "مستخدم";
-            if (msg.sender_id) {
+            if (msgRow.sender_id) {
               const { data: sender } = await supabase.from("profiles").select(
                 "display_name",
-              ).eq("id", msg.sender_id).single();
-              senderName = sender?.display_name || "مستخدم";
+              ).eq("id", msgRow.sender_id).single();
+              const senderProfile = sender as ProfileRow | null;
+              senderName = senderProfile?.display_name || "مستخدم";
             }
             relatedMessage = {
-              id: msg.id,
+              id: msgRow.id,
               senderName,
-              preview: msg.content.substring(0, 50) +
-                (msg.content.length > 50 ? "..." : ""),
+              preview: msgRow.content.substring(0, 50) +
+                (msgRow.content.length > 50 ? "..." : ""),
             };
           }
         }
@@ -460,35 +556,40 @@ export function subscribeToNotifications(
         filter: `user_id=eq.${userId}`,
       },
       async (payload) => {
-        const n = payload.new as any;
+        const n = payload.new as NotificationRow;
 
         // Fetch notification data without foreign key joins
-        const { data: notif } = await supabase
+        const { data: notifData } = await supabase
           .from("notifications")
           .select("*")
           .eq("id", n.id)
           .single();
 
-        if (!notif) return;
+        if (!notifData) return;
+
+        const notif = notifData as NotificationRow;
 
         // Fetch related data if needed
-        let relatedRequest: any = undefined;
-        let relatedOffer: any = undefined;
-        let relatedMessage: any = undefined;
+        let relatedRequest: AppNotification["relatedRequest"] = undefined;
+        let relatedOffer: AppNotification["relatedOffer"] = undefined;
+        let relatedMessage: AppNotification["relatedMessage"] = undefined;
 
         if (notif.related_request_id) {
           const { data: req } = await supabase.from("requests").select(
             "id, title, author_id",
           ).eq("id", notif.related_request_id).single();
+
           if (req) {
+            const reqRow = req as RequestRow;
             let authorName: string | undefined;
-            if (req.author_id) {
+            if (reqRow.author_id) {
               const { data: author } = await supabase.from("profiles").select(
                 "display_name",
-              ).eq("id", req.author_id).single();
-              authorName = author?.display_name || undefined;
+              ).eq("id", reqRow.author_id).single();
+              const authorProfile = author as ProfileRow | null;
+              authorName = authorProfile?.display_name || undefined;
             }
-            relatedRequest = { id: req.id, title: req.title, authorName };
+            relatedRequest = { id: reqRow.id, title: reqRow.title, authorName };
           }
         }
 
@@ -499,11 +600,13 @@ export function subscribeToNotifications(
             .eq("id", notif.related_offer_id)
             .neq("status", "archived")
             .single();
+
           if (offer) {
+            const offerRow = offer as OfferRow;
             relatedOffer = {
-              id: offer.id,
-              title: offer.title,
-              providerName: offer.provider_name,
+              id: offerRow.id,
+              title: offerRow.title,
+              providerName: offerRow.provider_name,
             };
           }
         }
@@ -512,19 +615,22 @@ export function subscribeToNotifications(
           const { data: msg } = await supabase.from("messages").select(
             "id, content, sender_id",
           ).eq("id", notif.related_message_id).single();
+
           if (msg) {
+            const msgRow = msg as MessageRow;
             let senderName = "مستخدم";
-            if (msg.sender_id) {
+            if (msgRow.sender_id) {
               const { data: sender } = await supabase.from("profiles").select(
                 "display_name",
-              ).eq("id", msg.sender_id).single();
-              senderName = sender?.display_name || "مستخدم";
+              ).eq("id", msgRow.sender_id).single();
+              const senderProfile = sender as ProfileRow | null;
+              senderName = senderProfile?.display_name || "مستخدم";
             }
             relatedMessage = {
-              id: msg.id,
+              id: msgRow.id,
               senderName,
-              preview: msg.content.substring(0, 50) +
-                (msg.content.length > 50 ? "..." : ""),
+              preview: msgRow.content.substring(0, 50) +
+                (msgRow.content.length > 50 ? "..." : ""),
             };
           }
         }

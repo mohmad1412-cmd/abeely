@@ -66,6 +66,11 @@ const CreateRequestV2 = React.lazy(() =>
     default: module.CreateRequestV2,
   }))
 );
+const ChatModal = React.lazy(() =>
+  import("./components/ChatModal.tsx").then((module) => ({
+    default: module.ChatModal,
+  }))
+);
 import {
   GlobalFloatingOrb,
   VoiceProcessingStatus,
@@ -325,6 +330,14 @@ const App: React.FC = () => {
   const [initialActiveOfferId, setInitialActiveOfferId] = useState<
     string | null
   >(null); // فتح popup المحادثة مباشرة للعرض المحدد
+
+  // ==========================================
+  // Chat Modal State (Popup للمحادثات)
+  // ==========================================
+  const [isChatModalOpen, setIsChatModalOpen] = useState(false);
+  const [chatModalConversationId, setChatModalConversationId] = useState<
+    string | null
+  >(null);
   const [viewingProfileUserId, setViewingProfileUserId] = useState<
     string | null
   >(null); // معرف المستخدم المراد عرض ملفه الشخصي (null = الملف الشخصي الحالي)
@@ -2873,15 +2886,15 @@ const App: React.FC = () => {
       currentAppView: appView,
       isGuest,
     }, "App");
-    
+
     // إزالة guest mode أولاً
     setIsGuest(false);
     localStorage.removeItem("abeely_guest_mode");
-    
+
     // إضافة flag للإشارة إلى أننا نريد الانتقال إلى صفحة auth بشكل صريح
     sessionStorage.setItem("force_auth_view", "true");
     logger.log("✅ force_auth_view flag set", {}, "App");
-    
+
     // الانتقال إلى صفحة تسجيل الدخول مباشرة
     setAppView("auth");
     logger.log("✅ setAppView('auth') called", {
@@ -3534,9 +3547,9 @@ const App: React.FC = () => {
                           offer.id,
                         );
                         if (conv) {
-                          setPreviousView(view);
-                          setInitialConversationId(conv.id);
-                          setView("conversation");
+                          // فتح popup المحادثة بدلاً من الانتقال لصفحة كاملة
+                          setChatModalConversationId(conv.id);
+                          setIsChatModalOpen(true);
                         }
                       } catch (error) {
                         logger.error(
@@ -3640,9 +3653,9 @@ const App: React.FC = () => {
                           offer.id,
                         );
                         if (conv) {
-                          setPreviousView(view);
-                          setInitialConversationId(conv.id);
-                          setView("conversation");
+                          // فتح popup المحادثة بدلاً من الانتقال لصفحة كاملة
+                          setChatModalConversationId(conv.id);
+                          setIsChatModalOpen(true);
                         }
                       } catch (error) {
                         logger.error(
@@ -4951,6 +4964,34 @@ const App: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Chat Modal - Popup للمحادثات */}
+      <Suspense fallback={null}>
+        <ChatModal
+          isOpen={isChatModalOpen}
+          onClose={() => {
+            setIsChatModalOpen(false);
+            setChatModalConversationId(null);
+          }}
+          conversationId={chatModalConversationId || undefined}
+          otherUserId=""
+          mode={mode}
+          toggleMode={toggleMode}
+          isModeSwitching={isModeSwitching}
+          unreadCount={unreadCount}
+          hasUnreadMessages={hasUnreadMessages}
+          notifications={notifications}
+          onMarkAsRead={handleMarkAsRead}
+          onClearAll={handleClearAppNotifications}
+          setView={setView}
+          setPreviousView={setPreviousView}
+          titleKey={titleKey}
+          user={user}
+          isGuest={isGuest}
+          isDarkMode={isDarkMode}
+          toggleTheme={() => setIsDarkMode(!isDarkMode)}
+        />
+      </Suspense>
     </div>
   );
 };

@@ -108,7 +108,7 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
 
           {/* Navigation Arrows (Desktop) */}
           <div
-            className="absolute inset-x-6 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none z-10 hidden md:flex"
+            className="absolute inset-x-6 top-1/2 -translate-y-1/2 justify-between pointer-events-none z-10 hidden md:flex"
             dir="rtl"
           >
             {
