@@ -87,7 +87,7 @@ const SubmitButtonWithShake: React.FC<SubmitButtonWithShakeProps> = ({
   const [isShaking, setIsShaking] = useState(false);
 
   const handleClick = async () => {
-    if (!canSubmit && !isSubmitting && !isGeneratingTitle) {
+    if (!canSubmit && !isSubmitting) {
       // زر معطل - إضافة اهتزاز وحد أحمر
       setIsShaking(true);
       if (navigator.vibrate) {
@@ -112,8 +112,7 @@ const SubmitButtonWithShake: React.FC<SubmitButtonWithShakeProps> = ({
     <motion.button
       layout
       onClick={handleClick}
-      disabled={!canSubmit || isSubmitting || isGeneratingTitle ||
-        isUploadingFiles || submitSuccess}
+      disabled={!canSubmit || isSubmitting || isUploadingFiles || submitSuccess}
       animate={isShaking
         ? {
           x: [0, -10, 10, -10, 10, 0],
@@ -121,23 +120,14 @@ const SubmitButtonWithShake: React.FC<SubmitButtonWithShakeProps> = ({
         }
         : {}}
       className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg ${
-        isGeneratingTitle
-          ? "bg-accent/20 text-accent-foreground border-2 border-accent/30 cursor-wait shadow-none"
-          : canSubmit && !isSubmitting
+        canSubmit && !isSubmitting
           ? "bg-primary text-white hover:bg-primary/90 shadow-primary/30"
           : isShaking
           ? "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none border-2 border-red-500"
           : "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none"
       }`}
     >
-      {isGeneratingTitle
-        ? (
-          <>
-            <Loader2 size={20} className="animate-spin" />
-            <span>جاري تحليل الوصف وإنشاء العنوان...</span>
-          </>
-        )
-        : isUploadingFiles
+      {isUploadingFiles
         ? (
           <>
             <Loader2 size={20} className="animate-spin" />
@@ -471,6 +461,7 @@ interface CreateRequestV2Props {
     ((audioBlob: Blob) => Promise<void>) | null
   >;
   setVoiceProcessingStatus?: (status: VoiceProcessingStatus) => void;
+  isModal?: boolean;
 }
 
 // ============================================
@@ -793,13 +784,14 @@ const GlowingField: React.FC<{
       {/* Resize Handle for Multiline - Full width bottom edge */}
       {multiline && (
         <motion.div
+          data-no-swipe="true"
+          drag={false}
           onMouseDown={handleResizeStart}
           onTouchStart={handleResizeStart}
           className={`absolute bottom-0 left-0 right-0 h-6 flex items-center justify-center cursor-ns-resize select-none rounded-b-2xl transition-colors ${
             isResizing ? "bg-primary/10" : "hover:bg-primary/5"
           }`}
           style={{ touchAction: "none" }}
-          whileTap={{ scale: 0.98 }}
         >
           <motion.div
             className="flex flex-col gap-0.5 pointer-events-none"
@@ -1076,6 +1068,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   aiSendHandlerRef,
   voiceSendHandlerRef,
   setVoiceProcessingStatus: externalSetVoiceProcessingStatus,
+  isModal = false,
 }) => {
   // ==========================================
   // نوع لتخزين القيم المحفوظة (snapshot)
@@ -1385,11 +1378,9 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
   // حالة إنشاء العنوان بالذكاء الاصطناعي (يجب تعريفها قبل canSubmit)
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
 
-  // Check if can submit - يظهر الزر بعد تعبئة الوصف والمدينة فقط + لا يكون في وضع التوليد + العنوان واضح
+  // Check if can submit - يظهر الزر بعد تعبئة الوصف والمدينة فقط (العنوان يأتي من أول سطر من الوصف)
   const needsManualTitle = !title.trim();
-  const canSubmit =
-    !!(description.trim() && location.trim() && !isGeneratingTitle &&
-      !isTitleUnclear && title.trim());
+  const canSubmit = !!(description.trim() && location.trim());
 
   // Submit states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1742,17 +1733,12 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     }, 2000);
   };
 
-  // إنشاء العنوان بالذكاء الاصطناعي - يعمل عند الانتقال عن حقل الوصف
+  // إنشاء العنوان بالذكاء الاصطناعي - معطل: العنوان الآن هو أول سطر من الوصف
   const generateTitleFromDescription = useCallback(
     async (forceRegenerate: boolean = false) => {
-      // Skip if already generating
-      if (isGeneratingTitle) return;
-      // Respect manual edits - don't override a user-approved title
-      if (userEditedTitle) return;
-      // Skip if already generated (unless forcing regeneration)
-      if (hasGeneratedTitleRef.current && !forceRegenerate) return;
-      // Skip if description is too short
-      if (!description.trim() || description.trim().length < 3) return;
+      // Disabled: Title is now the first line of description
+      // العنوان الآن يأتي تلقائياً من أول سطر من الوصف
+      return;
 
       hasGeneratedTitleRef.current = true;
       setIsGeneratingTitle(true);
@@ -2625,16 +2611,59 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     const finalDeliveryTime = customDeliveryValue.trim() ||
       deliveryValue.trim() || deliveryField?.value || "";
 
+    // دالة لإزالة كلمات الترحيب والمقدمات من العنوان
+    const cleanTitleFromGreetings = (text: string): string => {
+      let cleaned = text.trim();
+
+      // قائمة كلمات الترحيب (نزيلها دائماً)
+      const greetings = [
+        /^مرحبا\s*,?\s*/i,
+        /^مرحبا\s+بك\s*,?\s*/i,
+        /^مرحبا\s+و\s*/i,
+        /^السلام\s+عليكم\s*,?\s*/i,
+        /^وعليكم\s+السلام\s*,?\s*/i,
+        /^أهلا\s*,?\s*/i,
+        /^أهلا\s+وسهلا\s*,?\s*/i,
+        /^السلام\s+عليكم\s+ورحمة\s+الله\s+,?\s*/i,
+        /^وعليكم\s+السلام\s+ورحمة\s+الله\s+,?\s*/i,
+      ];
+
+      // قائمة المقدمات المباشرة (نزيلها دائماً)
+      const directIntroductions = [
+        /^لدي\s+طلب\s+صغير\s*,?\s*/i,
+        /^عندي\s+طلب\s+صغير\s*,?\s*/i,
+        /^عندي\s+طلب\s*,?\s*/i,
+        /^لدي\s+طلب\s*,?\s*/i,
+      ];
+
+      // إزالة كلمات الترحيب
+      for (const greeting of greetings) {
+        cleaned = cleaned.replace(greeting, "");
+      }
+
+      // إزالة المقدمات المباشرة
+      for (const intro of directIntroductions) {
+        cleaned = cleaned.replace(intro, "");
+      }
+
+      // تنظيف المسافات والفواصل في البداية
+      cleaned = cleaned.replace(/^[،,.\-_\s]+/, "").trim();
+      cleaned = cleaned.replace(/\s+/g, " ").trim();
+
+      return cleaned || text; // إذا أصبح فارغاً، نرجع النص الأصلي
+    };
+
+    // العنوان هو أول سطر من الوصف مع إزالة الترحيب والمقدمات
     let finalTitle = title.trim();
     if (!finalTitle && description.trim()) {
       const desc = description.trim();
-      const firstSentence = desc.split(/[.،!؟\n]/)[0].trim();
-      finalTitle = firstSentence.length > 50
-        ? firstSentence.slice(0, 47) + "..."
-        : firstSentence;
-      if (finalTitle.length < 10) {
-        finalTitle = desc.length > 50 ? desc.slice(0, 47) + "..." : desc;
-      }
+      // أخذ أول سطر فقط (حتى \n أو نهاية النص)
+      const firstLine = desc.split("\n")[0].trim();
+      // تنظيف العنوان من الترحيب والمقدمات
+      finalTitle = cleanTitleFromGreetings(firstLine || desc);
+    } else if (finalTitle) {
+      // تنظيف العنوان الموجود أيضاً
+      finalTitle = cleanTitleFromGreetings(finalTitle);
     }
 
     if (!finalTitle) finalTitle = "طلب جديد";
@@ -2684,6 +2713,13 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     );
 
     try {
+      console.log("🔵 CreateRequestV2: About to call onPublish", {
+        hasOnPublish: typeof onPublish === "function",
+        onPublishType: typeof onPublish,
+        isEditing,
+        requestId: editingRequestId,
+      });
+
       logger.log("📤 Calling onPublish...", {
         isEditing,
         requestId: editingRequestId,
@@ -2691,13 +2727,27 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
         hasLocation: !!trimmedLocation,
         requestTitle: finalTitle,
         hasImages: !!uploadedImageUrls.length,
+        hasOnPublish: typeof onPublish === "function",
       }, "service");
 
+      if (typeof onPublish !== "function") {
+        console.error("❌ onPublish is not a function!", {
+          onPublish,
+          type: typeof onPublish,
+        });
+        throw new Error("onPublish is not a function");
+      }
+
+      console.log("🟢 CreateRequestV2: Calling onPublish now...");
       const result = await onPublish(
         request,
         isEditing,
         editingRequestId || undefined,
       );
+      console.log("🟡 CreateRequestV2: onPublish returned", {
+        result,
+        hasResult: !!result,
+      });
 
       logger.log("📥 onPublish returned:", {
         hasResult: !!result,
@@ -2725,8 +2775,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           errorMsg =
             "فشل تحديث الطلب. قد يكون الطلب غير موجود أو لا تملك صلاحية التعديل.";
         } else {
-          errorMsg =
-            "فشل إرسال الطلب. يرجى التحقق من الاتصال بالإنترنت والمحاولة مرة أخرى.";
+          errorMsg = "فشل إرسال الطلب (لم يتم استلام رقم الطلب).";
         }
 
         return { success: false, error: errorMsg };
@@ -2801,8 +2850,21 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
     }
   };
 
+  // Set data attribute on container to prevent swipe when resizing
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (containerRef.current) {
+      if (isDescriptionResizing) {
+        containerRef.current.setAttribute("data-resizing", "true");
+      } else {
+        containerRef.current.removeAttribute("data-resizing");
+      }
+    }
+  }, [isDescriptionResizing]);
+
   return (
     <motion.div
+      ref={containerRef}
       className="flex flex-col h-full bg-background"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
@@ -2854,7 +2916,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
       />
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 pb-16">
+      <div className="flex-1 px-4 pt-6">
         <AnimatePresence mode="wait">
           {/* Clarification Pages */}
           {clarificationPages.length > 0 && !showFinalReview && (
@@ -3255,167 +3317,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
           )}
         </AnimatePresence>
 
-        {/* عرض العنوان المُنشأ أو حقل إدخال العنوان */}
-        {clarificationPages.length === 0 && !showFinalReview && (
-          <AnimatePresence mode="wait">
-            {/* حقل تعديل العنوان */}
-            {isTitleEditable && (
-              <motion.div
-                key="editable-title"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-4"
-              >
-                <div className="relative">
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileText size={16} className="text-primary" />
-                    <span className="text-xs font-medium text-muted-foreground">
-                      تعديل العنوان
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={title}
-                      onChange={(e) => {
-                        setTitle(e.target.value);
-                        setUserEditedTitle(true);
-                        setIsTitleUnclear(false);
-                        setShowManualTitle(false);
-                      }}
-                      placeholder="اكتب عنواناً واضحاً لطلبك..."
-                      className="flex-1 px-3 py-2 text-sm rounded-xl border-2 border-primary/50 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary  w-full max-w-full"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => setIsTitleEditable(false)}
-                      className="shrink-0 p-3 rounded-xl bg-primary text-white hover:bg-primary/90 transition-colors"
-                    >
-                      <Check size={18} />
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* حقل العنوان اليدوي - يظهر إذا AI غير متصل أو لم يُنشأ عنوان أو العنوان غير واضح */}
-            {((!title.trim() && !isGeneratingTitle && showManualTitle) ||
-              isTitleUnclear) && (
-              <motion.div
-                key="manual-title"
-                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                animate={{
-                  opacity: 1,
-                  height: "auto",
-                  marginBottom: 16,
-                  x: titleShake ? [0, -10, 10, -10, 10, -5, 5, 0] : 0,
-                }}
-                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                transition={{
-                  duration: 0.3,
-                  x: { duration: 0.5, ease: "easeInOut" },
-                }}
-                className="overflow-hidden"
-              >
-                <div className="relative">
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileText
-                      size={16}
-                      className={isTitleUnclear
-                        ? "text-red-500"
-                        : "text-accent"}
-                    />
-                    <span
-                      className={`text-xs font-medium ${
-                        isTitleUnclear
-                          ? "text-red-500"
-                          : "text-accent-foreground"
-                      }`}
-                    >
-                      عنوان الطلب (مطلوب)
-                    </span>
-                    {isTitleUnclear && (
-                      <motion.span
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-500"
-                      >
-                        عنوان غير واضح
-                      </motion.span>
-                    )}
-                    {isAIConnected === false && !isTitleUnclear && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/15 text-accent-foreground">
-                        AI غير متصل
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    ref={titleInputRef}
-                    type="text"
-                    value={title}
-                    onChange={(e) => {
-                      setTitle(e.target.value);
-                      setUserEditedTitle(true);
-                      setIsTitleUnclear(false);
-                      setShowManualTitle(false);
-                    }}
-                    placeholder="اكتب عنواناً واضحاً لطلبك..."
-                    className={`w-full px-3 py-2 text-sm rounded-xl border-2 transition-all duration-300 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none ${
-                      isTitleUnclear || titleShake
-                        ? "border-red-500 ring-2 ring-red-200 dark:ring-red-900/50 text-red-500"
-                        : needsManualTitle
-                        ? "border-accent/50 focus:border-primary "
-                        : "border-border focus:border-primary "
-                    }`}
-                    autoFocus={isTitleUnclear}
-                  />
-                  {isTitleUnclear && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-xs text-red-500 mt-1.5 flex items-center gap-1 font-medium"
-                    >
-                      <span>⚠️</span>
-                      <span>
-                        العنوان غير واضح. يرجى تعديل العنوان يدوياً قبل الإرسال
-                      </span>
-                    </motion.p>
-                  )}
-                  {!title.trim() && needsManualTitle && !isTitleUnclear && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-xs text-accent-foreground mt-1.5 flex items-center gap-1"
-                    >
-                      <span>⚠️</span>
-                      <span>أضف عنواناً لطلبك حتى تتمكن من الإرسال</span>
-                    </motion.p>
-                  )}
-                </div>
-              </motion.div>
-            )}
-
-            {/* مؤشر إنشاء العنوان */}
-            {isGeneratingTitle && (
-              <motion.div
-                key="generating-title"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="mb-4 flex items-center gap-3 p-3 rounded-xl bg-secondary/50 border border-border"
-              >
-                <Loader2 size={18} className="animate-spin text-primary" />
-                <span className="text-sm text-muted-foreground">
-                  جاري إنشاء العنوان...
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        )}
+        {/* Core Fields */}\n
 
         {/* Core Fields */}
-        <div className="space-y-4 mb-6">
+        <div className="space-y-4 mb-4">
           {/* Combined Description and Location Field */}
           <motion.div
             ref={descriptionFieldRef}
@@ -3503,7 +3408,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                     generateTitleFromDescription(true); // force regenerate
                   }
                 }}
-                placeholder="صف طلبك بالتفصيل..."
+                placeholder="اكتب طلبك باختصار وبوضوح..."
                 style={{ height: descriptionHeight }}
                 className="w-full min-h-[100px] bg-transparent text-foreground resize-none focus:outline-none placeholder:text-muted-foreground/50 text-right"
                 dir="rtl"
@@ -3511,13 +3416,14 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
 
               {/* Resize Handle */}
               <motion.div
+                data-no-swipe="true"
+                drag={false}
                 onMouseDown={handleDescriptionResizeStart}
                 onTouchStart={handleDescriptionResizeStart}
                 className={`absolute bottom-0 left-0 right-0 h-6 flex items-center justify-center cursor-ns-resize select-none rounded-b-2xl transition-colors ${
                   isDescriptionResizing ? "bg-primary/10" : "hover:bg-primary/5"
                 }`}
                 style={{ touchAction: "none" }}
-                whileTap={{ scale: 0.98 }}
               >
                 <motion.div
                   className="flex flex-col gap-0.5 pointer-events-none"
@@ -3604,202 +3510,15 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               </div>
             </div>
 
-            {/* Budget Field - Collapsible */}
-            <div className="px-4 border-t border-border/50">
-              {/* Label - Clickable to expand/collapse */}
-              <button
-                type="button"
-                onClick={() => setIsBudgetExpanded(!isBudgetExpanded)}
-                className="w-full flex items-center justify-between gap-2 pt-3 pb-2"
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className={budgetMin || budgetMax
-                      ? "text-primary"
-                      : "text-muted-foreground"}
-                  >
-                    <DollarSign size={18} />
-                  </span>
-                  <span
-                    className={`text-sm font-medium ${
-                      budgetMin || budgetMax
-                        ? "text-primary"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    الميزانية
-                    {(budgetMin || budgetMax) && (
-                      <motion.span
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="inline-flex items-center justify-center mr-1"
-                      >
-                        <Check size={14} className="text-primary" />
-                      </motion.span>
-                    )}
-                  </span>
-                </div>
-                <motion.span
-                  animate={{ rotate: isBudgetExpanded ? 180 : 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="text-muted-foreground"
-                >
-                  <ChevronDown size={16} />
-                </motion.span>
-              </button>
+            {
+              /* Budget Field - Collapsible - تم تعطيله مؤقتاً للتجربة
+                يمكن استرجاع الكود من Git history إذا لزم الأمر */
+            }
 
-              {/* Collapsible Budget Area */}
-              <AnimatePresence>
-                {isBudgetExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="pt-2 pb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 relative">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={budgetMin}
-                            onChange={(e) =>
-                              setBudgetMin(
-                                e.target.value.replace(/[^\d]/g, ""),
-                              )}
-                            placeholder="من"
-                            className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:border-primary  text-center"
-                            dir="rtl"
-                          />
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
-                            ر.س
-                          </span>
-                        </div>
-                        <span className="text-muted-foreground text-sm">-</span>
-                        <div className="flex-1 relative">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={budgetMax}
-                            onChange={(e) =>
-                              setBudgetMax(
-                                e.target.value.replace(/[^\d]/g, ""),
-                              )}
-                            placeholder="إلى"
-                            className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:border-primary  text-center"
-                            dir="rtl"
-                          />
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
-                            ر.س
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Delivery Time Field - Collapsible */}
-            <div className="px-4 border-t border-border/50">
-              {/* Label - Clickable to expand/collapse */}
-              <button
-                type="button"
-                onClick={() => setIsDeliveryExpanded(!isDeliveryExpanded)}
-                className="w-full flex items-center justify-between gap-2 pt-3 pb-2"
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className={deliveryValue || customDeliveryValue
-                      ? "text-primary"
-                      : "text-muted-foreground"}
-                  >
-                    <Clock size={18} />
-                  </span>
-                  <span
-                    className={`text-sm font-medium ${
-                      deliveryValue || customDeliveryValue
-                        ? "text-primary"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    مدة التنفيذ
-                    {(deliveryValue || customDeliveryValue) && (
-                      <motion.span
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="inline-flex items-center justify-center mr-1"
-                      >
-                        <Check size={14} className="text-primary" />
-                      </motion.span>
-                    )}
-                  </span>
-                </div>
-                <motion.span
-                  animate={{ rotate: isDeliveryExpanded ? 180 : 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="text-muted-foreground"
-                >
-                  <ChevronDown size={16} />
-                </motion.span>
-              </button>
-
-              {/* Collapsible Delivery Area */}
-              <AnimatePresence>
-                {isDeliveryExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="pt-2 pb-3">
-                      {/* Preset Options */}
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        {deliveryPresets.map((preset) => (
-                          <button
-                            key={preset.value}
-                            type="button"
-                            onClick={() => {
-                              if (deliveryValue === preset.value) {
-                                setDeliveryValue("");
-                              } else {
-                                setDeliveryValue(preset.value);
-                                setCustomDeliveryValue("");
-                              }
-                            }}
-                            className={`px-3 py-1.5 text-xs rounded-full border transition-all ${
-                              deliveryValue === preset.value
-                                ? "bg-primary text-white border-primary"
-                                : "bg-background border-border hover:border-primary/50 text-muted-foreground hover:text-foreground"
-                            }`}
-                          >
-                            {preset.label}
-                          </button>
-                        ))}
-                      </div>
-                      {/* Custom Input */}
-                      <input
-                        type="text"
-                        value={customDeliveryValue}
-                        onChange={(e) => {
-                          setCustomDeliveryValue(e.target.value);
-                          if (e.target.value) {
-                            setDeliveryValue("");
-                          }
-                        }}
-                        placeholder="أو اكتب مدة مخصصة..."
-                        className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:border-primary "
-                        dir="rtl"
-                      />
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+            {
+              /* Delivery Time Field - Collapsible - تم تعطيله مؤقتاً للتجربة
+                يمكن استرجاع الكود من Git history إذا لزم الأمر */
+            }
 
             {/* Attachments Section - Collapsible */}
             <div className="px-4 border-t border-border/50">
@@ -3843,7 +3562,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                 </div>
                 <motion.span
                   animate={{ rotate: isAttachmentsExpanded ? 180 : 0 }}
-                  transition={{ duration: 0.2 }}
+                  transition={{ duration: 0.1, ease: "easeOut" }}
                   className="text-muted-foreground"
                 >
                   <ChevronDown size={16} />
@@ -3857,7 +3576,7 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
                     className="overflow-hidden"
                   >
                     <div className="pt-2 pb-3">
@@ -3995,166 +3714,10 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
               />
             </div>
 
-            {/* Seriousness Level - مؤشر الجدية */}
-            <div className="px-4 border-t border-border/50 pt-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="p-1.5 rounded-lg bg-primary/10">
-                  <Target size={16} className="text-primary" />
-                </div>
-                <div className="flex-1">
-                  <span className="text-sm font-medium text-foreground">
-                    مستوى الجدية
-                  </span>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {seriousness === 5 && "عالية جداً (عروض قليلة جداً)"}
-                    {seriousness === 4 && "عالية (عروض قليلة)"}
-                    {seriousness === 3 && "متوسطة (عروض متوسطة)"}
-                    {seriousness === 2 && "منخفضة (عروض كثيرة)"}
-                    {seriousness === 1 && "منخفضة جداً (عروض كثيرة جداً)"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Elegant Slider */}
-              <div className="relative py-3">
-                {/* Background track */}
-                <div className="absolute top-1/2 left-0 right-0 h-1.5 bg-secondary/60 rounded-full -translate-y-1/2" />
-
-                {/* Active track with gradient */}
-                <div
-                  className="absolute top-1/2 left-0 h-1.5 bg-gradient-to-r from-primary to-primary/80 rounded-full -translate-y-1/2 transition-all duration-300 ease-out"
-                  style={{ width: `${((seriousness - 1) / 4) * 100}%` }}
-                />
-
-                {/* Level dots - positioned at exact percentages to align with thumb */}
-                <div className="absolute top-1/2 left-0 right-0 -translate-y-1/2 pointer-events-none">
-                  {[1, 2, 3, 4, 5].map((level) => {
-                    // Calculate position: 0%, 25%, 50%, 75%, 100%
-                    const position = ((level - 1) / 4) * 100;
-                    return (
-                      <div
-                        key={level}
-                        className="absolute transition-all duration-300"
-                        style={{
-                          left: `calc(${position}% - 6px)`, // 6px = half of 12px (w-3)
-                          transform: `translateY(-50%) ${
-                            seriousness >= level ? "scale(1.25)" : "scale(1)"
-                          }`,
-                        }}
-                      >
-                        <div
-                          className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                            seriousness >= level
-                              ? "bg-primary shadow-lg shadow-primary/40"
-                              : "bg-secondary border-2 border-background"
-                          }`}
-                        />
-                        {seriousness === level && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="absolute inset-0 rounded-full bg-primary/20"
-                            style={{
-                              width: "200%",
-                              height: "200%",
-                              left: "-50%",
-                              top: "-50%",
-                            }}
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Slider input */}
-                <input
-                  type="range"
-                  min="1"
-                  max="5"
-                  step="1"
-                  value={seriousness}
-                  onChange={(e) => {
-                    const newValue = parseInt(e.target.value);
-                    setSeriousness(newValue);
-                    if (navigator.vibrate) {
-                      navigator.vibrate(10);
-                    }
-                  }}
-                  className="relative w-full h-2 bg-transparent appearance-none cursor-pointer slider-elegant z-10"
-                />
-
-                {/* Slider styles - thumb aligned with dots */}
-                <style>
-                  {`
-                  .slider-elegant {
-                    padding: 0;
-                    margin: 0;
-                  }
-                  .slider-elegant::-webkit-slider-thumb {
-                    appearance: none;
-                    width: 20px;
-                    height: 20px;
-                    border-radius: 50%;
-                    background: hsl(var(--primary));
-                    cursor: grab;
-                    border: 3px solid hsl(var(--background));
-                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 0 0 0 rgba(var(--primary-rgb), 0.4);
-                    transition: all 0.2s ease;
-                    position: relative;
-                    z-index: 20;
-                    margin-top: -9px; /* Center align: (20px thumb - 2px track) / 2 = 9px */
-                  }
-                  .slider-elegant::-webkit-slider-thumb:active {
-                    cursor: grabbing;
-                    transform: scale(1.2);
-                    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2), 0 0 0 4px rgba(var(--primary-rgb), 0.2);
-                  }
-                  .slider-elegant::-webkit-slider-thumb:hover {
-                    transform: scale(1.15);
-                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2), 0 0 0 2px rgba(var(--primary-rgb), 0.3);
-                  }
-                  .slider-elegant::-moz-range-thumb {
-                    width: 20px;
-                    height: 20px;
-                    border-radius: 50%;
-                    background: hsl(var(--primary));
-                    cursor: grab;
-                    border: 3px solid hsl(var(--background));
-                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-                    transition: all 0.2s ease;
-                  }
-                  .slider-elegant::-moz-range-thumb:active {
-                    cursor: grabbing;
-                    transform: scale(1.2);
-                    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2);
-                  }
-                  .slider-elegant::-moz-range-thumb:hover {
-                    transform: scale(1.15);
-                  }
-                  .slider-elegant::-webkit-slider-runnable-track {
-                    background: transparent;
-                    height: 2px;
-                  }
-                  .slider-elegant::-moz-range-track {
-                    background: transparent;
-                    height: 2px;
-                    border: none;
-                  }
-                `}
-                </style>
-              </div>
-
-              {/* Labels */}
-              <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/30">
-                <span className="text-[10px] text-muted-foreground font-medium">
-                  قليل العروض
-                </span>
-                <span className="text-[10px] text-muted-foreground font-medium">
-                  كثير العروض
-                </span>
-              </div>
-            </div>
+            {
+              /* Seriousness Level - مؤشر الجدية - تم تعطيله مؤقتاً للتجربة
+                يمكن استرجاع الكود من Git history إذا لزم الأمر */
+            }
           </motion.div>
         </div>
 
@@ -4199,7 +3762,11 @@ export const CreateRequestV2: React.FC<CreateRequestV2Props> = ({
             damping: 35,
             mass: 0.8,
           }}
-          className="fixed bottom-0 left-0 right-0 md:right-72 z-[110] bg-gradient-to-t from-background via-background to-transparent pt-4 pb-4 px-4"
+          className={`${
+            isModal
+              ? "sticky bottom-0 inset-x-0 z-[110] bg-background border-t border-border"
+              : "fixed bottom-0 left-0 right-0 md:right-72 z-[110] bg-gradient-to-t from-background via-background to-transparent"
+          } pt-4 pb-4 px-4`}
         >
           {/* زر أرسل الطلب الآن */}
           <SubmitButtonWithShake

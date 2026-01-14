@@ -94,8 +94,11 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
       const spaceBelow = viewportHeight - rect.bottom;
       const spaceAbove = rect.top;
       
-      // إذا كانت المسافة من الأسفل أقل من 200px أو لوحة المفاتيح مفتوحة، نضع dropdown للأعلى
-      const shouldPositionUp = spaceBelow < 200 || keyboardHeight > 50;
+      // إذا تم تحديد dropdownDirection بشكل صريح، نستخدمه
+      // وإلا نحسب بناءً على المساحة المتاحة
+      const shouldPositionUp = dropdownDirection === 'up' 
+        ? true 
+        : (spaceBelow < 200 || keyboardHeight > 50);
       
       // حساب الموضع
       let top = 0;
@@ -107,7 +110,8 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
         if (keyboardHeight > 50) {
           bottom = keyboardHeight + 8;
         } else {
-          bottom = viewportHeight - rect.top + 8;
+          // للأعلى: نضع dropdown فوق الحقل مباشرة (من bottom إلى top)
+          bottom = viewportHeight - rect.top;
         }
         top = 0; // علامة أننا نستخدم bottom
       } else {
@@ -123,7 +127,7 @@ export const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
         width: rect.width,
       });
     }
-  }, []);
+  }, [dropdownDirection]);
 
   // تحديث موقع القائمة عند الفتح والتمرير
   useEffect(() => {

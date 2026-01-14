@@ -56,8 +56,15 @@ const Messages = React.lazy(() =>
     default: module.Messages,
   }))
 );
+const CreateRequestModal = React.lazy(() =>
+  import("./components/CreateRequestModal.tsx").then((module) => ({
+    default: module.CreateRequestModal,
+  }))
+);
 const CreateRequestV2 = React.lazy(() =>
-  import("./components/CreateRequestV2.tsx")
+  import("./components/CreateRequestV2.tsx").then((module) => ({
+    default: module.CreateRequestV2,
+  }))
 );
 import {
   GlobalFloatingOrb,
@@ -350,6 +357,22 @@ const App: React.FC = () => {
       timestamp: new Date(),
     },
   ]);
+
+  // ==========================================
+  // Create Request Modal State
+  // ==========================================
+  const [isCreateRequestModalOpen, setIsCreateRequestModalOpen] = useState(
+    false,
+  );
+
+  const handleOpenCreateRequest = useCallback(() => {
+    setIsCreateRequestModalOpen(true);
+  }, []);
+
+  const handleCloseCreateRequest = useCallback(() => {
+    setIsCreateRequestModalOpen(false);
+    setRequestToEdit(null); // Clear edit state on close
+  }, []);
   // Ref to CreateRequestV2's handleSend function
   const aiSendHandlerRef = useRef<((audioBlob?: Blob) => Promise<void>) | null>(
     null,
@@ -463,7 +486,7 @@ const App: React.FC = () => {
       if (req.isPublic === false) return false;
       if (user?.id) {
         if (myRequestIds.has(req.id)) return false;
-        if (req.author && req.author === user.id) return false;
+        if (req.authorId && req.authorId === user.id) return false;
         if (myOfferRequestIds.has(req.id)) return false;
       }
       return true;
@@ -944,7 +967,7 @@ const App: React.FC = () => {
           }
         } else if (homePage.startsWith("my-requests:")) {
           const [, filter] = homePage.split(":");
-          setView("dashboard");
+          setView("marketplace");
           setMode("requests");
           setActiveBottomTab("my-requests");
           // Set filter for my requests
@@ -958,7 +981,7 @@ const App: React.FC = () => {
           }
         } else if (homePage.startsWith("my-offers:")) {
           const [, filter] = homePage.split(":");
-          setView("dashboard");
+          setView("marketplace");
           setMode("offers");
           setActiveBottomTab("my-offers");
           // Set default filter for offers
@@ -2192,6 +2215,8 @@ const App: React.FC = () => {
       // but usually defaults to current mode. We only force if needed.
     } else if (newView === "create-request") {
       if (mode !== "requests") setMode("requests");
+      handleOpenCreateRequest();
+      return;
     }
 
     if (newView === "requests-mode") {
@@ -2228,6 +2253,17 @@ const App: React.FC = () => {
 
     setView(newView as ViewState);
   };
+
+  // Handle my-requests and my-offers views - redirect to marketplace with appropriate tab
+  useEffect(() => {
+    if (view === "my-requests" && activeBottomTab !== "my-requests") {
+      setActiveBottomTab("my-requests");
+      setView("marketplace");
+    } else if (view === "my-offers" && activeBottomTab !== "my-offers") {
+      setActiveBottomTab("my-offers");
+      setView("marketplace");
+    }
+  }, [view, activeBottomTab]);
 
   // Restore scroll position when switching views or modes
   // Note: Marketplace component handles its own scroll restoration via savedScrollPosition prop
@@ -2832,11 +2868,26 @@ const App: React.FC = () => {
   // ==========================================
   // Go to Login Handler (for guest mode)
   // ==========================================
-  const handleGoToLogin = () => {
+  const handleGoToLogin = useCallback(() => {
+    logger.log("🔐 handleGoToLogin called", {
+      currentAppView: appView,
+      isGuest,
+    }, "App");
+    
+    // إزالة guest mode أولاً
     setIsGuest(false);
     localStorage.removeItem("abeely_guest_mode");
+    
+    // إضافة flag للإشارة إلى أننا نريد الانتقال إلى صفحة auth بشكل صريح
+    sessionStorage.setItem("force_auth_view", "true");
+    logger.log("✅ force_auth_view flag set", {}, "App");
+    
+    // الانتقال إلى صفحة تسجيل الدخول مباشرة
     setAppView("auth");
-  };
+    logger.log("✅ setAppView('auth') called", {
+      newAppView: "auth",
+    }, "App");
+  }, [setAppView, appView, isGuest]);
 
   // ==========================================
   // Require Auth Helper (preserve pending route)
@@ -2940,6 +2991,38 @@ const App: React.FC = () => {
                   isEditing,
                   editRequestId,
                 ): Promise<string | null> => {
+                  // Log immediately at the start - this should always appear
+                  console.log("🚀🚀🚀 onPublish STARTED in App.tsx", {
+                    isEditing,
+                    editRequestId,
+                    hasUser: !!user,
+                    userId: user?.id?.slice(-4),
+                    requestId: request.id?.slice(-8),
+                    hasDescription: !!request.description,
+                    hasLocation: !!request.location,
+                    timestamp: new Date().toISOString(),
+                  });
+
+                  // Also log to logger
+                  console.error("🔴 ERROR TEST - onPublish called", {
+                    isEditing,
+                    editRequestId,
+                  });
+
+                  logger.log(
+                    "🚀 onPublish called in App.tsx",
+                    {
+                      isEditing,
+                      editRequestId,
+                      hasUser: !!user,
+                      userId: user?.id?.slice(-4),
+                      requestId: request.id?.slice(-8),
+                      hasDescription: !!request.description,
+                      hasLocation: !!request.location,
+                    },
+                    "App",
+                  );
+
                   try {
                     logger.log(
                       isEditing ? "Updating request" : "Publishing request",
@@ -2950,6 +3033,16 @@ const App: React.FC = () => {
                     // تأكد من وجود مستخدم مسجل قبل الإرسال
                     // Try multiple times with delay to ensure auth state is updated after login
                     let currentUserId = user?.id;
+
+                    logger.log(
+                      "Checking user authentication:",
+                      {
+                        hasUser: !!user,
+                        userId: user?.id?.slice(-4),
+                        currentUserId: currentUserId?.slice(-4),
+                      },
+                      "App",
+                    );
                     if (!currentUserId) {
                       // Wait a bit for auth state to update after login
                       await new Promise((resolve) =>
@@ -2969,24 +3062,47 @@ const App: React.FC = () => {
                     // Only require auth if we're absolutely sure there's no user
                     // Note: CreateRequestV2 will show an alert instead of forcing redirect
                     if (!currentUserId) {
-                      logger.warn(
-                        "No user found in onPublish",
-                        undefined,
+                      logger.error(
+                        "❌ No user found in onPublish after retries",
+                        {
+                          hasUser: !!user,
+                          userId: user?.id?.slice(-4),
+                          isGuest,
+                        },
                         "App",
                       );
-                      // Don't force redirect - let CreateRequestV2 handle it with alert
-                      // requireAuthForCreate();
-                      return null;
+                      // Throw error instead of returning null so CreateRequestV2 can handle it properly
+                      throw new Error(
+                        "ليس لديك صلاحية لإنشاء طلب. يرجى التحقق من تسجيل الدخول.",
+                      );
                     }
+
+                    logger.log(
+                      "✅ User authenticated:",
+                      { userId: currentUserId.slice(-4) },
+                      "App",
+                    );
 
                     // التحقق من البيانات الأساسية
                     if (!request.description || !request.location) {
-                      logger.error("Missing required fields:", {
+                      logger.error("❌ Missing required fields:", {
                         description: !!request.description,
                         location: !!request.location,
+                        requestKeys: Object.keys(request),
                       }, "App");
-                      return null;
+                      throw new Error(
+                        "بيانات ناقصة. يرجى التأكد من إدخال جميع الحقول المطلوبة.",
+                      );
                     }
+
+                    logger.log(
+                      "✅ Required fields validated",
+                      {
+                        hasDescription: !!request.description,
+                        hasLocation: !!request.location,
+                      },
+                      "App",
+                    );
 
                     // تحويل البيانات لصيغة AIDraft
                     const draftData = {
@@ -3011,41 +3127,148 @@ const App: React.FC = () => {
                         draftData,
                         request.seriousness,
                       );
-                      if (updatedRequest) {
-                        resultId = updatedRequest.id;
-                        // إذا كان الطلب مؤرشفاً، إظهار تنبيه
-                        if (updatedRequest.wasArchived) {
-                          setUpdateUnarchiveAppNotification({
-                            isVisible: true,
-                            requestId: updatedRequest.id,
-                          });
-                          // إخفاء التنبيه بعد 5 ثوان
-                          setTimeout(() => {
-                            setUpdateUnarchiveAppNotification({
-                              isVisible: false,
-                              requestId: null,
-                            });
-                          }, 5000);
-                        }
-                      } else {
+
+                      // Validate that we got a valid response with an id
+                      if (!updatedRequest) {
                         logger.error(
-                          "Failed to update request - updateRequest returned null",
-                          undefined,
+                          "updateRequest returned null/undefined",
+                          {
+                            editRequestId,
+                            currentUserId: currentUserId?.slice(-4),
+                            hasDraftData: !!draftData,
+                          },
                           "App",
                         );
-                        return null;
+                        throw new Error(
+                          "فشل تحديث الطلب. قد يكون الطلب غير موجود أو لا تملك صلاحية التعديل أو تجاوز الطلب 7 أيام من الإنشاء.",
+                        );
+                      }
+
+                      if (!updatedRequest.id) {
+                        logger.error(
+                          "updateRequest returned data without id",
+                          { updatedRequest },
+                          "App",
+                        );
+                        throw new Error(
+                          "فشل تحديث الطلب. لم يتم استلام رقم الطلب من الخادم.",
+                        );
+                      }
+
+                      resultId = updatedRequest.id;
+
+                      // إذا كان الطلب مؤرشفاً، إظهار تنبيه
+                      if (updatedRequest.wasArchived) {
+                        setUpdateUnarchiveAppNotification({
+                          isVisible: true,
+                          requestId: updatedRequest.id,
+                        });
+                        // إخفاء التنبيه بعد 5 ثوان
+                        setTimeout(() => {
+                          setUpdateUnarchiveAppNotification({
+                            isVisible: false,
+                            requestId: null,
+                          });
+                        }, 5000);
                       }
                     } else {
                       // إنشاء طلب جديد
-                      const createdRequest = await createRequestFromChat(
-                        currentUserId,
-                        draftData,
+                      logger.log(
+                        "Calling createRequestFromChat with:",
                         {
-                          ...request, // Pass all fields (images, seriousness, etc.)
-                          id: request.id, // Explicitly pass id if present
-                        } as RequestInsert,
+                          userId: currentUserId?.slice(-4),
+                          hasDraftData: !!draftData,
+                          draftTitle: draftData.title?.substring(0, 30),
+                          draftLocation: draftData.location,
+                          requestTitle: request.title?.substring(0, 30),
+                          requestLocation: request.location,
+                          hasImages: !!request.images?.length,
+                        },
+                        "App",
                       );
-                      resultId = createdRequest?.id || null;
+
+                      let createdRequest;
+                      try {
+                        createdRequest = await createRequestFromChat(
+                          currentUserId,
+                          draftData,
+                          {
+                            ...request, // Pass all fields (images, seriousness, etc.)
+                            id: request.id, // Explicitly pass id if present
+                          } as RequestInsert,
+                        );
+
+                        logger.log(
+                          "createRequestFromChat returned:",
+                          {
+                            hasResult: !!createdRequest,
+                            hasId: !!createdRequest?.id,
+                            id: createdRequest?.id?.slice(-8),
+                          },
+                          "App",
+                        );
+                      } catch (createError: any) {
+                        logger.error(
+                          "createRequestFromChat threw error:",
+                          {
+                            message: createError?.message,
+                            name: createError?.name,
+                            code: createError?.code,
+                            originalError: createError?.originalError,
+                          },
+                          "App",
+                        );
+                        // Re-throw the error so it can be handled by the outer catch
+                        throw createError;
+                      }
+
+                      // Validate that we got a valid response with an id
+                      if (
+                        createdRequest === null || createdRequest === undefined
+                      ) {
+                        logger.error(
+                          "createRequestFromChat returned null/undefined",
+                          {
+                            userId: currentUserId?.slice(-4),
+                            hasDraftData: !!draftData,
+                            createdRequestValue: createdRequest,
+                            createdRequestType: typeof createdRequest,
+                          },
+                          "App",
+                        );
+                        throw new Error(
+                          "فشل إنشاء الطلب. لم يتم استلام رقم الطلب من الخادم.",
+                        );
+                      }
+
+                      if (
+                        !createdRequest.id ||
+                        typeof createdRequest.id !== "string"
+                      ) {
+                        logger.error(
+                          "createRequestFromChat returned data without valid id",
+                          {
+                            createdRequest,
+                            createdRequestType: typeof createdRequest,
+                            createdRequestKeys: Object.keys(
+                              createdRequest || {},
+                            ),
+                            idValue: createdRequest?.id,
+                            idType: typeof createdRequest?.id,
+                          },
+                          "App",
+                        );
+                        throw new Error(
+                          "فشل إنشاء الطلب. لم يتم استلام رقم الطلب من الخادم.",
+                        );
+                      }
+
+                      resultId = createdRequest.id;
+                      logger.log(
+                        "Successfully got resultId:",
+                        { resultId: resultId?.slice(-8) },
+                        "App",
+                      );
                     }
 
                     // إعادة تحميل البيانات في الخلفية
@@ -3053,111 +3276,58 @@ const App: React.FC = () => {
                       logger.error("Error reloading data", err, "App")
                     );
 
-                    // إرجاع ID الطلب
-                    return resultId;
-                  } catch (error) {
-                    logger.error(
-                      "Error publishing/updating request:",
-                      error,
+                    if (!resultId) {
+                      logger.error(
+                        "resultId is null/undefined after all operations",
+                        {
+                          isEditing,
+                          editRequestId,
+                          currentUserId: currentUserId?.slice(-4),
+                        },
+                        "App",
+                      );
+                      throw new Error(
+                        "فشل الحصول على رقم الطلب. يرجى المحاولة مرة أخرى.",
+                      );
+                    }
+
+                    logger.log(
+                      "✅ onPublish success, returning resultId:",
+                      { resultId: resultId.slice(-8) },
                       "App",
                     );
-                    return null;
+
+                    // إرجاع ID الطلب
+                    return resultId;
+                  } catch (error: any) {
+                    logger.error(
+                      "❌ Error publishing/updating request:",
+                      {
+                        error,
+                        errorMessage: error?.message,
+                        errorName: error?.name,
+                        errorStack: error?.stack?.substring(0, 200),
+                        isEditing,
+                        editRequestId,
+                        currentUserId: user?.id?.slice(-4),
+                      },
+                      "App",
+                    );
+                    // Re-throw the error so CreateRequestV2 can handle it properly
+                    // This allows the error message from createRequestFromChat to be passed through
+                    throw error;
                   }
                 }}
                 requestToEdit={requestToEdit}
                 onClearRequestToEdit={() => setRequestToEdit(null)}
-                onGoToRequest={async (requestId) => {
-                  // البحث أولاً في القوائم المحلية
-                  const foundRequest = [...myRequests, ...allRequests].find((
-                    r,
-                  ) => r.id === requestId);
+                onGoToRequest={(_requestId) => {
+                  // بعد إنشاء الطلب، نفتح فقط popup المحادثات
+                  // لا ننتقل إلى صفحة تفاصيل الطلب
+                  // نعود إلى السوق فقط
+                  handleNavigate("marketplace");
 
-                  if (foundRequest) {
-                    setSelectedRequest(foundRequest);
-                    // إذا كان الطلب للمستخدم الحالي، تأكد من أن mode هو "requests"
-                    if (user?.id && foundRequest.author === user.id) {
-                      setMode("requests");
-                    }
-                    handleNavigate("request-detail");
-                  } else {
-                    // جلب الطلب الفعلي من قاعدة البيانات
-                    try {
-                      const fetchedRequest = await fetchRequestById(requestId);
-
-                      if (fetchedRequest) {
-                        // إضافة معلومات المؤلف من بيانات المستخدم
-                        if (user) {
-                          fetchedRequest.authorName = user.display_name ||
-                            user.email || "مستخدم";
-                          fetchedRequest.authorFirstName = user.first_name;
-                          fetchedRequest.authorLastName = user.last_name;
-                        }
-
-                        setSelectedRequest(fetchedRequest);
-
-                        // تحديث myRequests إذا كان الطلب للمستخدم الحالي
-                        if (user?.id && fetchedRequest.author === user.id) {
-                          setMyRequests((prev) => {
-                            // تجنب التكرار
-                            if (prev.some((r) => r.id === requestId)) {
-                              return prev;
-                            }
-                            return [fetchedRequest, ...prev];
-                          });
-                          // تأكد من أن mode هو "requests" عند عرض طلب المستخدم
-                          setMode("requests");
-                        }
-
-                        handleNavigate("request-detail");
-                      } else {
-                        logger.error(
-                          "Failed to fetch request:",
-                          requestId,
-                          "App",
-                        );
-                        // في حالة الفشل، نستخدم كائن مؤقت على الأقل
-                        const tempRequest: Request = {
-                          id: requestId,
-                          title: "طلب جديد",
-                          description: "",
-                          location: "",
-                          status: "active",
-                          author: user?.id || "",
-                          authorName: user?.display_name || user?.email ||
-                            "مستخدم",
-                          isPublic: true,
-                          createdAt: new Date(),
-                          offers: [],
-                          offersCount: 0,
-                          viewCount: 0,
-                          messages: [],
-                        };
-                        setSelectedRequest(tempRequest);
-                        handleNavigate("request-detail");
-                      }
-                    } catch (error) {
-                      logger.error("Error fetching request:", error, "App");
-                      // في حالة الخطأ، نستخدم كائن مؤقت
-                      const tempRequest: Request = {
-                        id: requestId,
-                        title: "طلب جديد",
-                        description: "",
-                        location: "",
-                        status: "active",
-                        author: user?.id || "",
-                        authorName: user?.display_name || user?.email ||
-                          "مستخدم",
-                        isPublic: true,
-                        createdAt: new Date(),
-                        offers: [],
-                        offersCount: 0,
-                        viewCount: 0,
-                        messages: [],
-                      };
-                      setSelectedRequest(tempRequest);
-                      handleNavigate("request-detail");
-                    }
-                  }
+                  // يمكن فتح popup المحادثات لاحقاً إذا لزم الأمر
+                  // لكن حالياً نعود فقط إلى السوق
                 }}
                 // Header Props
                 mode={mode}
@@ -3340,29 +3510,40 @@ const App: React.FC = () => {
                     onUnhideRequest={(requestId) =>
                       handleUnhideRequest(requestId)}
                     onBumpRequest={(requestId) => handleBumpRequest(requestId)}
-                    onOpenChat={(requestId, offer) => {
-                      const req = [...myRequests, ...archivedRequests].find((
-                        r,
-                      ) => r.id === requestId);
-                      if (req && offer) {
-                        // إزالة badge الرسائل غير المقروءة فوراً
-                        setUnreadMessagesPerOffer((prev) => {
-                          const next = new Map(prev);
-                          if (offer.id) {
-                            next.delete(offer.id);
-                          }
-                          return next;
-                        });
-                        setUnreadMessagesPerRequest((prev) => {
-                          const next = new Map(prev);
-                          next.delete(requestId);
-                          return next;
-                        });
+                    onOpenChat={async (requestId, offer) => {
+                      if (!user?.id) return;
 
-                        setInitialActiveOfferId(offer.id);
-                        handleSelectRequest(req);
-                        setView("request-detail");
-                        // سيتم فتح popup المحادثة مباشرة عبر initialActiveOfferId في RequestDetail
+                      // إزالة badge الرسائل غير المقروءة فوراً
+                      setUnreadMessagesPerOffer((prev) => {
+                        const next = new Map(prev);
+                        if (offer.id) {
+                          next.delete(offer.id);
+                        }
+                        return next;
+                      });
+                      setUnreadMessagesPerRequest((prev) => {
+                        const next = new Map(prev);
+                        next.delete(requestId);
+                        return next;
+                      });
+
+                      try {
+                        const conv = await getOrCreateConversation(
+                          user.id,
+                          requestId,
+                          offer.id,
+                        );
+                        if (conv) {
+                          setPreviousView(view);
+                          setInitialConversationId(conv.id);
+                          setView("conversation");
+                        }
+                      } catch (error) {
+                        logger.error(
+                          "Error opening chat directly:",
+                          error,
+                          "App",
+                        );
                       }
                     }}
                     userId={user?.id}
@@ -3436,27 +3617,39 @@ const App: React.FC = () => {
                     onOpenWhatsApp={(phoneNumber, _offer) => {
                       globalThis.open(`https://wa.me/${phoneNumber}`, "_blank");
                     }}
-                    onOpenChat={(requestId, offer) => {
-                      const req = allRequests.find((r) => r.id === requestId);
-                      if (req && offer) {
-                        // إزالة badge الرسائل غير المقروءة فوراً
-                        setUnreadMessagesPerOffer((prev) => {
-                          const next = new Map(prev);
-                          if (offer.id) {
-                            next.delete(offer.id);
-                          }
-                          return next;
-                        });
-                        setUnreadMessagesPerRequest((prev) => {
-                          const next = new Map(prev);
-                          next.delete(requestId);
-                          return next;
-                        });
+                    onOpenChat={async (requestId, offer) => {
+                      if (!user?.id) return;
 
-                        setInitialActiveOfferId(offer.id);
-                        handleSelectRequest(req);
-                        setView("request-detail");
-                        // سيتم فتح popup المحادثة مباشرة عبر initialActiveOfferId في RequestDetail
+                      setUnreadMessagesPerOffer((prev) => {
+                        const next = new Map(prev);
+                        if (offer.id) {
+                          next.delete(offer.id);
+                        }
+                        return next;
+                      });
+                      setUnreadMessagesPerRequest((prev) => {
+                        const next = new Map(prev);
+                        next.delete(requestId);
+                        return next;
+                      });
+
+                      try {
+                        const conv = await getOrCreateConversation(
+                          user.id,
+                          requestId,
+                          offer.id,
+                        );
+                        if (conv) {
+                          setPreviousView(view);
+                          setInitialConversationId(conv.id);
+                          setView("conversation");
+                        }
+                      } catch (error) {
+                        logger.error(
+                          "Error opening chat directly:",
+                          error,
+                          "App",
+                        );
                       }
                     }}
                     userId={user?.id}
@@ -3594,7 +3787,7 @@ const App: React.FC = () => {
                         onEditRequest={(request) => {
                           setRequestToEdit(request);
                           setPreviousView("marketplace");
-                          setView("create-request");
+                          handleOpenCreateRequest();
                         }}
                         onHideRequest={async (id) => {
                           await handleHideRequest(id);
@@ -4217,10 +4410,16 @@ const App: React.FC = () => {
           </SwipeBackWrapper>
         );
       }
+      case "my-requests":
+      case "my-offers": {
+        // These views are handled by useEffect above - redirect to marketplace
+        // Show loading while redirecting
+        return <FullScreenLoading />;
+      }
       default:
         return (
           <div className="h-full flex flex-col overflow-hidden p-8">
-            View not found
+            View not found: {view}
           </div>
         );
     }
@@ -4531,9 +4730,147 @@ const App: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* Create Request Modal */}
+      <Suspense fallback={null}>
+        <CreateRequestModal
+          isOpen={isCreateRequestModalOpen}
+          onClose={handleCloseCreateRequest}
+          onPublish={async (req, isEditing, requestId) => {
+            try {
+              // Ensure we have a valid user ID (logged in or guest)
+              // We check session directly to be safe as state might lag
+              const { data: { session } } = await supabase.auth.getSession();
+              const activeUserId = session?.user?.id || user?.id;
+
+              if (!activeUserId) {
+                logger.error(
+                  "No active user found in onPublish",
+                  undefined,
+                  "App",
+                );
+                return null;
+              }
+
+              // Prepare draft data for service
+              const draft = {
+                title: req.title,
+                description: req.description,
+                location: req.location,
+                categories: req.categories,
+                budgetMin: req.budgetMin,
+                budgetMax: req.budgetMax,
+                budgetType: req.budgetType as
+                  | "fixed"
+                  | "negotiable"
+                  | "not-specified",
+                deliveryTime: req.deliveryTimeFrom,
+              };
+
+              if (isEditing && requestId) {
+                // Update existing request
+                // Note: updateRequest might need to be updated to handle images if it doesn't already
+                const result = await updateRequest(
+                  requestId,
+                  activeUserId,
+                  draft,
+                  req.seriousness,
+                );
+
+                // If images were updated, we might need a separate call if updateRequest doesn't handle them
+                // For now, assuming updateRequest or a subsequent fix addresses this.
+                // However, creating a request DOES handle images via overrides.
+
+                return result?.id || null;
+              } else {
+                // Create new request
+                const overrides: Partial<RequestInsert> = {
+                  images: req.images,
+                  // Ensure specific fields are passed if draft conversion misses them
+                  budget_min: req.budgetMin,
+                  budget_max: req.budgetMax,
+                  seriousness: req.seriousness,
+                };
+
+                const result = await createRequestFromChat(
+                  activeUserId,
+                  draft,
+                  overrides,
+                );
+                return result.id;
+              }
+            } catch (error) {
+              logger.error(
+                "Failed to publish request in App.tsx",
+                error,
+                "App",
+              );
+              return null;
+            }
+          }}
+          onGoToRequest={async (requestId) => {
+            handleCloseCreateRequest();
+            await reloadData();
+            const req = allRequests.find((r) => r.id === requestId);
+            if (req) {
+              handleSelectRequest(req);
+            } else {
+              // Fallback - reload and try to find
+              const freshReqs = await fetchMyRequests(user?.id || "");
+              const freshReq = freshReqs.find((r) => r.id === requestId);
+              if (freshReq) handleSelectRequest(freshReq);
+            }
+          }}
+          onGoToMarketplace={() => {
+            handleCloseCreateRequest();
+            setView("marketplace");
+          }}
+          onRequireAuth={() => {
+            handleCloseCreateRequest();
+            setAppView("auth");
+          }}
+          isDarkMode={isDarkMode}
+          toggleTheme={() => setIsDarkMode(!isDarkMode)}
+          onOpenLanguagePopup={() => setIsLanguagePopupOpen(true)}
+          requestToEdit={requestToEdit}
+          onClearRequestToEdit={() => setRequestToEdit(null)}
+          mode={mode}
+          toggleMode={toggleMode}
+          isModeSwitching={isModeSwitching}
+          unreadCount={unreadCount}
+          user={user}
+          titleKey={titleKey}
+          notifications={notifications}
+          onMarkAsRead={handleMarkAsRead}
+          onNotificationClick={handleNotificationClick}
+          onClearAll={handleClearAppNotifications}
+          onSignOut={isGuest ? handleGoToLogin : handleSignOut}
+          isGuest={isGuest}
+          onNavigateToProfile={() => {
+            handleCloseCreateRequest();
+            setPreviousView(view);
+            setView("profile");
+          }}
+          onNavigateToSettings={() => {
+            handleCloseCreateRequest();
+            setPreviousView(view);
+            setView("settings");
+          }}
+          aiInput={aiInput}
+          setAiInput={setAiInput}
+          aiMessages={aiMessages}
+          setAiMessages={setAiMessages}
+          isAiLoading={isAiLoading}
+          setIsAiLoading={setIsAiLoading}
+          // Refs for AI Orb
+          aiSendHandlerRef={aiSendHandlerRef}
+          voiceSendHandlerRef={voiceSendHandlerRef}
+          setVoiceProcessingStatus={setVoiceProcessingStatus}
+        />
+      </Suspense>
+
       {/* Global Floating Orb - Currently used for navigation, voice input feature may be added later */}
       <GlobalFloatingOrb
-        mode={view === "create-request" ? "voice" : "navigate"}
+        mode={isCreateRequestModalOpen ? "voice" : "navigate"}
         onNavigate={() => handleNavigate("create-request")}
         onVoiceSend={async (audioBlob) => {
           if (voiceSendHandlerRef.current) {

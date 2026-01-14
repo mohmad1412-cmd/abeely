@@ -12,7 +12,7 @@ Add a dedicated "Scope of Work" field to service requests to allow users to prov
 ## Requirements
 
 ### Functional Requirements
-- [ ] Add a scope field to the Request interface and database schema
+- [ ] Add a `scope` field to the Request interface and database schema
 - [ ] Create UI component for entering and editing scope of work in CreateRequestV2
 - [ ] Display scope of work in RequestDetail component with proper formatting
 - [ ] Allow scope of work to be optional (backward compatible with existing requests)
@@ -37,8 +37,8 @@ Add a dedicated "Scope of Work" field to service requests to allow users to prov
 - [ ] UI is responsive and works on mobile devices
 
 ## Technical Considerations
-- [ ] Add scope?: string field to Request interface in types.ts
-- [ ] Update database schema to add scope column to equests table
+- [ ] Add `scope?: string` field to Request interface in types.ts
+- [ ] Update database schema to add `scope` column to `requests` table
 - [ ] Update request creation/editing services to handle scope field
 - [ ] Modify CreateRequestV2 component to include scope input field
 - [ ] Update RequestDetail component to display scope field
@@ -47,17 +47,17 @@ Add a dedicated "Scope of Work" field to service requests to allow users to prov
 - [ ] Ensure scope is included in request exports/sharing if applicable
 
 ## Database Schema
-- [ ] Add scope column to equests table:
-  - Type: 	ext or archar(5000)
-  - Nullable: 	rue (to support existing requests)
-  - Default: NULL
+- [ ] Add `scope` column to `requests` table:
+  - Type: `text` or `varchar(5000)`
+  - Nullable: `true` (to support existing requests)
+  - Default: `NULL`
 - [ ] Consider indexing if scope will be searchable
 - [ ] Update RLS policies if needed (scope should follow same visibility as request)
 
 ## API Endpoints
-- [ ] Update request creation endpoint to accept scope parameter
-- [ ] Update request update endpoint to allow editing scope
-- [ ] Ensure request retrieval endpoints include scope in response
+- [ ] Update request creation endpoint to accept `scope` parameter
+- [ ] Update request update endpoint to allow editing `scope`
+- [ ] Ensure request retrieval endpoints include `scope` in response
 - [ ] No new endpoints required (uses existing request CRUD operations)
 
 ## UI/UX Considerations

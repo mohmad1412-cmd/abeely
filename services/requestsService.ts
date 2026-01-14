@@ -445,7 +445,7 @@ export async function createRequestFromChat(
       )
         .select("id").single();
 
-      if (error || !data?.id) {
+      if (error) {
         const errorInfo = {
           error,
           errorMessage: error?.message,
@@ -507,6 +507,18 @@ export async function createRequestFromChat(
         throw descriptiveError;
       }
 
+      // Validate that we got data with an id
+      if (!data || !data.id) {
+        logger.error(
+          "Insert succeeded but no id returned",
+          { data, insertPayload: { title: p.title?.substring(0, 50) } },
+          "createRequestFromChat",
+        );
+        throw new Error(
+          "فشل إنشاء الطلب: لم يتم استلام رقم الطلب من قاعدة البيانات.",
+        );
+      }
+
       return data;
     };
 
@@ -530,20 +542,18 @@ export async function createRequestFromChat(
       }
     }
 
-    // إرسال Push Notifications للمستخدمين المهتمين
-    try {
-      await sendPushNotificationForNewRequest({
-        requestId: data.id,
-        requestTitle: payload.title,
-        requestDescription: payload.description,
-        categories: draftData.categories || [],
-        city: payload.location,
-        authorId: userId,
-      });
-    } catch (pushErr) {
+    // إرسال Push Notifications للمستخدمين المهتمين (غير متزامن - لا ننتظر)
+    sendPushNotificationForNewRequest({
+      requestId: data.id,
+      requestTitle: payload.title,
+      requestDescription: payload.description,
+      categories: draftData.categories || [],
+      city: payload.location,
+      authorId: userId,
+    }).catch((pushErr) => {
       logger.warn("Failed to send push notifications:", pushErr);
       // لا نفشل إنشاء الطلب بسبب خطأ في الإشعارات
-    }
+    });
 
     return data;
   } catch (err) {
@@ -576,13 +586,25 @@ export async function createRequestFromChat(
         .select("id")
         .single();
 
-      if (insertError || !insertedData?.id) {
+      if (insertError) {
         logger.error(
           "Fallback insert failed",
           insertError,
           "createRequestFromChat",
         );
-        throw insertError || new Error("Fallback insert failed");
+        throw insertError;
+      }
+
+      // Validate that we got data with an id
+      if (!insertedData || !insertedData.id) {
+        logger.error(
+          "Fallback insert succeeded but no id returned",
+          { insertedData },
+          "createRequestFromChat",
+        );
+        throw new Error(
+          "فشل إنشاء الطلب: لم يتم استلام رقم الطلب من قاعدة البيانات.",
+        );
       }
 
       logger.log("✅ Request created (non-public):", insertedData.id);
@@ -836,6 +858,25 @@ export async function createOffer(
         hint: error.hint,
         payload: payload,
       }, "createOffer");
+
+      // التحقق من أخطاء RLS (Row Level Security)
+      const isRLSError = error.code === "42501" || // insufficient_privilege
+        error.message?.toLowerCase().includes("permission denied") ||
+        error.message?.toLowerCase().includes(
+          "new row violates row-level security policy",
+        ) ||
+        error.message?.toLowerCase().includes("policy violation");
+
+      if (isRLSError) {
+        logger.error("RLS policy blocked offer creation", {
+          error: error.message,
+          code: error.code,
+          providerId: payload.provider_id,
+        }, "createOffer");
+        throw new Error(
+          "لا يمكنك إرسال العرض. يرجى التأكد من تسجيل الدخول والمحاولة مرة أخرى.",
+        );
+      }
 
       // التحقق من وجود العرض رغم الخطأ (في حالة trigger errors)
       const isTriggerError = error.code === "42703" ||
@@ -1094,6 +1135,17 @@ export async function fetchRequestsPaginated(
     : [];
 
   const transformed = filtered.map(transformRequest);
+
+  // Log author IDs to debug the issue
+  logger.log(`📊 Marketplace requests author_ids:`, {
+    count: transformed.length,
+    authorIds: transformed.map((r) => ({
+      requestId: r.id.slice(-4),
+      authorId: r.authorId?.slice(-4) || "unknown",
+      title: r.title?.slice(0, 20),
+    })),
+  });
+
   return { data: transformed, count };
 }
 
@@ -1211,16 +1263,42 @@ export async function fetchMyRequests(userId: string): Promise<Request[]> {
 
   const requests = (data || []).map(transformRequest);
 
-  logger.log(`✅ fetchMyRequests: Found ${requests.length} requests`, {
+  // فلترة إضافية للتأكد من أن جميع الطلبات تخص المستخدم الصحيح
+  const filteredRequests = requests.filter((r: Request) => {
+    if (r.authorId !== userId) {
+      logger.error(
+        `⚠️ CRITICAL: Found request that doesn't belong to user!`,
+        {
+          requestId: r.id.slice(-4),
+          requestAuthorId: r.authorId?.slice(-4),
+          expectedUserId: userId.slice(-4),
+          requestTitle: r.title,
+        },
+      );
+      return false; // استبعاد هذا الطلب
+    }
+    return true;
+  });
+
+  if (filteredRequests.length !== requests.length) {
+    logger.error(
+      `⚠️ CRITICAL: Filtered out ${
+        requests.length - filteredRequests.length
+      } requests that don't belong to user ${userId.slice(-4)}`,
+    );
+  }
+
+  logger.log(`✅ fetchMyRequests: Found ${filteredRequests.length} requests`, {
     userId: userId.slice(-4),
-    requestIds: requests.map((r) => r.id.slice(-4)),
-    requestStatuses: requests.map((r) => ({
+    requestIds: filteredRequests.map((r: Request) => r.id.slice(-4)),
+    requestStatuses: filteredRequests.map((r: Request) => ({
       id: r.id.slice(-4),
       status: r.status,
+      authorId: r.authorId?.slice(-4),
     })),
   });
 
-  return requests;
+  return filteredRequests;
 }
 
 /**
@@ -1818,6 +1896,7 @@ function transformRequest(
     title: req.title,
     description: req.description,
     author: req.author_id || "مستخدم",
+    authorId: req.author_id, // إضافة authorId للتحقق من صاحب الطلب
     createdAt: new Date(req.created_at),
     updatedAt: req.updated_at ? new Date(req.updated_at) : undefined,
     status: req.status,

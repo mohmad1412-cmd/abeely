@@ -111,6 +111,16 @@ export const useAuthLogic = () => {
         return;
       }
 
+      // التحقق من force_auth_view flag أولاً
+      const forceAuthView = sessionStorage.getItem("force_auth_view") === "true";
+      if (forceAuthView && isMounted) {
+        // المستخدم يريد الانتقال إلى صفحة auth بشكل صريح
+        sessionStorage.removeItem("force_auth_view");
+        setAppView("auth");
+        setAuthLoading(false);
+        return;
+      }
+
       // تحقق من وجود guest mode محفوظ
       const isGuestSaved = localStorage.getItem("abeely_guest_mode") === "true";
       if (isGuestSaved && isMounted) {
@@ -143,6 +153,16 @@ export const useAuthLogic = () => {
                 if (
                   isMounted && !finalSession?.user && appView === "splash"
                 ) {
+                  // التحقق من force_auth_view flag أولاً
+                  const forceAuthView = sessionStorage.getItem("force_auth_view") === "true";
+                  if (forceAuthView) {
+                    // المستخدم يريد الانتقال إلى صفحة auth بشكل صريح
+                    sessionStorage.removeItem("force_auth_view");
+                    setAppView("auth");
+                    setAuthLoading(false);
+                    return;
+                  }
+                  
                   // التحقق من guest mode قبل عرض auth
                   const isGuestSaved =
                     localStorage.getItem("abeely_guest_mode") === "true";
@@ -199,6 +219,18 @@ export const useAuthLogic = () => {
     // الاستماع لتغييرات حالة المصادقة - هذا هو المكان الرئيسي لمعالجة OAuth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        // التحقق من force_auth_view flag أولاً - إذا كان موجوداً، لا نعيد تعيين appView
+        const forceAuthView = sessionStorage.getItem("force_auth_view") === "true";
+        if (forceAuthView) {
+          // المستخدم يريد البقاء في صفحة auth - لا نعيد تعيين appView إلا إذا كان هناك session
+          if (!session?.user) {
+            // لا يوجد session - نبقى في صفحة auth
+            return;
+          }
+          // إذا كان هناك session، نزيل الـ flag ونكمل العملية الطبيعية
+          sessionStorage.removeItem("force_auth_view");
+        }
+        
         // فقط نطبع log إذا كان هناك session أو حدث مهم
         if (
           session?.user ||
@@ -411,6 +443,25 @@ export const useAuthLogic = () => {
               setAuthLoading(false);
             }
           } else if (isMounted) {
+            // التحقق من force_auth_view flag أولاً
+            const forceAuthView = sessionStorage.getItem("force_auth_view") === "true";
+            if (forceAuthView) {
+              // المستخدم يريد الانتقال إلى صفحة auth بشكل صريح
+              sessionStorage.removeItem("force_auth_view");
+              setAppView("auth");
+              setAuthLoading(false);
+              return;
+            }
+            
+            // التحقق من force_auth_view flag مرة أخرى قبل إعادة تعيين appView
+            const forceAuthViewCheck = sessionStorage.getItem("force_auth_view") === "true";
+            if (forceAuthViewCheck) {
+              // المستخدم يريد البقاء في صفحة auth
+              setAppView("auth");
+              setAuthLoading(false);
+              return;
+            }
+            
             // لا يوجد session فعلاً - تحقق من guest mode أو route
             const isGuestSaved =
               localStorage.getItem("abeely_guest_mode") === "true";

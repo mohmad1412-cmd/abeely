@@ -223,6 +223,9 @@ interface MessagesProps {
   isGuest?: boolean;
   onNavigateToProfile?: () => void;
   onNavigateToSettings?: () => void;
+  // Popup props
+  isPopup?: boolean;
+  onClose?: () => void;
 }
 
 export const Messages: React.FC<MessagesProps> = ({
@@ -248,6 +251,8 @@ export const Messages: React.FC<MessagesProps> = ({
   isGuest = false,
   onNavigateToProfile,
   onNavigateToSettings,
+  isPopup = false,
+  onClose,
 }) => {
   const [user, setUser] = React.useState<any>(null);
 
@@ -769,12 +774,20 @@ export const Messages: React.FC<MessagesProps> = ({
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white/70 dark:bg-[#0a0a0f]/70 backdrop-blur-3xl px-4 py-3 flex items-center gap-3">
         <motion.button
-          onClick={() => setSelectedConversation(null)}
+          onClick={() => {
+            if (isPopup && onClose) {
+              onClose();
+            } else {
+              setSelectedConversation(null);
+            }
+          }}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           className="w-10 h-10 rounded-full flex items-center justify-center transition-all text-foreground focus:outline-none bg-card/80 backdrop-blur-sm border border-border shadow-lg hover:bg-card"
         >
-          <ArrowRight size={22} strokeWidth={2.5} />
+          {isPopup
+            ? <X size={22} strokeWidth={2.5} />
+            : <ArrowRight size={22} strokeWidth={2.5} />}
         </motion.button>
         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
           {selectedConversation.other_user?.avatar_url

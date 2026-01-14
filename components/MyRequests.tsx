@@ -102,6 +102,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   onRefresh,
   requestsWithNewOffers = new Set(),
   onClearNewOfferHighlight,
+  radarWords = [],
 }) => {
   // Header compression state - for smooth scroll animations
   const [isHeaderCompressed, setIsHeaderCompressed] = useState(false);
@@ -677,7 +678,7 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
   return (
     <div
       ref={scrollContainerRef}
-      className="h-full overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar overflow-y-auto"
+      className="h-full overflow-x-hidden w-full mx-auto max-w-6xl relative no-scrollbar overflow-y-auto"
     >
       {/* Sticky Header Wrapper - Unified with main header - same structure as Marketplace */}
       <div
@@ -1123,7 +1124,8 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
 
       {/* Content */}
       <div className="pb-24">
-        {filteredRequests.length === 0 && (
+        {filteredRequests.length === 0
+          ? (
             <div className="flex flex-col items-center justify-center py-20 text-center min-h-[50vh]">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-secondary mb-4">
                 {reqFilter === "all"
@@ -1159,11 +1161,12 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
                 </button>
               )}
             </div>
-          ) : (
+          )
+          : (
             <CompactListView
               requests={filteredRequests}
               userId={userId}
-              isGuest={isGuest}
+              isGuest={_isGuest}
               viewedRequestIds={viewedRequestIds}
               receivedOffersMap={receivedOffersMap}
               unreadMessagesPerRequest={unreadMessagesPerRequest}
@@ -1176,10 +1179,13 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
               onHideRequest={onHideRequest}
               onUnhideRequest={onUnhideRequest}
               onArchiveRequest={onArchiveRequest}
+              onUnarchiveRequest={onUnarchiveRequest}
               onOpenChat={onOpenChat}
               onSelectOffer={(offer) => {
                 // Find the request for this offer and select it
-                const request = filteredRequests.find((r) => r.id === offer.requestId);
+                const request = filteredRequests.find((r) =>
+                  r.id === offer.requestId
+                );
                 if (request) {
                   onSelectRequest(request);
                 }
@@ -1188,10 +1194,8 @@ export const MyRequests: React.FC<MyRequestsProps> = ({
               showCategoriesInStatus={true}
               radarWords={radarWords}
               onRefresh={onRefresh}
-              disablePadding={true}
             />
           )}
-        </div>
       </div>
     </div>
   );

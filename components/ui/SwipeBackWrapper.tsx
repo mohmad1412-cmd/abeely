@@ -32,6 +32,12 @@ export const SwipeBackWrapper: React.FC<SwipeBackWrapperProps> = ({
   const handleTouchStart = useCallback((e: TouchEvent) => {
     if (!enabled) return;
     
+    // Check if container or any child has data-resizing="true" (resize handle is active)
+    const container = containerRef.current;
+    if (container?.hasAttribute('data-resizing') || container?.querySelector('[data-resizing="true"]')) {
+      return;
+    }
+    
     const touch = e.touches[0];
     const containerRect = containerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
@@ -57,6 +63,16 @@ export const SwipeBackWrapper: React.FC<SwipeBackWrapperProps> = ({
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     if (touchStartX.current === null || touchStartY.current === null) return;
+
+    // Check if container or any child has data-resizing="true" (resize handle is active)
+    const container = containerRef.current;
+    if (container?.hasAttribute('data-resizing') || container?.querySelector('[data-resizing="true"]')) {
+      touchStartX.current = null;
+      touchStartY.current = null;
+      setSwipeProgress(0);
+      setIsActiveSwiping(false);
+      return;
+    }
 
     const touch = e.touches[0];
     const deltaX = touchStartX.current - touch.clientX; // Negative for right-to-left

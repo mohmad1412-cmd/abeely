@@ -86,6 +86,7 @@ import {
   ReportReason,
 } from "../services/reportsService.ts";
 import ReactDOM from "react-dom";
+// @ts-ignore - html2canvas default export type issue
 import html2canvas from "html2canvas";
 import { UnifiedHeader } from "./ui/UnifiedHeader.tsx";
 import { DropdownMenu, DropdownMenuItem } from "./ui/DropdownMenu.tsx";
@@ -121,6 +122,7 @@ import { getCategoryLabel, SupportedLocale } from "../types.ts";
 import { getKnownCategoryColor } from "../utils/categoryColors.ts";
 import { CategoryIcon } from "./ui/CategoryIcon.tsx";
 import { getCurrentLocale } from "../services/categoriesService.ts";
+import { getOfferStatusConfig } from "../utils/statusConfig.ts";
 
 interface RequestDetailProps {
   request: Request;
@@ -211,16 +213,16 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     toggleTheme,
     onOpenLanguagePopup,
     scrollToOfferSection = false,
-    _navigatedFromSidebar = false,
+    navigatedFromSidebar = false,
     highlightOfferId = null,
     receivedOffersMap = new Map(),
-    _onNavigateToMessages,
+    onNavigateToMessages,
     autoTranslateRequests = false,
     currentLanguage = "ar",
     onCompleteRequest,
     savedOfferForm,
     onOfferFormChange,
-    _savedScrollPosition = 0,
+    savedScrollPosition = 0,
     onScrollPositionChange,
     // Unified Header Props
     toggleMode,
@@ -298,8 +300,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     {},
   );
   const [isShowingOriginal, setIsShowingOriginal] = useState(false);
-  const [isOfferSectionVisible, setIsOfferSectionVisible] = useState(false);
-  const offerSectionRef = useRef<HTMLDivElement>(null);
 
   // State for loaded offers (in case they're not in request.offers)
   const [loadedOffers, setLoadedOffers] = useState<Offer[]>([]);
@@ -336,11 +336,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     const checkReviewStatus = async () => {
       if (request.status === "completed" && user) {
         // Check eligibility
-        const canReviewResult = await canUserReviewRequest(request.id, user.id);
-        setCanReview(canReviewResult);
+        const canReviewResult = await canUserReviewRequest(user.id, request.id);
+        setCanReview(canReviewResult.canReview);
 
         // Check if already reviewed
-        if (canReviewResult) {
+        if (canReviewResult.canReview) {
           const _reviews = await getReviewsForUser(
             request.author === user.id
               ? (request.acceptedOfferId
@@ -381,7 +381,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   };
 
   // Track previous savedOfferForm to prevent unnecessary updates
-  const prevSavedFormRef = useRef<typeof savedOfferForm>(null);
+  const prevSavedFormRef = useRef<typeof savedOfferForm | null>(null);
 
   // Update form fields when savedOfferForm changes
   useEffect(() => {
@@ -481,6 +481,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
   // Report modal state
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isOfferModalOpen, setIsOfferModalOpen] = useState(false); // New state for Offer Modal
   const [reportReason, setReportReason] = useState<ReportReason | null>(null);
   const [reportDescription, setReportDescription] = useState("");
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
@@ -800,7 +801,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       return createdB - createdA;
     });
   }, [allOffers, localOfferStatuses, unreadMessagesPerOffer]);
-
 
   // State لقبول العرض
   const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
@@ -1142,7 +1142,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
           });
 
           const blob = await new Promise<Blob | null>((resolve) => {
-            canvas.toBlob((b) => resolve(b), "image/png");
+            canvas.toBlob((b: Blob | null) => resolve(b), "image/png");
           });
 
           if (blob) {
@@ -1187,7 +1187,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     } catch (err) {
       // User cancelled or error
       if ((err as Error).name !== "AbortError") {
-        logger.log(err);
+        logger.error("Error in share function:", err, "RequestDetail");
       }
     }
   };
@@ -1233,40 +1233,15 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   };
 
   // --- Better Image Carousel Swipe ---
-  const handleImgTouchStart = (e: React.TouchEvent) => {
-    setImgTouchStart({
-      x: e.touches[0].clientX,
-      y: e.touches[0].clientY,
-    });
-  };
-
-  const handleImgTouchEnd = (e: React.TouchEvent) => {
-    if (!imgTouchStart) return;
-    const endX = e.changedTouches[0].clientX;
-    const endY = e.changedTouches[0].clientY;
-
-    const dx = endX - imgTouchStart.x;
-    const dy = endY - imgTouchStart.y;
-
-    if (Math.abs(dy) > Math.abs(dx)) {
-      setImgTouchStart(null);
-      return; // Vertical scroll
-    }
-
-    if (Math.abs(dx) > 50 && request.images && request.images.length > 0) {
-      if (dx > 0) prevImage(); // Swipe Right (Previous)
-      else nextImage(); // Swipe Left (Next)
-    }
-    setImgTouchStart(null);
-  };
+  const [dragProgress, setDragProgress] = useState(0);
 
   const nextImage = () => {
-    if (request.images) {
+    if (request.images && request.images.length > 1) {
       setCurrentImageIndex((prev) => (prev + 1) % request.images!.length);
     }
   };
   const prevImage = () => {
-    if (request.images) {
+    if (request.images && request.images.length > 1) {
       setCurrentImageIndex((prev) =>
         (prev - 1 + request.images!.length) % request.images!.length
       );
@@ -1342,18 +1317,21 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
     if (offersFromMap.length > 0) {
       // مقارنة ذكية لتجنب تحديث غير ضروري (تجنب Infinite Loop)
-      const currentIds = loadedOffers.map((o) => o.id).sort().join(",");
-      const mapIds = offersFromMap.map((o) => o.id).sort().join(",");
-      const currentStatuses = loadedOffers.map((o) => o.status).sort().join(
+      const currentIds = loadedOffers.map((o: Offer) => o.id).sort().join(",");
+      const mapIds = offersFromMap.map((o: Offer) => o.id).sort().join(",");
+      const currentStatuses = loadedOffers.map((o: Offer) => o.status).sort()
+        .join(
+          ",",
+        );
+      const mapStatuses = offersFromMap.map((o: Offer) => o.status).sort().join(
         ",",
       );
-      const mapStatuses = offersFromMap.map((o) => o.status).sort().join(",");
 
       // تحديث فقط إذا كانت العروض مختلفة
       // دمج ذكي: إذا كان loadedOffers يحتوي على عروض ليست في receivedOffersMap، نحتفظ بها
       if (currentIds !== mapIds || currentStatuses !== mapStatuses) {
         // دمج العروض: نحتفظ بالعروض في loadedOffers التي ليست في receivedOffersMap
-        const mapOfferIds = new Set(offersFromMap.map((o) => o.id));
+        const mapOfferIds = new Set(offersFromMap.map((o: Offer) => o.id));
         const uniqueLocalOffers = loadedOffers.filter(
           (o) => !mapOfferIds.has(o.id),
         );
@@ -1426,8 +1404,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
   // Scroll state for glass header animation
   const [isScrolled, setIsScrolled] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollTimeoutRef = useRef<number | null>(null);
   const lastScrollPosRef = useRef<number>(0);
+  const [isOfferSectionVisible, setIsOfferSectionVisible] = useState(false);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -1578,6 +1557,15 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     });
   }, [request?.id, user?.id, isGuest, onMarkRequestAsRead]);
 
+  // Handler to scroll to offer section
+  const handleScrollToOfferSection = useCallback(() => {
+    // Since the offer section is fixed at bottom, just open the modal
+    setIsOfferModalOpen(true);
+  }, []);
+
+  // Offer section is always visible when buttons are shown (they're fixed at bottom)
+  // So isOfferSectionVisible is always true when showScrollToOffer is true
+
   // Handler to submit offer from header button
   const handleSubmitOfferFromHeader = useCallback(async () => {
     // Validate required fields
@@ -1663,9 +1651,14 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         } else {
           alert("حدث خطأ في إرسال العرض. حاول مرة أخرى.");
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         logger.error("Submit offer error:", err, "service");
-        const errorMessage = err?.message || err?.error?.message ||
+        const errorMessage = (err instanceof Error ? err.message : undefined) ||
+          (typeof err === "object" && err !== null && "error" in err &&
+              typeof (err as { error?: { message?: string } }).error
+                  ?.message === "string"
+            ? (err as { error: { message: string } }).error.message
+            : undefined) ||
           "حدث خطأ في إرسال العرض. حاول مرة أخرى.";
         logger.error("Error sending offer", err, "RequestDetail");
         alert(
@@ -1689,41 +1682,13 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     onOfferCreated,
   ]);
 
-  // Handler to scroll to offer section
-  const handleScrollToOfferSection = useCallback(() => {
-    const container = scrollContainerRef.current;
-    const target = offerSectionRef.current;
-    if (container && target) {
-      // Calculate target position relative to the scroll container accurately
-      const containerRect = container.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
-      const relativeTop = targetRect.top - containerRect.top +
-        container.scrollTop;
-
-      // Offset by 70px (header height approx 64px + small gap)
-      container.scrollTo({
-        top: relativeTop - 70,
-        behavior: "smooth",
-      });
-      setShowOfferPulse(true);
-      // Hide pulse after animation
-      setTimeout(() => setShowOfferPulse(false), 2000);
-    }
-  }, []);
-
-  // Scroll to offer section and show pulse animation
+  // Open offer modal if requested via props
   useEffect(() => {
     if (isMyRequest) return;
-    if (
-      scrollToOfferSection && offerSectionRef.current &&
-      scrollContainerRef.current
-    ) {
-      // Small delay to ensure the component is fully rendered
-      setTimeout(() => {
-        handleScrollToOfferSection();
-      }, 500); // Slightly more delay to ensure layout is stable
+    if (scrollToOfferSection) {
+      setIsOfferModalOpen(true);
     }
-  }, [scrollToOfferSection, handleScrollToOfferSection, isMyRequest]);
+  }, [scrollToOfferSection, isMyRequest]);
 
   // Scroll to highlighted offer with flash animation
   useEffect(() => {
@@ -1749,48 +1714,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       }, 600);
     }
   }, [highlightOfferId]);
-
-  // Offer section continuous pulse when NOT visible
-  useEffect(() => {
-    if (
-      mode === "offers" && !isMyRequest && !isMyOffer &&
-      request.status === "active"
-    ) {
-      // Show pulse only when section is not visible
-      setShowOfferPulse(!isOfferSectionVisible);
-    } else {
-      setShowOfferPulse(false);
-    }
-  }, [mode, isMyRequest, isMyOffer, request.status, isOfferSectionVisible]);
-
-  // Track offer section visibility with IntersectionObserver
-  // Only hide the header button when the offer section is near the top of the viewport
-  // This means the button stays visible until user scrolls down enough that the offer section
-  // takes up most of the visible area
-  useEffect(() => {
-    if (!offerSectionRef.current) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          // The section is "active" when it's in the upper portion of the viewport
-          // With -60% bottom margin, the section needs to be in the top 40% of viewport
-          setIsOfferSectionVisible(entry.isIntersecting);
-        });
-      },
-      {
-        threshold: 0.1,
-        // Top: -80px for header, Bottom: -60% means section must be in upper 40% of viewport
-        rootMargin: "-80px 0px -60% 0px",
-      },
-    );
-
-    observer.observe(offerSectionRef.current);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
 
   const handleEditRequest = () => {
     if (setPreviousView) {
@@ -1861,7 +1784,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
   // Voice recording timer for chat
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
+    let interval: number | null = null;
     if (isRecordingVoice) {
       setRecordingTimeVoice(0);
       interval = setInterval(() => {
@@ -2008,7 +1931,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
         // Optimistic UI Update
         const tempId = `temp-${Date.now()}`;
-        const optimisticMessage: Message = {
+        const optimisticMessage: ChatMessage = {
           id: tempId,
           conversation_id: currentConversation.id,
           sender_id: user.id,
@@ -2070,8 +1993,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       // Explicitly handle "My Requests" vs "My Offers" (Provider view)
       if (isMyRequest) {
         // Requester chatting with a provider
-        if (!currentOfferId && request.accepted_offer_id) {
-          currentOfferId = request.accepted_offer_id;
+        if (!currentOfferId && request.acceptedOfferId) {
+          currentOfferId = request.acceptedOfferId;
         }
 
         if (!currentOfferId) {
@@ -2082,7 +2005,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
           return;
         }
         const offer = allOffers.find((o) => o.id === currentOfferId);
-        if (offer) otherUserId = offer.providerId;
+        if (offer && offer.providerId) otherUserId = offer.providerId;
       } else {
         // Provider chatting with Requester
         otherUserId = request.author;
@@ -2287,15 +2210,16 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
     ];
 
   return (
-    <motion.div
-      key="request-detail"
-      ref={scrollContainerRef}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
-      className="flex-1 bg-background flex flex-col overflow-y-auto overflow-x-hidden"
-    >
+    <React.Fragment>
+      <motion.div
+        key="request-detail"
+        ref={scrollContainerRef}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="flex-1 bg-background flex flex-col overflow-y-auto overflow-x-hidden"
+      >
       {/* Unified Header */}
       <UnifiedHeader
         mode={mode}
@@ -2359,44 +2283,64 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
             {/* Images Carousel */}
             {request.images && request.images.length > 0
               ? (
-                <motion.div
-                  layoutId={`image-${request.id}`}
-                  className="relative h-64 w-full bg-secondary flex items-center justify-center overflow-hidden group touch-pan-y cursor-pointer"
+                <div
+                  className="relative h-72 w-full bg-secondary overflow-hidden group touch-pan-y"
                   ref={imageContainerRef}
-                  onTouchStart={handleImgTouchStart}
-                  onTouchEnd={handleImgTouchEnd}
-                  onClick={() => setExpandedImageIndex(currentImageIndex)}
                 >
-                  <div
-                    className="absolute inset-0 flex transition-transform duration-300 ease-out"
-                    style={{
-                      transform: `translateX(${currentImageIndex * 100}%)`,
+                  <motion.div
+                    className="flex h-full cursor-grab active:cursor-grabbing"
+                    drag={request.images.length > 1 ? "x" : false}
+                    dragConstraints={{ left: 0, right: 0 }}
+                    dragElastic={0.2}
+                    onDragEnd={(_, info) => {
+                      if (request.images && request.images.length > 1) {
+                        const swipeThreshold = 50;
+                        if (info.offset.x < -swipeThreshold) {
+                          nextImage();
+                        } else if (info.offset.x > swipeThreshold) {
+                          prevImage();
+                        }
+                      }
                     }}
+                    animate={{ x: `-${currentImageIndex * 100}%` }}
+                    transition={{
+                      type: "spring",
+                      stiffness: 300,
+                      damping: 30,
+                    }}
+                    style={{ width: `${request.images.length * 100}%` }}
                   >
                     {request.images.map((img, idx) => (
-                      <img
+                      <div
                         key={idx}
-                        src={img}
-                        alt={`Image ${idx + 1}`}
-                        className="w-full h-full object-cover flex-shrink-0 pointer-events-none select-none"
-                        style={{ transform: `translateX(-${idx * 100}%)` }}
-                      />
+                        className="w-full h-full relative flex-shrink-0"
+                        onClick={() => setExpandedImageIndex(idx)}
+                      >
+                        <motion.img
+                          layoutId={`request-image-${request.id}-${idx}`}
+                          src={img}
+                          alt={`Image ${idx + 1}`}
+                          className="w-full h-full object-cover select-none pointer-events-none"
+                        />
+                        {/* Gradient Overlay for better text visibility */}
+                        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
+                      </div>
                     ))}
-                  </div>
+                  </motion.div>
 
-                  {/* Status Badge - Bottom Left */}
+                  {/* Status Badge - Bottom Left (Moved slightly for better visibility) */}
                   {request.status === "active" && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="absolute bottom-8 left-4 z-20"
+                      className="absolute bottom-4 left-4 z-20"
                     >
                       {isMyRequest
                         ? (
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-accent/15 text-accent-foreground border border-accent/25 backdrop-blur-md">
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold bg-accent/20 text-accent-foreground border border-accent/30 backdrop-blur-md shadow-lg">
                             <Check
                               size={14}
-                              strokeWidth={2.5}
+                              strokeWidth={3}
                               className="text-accent"
                             />
                             <span>طلبك</span>
@@ -2404,20 +2348,20 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         )
                         : isMyOffer
                         ? (
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-card border border-border text-primary backdrop-blur-md">
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-white/90 dark:bg-black/80 border border-border text-primary backdrop-blur-md shadow-lg">
                             <Check
                               size={14}
-                              strokeWidth={2.5}
+                              strokeWidth={3}
                               className="text-primary"
                             />
-                            <span>لقد قدمت عرض</span>
+                            <span>قدمت عرضاً</span>
                           </div>
                         )
                         : (
                           <Badge
                             variant="info"
                             size="lg"
-                            className="backdrop-blur-md bg-white/20 dark:bg-white/10 border-primary/30 text-primary dark:text-primary"
+                            className="backdrop-blur-md bg-primary/20 border-primary/40 text-primary dark:text-primary font-bold shadow-lg"
                           >
                             ينتظر عرضك!
                           </Badge>
@@ -2429,48 +2373,72 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   {autoTranslateRequests && (
                     <button
                       type="button"
-                      onClick={() => setIsShowingOriginal(!isShowingOriginal)}
-                      className="absolute top-4 right-4 text-xs text-white/80 hover:text-white z-20 underline underline-offset-2 px-3 py-1 rounded-md bg-black/20 backdrop-blur-sm transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsShowingOriginal(!isShowingOriginal);
+                      }}
+                      className="absolute top-4 right-4 text-[10px] font-bold text-white z-20 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md hover:bg-black/60 transition-colors border border-white/20"
                     >
                       {isShowingOriginal
-                        ? `استعرض الطلب بـ${languageNames[currentLanguage]}`
-                        : "استعرض الطلب باللغة الأصلية"}
+                        ? `عرض بـ ${languageNames[currentLanguage]}`
+                        : "عرض اللغة الأصلية"}
                     </button>
                   )}
 
+                  {/* Zoom Hint Icon */}
+                  <div className="absolute top-4 left-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    <div className="bg-black/30 backdrop-blur-sm p-2 rounded-full border border-white/20 text-white">
+                      <ExternalLink size={16} />
+                    </div>
+                  </div>
+
                   {request.images.length > 1 && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                    >
+                    <>
+                      {/* Desktop Navigation Arrows */}
                       <button
-                        onClick={prevImage}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          prevImage();
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-black/20 hover:bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all z-10 hidden md:flex border border-white/10"
                       >
                         <ChevronRight size={20} />
                       </button>
                       <button
-                        onClick={nextImage}
-                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          nextImage();
+                        }}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-black/20 hover:bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all z-10 hidden md:flex border border-white/10"
                       >
                         <ChevronLeft size={20} />
                       </button>
-                      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-20 bg-black/20 backdrop-blur-sm px-2 py-1 rounded-full">
+
+                      {/* Pagination Indicators - Better Visuals */}
+                      <div className="absolute bottom-4 right-1/2 translate-x-1/2 flex gap-1.5 z-20 bg-black/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
                         {request.images.map((_, index) => (
-                          <span
+                          <button
                             key={index}
-                            className={`w-2 h-2 rounded-full transition-all shadow-sm ${
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCurrentImageIndex(index);
+                            }}
+                            className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
                               index === currentImageIndex
-                                ? "bg-white scale-125"
-                                : "bg-white/50"
+                                ? "bg-white w-4"
+                                : "bg-white/40 hover:bg-white/60"
                             }`}
-                          >
-                          </span>
+                          />
                         ))}
                       </div>
-                    </motion.div>
+
+                      {/* Photo Counter Label */}
+                      <div className="absolute bottom-4 left-4 z-20 bg-black/30 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10 text-[10px] font-bold text-white/90">
+                        {currentImageIndex + 1} / {request.images.length}
+                      </div>
+                    </>
                   )}
-                </motion.div>
+                </div>
               )
               : (
                 <div className="relative h-64 w-full overflow-hidden">
@@ -3220,7 +3188,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
             {/* Review Form Modal */}
             <ReviewForm
               isOpen={showReviewForm}
-              onClose={() => setShowReviewForm(false)}
+              onCancel={() => setShowReviewForm(false)}
               requestId={request.id}
               // For Requester: We need the provider's ID.
               // We have `request.accepted_offer_id`. We can find the offer in `receivedOffersMap` or `loadedOffers`.
@@ -3231,14 +3199,11 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                     o.id === request.acceptedOfferId
                   )?.providerId || "")
                 : request.author}
-              reviewerId={user?.id || ""}
               onSuccess={() => {
                 setShowReviewForm(false);
                 setCanReview(false); // Hide button after review
                 // Maybe refresh reviews?
               }}
-              reviewerName={user?.display_name || "مستخدم"}
-              requestTitle={request.title}
             />
 
             {!isMyRequest && (
@@ -3330,60 +3295,43 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           {/* Status Badge */}
                           {(() => {
                             const status = myOffer?.status || "pending";
-                            let badgeClass = "";
+                            const config = getOfferStatusConfig(status);
+
+                            // Get appropriate icon for each status
                             let icon = null;
-                            let text = "";
+                            let displayText = config.label;
 
                             switch (status) {
                               case "accepted":
-                                badgeClass =
-                                  "bg-primary/10 text-primary border-primary/30";
                                 icon = <CheckCircle size={14} />;
-                                text = "عرض مقبول";
+                                displayText = "عرض مقبول";
                                 break;
                               case "negotiating":
-                                badgeClass =
-                                  "bg-primary/10 text-primary border-primary/30";
                                 icon = <MessageCircle size={14} />;
-                                text = "جاري التفاوض";
                                 break;
                               case "pending":
-                                badgeClass =
-                                  "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800";
                                 icon = <Clock size={14} />;
-                                text = "قيد الانتظار";
                                 break;
                               case "completed":
-                                badgeClass =
-                                  "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800";
                                 icon = <CheckCircle size={14} />;
-                                text = "مكتمل";
                                 break;
                               case "rejected":
-                                badgeClass =
-                                  "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800";
                                 icon = <X size={14} />;
-                                text = "منتهي";
+                                displayText = "منتهي";
                                 break;
                               case "cancelled":
-                                badgeClass =
-                                  "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700";
                                 icon = <X size={14} />;
-                                text = "ملغى";
                                 break;
                               default:
-                                badgeClass =
-                                  "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800";
                                 icon = <Clock size={14} />;
-                                text = "قيد الانتظار";
                             }
 
                             return (
                               <span
-                                className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 border ${badgeClass}`}
+                                className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 border ${config.bgColor} ${config.textColor} ${config.borderColor}`}
                               >
                                 {icon}
-                                {text}
+                                {displayText}
                               </span>
                             );
                           })()}
@@ -3543,558 +3491,84 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
 
                       {/* Cancel Confirmation Modal */}
                       <AnimatePresence>
-                        {showCancelConfirm && (
-                          <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-                            onClick={() => setShowCancelConfirm(false)}
-                          >
+                        {showCancelConfirm &&
+                          ReactDOM.createPortal(
                             <motion.div
-                              initial={{ scale: 0.9, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              exit={{ scale: 0.9, opacity: 0 }}
-                              className="bg-card rounded-2xl p-6 max-w-sm w-full shadow-2xl"
-                              onClick={(e) => e.stopPropagation()}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4"
+                              onClick={() => setShowCancelConfirm(false)}
                             >
-                              <div className="text-center mb-6">
-                                <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
-                                  <AlertCircle className="w-8 h-8 text-red-500" />
+                              <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                className="bg-card rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="text-center mb-6">
+                                  <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+                                    <AlertCircle className="w-8 h-8 text-red-500" />
+                                  </div>
+                                  <h3 className="text-lg font-bold mb-2">
+                                    إلغاء العرض
+                                  </h3>
+                                  <p className="text-muted-foreground text-sm">
+                                    هل أنت متأكد من إلغاء هذا العرض؟ لا يمكن
+                                    التراجع عن هذا الإجراء.
+                                  </p>
                                 </div>
-                                <h3 className="text-lg font-bold mb-2">
-                                  إلغاء العرض
-                                </h3>
-                                <p className="text-muted-foreground text-sm">
-                                  هل أنت متأكد من إلغاء هذا العرض؟ لا يمكن
-                                  التراجع عن هذا الإجراء.
-                                </p>
-                              </div>
-                              <div className="flex gap-3">
-                                <Button
-                                  type="button"
-                                  variant="secondary"
-                                  className="flex-1"
-                                  onClick={() => setShowCancelConfirm(false)}
-                                >
-                                  تراجع
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="danger"
-                                  className="flex-1"
-                                  isLoading={isCancellingOffer}
-                                  onClick={async () => {
-                                    if (onCancelOffer && myOffer) {
-                                      setIsCancellingOffer(true);
-                                      try {
-                                        await onCancelOffer(myOffer.id);
-                                        setShowCancelConfirm(false);
-                                        // Haptic feedback
-                                        if (navigator.vibrate) {
-                                          navigator.vibrate(100);
+                                <div className="flex gap-3">
+                                  <Button
+                                    type="button"
+                                    variant="secondary"
+                                    className="flex-1"
+                                    onClick={() => setShowCancelConfirm(false)}
+                                  >
+                                    تراجع
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="danger"
+                                    className="flex-1"
+                                    isLoading={isCancellingOffer}
+                                    onClick={async () => {
+                                      if (onCancelOffer && myOffer) {
+                                        setIsCancellingOffer(true);
+                                        try {
+                                          await onCancelOffer(myOffer.id);
+                                          setShowCancelConfirm(false);
+                                          // Haptic feedback
+                                          if (navigator.vibrate) {
+                                            navigator.vibrate(100);
+                                          }
+                                        } catch (error) {
+                                          logger.error(
+                                            "Error cancelling offer:",
+                                            error,
+                                            "service",
+                                          );
+                                        } finally {
+                                          setIsCancellingOffer(false);
                                         }
-                                      } catch (error) {
-                                        logger.error(
-                                          "Error cancelling offer:",
-                                          error,
-                                          "service",
-                                        );
-                                      } finally {
-                                        setIsCancellingOffer(false);
                                       }
-                                    }
-                                  }}
-                                >
-                                  نعم، إلغاء العرض
-                                </Button>
-                              </div>
-                            </motion.div>
-                          </motion.div>
-                        )}
+                                    }}
+                                  >
+                                    نعم، إلغاء العرض
+                                  </Button>
+                                </div>
+                              </motion.div>
+                            </motion.div>,
+                            document.body,
+                          )}
                       </AnimatePresence>
                     </div>
                   </div>
                 )}
 
-                {/* CASE 2: NO OFFER YET (AND REQUEST IS ACTIVE) */}
-                {!isMyRequest && !isMyOffer && request.status === "active" && (
-                  <motion.div
-                    ref={offerSectionRef}
-                    key={flashKey}
-                    className={`bg-card border-2 rounded-2xl p-6 shadow-lg mt-4 relative border-border ${
-                      showOfferPulse ? "animate-quick-flash" : ""
-                    }`}
-                  >
-                    <div className="flex flex-col gap-4 mb-6">
-                      <motion.h3
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="font-bold text-lg flex items-center gap-2"
-                      >
-                        <FileText className="text-primary" size={24} />{" "}
-                        تقديم عرض
-                      </motion.h3>
-
-                      {/* Negotiable Toggle - Moved here */}
-                      <label className="flex items-start gap-2 cursor-pointer group select-none px-3 py-2 rounded-lg hover:bg-secondary/50 transition-colors border border-border">
-                        <div className="relative flex items-center mt-0.5">
-                          <input
-                            type="checkbox"
-                            className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-gray-300 bg-white checked:border-primary checked:bg-primary transition-all"
-                            checked={isNegotiable}
-                            onChange={(e) => setIsNegotiable(e.target.checked)}
-                          />
-                          <Check
-                            size={12}
-                            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100 pointer-events-none"
-                          />
-                        </div>
-                        <div className="flex flex-col gap-0.5 flex-1">
-                          <span className="text-xs font-bold text-foreground">
-                            قابل للتفاوض
-                          </span>
-                          <span className="text-[10px] text-muted-foreground/70 leading-tight">
-                            {isNegotiable
-                              ? "سيتمكن من التواصل معك قبل قبول عرضك"
-                              : "لن يتم التواصل معك قبل قبول عرضك"}
-                          </span>
-                        </div>
-                      </label>
-                    </div>
-
-                    {/* Floating Label Inputs Row */}
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                      {/* Price Field */}
-                      <motion.div
-                        className="relative"
-                        animate={shakingFields.price
-                          ? { x: [-4, 4, -4, 4, -4, 4, 0] }
-                          : {}}
-                        transition={{ duration: 0.4, ease: "easeInOut" }}
-                      >
-                        <input
-                          id="price"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          className={`peer w-full h-11 rounded-lg border-2 bg-background px-3 pt-3 text-sm outline-none transition-all appearance-none text-right ${
-                            shakingFields.price
-                              ? "border-red-500"
-                              : isPriceFocused
-                              ? "border-primary"
-                              : "border-border"
-                          }`}
-                          placeholder=""
-                          value={offerPrice}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            // Allow empty string or valid numbers
-                            if (
-                              value === "" ||
-                              (!isNaN(Number(value)) && Number(value) >= 0)
-                            ) {
-                              setOfferPrice(value);
-                              if (shakingFields.price && value) {
-                                setShakingFields((prev) => ({
-                                  ...prev,
-                                  price: false,
-                                }));
-                              }
-                            }
-                          }}
-                          onFocus={() => setIsPriceFocused(true)}
-                          onBlur={() => setIsPriceFocused(false)}
-                        />
-                        <label
-                          htmlFor="price"
-                          className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
-                            offerPrice || isPriceFocused
-                              ? "-top-2.5 right-2 bg-card px-1 text-[10px] font-bold max-w-[calc(100%-8px)] overflow-hidden"
-                              : "top-3 right-3 text-sm whitespace-nowrap"
-                          } ${
-                            shakingFields.price
-                              ? "text-red-500"
-                              : offerPrice || isPriceFocused
-                              ? "text-primary"
-                              : "text-muted-foreground"
-                          }`}
-                        >
-                          <span className="truncate">السعر *</span>
-                          {offerPrice && !isPriceFocused &&
-                            !shakingFields.price && (
-                            <Check
-                              size={10}
-                              className="text-primary shrink-0"
-                            />
-                          )}
-                        </label>
-                      </motion.div>
-
-                      {/* Duration Field */}
-                      <div className="relative">
-                        <input
-                          id="duration"
-                          type="text"
-                          className={`peer w-full h-11 rounded-lg border-2 bg-background px-3 pt-3 text-sm outline-none transition-all appearance-none border-border text-right ${
-                            isDurationFocused
-                              ? "border-primary"
-                              : "border-border"
-                          }`}
-                          placeholder=""
-                          value={offerDuration}
-                          onChange={(e) => setOfferDuration(e.target.value)}
-                          onFocus={() => setIsDurationFocused(true)}
-                          onBlur={() => setIsDurationFocused(false)}
-                        />
-                        <label
-                          htmlFor="duration"
-                          className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
-                            offerDuration || isDurationFocused
-                              ? "-top-2.5 right-2 bg-card px-1 text-[10px] text-primary font-bold max-w-[calc(100%-8px)] overflow-hidden leading-tight"
-                              : "top-3 right-3 text-sm text-muted-foreground"
-                          }`}
-                        >
-                          <span
-                            className={`${
-                              offerDuration || isDurationFocused
-                                ? "whitespace-normal text-center"
-                                : "whitespace-nowrap"
-                            }`}
-                          >
-                            مدة التنفيذ
-                          </span>
-                          {offerDuration && !isDurationFocused && (
-                            <Check
-                              size={10}
-                              className="text-primary shrink-0"
-                            />
-                          )}
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* City Field - Dropdown - On its own row */}
-                    <div className="mb-4">
-                      <CityAutocomplete
-                        value={offerCity}
-                        onChange={(val) => setOfferCity(val)}
-                        placeholder="ابحث عن مدن، معالم، أو محلات..."
-                        label="الموقع"
-                        showRemoteOption={true}
-                        showGPSOption={true}
-                        showMapOption={true}
-                        showAllCitiesOption={true}
-                      />
-                    </div>
-
-                    {/* Offer Title Field */}
-                    <motion.div
-                      className="relative mb-4"
-                      animate={shakingFields.title
-                        ? { x: [-4, 4, -4, 4, -4, 4, 0] }
-                        : {}}
-                      transition={{ duration: 0.4, ease: "easeInOut" }}
-                    >
-                      <input
-                        id="offerTitle"
-                        type="text"
-                        className={`peer w-full h-11 rounded-lg border-2 bg-background px-3 pt-3 text-sm outline-none transition-all appearance-none text-right ${
-                          shakingFields.title
-                            ? "border-red-500"
-                            : isTitleFocused
-                            ? "border-primary"
-                            : "border-border"
-                        }`}
-                        placeholder=""
-                        value={offerTitle || ""}
-                        onChange={(e) => {
-                          setOfferTitle(e.target.value);
-                          if (shakingFields.title && e.target.value) {
-                            setShakingFields((prev) => ({
-                              ...prev,
-                              title: false,
-                            }));
-                          }
-                        }}
-                        onFocus={() => setIsTitleFocused(true)}
-                        onBlur={() => setIsTitleFocused(false)}
-                      />
-                      <label
-                        htmlFor="offerTitle"
-                        className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
-                          offerTitle || isTitleFocused
-                            ? "-top-2.5 right-2 bg-card px-1 text-[10px] font-bold max-w-[calc(100%-16px)] overflow-hidden"
-                            : "top-3 right-3 text-sm whitespace-nowrap"
-                        } ${
-                          shakingFields.title
-                            ? "text-red-500"
-                            : offerTitle || isTitleFocused
-                            ? "text-primary"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        <span className="truncate">عنوان العرض *</span>
-                        {offerTitle && !isTitleFocused &&
-                          !shakingFields.title && (
-                          <Check size={10} className="text-primary shrink-0" />
-                        )}
-                      </label>
-                    </motion.div>
-
-                    {/* Description Field */}
-                    <div className="mb-6 relative group">
-                      <textarea
-                        ref={descTextareaRef}
-                        id="offerDesc"
-                        style={descTextareaHeight
-                          ? { height: `${descTextareaHeight}px` }
-                          : undefined}
-                        className={`peer w-full rounded-lg border-2 bg-background px-3 pt-5 pb-12 text-sm outline-none transition-colors resize-none min-h-[128px] max-h-[500px] border-border text-right ${
-                          isDescriptionFocused
-                            ? "border-primary"
-                            : "border-border"
-                        }`}
-                        placeholder=""
-                        value={offerDescription}
-                        onChange={(e) => {
-                          setOfferDescription(e.target.value);
-                        }}
-                        onFocus={() => setIsDescriptionFocused(true)}
-                        onBlur={() => setIsDescriptionFocused(false)}
-                      />
-                      <label
-                        htmlFor="offerDesc"
-                        className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 z-20 ${
-                          offerDescription || isDescriptionFocused
-                            ? "-top-2.5 right-2 bg-card px-1 text-[10px] text-primary font-bold max-w-[calc(100%-16px)] overflow-hidden"
-                            : "top-2.5 right-3 text-sm text-muted-foreground whitespace-nowrap"
-                        }`}
-                      >
-                        <span className="truncate">تفاصيل العرض</span>
-                        {offerDescription && !isDescriptionFocused && (
-                          <Check size={10} className="text-primary shrink-0" />
-                        )}
-                      </label>
-
-                      {/* منطقة السحب في الحد السفلي كامل العرض */}
-                      <motion.div
-                        className="absolute bottom-2 left-0 right-0 h-6 cursor-ns-resize z-10 flex items-center justify-center select-none bg-transparent"
-                        onMouseDown={handleDescResizeStart}
-                        onTouchStart={handleDescResizeStart}
-                        style={{ transformOrigin: "50% 100%" }}
-                        animate={showDescResizeHint
-                          ? {
-                            scaleY: [1, 1.35, 1, 1.2, 1],
-                          }
-                          : {}}
-                        transition={showDescResizeHint
-                          ? {
-                            duration: 1.2,
-                            ease: "easeInOut",
-                          }
-                          : {}}
-                      >
-                        {/* مقبض سحب (شرطتين) لتوضيح أن الحد السفلي قابل للسحب */}
-                        <div
-                          className={`flex flex-col items-center justify-center gap-1 rounded-md px-4 py-1 transition-colors duration-200 bg-background/90 ${
-                            isDescResizing || isDescriptionFocused ||
-                              showDescResizeHint
-                              ? "text-primary"
-                              : "text-muted-foreground/50"
-                          }`}
-                        >
-                          <div className="h-0.5 w-12 rounded-full bg-current opacity-70" />
-                          <div className="h-0.5 w-12 rounded-full bg-current opacity-70" />
-                        </div>
-                      </motion.div>
-                    </div>
-
-                    {/* Attachments Section - Collapsible */}
-                    <div className="mb-4 border-t border-border/50">
-                      {/* Label - Clickable to expand/collapse */}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setIsAttachmentsExpanded(!isAttachmentsExpanded)}
-                        className="w-full flex items-center justify-between gap-2 pt-3 pb-2 hover:bg-secondary/30 rounded-lg px-2 -mx-2 transition-colors group"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`transition-colors ${
-                              offerAttachments.length > 0
-                                ? "text-primary"
-                                : "text-muted-foreground group-hover:text-primary/70"
-                            }`}
-                          >
-                            <Paperclip size={18} />
-                          </span>
-                          <span
-                            className={`text-sm font-medium transition-colors ${
-                              offerAttachments.length > 0
-                                ? "text-primary"
-                                : "text-muted-foreground group-hover:text-foreground"
-                            }`}
-                          >
-                            المرفقات وصور توضيحية
-                            {offerAttachments.length > 0 && (
-                              <motion.span
-                                initial={{ scale: 0, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                className="inline-flex items-center justify-center mr-1"
-                              >
-                                <Check size={14} className="text-primary" />
-                              </motion.span>
-                            )}
-                          </span>
-                          {offerAttachments.length > 0 && (
-                            <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
-                              {offerAttachments.length} ملف
-                            </span>
-                          )}
-                        </div>
-                        <motion.span
-                          animate={{ rotate: isAttachmentsExpanded ? 180 : 0 }}
-                          transition={{ duration: 0.2, ease: "easeInOut" }}
-                          className={`transition-colors text-muted-foreground group-hover:text-foreground ${
-                            offerAttachments.length > 0 ? "!text-primary" : ""
-                          }`}
-                        >
-                          <ChevronDown size={16} />
-                        </motion.span>
-                      </button>
-
-                      {/* Collapsible Attachment Area */}
-                      <AnimatePresence>
-                        {isAttachmentsExpanded && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="overflow-hidden"
-                          >
-                            <div className="pt-2 pb-3">
-                              <div
-                                className={`border-2 border-dashed rounded-xl p-4 transition-colors ${
-                                  offerAttachments.length > 0
-                                    ? "border-primary/50 bg-primary/5"
-                                    : "border-border bg-secondary/20"
-                                }`}
-                              >
-                                {/* Uploaded Files Preview */}
-                                {offerAttachments.length > 0 && (
-                                  <div className="flex gap-2 flex-wrap mb-3">
-                                    {offerAttachments.map((file, index) => {
-                                      const fileUrl = URL.createObjectURL(file);
-                                      const isImage = isImageFile(file);
-                                      return (
-                                        <motion.div
-                                          key={file.name + index}
-                                          initial={{ scale: 0, opacity: 0 }}
-                                          animate={{ scale: 1, opacity: 1 }}
-                                          exit={{ scale: 0, opacity: 0 }}
-                                          className="relative group"
-                                        >
-                                          <div className="w-20 h-20 rounded-xl border border-border overflow-hidden bg-background">
-                                            {isImage
-                                              ? (
-                                                <img
-                                                  src={fileUrl}
-                                                  alt={file.name}
-                                                  className="w-full h-full object-cover"
-                                                />
-                                              )
-                                              : (
-                                                <div className="w-full h-full flex flex-col items-center justify-center p-2">
-                                                  <FileText
-                                                    size={24}
-                                                    className="text-muted-foreground mb-1"
-                                                  />
-                                                  <span className="text-[10px] text-muted-foreground truncate w-full text-center">
-                                                    {file.name.split(".").pop()
-                                                      ?.toUpperCase()}
-                                                  </span>
-                                                </div>
-                                              )}
-                                          </div>
-                                          <button
-                                            onClick={() =>
-                                              setOfferAttachments((prev) =>
-                                                prev.filter((_, i) =>
-                                                  i !== index
-                                                )
-                                              )}
-                                            className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
-                                          >
-                                            <X size={12} />
-                                          </button>
-                                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] px-1 py-0.5 text-center truncate">
-                                            {formatFileSize(file.size)}
-                                          </div>
-                                        </motion.div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-
-                                {/* Upload Buttons */}
-                                <div className="flex gap-3">
-                                  {/* Upload Box */}
-                                  <div
-                                    onClick={() =>
-                                      offerFileInputRef.current?.click()}
-                                    className="flex-1 flex flex-col items-center justify-center h-24 bg-background border border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
-                                  >
-                                    <Upload
-                                      size={28}
-                                      className="text-primary mb-2"
-                                    />
-                                    <span className="text-xs text-muted-foreground">
-                                      رفع ملف/صورة
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Hidden File Input */}
-                                <input
-                                  ref={offerFileInputRef}
-                                  type="file"
-                                  multiple
-                                  accept="image/*,video/*,.pdf,.doc,.docx"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const files = Array.from(
-                                      e.target.files || [],
-                                    );
-                                    if (files.length > 0) {
-                                      // Validate each file
-                                      const validFiles: File[] = [];
-                                      for (const file of files) {
-                                        const validation = validateFile(file);
-                                        if (validation.valid) {
-                                          validFiles.push(file);
-                                        } else {
-                                          alert(validation.error);
-                                        }
-                                      }
-                                      if (validFiles.length > 0) {
-                                        setOfferAttachments(
-                                          (prev) => [...prev, ...validFiles],
-                                        );
-                                      }
-                                    }
-                                    e.target.value = "";
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </motion.div>
-                )}
+                {/* CASE 2: NO OFFER YET (AND REQUEST IS ACTIVE) - MOVED TO MODAL */}
+                {/* Removed inline form */}
 
                 {/* CASE 3: CLOSED REQUEST */}
                 {!isMyRequest && !isMyOffer && request.status !== "active" && (
@@ -4115,7 +3589,6 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
               </>
             )}
           </motion.div>
-        </div>
 
         {/* Floating Buttons - Submit Offer and Negotiate */}
         {!isMyRequest && !isMyOffer && request.status === "active" && (
@@ -4189,79 +3662,15 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
               {/* زر إرسال العرض */}
               <motion.button
                 layout
-                onClick={async () => {
-                  // If NOT in offer section, scroll to it first
-                  if (!isOfferSectionVisible) {
-                    if (offerSectionRef.current && scrollContainerRef.current) {
-                      // Scroll so the offer section header is at the very top
-                      const containerRect = scrollContainerRef.current
-                        .getBoundingClientRect();
-                      const targetRect = offerSectionRef.current
-                        .getBoundingClientRect();
-                      const relativeTop = targetRect.top - containerRect.top +
-                        scrollContainerRef.current.scrollTop;
-
-                      // Add extra offset to push it higher (negative to scroll more)
-                      scrollContainerRef.current.scrollTo({
-                        top: relativeTop + 100,
-                        behavior: "smooth",
-                      });
-                    }
-                    return;
-                  }
-
-                  // We're in the offer section - validate and submit
-                  const canSubmit = offerPrice && offerTitle;
-                  if (!canSubmit) {
-                    // Trigger flash effect when form is incomplete
-                    setFlashKey((prev) => prev + 1);
-                    setShowOfferPulse(true);
-                    setTimeout(() => setShowOfferPulse(false), 800);
-                    return;
-                  }
-
-                  // Trigger flash effect before submitting
-                  setFlashKey((prev) => prev + 1);
-                  setShowOfferPulse(true);
-                  setTimeout(() => setShowOfferPulse(false), 800);
-
-                  if (navigator.vibrate) navigator.vibrate(15);
-                  await handleSubmitOfferFromHeader();
-                }}
-                disabled={isOfferSectionVisible &&
-                  (!offerPrice || !offerTitle) &&
-                  !isSubmittingOffer && !offerSubmitted}
-                className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg ${
-                  !isOfferSectionVisible
-                    ? "bg-gradient-to-r from-primary via-primary to-accent text-white shadow-primary/40 hover:shadow-xl"
-                    : (offerPrice && offerTitle) && !isSubmittingOffer
-                    ? "bg-gradient-to-r from-primary via-primary to-accent text-white shadow-primary/40 hover:shadow-xl"
-                    : "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed shadow-none"
-                }`}
+                onClick={() => setIsOfferModalOpen(true)}
+                disabled={!isSubmittingOffer && offerSubmitted}
+                className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base transition-all shadow-lg bg-gradient-to-r from-primary via-primary to-accent text-white shadow-primary/40 hover:shadow-xl`}
               >
-                {isSubmittingOffer
-                  ? (
-                    <>
-                      <Loader2 size={20} className="animate-spin" />
-                      <span>
-                        {isUploadingAttachments
-                          ? "جاري الرفع..."
-                          : "جاري الإرسال..."}
-                      </span>
-                    </>
-                  )
-                  : offerSubmitted
+                {offerSubmitted
                   ? (
                     <>
                       <Check size={20} />
                       <span>تم الإرسال!</span>
-                    </>
-                  )
-                  : isOfferSectionVisible
-                  ? (
-                    <>
-                      <span>أرسل عرضك الآن</span>
-                      <ChevronLeft size={20} />
                     </>
                   )
                   : (
@@ -4355,77 +3764,513 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         {/* Guest Offer Verification Modal */}
         {isGuest && guestOfferVerificationStep !== "none" &&
           ReactDOM.createPortal(
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <>
+              {/* Backdrop */}
               <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-card rounded-2xl p-6 max-w-md w-full shadow-2xl border border-border"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => {
+                  setGuestOfferVerificationStep("none");
+                  setGuestOfferPhone("");
+                  setGuestOfferOTP("");
+                  setGuestOfferError(null);
+                }}
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[129]"
+              />
+
+              {/* Modal - Bottom Sheet on Mobile, Centered on Desktop */}
+              <motion.div
+                initial={{ opacity: 0, y: "100%" }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: "100%" }}
+                transition={{
+                  type: "spring",
+                  damping: 35,
+                  stiffness: 400,
+                  mass: 0.8,
+                }}
+                drag="y"
+                dragConstraints={{ top: 0, bottom: 0 }}
+                dragElastic={{ top: 0, bottom: 0.3 }}
+                dragMomentum={false}
+                onDragEnd={(_, info) => {
+                  const velocityThreshold = 800;
+                  const offsetThreshold = 150;
+                  const shouldClose = info.offset.y > offsetThreshold ||
+                    info.velocity.y > velocityThreshold;
+
+                  if (shouldClose) {
+                    setGuestOfferVerificationStep("none");
+                    setGuestOfferPhone("");
+                    setGuestOfferOTP("");
+                    setGuestOfferError(null);
+                  }
+                }}
+                className="fixed inset-x-0 bottom-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 max-w-md w-full mx-auto bg-card border-t sm:border border-border rounded-t-3xl sm:rounded-2xl shadow-2xl z-[130] max-h-[90vh] flex flex-col"
+                onClick={(e) => e.stopPropagation()}
               >
-                {guestOfferVerificationStep === "phone" && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-bold text-right">
-                      التحقق من رقم الجوال
-                    </h3>
-                    <p className="text-sm text-muted-foreground text-right">
-                      لتقديم عرض، نحتاج للتحقق من رقم جوالك. سيتم إرسال رمز تحقق
-                      على رقمك.
-                    </p>
-                    <div
-                      className={`relative flex items-center gap-2 border-2 rounded-lg bg-background px-4 h-12 focus-within:border-primary transition-all min-w-0 overflow-hidden ${
-                        guestOfferError ? "border-red-500" : "border-border"
-                      }`}
-                    >
-                      <span className="text-muted-foreground font-medium shrink-0">
-                        +966
-                      </span>
-                      <input
-                        type="tel"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        value={guestOfferPhone}
-                        onChange={(e) => {
-                          // السماح بـ 0 في البداية أو بدون
-                          const value = e.target.value.replace(/\D/g, "");
-                          // يقبل حتى 10 أرقام (مع 0) أو 9 (بدون 0)
-                          if (value.length <= 10) {
-                            setGuestOfferPhone(value);
+                {/* Drag Handle - Mobile Only */}
+                <div className="sm:hidden flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none shrink-0">
+                  <div className="w-20 h-1 bg-muted-foreground/40 dark:bg-muted-foreground/50 rounded-full transition-colors duration-200 active:bg-muted-foreground/60" />
+                </div>
+
+                <div className="p-6 overflow-y-auto flex-1">
+                  {guestOfferVerificationStep === "phone" && (
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-bold text-right">
+                        التحقق من رقم الجوال
+                      </h3>
+                      <p className="text-sm text-muted-foreground text-right">
+                        لتقديم عرض، نحتاج للتحقق من رقم جوالك. سيتم إرسال رمز
+                        تحقق على رقمك.
+                      </p>
+                      <div
+                        className={`relative flex items-center gap-2 border-2 rounded-lg bg-background px-4 h-12 focus-within:border-primary transition-all min-w-0 overflow-hidden ${
+                          guestOfferError ? "border-red-500" : "border-border"
+                        }`}
+                      >
+                        <span className="text-muted-foreground font-medium shrink-0">
+                          +966
+                        </span>
+                        <input
+                          type="tel"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={guestOfferPhone}
+                          onChange={(e) => {
+                            // السماح بـ 0 في البداية أو بدون
+                            const value = e.target.value.replace(/\D/g, "");
+                            // يقبل حتى 10 أرقام (مع 0) أو 9 (بدون 0)
+                            if (value.length <= 10) {
+                              setGuestOfferPhone(value);
+                              setGuestOfferError(null);
+                            }
+                          }}
+                          placeholder="0501234567"
+                          className="flex-1 h-full bg-transparent text-base outline-none text-left min-w-0"
+                          dir="ltr"
+                          maxLength={10}
+                          autoFocus
+                        />
+                      </div>
+
+                      {/* عرض رسالة الخطأ */}
+                      <AnimatePresence>
+                        {guestOfferError && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+                          >
+                            <div className="flex items-start gap-2">
+                              <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                              <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
+                                {guestOfferError}
+                              </p>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            if (!guestOfferPhone.trim()) {
+                              setGuestOfferError("يرجى إدخال رقم الجوال");
+                              return;
+                            }
+                            setIsSendingOfferOTP(true);
                             setGuestOfferError(null);
-                          }
+                            const result = await verifyGuestPhone(
+                              guestOfferPhone,
+                            );
+                            setIsSendingOfferOTP(false);
+                            if (result.success) {
+                              setGuestOfferVerificationStep("otp");
+                              setGuestOfferError(null);
+                            } else {
+                              const translatedError = translateAuthError(
+                                result.error || "فشل إرسال رمز التحقق",
+                              );
+                              setGuestOfferError(translatedError);
+                            }
+                          }}
+                          disabled={isSendingOfferOTP}
+                          className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                        >
+                          {isSendingOfferOTP
+                            ? "جاري الإرسال..."
+                            : "إرسال رمز التحقق"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setGuestOfferVerificationStep("none");
+                            setGuestOfferPhone("");
+                            setGuestOfferError(null);
+                          }}
+                          className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+
+                      {/* نص الموافقة على الشروط */}
+                      <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
+                        بتسجيلك للدخول فأنت توافق على{" "}
+                        <button
+                          onClick={() => setShowTermsModal(true)}
+                          className="text-primary hover:underline font-medium"
+                        >
+                          شروط الاستخدام
+                        </button>{" "}
+                        و{" "}
+                        <button
+                          onClick={() => setShowPrivacyModal(true)}
+                          className="text-primary hover:underline font-medium"
+                        >
+                          سياسة الخصوصية
+                        </button>
+                      </p>
+                    </div>
+                  )}
+
+                  {guestOfferVerificationStep === "otp" && (
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-bold text-right">
+                        أدخل رمز التحقق
+                      </h3>
+                      <p className="text-sm text-muted-foreground text-right">
+                        تم إرسال رمز التحقق إلى {guestOfferPhone}
+                      </p>
+                      <input
+                        type="text"
+                        value={guestOfferOTP}
+                        onChange={(e) => {
+                          setGuestOfferOTP(
+                            e.target.value.replace(/\D/g, "").slice(0, 4),
+                          );
+                          setGuestOfferError(null); // مسح الخطأ عند الكتابة
                         }}
-                        placeholder="0501234567"
-                        className="flex-1 h-full bg-transparent text-base outline-none text-left min-w-0"
+                        placeholder="0000"
+                        className={`w-full h-14 px-4 text-center rounded-xl border-2 bg-background text-3xl font-black tracking-[0.5em] outline-none transition-all focus:border-primary ${
+                          guestOfferError ? "border-red-500" : "border-border"
+                        }`}
                         dir="ltr"
-                        maxLength={10}
+                        maxLength={4}
                         autoFocus
                       />
-                    </div>
 
-                    {/* عرض رسالة الخطأ */}
-                    <AnimatePresence>
-                      {guestOfferError && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+                      {/* عرض رسالة الخطأ */}
+                      <AnimatePresence>
+                        {guestOfferError && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+                          >
+                            <div className="flex items-start gap-2">
+                              <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                              <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
+                                {guestOfferError}
+                              </p>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            if (guestOfferOTP.length !== 4) {
+                              setGuestOfferError(
+                                "يرجى إدخال رمز التحقق المكون من 4 أرقام",
+                              );
+                              return;
+                            }
+                            setIsVerifyingOfferOTP(true);
+                            setGuestOfferError(null);
+                            const result = await confirmGuestPhone(
+                              guestOfferPhone,
+                              guestOfferOTP,
+                            );
+                            setIsVerifyingOfferOTP(false);
+                            if (result.success) {
+                              // Haptic feedback - positive send pattern
+                              if (navigator.vibrate) {
+                                navigator.vibrate([30, 50, 30]);
+                              }
+
+                              // بعد التحقق الناجح، تحقق من حالة Onboarding
+                              const userProfile = await getCurrentUser();
+                              if (!userProfile?.id) {
+                                setGuestOfferError(
+                                  "فشل تسجيل الدخول. حاول مرة أخرى.",
+                                );
+                                return;
+                              }
+
+                              // التحقق من أن المستخدم لا يقدم عرض على طلبه الخاص
+                              const requestAuthorId = request.author;
+                              if (
+                                requestAuthorId &&
+                                userProfile.id === requestAuthorId
+                              ) {
+                                setGuestOfferError(
+                                  "لا يمكنك تقديم عرض على طلبك الخاص",
+                                );
+                                setGuestOfferVerificationStep("none");
+                                setGuestOfferPhone("");
+                                setGuestOfferOTP("");
+                                return;
+                              }
+
+                              // التحقق من حالة Onboarding
+                              const userOnboardedKey =
+                                `abeely_onboarded_${userProfile.id}`;
+                              const localOnboarded =
+                                localStorage.getItem(userOnboardedKey) ===
+                                  "true";
+                              const hasName = !!userProfile.display_name
+                                ?.trim();
+
+                              // التحقق من قاعدة البيانات إذا لم يكن هناك علامة محلية
+                              let needsOnboarding = !localOnboarded || !hasName;
+                              if (!localOnboarded) {
+                                try {
+                                  const { data: profileData } = await supabase
+                                    .from("profiles")
+                                    .select(
+                                      "interested_categories, interested_cities, display_name, has_onboarded",
+                                    )
+                                    .eq("id", userProfile.id)
+                                    .single();
+
+                                  const hasInterests = Array.isArray(
+                                    profileData?.interested_categories,
+                                  ) &&
+                                    profileData.interested_categories.length >
+                                      0;
+                                  const hasCities = Array.isArray(
+                                    profileData?.interested_cities,
+                                  ) && profileData.interested_cities.length > 0;
+                                  const hasProfileName = !!profileData
+                                    ?.display_name?.trim();
+                                  const alreadyOnboarded =
+                                    profileData?.has_onboarded === true;
+
+                                  needsOnboarding = !(alreadyOnboarded ||
+                                    (hasProfileName &&
+                                      (hasInterests || hasCities)));
+                                } catch (err) {
+                                  logger.error(
+                                    "Error checking onboarding status:",
+                                    err,
+                                    "service",
+                                  );
+                                  // في حالة الخطأ، نعتبر أن المستخدم يحتاج onboarding إذا لم يكن هناك اسم
+                                  needsOnboarding = !hasName;
+                                }
+                              }
+
+                              if (needsOnboarding) {
+                                // المستخدم يحتاج إلى Onboarding - احفظ البيانات وانتقل إلى Onboarding
+                                // Save offer form data
+                                if (onOfferFormChange) {
+                                  onOfferFormChange({
+                                    price: offerPrice,
+                                    duration: offerDuration,
+                                    city: offerCity,
+                                    title: offerTitle,
+                                    description: offerDescription,
+                                    attachments: offerAttachments,
+                                    guestVerificationStep:
+                                      guestOfferVerificationStep,
+                                    guestPhone: guestOfferPhone,
+                                    guestOTP: guestOfferOTP,
+                                  });
+                                }
+                                localStorage.setItem(
+                                  "abeely_requires_onboarding",
+                                  "true",
+                                );
+                                localStorage.setItem(
+                                  "abeely_pending_action",
+                                  "submit_offer",
+                                );
+                                // إعادة تحميل الصفحة للانتقال إلى OnboardingScreen
+                                window.location.reload();
+                                return;
+                              }
+
+                              setGuestOfferVerificationStep("none");
+                              setGuestOfferError(null);
+
+                              // Submit offer after successful verification
+                              try {
+                                const userId = userProfile.id;
+
+                                setIsSubmittingOffer(true);
+
+                                // Upload attachments if any
+                                let uploadedImageUrls: string[] = [];
+                                if (offerAttachments.length > 0) {
+                                  setIsUploadingAttachments(true);
+                                  const tempId = `${userId}-${Date.now()}`;
+                                  uploadedImageUrls =
+                                    await uploadOfferAttachments(
+                                      offerAttachments,
+                                      tempId,
+                                    );
+                                  setIsUploadingAttachments(false);
+                                }
+
+                                // Create the offer
+                                const offerResult = await createOffer({
+                                  requestId: request.id,
+                                  providerId: userId,
+                                  title: offerTitle.trim(),
+                                  description: offerDescription.trim() ||
+                                    undefined,
+                                  price: offerPrice.trim(),
+                                  deliveryTime: offerDuration.trim() ||
+                                    undefined,
+                                  location: offerCity.trim() || undefined,
+                                  isNegotiable,
+                                  images: uploadedImageUrls.length > 0
+                                    ? uploadedImageUrls
+                                    : undefined,
+                                });
+
+                                if (offerResult) {
+                                  // Haptic feedback - success
+                                  if (navigator.vibrate) {
+                                    navigator.vibrate([30, 50, 30]);
+                                  }
+
+                                  // ✅ Optimistic Update: إضافة العرض مباشرة إلى الواجهة بدون انتظار
+                                  const newOffer: Offer = {
+                                    id: offerResult.id,
+                                    requestId: request.id,
+                                    providerId: userId,
+                                    providerName: userProfile.display_name ||
+                                      "مزود خدمة",
+                                    providerAvatar: userProfile.avatar_url ||
+                                      undefined,
+                                    title: offerTitle.trim(),
+                                    description: offerDescription.trim() || "",
+                                    price: offerPrice.trim(),
+                                    deliveryTime: offerDuration.trim() || "",
+                                    status: "pending",
+                                    createdAt: new Date(),
+                                    isNegotiable,
+                                    location: offerCity.trim() || undefined,
+                                    images: uploadedImageUrls.length > 0
+                                      ? uploadedImageUrls
+                                      : undefined,
+                                  };
+
+                                  // إضافة العرض مباشرة إلى loadedOffers
+                                  setLoadedOffers((prev) => {
+                                    // التحقق من عدم وجود العرض مسبقاً (لتجنب التكرار)
+                                    if (
+                                      prev.some((o) => o.id === offerResult.id)
+                                    ) {
+                                      return prev;
+                                    }
+                                    return [newOffer, ...prev];
+                                  });
+
+                                  setOfferSubmitted(true);
+
+                                  // Notify parent (في الخلفية)
+                                  if (onOfferCreated) {
+                                    try {
+                                      onOfferCreated();
+                                    } catch (error) {
+                                      logger.error(
+                                        "Error in onOfferCreated callback:",
+                                        error,
+                                        "service",
+                                      );
+                                    }
+                                  }
+
+                                  // Reset form
+                                  setOfferPrice("");
+                                  setOfferTitle("");
+                                  setOfferDescription("");
+                                  setOfferDuration("");
+                                  setOfferCity("");
+                                  setOfferAttachments([]);
+                                  setSelectedImageUrls([]);
+                                  setSearchedImages([]);
+                                  setSelectedSearchImages(new Set());
+                                  setGuestOfferPhone("");
+                                  setGuestOfferOTP("");
+
+                                  setTimeout(() => {
+                                    setOfferSubmitted(false);
+                                  }, 2000);
+                                } else {
+                                  setGuestOfferError(
+                                    "حدث خطأ في إرسال العرض. حاول مرة أخرى.",
+                                  );
+                                }
+                              } catch (err: any) {
+                                logger.error(
+                                  "Submit offer error:",
+                                  err,
+                                  "service",
+                                );
+                                const errorMessage = err?.message ||
+                                  err?.error?.message ||
+                                  "حدث خطأ في إرسال العرض. حاول مرة أخرى.";
+                                logger.error(
+                                  "Error sending guest offer",
+                                  err,
+                                  "RequestDetail",
+                                );
+                                setGuestOfferError(
+                                  `حدث خطأ في إرسال العرض:\n${errorMessage}`,
+                                );
+                              } finally {
+                                setIsSubmittingOffer(false);
+                                setIsUploadingAttachments(false);
+                              }
+                            } else {
+                              // ترجمة رسالة الخطأ للعربية
+                              const translatedError = translateAuthError(
+                                result.error || "رمز التحقق غير صحيح",
+                              );
+                              setGuestOfferError(translatedError);
+                              setGuestOfferOTP("");
+                            }
+                          }}
+                          disabled={isVerifyingOfferOTP}
+                          className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
                         >
-                          <div className="flex items-start gap-2">
-                            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                            <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
-                              {guestOfferError}
-                            </p>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                          {isVerifyingOfferOTP
+                            ? "جاري التحقق..."
+                            : "تحقق وإرسال العرض"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setGuestOfferVerificationStep("phone");
+                            setGuestOfferOTP("");
+                            setGuestOfferError(null);
+                          }}
+                          className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
+                        >
+                          رجوع
+                        </button>
+                      </div>
 
-                    <div className="flex gap-2">
+                      {/* زر إعادة إرسال الرمز */}
                       <button
                         onClick={async () => {
-                          if (!guestOfferPhone.trim()) {
-                            setGuestOfferError("يرجى إدخال رقم الجوال");
-                            return;
-                          }
                           setIsSendingOfferOTP(true);
                           setGuestOfferError(null);
                           const result = await verifyGuestPhone(
@@ -4433,7 +4278,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           );
                           setIsSendingOfferOTP(false);
                           if (result.success) {
-                            setGuestOfferVerificationStep("otp");
+                            setGuestOfferOTP("");
+                            // إظهار رسالة نجاح مؤقتة
                             setGuestOfferError(null);
                           } else {
                             const translatedError = translateAuthError(
@@ -4443,399 +4289,17 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           }
                         }}
                         disabled={isSendingOfferOTP}
-                        className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                        className="w-full text-center text-sm text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
                       >
                         {isSendingOfferOTP
-                          ? "جاري الإرسال..."
-                          : "إرسال رمز التحقق"}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setGuestOfferVerificationStep("none");
-                          setGuestOfferPhone("");
-                          setGuestOfferError(null);
-                        }}
-                        className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
-                      >
-                        إلغاء
+                          ? "جاري إعادة الإرسال..."
+                          : "لم يصلك الرمز؟ إعادة الإرسال"}
                       </button>
                     </div>
-
-                    {/* نص الموافقة على الشروط */}
-                    <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
-                      بتسجيلك للدخول فأنت توافق على{" "}
-                      <button
-                        onClick={() => setShowTermsModal(true)}
-                        className="text-primary hover:underline font-medium"
-                      >
-                        شروط الاستخدام
-                      </button>{" "}
-                      و{" "}
-                      <button
-                        onClick={() => setShowPrivacyModal(true)}
-                        className="text-primary hover:underline font-medium"
-                      >
-                        سياسة الخصوصية
-                      </button>
-                    </p>
-                  </div>
-                )}
-
-                {guestOfferVerificationStep === "otp" && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-bold text-right">
-                      أدخل رمز التحقق
-                    </h3>
-                    <p className="text-sm text-muted-foreground text-right">
-                      تم إرسال رمز التحقق إلى {guestOfferPhone}
-                    </p>
-                    <input
-                      type="text"
-                      value={guestOfferOTP}
-                      onChange={(e) => {
-                        setGuestOfferOTP(
-                          e.target.value.replace(/\D/g, "").slice(0, 4),
-                        );
-                        setGuestOfferError(null); // مسح الخطأ عند الكتابة
-                      }}
-                      placeholder="0000"
-                      className={`w-full h-14 px-4 text-center rounded-xl border-2 bg-background text-3xl font-black tracking-[0.5em] outline-none transition-all focus:border-primary ${
-                        guestOfferError ? "border-red-500" : "border-border"
-                      }`}
-                      dir="ltr"
-                      maxLength={4}
-                      autoFocus
-                    />
-
-                    {/* عرض رسالة الخطأ */}
-                    <AnimatePresence>
-                      {guestOfferError && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
-                        >
-                          <div className="flex items-start gap-2">
-                            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                            <p className="text-sm text-red-600 dark:text-red-400 text-right flex-1">
-                              {guestOfferError}
-                            </p>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={async () => {
-                          if (guestOfferOTP.length !== 4) {
-                            setGuestOfferError(
-                              "يرجى إدخال رمز التحقق المكون من 4 أرقام",
-                            );
-                            return;
-                          }
-                          setIsVerifyingOfferOTP(true);
-                          setGuestOfferError(null);
-                          const result = await confirmGuestPhone(
-                            guestOfferPhone,
-                            guestOfferOTP,
-                          );
-                          setIsVerifyingOfferOTP(false);
-                          if (result.success) {
-                            // Haptic feedback - positive send pattern
-                            if (navigator.vibrate) {
-                              navigator.vibrate([30, 50, 30]);
-                            }
-
-                            // بعد التحقق الناجح، تحقق من حالة Onboarding
-                            const userProfile = await getCurrentUser();
-                            if (!userProfile?.id) {
-                              setGuestOfferError(
-                                "فشل تسجيل الدخول. حاول مرة أخرى.",
-                              );
-                              return;
-                            }
-
-                            // التحقق من أن المستخدم لا يقدم عرض على طلبه الخاص
-                            const requestAuthorId = request.author;
-                            if (
-                              requestAuthorId &&
-                              userProfile.id === requestAuthorId
-                            ) {
-                              setGuestOfferError(
-                                "لا يمكنك تقديم عرض على طلبك الخاص",
-                              );
-                              setGuestOfferVerificationStep("none");
-                              setGuestOfferPhone("");
-                              setGuestOfferOTP("");
-                              return;
-                            }
-
-                            // التحقق من حالة Onboarding
-                            const userOnboardedKey =
-                              `abeely_onboarded_${userProfile.id}`;
-                            const localOnboarded =
-                              localStorage.getItem(userOnboardedKey) === "true";
-                            const hasName = !!userProfile.display_name?.trim();
-
-                            // التحقق من قاعدة البيانات إذا لم يكن هناك علامة محلية
-                            let needsOnboarding = !localOnboarded || !hasName;
-                            if (!localOnboarded) {
-                              try {
-                                const { data: profileData } = await supabase
-                                  .from("profiles")
-                                  .select(
-                                    "interested_categories, interested_cities, display_name, has_onboarded",
-                                  )
-                                  .eq("id", userProfile.id)
-                                  .single();
-
-                                const hasInterests = Array.isArray(
-                                  profileData?.interested_categories,
-                                ) &&
-                                  profileData.interested_categories.length > 0;
-                                const hasCities = Array.isArray(
-                                  profileData?.interested_cities,
-                                ) && profileData.interested_cities.length > 0;
-                                const hasProfileName = !!profileData
-                                  ?.display_name?.trim();
-                                const alreadyOnboarded =
-                                  profileData?.has_onboarded === true;
-
-                                needsOnboarding = !(alreadyOnboarded ||
-                                  (hasProfileName &&
-                                    (hasInterests || hasCities)));
-                              } catch (err) {
-                                logger.error(
-                                  "Error checking onboarding status:",
-                                  err,
-                                  "service",
-                                );
-                                // في حالة الخطأ، نعتبر أن المستخدم يحتاج onboarding إذا لم يكن هناك اسم
-                                needsOnboarding = !hasName;
-                              }
-                            }
-
-                            if (needsOnboarding) {
-                              // المستخدم يحتاج إلى Onboarding - احفظ البيانات وانتقل إلى Onboarding
-                              // Save offer form data
-                              if (onOfferFormChange) {
-                                onOfferFormChange({
-                                  price: offerPrice,
-                                  duration: offerDuration,
-                                  city: offerCity,
-                                  title: offerTitle,
-                                  description: offerDescription,
-                                  attachments: offerAttachments,
-                                  guestVerificationStep:
-                                    guestOfferVerificationStep,
-                                  guestPhone: guestOfferPhone,
-                                  guestOTP: guestOfferOTP,
-                                });
-                              }
-                              localStorage.setItem(
-                                "abeely_requires_onboarding",
-                                "true",
-                              );
-                              localStorage.setItem(
-                                "abeely_pending_action",
-                                "submit_offer",
-                              );
-                              // إعادة تحميل الصفحة للانتقال إلى OnboardingScreen
-                              window.location.reload();
-                              return;
-                            }
-
-                            setGuestOfferVerificationStep("none");
-                            setGuestOfferError(null);
-
-                            // Submit offer after successful verification
-                            try {
-                              const userId = userProfile.id;
-
-                              setIsSubmittingOffer(true);
-
-                              // Upload attachments if any
-                              let uploadedImageUrls: string[] = [];
-                              if (offerAttachments.length > 0) {
-                                setIsUploadingAttachments(true);
-                                const tempId = `${userId}-${Date.now()}`;
-                                uploadedImageUrls =
-                                  await uploadOfferAttachments(
-                                    offerAttachments,
-                                    tempId,
-                                  );
-                                setIsUploadingAttachments(false);
-                              }
-
-                              // Create the offer
-                              const offerResult = await createOffer({
-                                requestId: request.id,
-                                providerId: userId,
-                                title: offerTitle.trim(),
-                                description: offerDescription.trim() ||
-                                  undefined,
-                                price: offerPrice.trim(),
-                                deliveryTime: offerDuration.trim() || undefined,
-                                location: offerCity.trim() || undefined,
-                                isNegotiable,
-                                images: uploadedImageUrls.length > 0
-                                  ? uploadedImageUrls
-                                  : undefined,
-                              });
-
-                              if (offerResult) {
-                                // Haptic feedback - success
-                                if (navigator.vibrate) {
-                                  navigator.vibrate([30, 50, 30]);
-                                }
-
-                                // ✅ Optimistic Update: إضافة العرض مباشرة إلى الواجهة بدون انتظار
-                                const newOffer: Offer = {
-                                  id: offerResult.id,
-                                  requestId: request.id,
-                                  providerId: userId,
-                                  providerName: userProfile.display_name ||
-                                    "مزود خدمة",
-                                  providerAvatar: userProfile.avatar_url ||
-                                    undefined,
-                                  title: offerTitle.trim(),
-                                  description: offerDescription.trim() || "",
-                                  price: offerPrice.trim(),
-                                  deliveryTime: offerDuration.trim() || "",
-                                  status: "pending",
-                                  createdAt: new Date(),
-                                  isNegotiable,
-                                  location: offerCity.trim() || undefined,
-                                  images: uploadedImageUrls.length > 0
-                                    ? uploadedImageUrls
-                                    : undefined,
-                                };
-
-                                // إضافة العرض مباشرة إلى loadedOffers
-                                setLoadedOffers((prev) => {
-                                  // التحقق من عدم وجود العرض مسبقاً (لتجنب التكرار)
-                                  if (
-                                    prev.some((o) => o.id === offerResult.id)
-                                  ) {
-                                    return prev;
-                                  }
-                                  return [newOffer, ...prev];
-                                });
-
-                                setOfferSubmitted(true);
-
-                                // Notify parent (في الخلفية)
-                                if (onOfferCreated) {
-                                  onOfferCreated().catch((error) => {
-                                    logger.error(
-                                      "Error in onOfferCreated callback:",
-                                      error,
-                                      "service",
-                                    );
-                                  });
-                                }
-
-                                // Reset form
-                                setOfferPrice("");
-                                setOfferTitle("");
-                                setOfferDescription("");
-                                setOfferDuration("");
-                                setOfferCity("");
-                                setOfferAttachments([]);
-                                setSelectedImageUrls([]);
-                                setSearchedImages([]);
-                                setSelectedSearchImages(new Set());
-                                setGuestOfferPhone("");
-                                setGuestOfferOTP("");
-
-                                setTimeout(() => {
-                                  setOfferSubmitted(false);
-                                }, 2000);
-                              } else {
-                                setGuestOfferError(
-                                  "حدث خطأ في إرسال العرض. حاول مرة أخرى.",
-                                );
-                              }
-                            } catch (err: any) {
-                              logger.error(
-                                "Submit offer error:",
-                                err,
-                                "service",
-                              );
-                              const errorMessage = err?.message ||
-                                err?.error?.message ||
-                                "حدث خطأ في إرسال العرض. حاول مرة أخرى.";
-                              logger.error(
-                                "Error sending guest offer",
-                                err,
-                                "RequestDetail",
-                              );
-                              setGuestOfferError(
-                                `حدث خطأ في إرسال العرض:\n${errorMessage}`,
-                              );
-                            } finally {
-                              setIsSubmittingOffer(false);
-                              setIsUploadingAttachments(false);
-                            }
-                          } else {
-                            // ترجمة رسالة الخطأ للعربية
-                            const translatedError = translateAuthError(
-                              result.error || "رمز التحقق غير صحيح",
-                            );
-                            setGuestOfferError(translatedError);
-                            setGuestOfferOTP("");
-                          }
-                        }}
-                        disabled={isVerifyingOfferOTP}
-                        className="flex-1 h-12 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
-                      >
-                        {isVerifyingOfferOTP
-                          ? "جاري التحقق..."
-                          : "تحقق وإرسال العرض"}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setGuestOfferVerificationStep("phone");
-                          setGuestOfferOTP("");
-                          setGuestOfferError(null);
-                        }}
-                        className="px-4 h-12 bg-secondary text-foreground rounded-lg font-bold hover:bg-secondary/80 transition-colors"
-                      >
-                        رجوع
-                      </button>
-                    </div>
-
-                    {/* زر إعادة إرسال الرمز */}
-                    <button
-                      onClick={async () => {
-                        setIsSendingOfferOTP(true);
-                        setGuestOfferError(null);
-                        const result = await verifyGuestPhone(guestOfferPhone);
-                        setIsSendingOfferOTP(false);
-                        if (result.success) {
-                          setGuestOfferOTP("");
-                          // إظهار رسالة نجاح مؤقتة
-                          setGuestOfferError(null);
-                        } else {
-                          const translatedError = translateAuthError(
-                            result.error || "فشل إرسال رمز التحقق",
-                          );
-                          setGuestOfferError(translatedError);
-                        }
-                      }}
-                      disabled={isSendingOfferOTP}
-                      className="w-full text-center text-sm text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
-                    >
-                      {isSendingOfferOTP
-                        ? "جاري إعادة الإرسال..."
-                        : "لم يصلك الرمز؟ إعادة الإرسال"}
-                    </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </motion.div>
-            </div>,
+            </>,
             document.body,
           )}
 
@@ -5141,7 +4605,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                           `Conversation notifications ${
                             !isConversationMuted ? "muted" : "unmuted"
                           }`,
-                          { conversationId: activeConversation?.id },
+                          { conversationId: currentConversation?.id },
                           "RequestDetail",
                         );
                       }}
@@ -5456,66 +4920,67 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
         </AnimatePresence>
 
         {/* AI Offer Assist Modal */}
-        {showAIAssist && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-            <div className="bg-card w-full max-w-lg rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[80vh]">
-              <div className="p-4 border-b border-border bg-gradient-to-r from-indigo-500/10 to-purple-500/10 flex justify-between items-center">
-                <h3 className="font-bold flex items-center gap-2 text-indigo-600">
-                  <Sparkles size={22} /> مساعد العروض الذكي
-                </h3>
-                <button onClick={() => setShowAIAssist(false)}>
-                  <X size={22} />
-                </button>
-              </div>
-
-              <div className="flex-1 p-6 overflow-y-auto no-scrollbar">
-                <div className="flex gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
-                    <Wand2 size={24} />
-                  </div>
-                  <div className="bg-secondary p-3 rounded-2xl rounded-tr-none text-sm">
-                    أهلاً بك! قرأت تفاصيل طلب "{request.title}". كيف تبي يكون
-                    عرضك؟
-                  </div>
+        {showAIAssist &&
+          ReactDOM.createPortal(
+            <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+              <div className="bg-card w-full max-w-lg rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[80vh]">
+                <div className="p-4 border-b border-border bg-gradient-to-r from-indigo-500/10 to-purple-500/10 flex justify-between items-center">
+                  <h3 className="font-bold flex items-center gap-2 text-indigo-600">
+                    <Sparkles size={22} /> مساعد العروض الذكي
+                  </h3>
+                  <button onClick={() => setShowAIAssist(false)}>
+                    <X size={22} />
+                  </button>
                 </div>
-                {isGenerating && (
-                  <div className="flex gap-3 mb-4 animate-pulse">
-                    <div className="w-10 h-10 rounded-full bg-indigo-100 shrink-0">
+
+                <div className="flex-1 p-6 overflow-y-auto no-scrollbar">
+                  <div className="flex gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                      <Wand2 size={24} />
                     </div>
-                    <div className="h-10 bg-secondary rounded-2xl w-32"></div>
+                    <div className="bg-secondary p-3 rounded-2xl rounded-tr-none text-sm">
+                      أهلاً بك! قرأت تفاصيل طلب "{request.title}". كيف تبي يكون
+                      عرضك؟
+                    </div>
                   </div>
-                )}
-              </div>
+                  {isGenerating && (
+                    <div className="flex gap-3 mb-4 animate-pulse">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 shrink-0">
+                      </div>
+                      <div className="h-10 bg-secondary rounded-2xl w-32"></div>
+                    </div>
+                  )}
+                </div>
 
-              <div className="p-4 border-t border-border bg-secondary/20">
-                <div className="flex gap-2 relative">
-                  <input
-                    className="flex-1 border border-border rounded-full px-4 py-3 focus:border-primary outline-none pl-12 bg-background text-foreground text-base"
-                    placeholder="اكتب فكرتك أو سجلها صوتياً..."
-                    value={aiInput}
-                    onChange={(e) => setAiInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAIGenerate()}
-                  />
-                  <button
-                    onClick={toggleVoiceInput}
-                    className={`absolute left-14 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors ${
-                      isListening ? "text-red-500 animate-pulse" : ""
-                    }`}
-                  >
-                    <Mic size={28} />
-                  </button>
-                  <button
-                    onClick={handleAIGenerate}
-                    className="w-10 h-10 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition-all active:scale-95 shadow-md"
-                  >
-                    <Send size={18} className="-rotate-90" />
-                  </button>
+                <div className="p-4 border-t border-border bg-secondary/20">
+                  <div className="flex gap-2 relative">
+                    <input
+                      className="flex-1 border border-border rounded-full px-4 py-3 focus:border-primary outline-none pl-12 bg-background text-foreground text-base"
+                      placeholder="اكتب فكرتك أو سجلها صوتياً..."
+                      value={aiInput}
+                      onChange={(e) => setAiInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAIGenerate()}
+                    />
+                    <button
+                      onClick={toggleVoiceInput}
+                      className={`absolute left-14 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors ${
+                        isListening ? "text-red-500 animate-pulse" : ""
+                      }`}
+                    >
+                      <Mic size={28} />
+                    </button>
+                    <button
+                      onClick={handleAIGenerate}
+                      className="w-10 h-10 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition-all active:scale-95 shadow-md"
+                    >
+                      <Send size={18} className="-rotate-90" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
-      </div>
+            </div>,
+            document.body,
+          )}
 
       {/* Hidden Share Card Preview - Used for generating share image */}
       <div
@@ -5588,8 +5053,8 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
       </div>
 
       {/* Report Modal - Bottom Sheet Style for Mobile */}
-      <AnimatePresence>
-        {isReportModalOpen && (
+      {isReportModalOpen &&
+        ReactDOM.createPortal(
           <>
             {/* Backdrop */}
             <motion.div
@@ -5597,7 +5062,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => !isSubmittingReport && setIsReportModalOpen(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999]"
             />
 
             {/* Modal - Bottom Sheet on Mobile, Centered on Desktop */}
@@ -5625,7 +5090,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                   setIsReportModalOpen(false);
                 }
               }}
-              className="fixed inset-x-0 bottom-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 max-w-md w-full mx-auto bg-card border-t sm:border border-border rounded-t-3xl sm:rounded-2xl shadow-2xl z-[101] max-h-[90vh] flex flex-col"
+              className="fixed inset-x-0 bottom-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 max-w-md w-full mx-auto bg-card border-t sm:border border-border rounded-t-3xl sm:rounded-2xl shadow-2xl z-[10000] max-h-[90vh] flex flex-col pb-[env(safe-area-inset-bottom)]"
             >
               {/* Drag Handle - أعلى البوتوم شيت - Mobile Only */}
               <div className="sm:hidden flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none shrink-0">
@@ -5635,6 +5100,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
                 <button
+                  type="button"
                   onClick={() =>
                     !isSubmittingReport && setIsReportModalOpen(false)}
                   className="p-2 hover:bg-secondary/50 rounded-lg transition-colors"
@@ -5663,7 +5129,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                       >
                         <Check size={32} className="text-primary" />
                       </motion.div>
-                      <h4 className="font-bold text-lg mb-2">تم إرسال البلاغ</h4>
+                      <h4 className="font-bold text-lg mb-2">
+                        تم إرسال البلاغ
+                      </h4>
                       <p className="text-muted-foreground text-sm">
                         شكراً لك، سنراجع البلاغ في أقرب وقت
                       </p>
@@ -5691,6 +5159,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         <div className="space-y-2">
                           {REPORT_REASONS.map((reason) => (
                             <button
+                              type="button"
                               key={reason.value}
                               onClick={() => setReportReason(reason.value)}
                               className={`w-full text-right px-4 py-3 rounded-xl border transition-all ${
@@ -5734,6 +5203,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
               {!reportSubmitted && (
                 <div className="shrink-0 p-4 pt-2 border-t border-border bg-card">
                   <button
+                    type="button"
                     onClick={handleSubmitReport}
                     disabled={!reportReason || isSubmittingReport}
                     className={`w-full py-3.5 rounded-xl font-bold text-white transition-all ${
@@ -5756,48 +5226,493 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                 </div>
               )}
             </motion.div>
-          </>
+          </>,
+          document.body,
         )}
-      </AnimatePresence>
 
-      {/* Fullscreen Image Modal */}
-      <AnimatePresence>
-        {expandedImageIndex !== null && request.images &&
-          request.images.length > 0 && (
+      {/* Offer Modal - Bottom Sheet Style */}
+      {isOfferModalOpen &&
+        ReactDOM.createPortal(
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isSubmittingOffer && setIsOfferModalOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999]"
+            />
+
+            {/* Modal - Bottom Sheet */}
+            <motion.div
+              initial={{ opacity: 0, y: "100%" }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: "100%" }}
+              transition={{
+                type: "spring",
+                damping: 35,
+                stiffness: 400,
+                mass: 0.8,
+              }}
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.3 }}
+              dragMomentum={false}
+              onDragEnd={(_, info) => {
+                const velocityThreshold = 800;
+                const offsetThreshold = 150;
+                const shouldClose = info.offset.y > offsetThreshold ||
+                  info.velocity.y > velocityThreshold;
+
+                if (shouldClose && !isSubmittingOffer) {
+                  setIsOfferModalOpen(false);
+                }
+              }}
+              className="fixed inset-x-0 bottom-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 max-w-md w-full mx-auto bg-card border-t sm:border border-border rounded-t-3xl sm:rounded-2xl shadow-2xl z-[10000] max-h-[90vh] flex flex-col pb-[env(safe-area-inset-bottom)]"
+            >
+              {/* Drag Handle */}
+              <div className="sm:hidden flex flex-col items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none shrink-0">
+                <div className="w-20 h-1 bg-muted-foreground/40 dark:bg-muted-foreground/50 rounded-full transition-colors duration-200 active:bg-muted-foreground/60" />
+              </div>
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+                <button
+                  onClick={() =>
+                    !isSubmittingOffer && setIsOfferModalOpen(false)}
+                  className="p-2 hover:bg-secondary/50 rounded-lg transition-colors"
+                >
+                  <X size={20} />
+                </button>
+                <div className="flex flex-col items-center">
+                  <h3 className="font-bold text-lg">تقديم عرض</h3>
+                  <span className="text-[10px] text-muted-foreground">
+                    على طلب: {request.title}
+                  </span>
+                </div>
+                {/* Negotiable Toggle in Header */}
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <div className="relative flex items-center">
+                    <input
+                      type="checkbox"
+                      className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-gray-300 bg-white checked:border-primary checked:bg-primary transition-all"
+                      checked={isNegotiable}
+                      onChange={(e) => setIsNegotiable(e.target.checked)}
+                    />
+                    <Check
+                      size={12}
+                      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100 pointer-events-none"
+                    />
+                  </div>
+                  <span className="text-xs font-bold">قابل للتفاوض</span>
+                </label>
+              </div>
+
+              {/* Scrollable Content */}
+              <div className="flex-1 overflow-y-auto overscroll-contain p-4 pb-20">
+                {/* Floating Label Inputs Row */}
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {/* Price Field */}
+                  <motion.div
+                    className="relative"
+                    animate={shakingFields.price
+                      ? { x: [-4, 4, -4, 4, -4, 4, 0] }
+                      : {}}
+                    transition={{ duration: 0.4, ease: "easeInOut" }}
+                  >
+                    <input
+                      id="price-modal"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className={`peer w-full h-11 rounded-lg border-2 bg-background px-3 pt-3 text-sm outline-none transition-all appearance-none text-right ${
+                        shakingFields.price
+                          ? "border-red-500"
+                          : isPriceFocused
+                          ? "border-primary"
+                          : "border-border"
+                      }`}
+                      placeholder=""
+                      value={offerPrice}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (
+                          value === "" ||
+                          (!isNaN(Number(value)) && Number(value) >= 0)
+                        ) {
+                          setOfferPrice(value);
+                          if (shakingFields.price && value) {
+                            setShakingFields((prev) => ({
+                              ...prev,
+                              price: false,
+                            }));
+                          }
+                        }
+                      }}
+                      onFocus={() => setIsPriceFocused(true)}
+                      onBlur={() => setIsPriceFocused(false)}
+                    />
+                    <label
+                      htmlFor="price-modal"
+                      className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
+                        offerPrice || isPriceFocused
+                          ? "-top-2.5 right-2 bg-card px-1 text-[10px] font-bold max-w-[calc(100%-8px)] overflow-hidden"
+                          : "top-3 right-3 text-sm whitespace-nowrap"
+                      } ${
+                        shakingFields.price
+                          ? "text-red-500"
+                          : offerPrice || isPriceFocused
+                          ? "text-primary"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      <span className="truncate">السعر *</span>
+                    </label>
+                  </motion.div>
+
+                  {/* Duration Field */}
+                  <div className="relative">
+                    <input
+                      id="duration-modal"
+                      type="text"
+                      className={`peer w-full h-11 rounded-lg border-2 bg-background px-3 pt-3 text-sm outline-none transition-all appearance-none border-border text-right ${
+                        isDurationFocused ? "border-primary" : "border-border"
+                      }`}
+                      placeholder=""
+                      value={offerDuration}
+                      onChange={(e) => setOfferDuration(e.target.value)}
+                      onFocus={() => setIsDurationFocused(true)}
+                      onBlur={() => setIsDurationFocused(false)}
+                    />
+                    <label
+                      htmlFor="duration-modal"
+                      className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
+                        offerDuration || isDurationFocused
+                          ? "-top-2.5 right-2 bg-card px-1 text-[10px] text-primary font-bold max-w-[calc(100%-8px)] overflow-hidden leading-tight"
+                          : "top-3 right-3 text-sm text-muted-foreground"
+                      }`}
+                    >
+                      <span
+                        className={offerDuration || isDurationFocused
+                          ? "whitespace-normal text-center"
+                          : "whitespace-nowrap"}
+                      >
+                        مدة التنفيذ
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* City Field */}
+                <div className="mb-4">
+                  <CityAutocomplete
+                    value={offerCity}
+                    onChange={(val) => setOfferCity(val)}
+                    placeholder="ابحث عن مدن، معالم، أو محلات..."
+                    label="الموقع"
+                    showRemoteOption={true}
+                    showGPSOption={true}
+                    showMapOption={true}
+                    showAllCitiesOption={true}
+                  />
+                </div>
+
+                {/* Offer Title Field */}
+                <motion.div
+                  className="relative mb-4"
+                  animate={shakingFields.title
+                    ? { x: [-4, 4, -4, 4, -4, 4, 0] }
+                    : {}}
+                  transition={{ duration: 0.4, ease: "easeInOut" }}
+                >
+                  <input
+                    id="offerTitle-modal"
+                    type="text"
+                    className={`peer w-full h-11 rounded-lg border-2 bg-background px-3 pt-3 text-sm outline-none transition-all appearance-none text-right ${
+                      shakingFields.title
+                        ? "border-red-500"
+                        : isTitleFocused
+                        ? "border-primary"
+                        : "border-border"
+                    }`}
+                    placeholder=""
+                    value={offerTitle || ""}
+                    onChange={(e) => {
+                      setOfferTitle(e.target.value);
+                      if (shakingFields.title && e.target.value) {
+                        setShakingFields((prev) => ({
+                          ...prev,
+                          title: false,
+                        }));
+                      }
+                    }}
+                    onFocus={() => setIsTitleFocused(true)}
+                    onBlur={() => setIsTitleFocused(false)}
+                  />
+                  <label
+                    htmlFor="offerTitle-modal"
+                    className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 ${
+                      offerTitle || isTitleFocused
+                        ? "-top-2.5 right-2 bg-card px-1 text-[10px] font-bold max-w-[calc(100%-16px)] overflow-hidden"
+                        : "top-3 right-3 text-sm whitespace-nowrap"
+                    } ${
+                      shakingFields.title
+                        ? "text-red-500"
+                        : offerTitle || isTitleFocused
+                        ? "text-primary"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    <span className="truncate">عنوان العرض *</span>
+                  </label>
+                </motion.div>
+
+                {/* Description Field */}
+                <div className="mb-6 relative group">
+                  <textarea
+                    id="offerDesc-modal"
+                    className={`peer w-full rounded-lg border-2 bg-background px-3 pt-5 pb-12 text-sm outline-none transition-colors resize-none min-h-[128px] max-h-[500px] border-border text-right ${
+                      isDescriptionFocused ? "border-primary" : "border-border"
+                    }`}
+                    placeholder=""
+                    value={offerDescription}
+                    onChange={(e) => {
+                      setOfferDescription(e.target.value);
+                    }}
+                    onFocus={() => setIsDescriptionFocused(true)}
+                    onBlur={() => setIsDescriptionFocused(false)}
+                  />
+                  <label
+                    htmlFor="offerDesc-modal"
+                    className={`pointer-events-none absolute transition-all duration-200 flex items-center gap-1 z-20 ${
+                      offerDescription || isDescriptionFocused
+                        ? "-top-2.5 right-2 bg-card px-1 text-[10px] text-primary font-bold max-w-[calc(100%-16px)] overflow-hidden"
+                        : "top-2.5 right-3 text-sm text-muted-foreground whitespace-nowrap"
+                    }`}
+                  >
+                    <span className="truncate">تفاصيل العرض</span>
+                  </label>
+                </div>
+
+                {/* Attachments Section */}
+                <div className="mb-4 border-t border-border/50 pt-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Paperclip
+                        size={18}
+                        className="text-muted-foreground"
+                      />
+                      <span className="text-sm font-medium">المرفقات</span>
+                    </div>
+                    {offerAttachments.length > 0 && (
+                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                        {offerAttachments.length}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* File List & Upload */}
+                  <div
+                    className={`border-2 border-dashed rounded-xl p-4 ${
+                      offerAttachments.length > 0
+                        ? "border-primary/50 bg-primary/5"
+                        : "border-border bg-secondary/20"
+                    }`}
+                  >
+                    {offerAttachments.length > 0 && (
+                      <div className="flex gap-2 flex-wrap mb-3">
+                        {offerAttachments.map((file, index) => {
+                          const fileUrl = URL.createObjectURL(file);
+                          const isImage = isImageFile(file);
+                          return (
+                            <div
+                              key={file.name + index}
+                              className="relative group w-16 h-16"
+                            >
+                              <div className="w-full h-full rounded-lg border border-border overflow-hidden bg-background">
+                                {isImage
+                                  ? (
+                                    <img
+                                      src={fileUrl}
+                                      alt={file.name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  )
+                                  : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                      <FileText
+                                        size={20}
+                                        className="text-muted-foreground"
+                                      />
+                                    </div>
+                                  )}
+                              </div>
+                              <button
+                                onClick={() =>
+                                  setOfferAttachments((prev) =>
+                                    prev.filter((_, i) => i !== index)
+                                  )}
+                                className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center shadow-md"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div
+                      onClick={() => offerFileInputRef.current?.click()}
+                      className="flex flex-col items-center justify-center p-3 cursor-pointer hover:bg-black/5 rounded-lg transition-colors"
+                    >
+                      <Upload size={24} className="text-primary mb-1" />
+                      <span className="text-xs text-muted-foreground">
+                        اضغط لرفع ملف
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer / Submit Button */}
+              <div className="shrink-0 p-4 pt-2 border-t border-border bg-card">
+                <button
+                  onClick={async () => {
+                    const canSubmit = offerPrice && offerTitle;
+                    if (!canSubmit) {
+                      // Shake invalid fields logic
+                      setShakingFields((prev) => ({
+                        price: !offerPrice,
+                        title: !offerTitle,
+                      }));
+                      if (navigator.vibrate) navigator.vibrate(50);
+                      return;
+                    }
+                    if (navigator.vibrate) navigator.vibrate(15);
+                    await handleSubmitOfferFromHeader();
+                  }}
+                  disabled={(!offerPrice || !offerTitle) &&
+                    !isSubmittingOffer}
+                  className={`w-full py-3.5 rounded-xl font-bold text-white transition-all shadow-lg ${
+                    offerPrice && offerTitle && !isSubmittingOffer
+                      ? "bg-gradient-to-r from-primary via-primary to-accent active:scale-[0.98] shadow-primary/30"
+                      : "bg-gray-300 dark:bg-gray-700 cursor-not-allowed shadow-none"
+                  }`}
+                >
+                  {isSubmittingOffer
+                    ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 size={20} className="animate-spin" />
+                        <span>
+                          {isUploadingAttachments
+                            ? "جاري الرفع..."
+                            : "جاري الإرسال..."}
+                        </span>
+                      </div>
+                    )
+                    : <span>إرسال العرض</span>}
+                </button>
+              </div>
+            </motion.div>
+          </>,
+          document.body,
+        )}
+
+      {/* Fullscreen Image Modal - Professional Lightbox */}
+      {expandedImageIndex !== null && request.images &&
+        request.images.length > 0 &&
+        ReactDOM.createPortal(
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center"
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[10000] bg-black/95 flex flex-col justify-center items-center backdrop-blur-xl touch-none"
             onClick={() => setExpandedImageIndex(null)}
           >
-            {/* Close Button */}
-            <button
-              onClick={() => setExpandedImageIndex(null)}
-              className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
-            >
-              <X size={24} />
-            </button>
-
-            {/* Image Counter */}
-            <div className="absolute top-4 left-4 z-10 text-white/70 text-sm">
-              {(expandedImageIndex ?? 0) + 1} / {request.images.length}
+            {/* Toolbar */}
+            <div className="absolute top-0 inset-x-0 p-4 flex items-center justify-between z-50">
+              <div className="text-white/90 font-bold bg-black/40 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 text-sm">
+                {expandedImageIndex + 1} / {request.images.length}
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedImageIndex(null);
+                }}
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all border border-white/10 active:scale-95"
+                type="button"
+              >
+                <X size={24} />
+              </button>
             </div>
 
-            {/* Main Image */}
-            <motion.img
-              key={expandedImageIndex}
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              src={request.images[expandedImageIndex ?? 0]}
-              alt="Expanded"
-              className="max-w-full max-h-full object-contain p-4"
-              onClick={(e) => e.stopPropagation()}
-            />
+            {/* Main Image Area */}
+            <div className="relative w-full h-full flex items-center justify-center overflow-hidden p-2 md:p-8">
+              <AnimatePresence initial={false} custom={1}>
+                <motion.img
+                  key={expandedImageIndex}
+                  layoutId={`request-image-${request.id}-${expandedImageIndex}`}
+                  src={request.images[expandedImageIndex]}
+                  alt={`Fullscreen ${expandedImageIndex}`}
+                  className="max-w-full max-h-full object-contain shadow-2xl select-none"
+                  onClick={(e) => e.stopPropagation()}
+                  /* Professional Gestures */
+                  drag
+                  dragConstraints={{ top: 0, bottom: 0, left: 0, right: 0 }}
+                  dragElastic={0.8}
+                  onDragEnd={(e, { offset, velocity }) => {
+                    const swipeThreshold = 50;
+                    const velocityThreshold = 200;
 
-            {/* Navigation Arrows */}
+                    // Vertical Dismiss
+                    if (offset.y > 100) {
+                      setExpandedImageIndex(null);
+                      return;
+                    }
+
+                    // Horizontal Swipe
+                    if (
+                      offset.x < -swipeThreshold ||
+                      velocity.x < -velocityThreshold
+                    ) {
+                      // Next
+                      if (request.images && request.images.length > 1) {
+                        setExpandedImageIndex((prev) =>
+                          prev !== null
+                            ? (prev + 1) % request.images!.length
+                            : 0
+                        );
+                      }
+                    } else if (
+                      offset.x > swipeThreshold ||
+                      velocity.x > velocityThreshold
+                    ) {
+                      // Prev
+                      if (request.images && request.images.length > 1) {
+                        setExpandedImageIndex((prev) =>
+                          prev !== null
+                            ? (prev - 1 + request.images!.length) %
+                              request.images!.length
+                            : 0
+                        );
+                      }
+                    }
+                  }}
+                  /* Fallback Animation if layoutId isn't found (e.g. crossfade/slide) */
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 300,
+                    damping: 30,
+                  }}
+                />
+              </AnimatePresence>
+            </div>
+
+            {/* Navigation Arrows (Desktop) */}
             {request.images.length > 1 && (
               <>
                 <button
@@ -5810,46 +5725,54 @@ export const RequestDetail: React.FC<RequestDetailProps> = (
                         : 0
                     );
                   }}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+                  className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white hidden md:flex items-center justify-center transition-all backdrop-blur-sm active:scale-95"
                 >
-                  <ChevronRight size={28} />
+                  <ChevronLeft size={32} />
                 </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setExpandedImageIndex((prev) =>
-                      prev !== null ? (prev + 1) % request.images!.length : 0
+                      prev !== null
+                        ? (prev + 1) % request.images!.length
+                        : 0
                     );
                   }}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white hidden md:flex items-center justify-center transition-all backdrop-blur-sm active:scale-95"
                 >
-                  <ChevronLeft size={28} />
+                  <ChevronRight size={32} />
                 </button>
               </>
             )}
 
-            {/* Dots Indicator */}
+            {/* Thumbnail Strip (Desktop/Tablet) */}
             {request.images.length > 1 && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2">
-                {request.images.map((_, idx) => (
+              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 max-w-[90vw] overflow-x-auto pb-2 hidden sm:flex gap-2 p-2 rounded-2xl bg-black/30 backdrop-blur-md border border-white/10">
+                {request.images.map((img, idx) => (
                   <button
                     key={idx}
                     onClick={(e) => {
                       e.stopPropagation();
                       setExpandedImageIndex(idx);
                     }}
-                    className={`w-2.5 h-2.5 rounded-full transition-all ${
+                    className={`relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 transition-all duration-300 ${
                       idx === expandedImageIndex
-                        ? "bg-white scale-125"
-                        : "bg-white/40 hover:bg-white/60"
+                        ? "ring-2 ring-primary scale-110 opacity-100"
+                        : "opacity-40 hover:opacity-100 grayscale hover:grayscale-0"
                     }`}
-                  />
+                  >
+                    <img
+                      src={img}
+                      className="w-full h-full object-cover"
+                      alt={`Thumbnail ${idx}`}
+                    />
+                  </button>
                 ))}
               </div>
             )}
-          </motion.div>
+          </motion.div>,
+          document.body,
         )}
-      </AnimatePresence>
-    </motion.div>
+    </React.Fragment>
   );
 };

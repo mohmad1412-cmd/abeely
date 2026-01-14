@@ -9,10 +9,11 @@ import {
   Loader2,
   Check,
   X,
-  Sparkles,
   ChevronDown,
   Camera
 } from "lucide-react";
+import { CityAutocomplete } from "./CityAutocomplete.tsx";
+import { CityResult } from "../../services/placesService.ts";
 
 interface QuickOfferFormProps {
   requestTitle: string;
@@ -23,6 +24,7 @@ interface QuickOfferFormProps {
     location: string;
     title: string;
     description: string;
+    isNegotiable?: boolean;
   }) => Promise<boolean>;
   isSubmitting?: boolean;
   isGuest?: boolean;
@@ -37,17 +39,21 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
   isGuest = false,
   onLoginRequired,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
   const [price, setPrice] = useState("");
   const [duration, setDuration] = useState("");
-  const [location, setLocation] = useState(requestLocation || "");
+  const [location, setLocation] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [isNegotiable, setIsNegotiable] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: boolean }>({});
   const [shakingFields, setShakingFields] = useState<{ [key: string]: boolean }>({});
+  const [isPriceFocused, setIsPriceFocused] = useState(false);
+  const [isDescriptionFocused, setIsDescriptionFocused] = useState(false);
+  const [isLocationFocused, setIsLocationFocused] = useState(false);
   const priceInputRef = useRef<HTMLInputElement>(null);
   const descriptionInputRef = useRef<HTMLTextAreaElement>(null);
+  const locationContainerRef = useRef<HTMLDivElement>(null);
 
   // Common durations for quick select
   const quickDurations = ["يوم", "يومين", "3 أيام", "أسبوع", "أسبوعين", "شهر"];
@@ -99,11 +105,31 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
 
   // Check for saved form data on mount
   useEffect(() => {
-    if (!isGuest && isExpanded) {
+    if (!isGuest) {
       restoreFormDataFromGuest();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isGuest, isExpanded, requestTitle]);
+  }, [isGuest, requestTitle]);
+
+  // Monitor focus on location input
+  useEffect(() => {
+    const handleFocusIn = (e: FocusEvent) => {
+      if (locationContainerRef.current?.contains(e.target as Node)) {
+        setIsLocationFocused(true);
+      }
+    };
+    const handleFocusOut = (e: FocusEvent) => {
+      if (!locationContainerRef.current?.contains(e.target as Node)) {
+        setIsLocationFocused(false);
+      }
+    };
+    document.addEventListener('focusin', handleFocusIn);
+    document.addEventListener('focusout', handleFocusOut);
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn);
+      document.removeEventListener('focusout', handleFocusOut);
+    };
+  }, []);
 
   // Validate and submit
   const handleSubmit = async () => {
@@ -131,6 +157,7 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
       location,
       title: title || `عرض على: ${requestTitle.slice(0, 30)}`,
       description: description || title,
+      isNegotiable,
     });
 
     if (success) {
@@ -142,7 +169,6 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
       
       setTimeout(() => {
         setShowSuccess(false);
-        setIsExpanded(false);
         // Reset form
         setPrice("");
         setDuration("");
@@ -222,79 +248,118 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
     );
   }
 
-  // Collapsed state - Just a button
-  if (!isExpanded) {
-    return (
-      <motion.button
-        onClick={() => {
-          if (navigator.vibrate) navigator.vibrate(10);
-          setIsExpanded(true);
-        }}
-        className="w-full py-4 rounded-2xl bg-primary text-white font-bold text-lg flex items-center justify-center gap-3 shadow-lg shadow-primary/25 hover:shadow-xl transition-all"
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-      >
-        <Send size={20} />
-        قدّم عرضك
-      </motion.button>
-    );
-  }
-
-  // Expanded form
+  // Form (always expanded - no collapsed state)
   return (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: "auto" }}
-      exit={{ opacity: 0, height: 0 }}
-      className="bg-card border border-border rounded-2xl overflow-hidden"
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-border bg-secondary/30">
-        <div className="flex items-center gap-2">
-          <Sparkles size={18} className="text-primary" />
-          <h3 className="font-bold">تقديم عرض سريع</h3>
+    <div className="space-y-4">
+        {/* Location - City Autocomplete with Floating Label */}
+        <div className="space-y-2">
+          <div className="relative" ref={locationContainerRef}>
+            <motion.label
+              htmlFor="location-input"
+              animate={{
+                top: isLocationFocused || location ? "0px" : "50%",
+                fontSize: isLocationFocused || location ? "12px" : "14px",
+              }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className={`absolute right-4 -translate-y-1/2 pointer-events-none bg-background px-2 z-20 ${
+                isLocationFocused || location ? "top-0 border border-border rounded-md py-0.5" : "top-1/2 border-0 py-0"
+              } text-muted-foreground`}
+            >
+              الموقع
+            </motion.label>
+            <div className="[&_input]:py-2.5">
+              <CityAutocomplete
+                value={location}
+                onChange={(value: string, cityResult?: CityResult) => {
+                  setLocation(value);
+                }}
+                placeholder=""
+                showRemoteOption={true}
+                showGPSOption={true}
+                searchMode="places"
+                dropdownDirection="up"
+                onOpenChange={(isOpen) => {
+                  if (isOpen) {
+                    setIsLocationFocused(true);
+                  } else {
+                    // تأخير بسيط للتحقق من أن focus لم ينتقل إلى مكان آخر
+                    setTimeout(() => {
+                      if (!locationContainerRef.current?.contains(document.activeElement)) {
+                        setIsLocationFocused(location.length > 0);
+                      }
+                    }, 100);
+                  }
+                }}
+              />
+            </div>
+          </div>
         </div>
-        <button
-          onClick={() => setIsExpanded(false)}
-          className="w-8 h-8 rounded-full bg-secondary hover:bg-secondary/80 flex items-center justify-center transition-colors"
-        >
-          <X size={16} />
-        </button>
-      </div>
-
-      {/* Form */}
-      <div className="p-4 space-y-4">
         
         {/* Price - Most important */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-            <DollarSign size={14} className="text-primary" />
-            السعر المقترح <span className="text-red-500">*</span>
-          </label>
-          <div className="relative">
-            <motion.input
-              ref={priceInputRef}
-              type="number"
-              value={price}
-              onChange={(e) => {
-                setPrice(e.target.value);
-                setErrors({ ...errors, price: false });
-                setShakingFields({ ...shakingFields, price: false });
-              }}
-              placeholder="مثال: 500"
-              animate={shakingFields.price ? {
-                x: [0, -8, 8, -8, 8, 0],
-                transition: { duration: 0.5 }
-              } : {}}
-              className={`w-full px-3 py-2 text-sm rounded-xl border-2 font-bold text-center transition-colors ${
-                errors.price || shakingFields.price
-                  ? "border-red-500 bg-red-50 dark:bg-red-900/10 ring-2 ring-red-500/30" 
-                  : "border-border bg-background focus:border-primary"
-              }`}
-            />
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-              ر.س
-            </span>
+          <div className="flex flex-col gap-3">
+            {/* Price Input with Floating Label */}
+            <div className="relative">
+              <motion.label
+                htmlFor="price-input"
+                animate={{
+                  top: isPriceFocused || price ? "0px" : "50%",
+                  fontSize: isPriceFocused || price ? "12px" : "14px",
+                }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className={`absolute right-4 -translate-y-1/2 pointer-events-none bg-background px-2 z-10 ${
+                  isPriceFocused || price ? "top-0 border border-border rounded-md py-0.5" : "top-1/2 border-0 py-0"
+                } ${errors.price || shakingFields.price ? "text-red-500 border-red-500" : "text-muted-foreground"}`}
+              >
+                سعر العرض <span className="text-red-500">*</span>
+              </motion.label>
+              <motion.input
+                id="price-input"
+                ref={priceInputRef}
+                type="number"
+                value={price}
+                onFocus={() => setIsPriceFocused(true)}
+                onBlur={() => setIsPriceFocused(false)}
+                onChange={(e) => {
+                  setPrice(e.target.value);
+                  setErrors({ ...errors, price: false });
+                  setShakingFields({ ...shakingFields, price: false });
+                }}
+                animate={shakingFields.price ? {
+                  x: [0, -8, 8, -8, 8, 0],
+                  transition: { duration: 0.5 }
+                } : {}}
+                className={`w-full px-4 py-2.5 text-sm rounded-xl border-2 text-center transition-colors focus:outline-none ${
+                  errors.price || shakingFields.price
+                    ? "border-red-500 bg-red-50 dark:bg-red-900/10 ring-2 ring-red-500/30" 
+                    : "border-border bg-background focus:border-primary"
+                }`}
+              />
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                ر.س
+              </span>
+            </div>
+            {/* Negotiable Toggle */}
+            <div className="flex flex-col gap-1">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <div className="relative flex items-center">
+                  <input
+                    type="checkbox"
+                    className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-gray-300 bg-white checked:border-primary checked:bg-primary transition-all dark:bg-background dark:border-border"
+                    checked={isNegotiable}
+                    onChange={(e) => setIsNegotiable(e.target.checked)}
+                  />
+                  <Check
+                    size={12}
+                    className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100 pointer-events-none"
+                  />
+                </div>
+                <span className="text-xs font-bold whitespace-nowrap">قابل للتفاوض</span>
+              </label>
+              <p className="text-[10px] text-muted-foreground/70 pr-6 leading-tight">
+                يمكن لصاحب الطلب التواصل معك قبل اعتماد عرضك
+              </p>
+            </div>
           </div>
           {errors.price && (
             <motion.p 
@@ -307,8 +372,8 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
           )}
         </div>
 
-        {/* Duration - Quick select */}
-        <div className="space-y-2">
+        {/* Duration - Quick select - Temporarily removed */}
+        {/* <div className="space-y-2">
           <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Clock size={14} className="text-primary" />
             مدة التنفيذ
@@ -328,34 +393,47 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
               </button>
             ))}
           </div>
-        </div>
+        </div> */}
 
-        {/* Title/Brief - Simple */}
+        {/* Title/Brief - Simple with Floating Label */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-            <FileText size={14} className="text-purple-500" />
-            ملخص عرضك
-          </label>
-          <motion.textarea
-            ref={descriptionInputRef}
-            value={description}
-            onChange={(e) => {
-              setDescription(e.target.value);
-              setErrors({ ...errors, title: false });
-              setShakingFields({ ...shakingFields, title: false });
-            }}
-            placeholder="صف عرضك باختصار... (اختياري)"
-            rows={3}
-            animate={shakingFields.title ? {
-              x: [0, -8, 8, -8, 8, 0],
-              transition: { duration: 0.5 }
-            } : {}}
-            className={`w-full px-4 py-3 rounded-xl border-2 resize-none transition-colors ${
-              errors.title || shakingFields.title
-                ? "border-red-500 bg-red-50 dark:bg-red-900/10 ring-2 ring-red-500/30" 
-                : "border-border bg-background focus:border-primary"
-            }`}
-          />
+          <div className="relative">
+            <motion.label
+              htmlFor="description-input"
+              animate={{
+                top: isDescriptionFocused || description ? "0px" : "16px",
+                fontSize: isDescriptionFocused || description ? "12px" : "14px",
+              }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className={`absolute right-4 -translate-y-1/2 pointer-events-none bg-background px-2 z-10 ${
+                isDescriptionFocused || description ? "top-0 border border-border rounded-md py-0.5" : "top-4 border-0 py-0"
+              } ${errors.title || shakingFields.title ? "text-red-500 border-red-500" : "text-muted-foreground"}`}
+            >
+              ملخص عرضك <span className="text-red-500">*</span>
+            </motion.label>
+            <motion.textarea
+              id="description-input"
+              ref={descriptionInputRef}
+              value={description}
+              onFocus={() => setIsDescriptionFocused(true)}
+              onBlur={() => setIsDescriptionFocused(false)}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                setErrors({ ...errors, title: false });
+                setShakingFields({ ...shakingFields, title: false });
+              }}
+              rows={3}
+              animate={shakingFields.title ? {
+                x: [0, -8, 8, -8, 8, 0],
+                transition: { duration: 0.5 }
+              } : {}}
+              className={`w-full px-4 py-3 pt-4 rounded-xl border-2 resize-none transition-colors focus:outline-none ${
+                errors.title || shakingFields.title
+                  ? "border-red-500 bg-red-50 dark:bg-red-900/10 ring-2 ring-red-500/30" 
+                  : "border-border bg-background focus:border-primary"
+              }`}
+            />
+          </div>
         </div>
 
         {/* Submit Button */}
@@ -394,7 +472,6 @@ export const QuickOfferForm: React.FC<QuickOfferFormProps> = ({
           </p>
         )}
       </div>
-    </motion.div>
   );
 };
 

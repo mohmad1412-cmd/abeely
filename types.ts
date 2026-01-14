@@ -3,6 +3,7 @@ export interface Request {
   title: string;
   description: string;
   author: string;
+  authorId?: string; // معرف صاحب الطلب للتحقق من الملكية
   createdAt: Date;
   updatedAt?: Date;
   status: "active" | "assigned" | "completed" | "archived";

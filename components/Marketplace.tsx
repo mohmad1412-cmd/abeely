@@ -21,6 +21,7 @@ import { AVAILABLE_CATEGORIES } from "../data.ts";
 import { getCurrentLocale } from "../services/categoriesService.ts";
 import { getKnownCategoryColor } from "../utils/categoryColors.ts";
 import { CategoryIcon } from "./ui/CategoryIcon.tsx";
+import { getOfferStatusConfig } from "../utils/statusConfig.ts";
 import {
   AlertCircle,
   ArrowDown,
@@ -36,6 +37,7 @@ import {
   Edit,
   Eye,
   Filter,
+  Flag,
   Globe,
   Heart,
   Loader2,
@@ -45,6 +47,7 @@ import {
   Plus,
   RotateCw,
   Search,
+  Share2,
   User as UserIcon,
   WifiOff,
   X,
@@ -57,6 +60,10 @@ import CompactListView from "./ui/CompactListView.tsx";
 import { CityAutocomplete } from "./ui/CityAutocomplete.tsx";
 import { ReportModal } from "./ui/ReportModal.tsx";
 import { HighlightedText } from "./ui/HighlightedText.tsx";
+import {
+  copyShareUrl,
+  getRequestShareUrl,
+} from "../services/routingService.ts";
 
 import { calculateSeriousness } from "../services/requestsService.ts";
 import { markRequestAsViewed } from "../services/requestViewsService.ts";
@@ -132,6 +139,7 @@ export interface MarketplaceProps {
   onHideRequest?: (requestId: string) => Promise<boolean> | void;
   onUnhideRequest?: (requestId: string) => Promise<boolean> | void;
   onArchiveRequest?: (requestId: string) => Promise<boolean> | void;
+  onOpenChat?: (requestId: string, offer: Offer) => void;
 }
 
 export const Marketplace: React.FC<MarketplaceProps> = ({
@@ -165,6 +173,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   onHideRequest,
   onUnhideRequest,
   onArchiveRequest,
+  onOpenChat,
   // Main Header Props
   // Main Header Props
   user,
@@ -1322,7 +1331,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       <div
         ref={marketplaceScrollRef}
         id="marketplace-container"
-        className="h-full overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar overflow-y-auto"
+        className="h-full overflow-x-hidden w-full mx-auto max-w-6xl relative no-scrollbar overflow-y-auto"
       >
         {/* Sticky Header Wrapper - Unified with main header - same structure as MyRequests/MyOffers */}
         <div className="sticky top-0 z-[60] overflow-visible">
@@ -1875,7 +1884,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         )}
 
         {/* Content - الكروت تبدأ من هنا مباشرة بعد pull-to-refresh */}
-        <div className="px-4 pb-24">
+        <div className="pb-24">
           {/* Floating Scroll to Top Button - Same position as the orb */}
           {/* يظهر فقط إذا كان هناك أكثر من 9 طلبات وتم السكرول للأسفل */}
           <AnimatePresence>
@@ -1916,7 +1925,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
               >
                 <motion.div
                   animate={{ rotate: isAtTop ? 180 : 0 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  transition={{ duration: 0.1, ease: "easeOut" }}
                 >
                   <ChevronUp size={18} strokeWidth={2.5} />
                 </motion.div>
@@ -1996,7 +2005,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         />
                         التصنيف
                         {searchCategories.length > 0 && (
-                          <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-primary text-white px-1.5 text-[10px] font-bold">
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold aspect-square">
                             {searchCategories.length}
                           </span>
                         )}
@@ -2017,7 +2026,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           animate={{
                             rotate: expandedSection === "category" ? 180 : 0,
                           }}
-                          transition={{ duration: 0.2 }}
+                          transition={{ duration: 0.1, ease: "easeOut" }}
                         >
                           <ChevronDown
                             size={18}
@@ -2033,7 +2042,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.3, ease: "easeInOut" }}
+                          transition={{ duration: 0.15, ease: "easeOut" }}
                           className="overflow-hidden space-y-3"
                         >
                           {/* Category Search Input */}
@@ -2144,7 +2153,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           animate={{
                             rotate: expandedSection === "city" ? 180 : 0,
                           }}
-                          transition={{ duration: 0.2 }}
+                          transition={{ duration: 0.1, ease: "easeOut" }}
                         >
                           <ChevronDown
                             size={18}
@@ -2160,7 +2169,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.3, ease: "easeInOut" }}
+                          transition={{ duration: 0.15, ease: "easeOut" }}
                           className="overflow-hidden space-y-3"
                         >
                           {/* City Autocomplete with Google Places */}
@@ -2223,7 +2232,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         animate={{
                           rotate: expandedSection === "budget" ? 180 : 0,
                         }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.1, ease: "easeOut" }}
                       >
                         <ChevronDown
                           size={18}
@@ -2238,7 +2247,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.3, ease: "easeInOut" }}
+                          transition={{ duration: 0.15, ease: "easeOut" }}
                           className="overflow-hidden space-y-3"
                         >
                           {/* Budget Range Inputs */}
@@ -2355,7 +2364,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     marginBottom: 0,
                     marginTop: 0,
                   }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
                   className="overflow-hidden"
                 >
                   {/* Interests Panel - Collapsible */}
@@ -2408,7 +2417,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           animate={{
                             rotate: isInterestsPanelExpanded ? 180 : 0,
                           }}
-                          transition={{ duration: 0.2 }}
+                          transition={{ duration: 0.1, ease: "easeOut" }}
                         >
                           <ChevronDown
                             size={18}
@@ -2425,7 +2434,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
+                          transition={{ duration: 0.15, ease: "easeOut" }}
                           className="overflow-hidden"
                         >
                           {/* Action Button */}
@@ -3112,7 +3121,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: "auto", opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.3, ease: "easeInOut" }}
+                            transition={{ duration: 0.15, ease: "easeOut" }}
                             className="overflow-hidden border-t border-border"
                           >
                             <div className="p-3 space-y-3">
@@ -3174,7 +3183,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: "auto", opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.3, ease: "easeInOut" }}
+                            transition={{ duration: 0.15, ease: "easeOut" }}
                             className="overflow-hidden border-t border-border"
                           >
                             <div className="p-3 space-y-3">
@@ -3363,7 +3372,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: "auto", opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.3, ease: "easeInOut" }}
+                            transition={{ duration: 0.15, ease: "easeOut" }}
                             className="overflow-hidden border-t border-border"
                           >
                             <div className="p-3 space-y-3">
@@ -3515,645 +3524,701 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: 30 }}
                       transition={{ duration: 0.25 }}
+                      className="w-full pt-4 pb-20 px-4"
                     >
                       {/* Original Grid View */}
-                      <div className="relative -mx-4">
-                        <div className="w-full pt-4 pb-20">
-                          <motion.div
-                            key={`grid-${searchCategories.join(",")}-${
-                              searchCities.join(",")
-                            }-${searchTerm}-${searchBudgetMin}-${searchBudgetMax}`}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ duration: 0.2 }}
-                            className="grid grid-cols-1 gap-6 min-h-[100px] pt-2"
-                          >
-                            {filteredRequests.map((req, index) => {
-                              const myOffer = getMyOffer(req.id);
-                              const requestAuthorId = (
-                                req as { authorId?: string; author_id?: string }
-                              ).authorId ||
+                      <motion.div
+                        key={`grid-${searchCategories.join(",")}-${
+                          searchCities.join(",")
+                        }-${searchTerm}-${searchBudgetMin}-${searchBudgetMax}`}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2 }}
+                        className="grid grid-cols-1 gap-6 min-h-[100px] pt-2"
+                      >
+                        {filteredRequests.map((req, index) => {
+                          const myOffer = getMyOffer(req.id);
+                          const requestAuthorId = (
+                            req as { authorId?: string; author_id?: string }
+                          ).authorId ||
+                            (
+                              req as {
+                                authorId?: string;
+                                author_id?: string;
+                              }
+                            ).author_id || req.author;
+                          const isMyRequest = !!user?.id &&
+                            requestAuthorId === user.id;
+                          const isNinthItem = index === 8; // 9th item (0-indexed)
+                          const isTouchHovered = touchHoveredCardId === req.id; // هل الإصبع فوق هذا الكارت؟
+                          // نقطة القراءة تظهر فقط على الطلبات التي لم يفتحها المستخدم أبداً
+                          // ولا تظهر أثناء تحميل viewedRequestIds لتجنب الظهور المؤقت على كل الطلبات
+                          const isUnread = !isMyRequest &&
+                            !isLoadingViewedRequests &&
+                            !viewedRequestIds.has(req.id); // طلب غير مقروء
+                          return (
+                            <motion.div
+                              key={req.id}
+                              ref={(el) => {
+                                // Store ref in cardRefs map for touch detection
+                                if (el) {
+                                  cardRefs.current.set(req.id, el);
+                                }
+                                // Also handle ninthItemRef
+                                if (isNinthItem && el) {
+                                  (ninthItemRef as React.MutableRefObject<
+                                    HTMLDivElement | null
+                                  >).current = el;
+                                }
+                              }}
+                              data-request-id={req.id}
+                              initial={{ opacity: 0, y: 15 }}
+                              animate={isTouchHovered
+                                ? { opacity: 1, y: -8, scale: 1.02 }
+                                : { opacity: 1, y: 0, scale: 1 }}
+                              transition={{
+                                type: "spring",
+                                stiffness: 400,
+                                damping: 30,
+                                delay: index < 9 ? index * 0.03 : 0, // تأخير خفيف فقط لأول 9 كروت
+                              }}
+                              whileHover={{ y: -8, scale: 1.02 }}
+                              className={`w-full bg-card border border-border/40 rounded-2xl overflow-hidden transition-all duration-300 flex flex-col cursor-pointer relative shadow-sm hover:shadow-md hover:border-primary/20 box-border ${
+                                isTouchHovered ? "" : "group"
+                              }`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                // Update guest viewed requests in localStorage
+                                if (isGuest) {
+                                  setGuestViewedIds((prev) => {
+                                    const newSet = new Set(prev);
+                                    newSet.add(req.id);
+                                    try {
+                                      localStorage.setItem(
+                                        "guestViewedRequestIds",
+                                        JSON.stringify([...newSet]),
+                                      );
+                                    } catch (e) {
+                                      logger.error(
+                                        "Error saving guest viewed requests:",
+                                        e,
+                                      );
+                                    }
+                                    return newSet;
+                                  });
+                                }
+                                onSelectRequest(req);
+                              }}
+                              onTouchStart={(e) => {
+                                // Prevent scroll interference
+                                e.stopPropagation();
+                              }}
+                              onTouchEnd={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                // Update guest viewed requests in localStorage
+                                if (isGuest) {
+                                  setGuestViewedIds((prev) => {
+                                    const newSet = new Set(prev);
+                                    newSet.add(req.id);
+                                    try {
+                                      localStorage.setItem(
+                                        "guestViewedRequestIds",
+                                        JSON.stringify([...newSet]),
+                                      );
+                                    } catch (e) {
+                                      logger.error(
+                                        "Error saving guest viewed requests:",
+                                        e,
+                                      );
+                                    }
+                                    return newSet;
+                                  });
+                                }
+                                onSelectRequest(req);
+                              }}
+                            >
+                              {/* My Request Indicator - مؤشر طلبي الخاص */}
+                              {isMyRequest && (
+                                <motion.div
+                                  initial={{ opacity: 0, scale: 0.8 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  className="absolute top-3 left-3 z-20 w-7 h-7 rounded-full bg-teal-600 backdrop-blur-sm flex items-center justify-center shadow-md border border-white/30"
+                                  title="هذا طلبك"
+                                >
+                                  <UserIcon
+                                    size={14}
+                                    className="text-white"
+                                  />
+                                </motion.div>
+                              )}
+                              {/* Viewed Indicator - مؤشر المشاهدة (فتحت هذا الطلب سابقاً) */}
+                              {!isMyRequest &&
+                                viewedRequestIds.has(req.id) &&
                                 (
-                                  req as {
-                                    authorId?: string;
-                                    author_id?: string;
-                                  }
-                                ).author_id || req.author;
-                              const isMyRequest = !!user?.id &&
-                                requestAuthorId === user.id;
-                              const isNinthItem = index === 8; // 9th item (0-indexed)
-                              const isTouchHovered =
-                                touchHoveredCardId === req.id; // هل الإصبع فوق هذا الكارت؟
-                              // نقطة القراءة تظهر فقط على الطلبات التي لم يفتحها المستخدم أبداً
-                              // ولا تظهر أثناء تحميل viewedRequestIds لتجنب الظهور المؤقت على كل الطلبات
-                              const isUnread = !isMyRequest &&
-                                !isLoadingViewedRequests &&
-                                !viewedRequestIds.has(req.id); // طلب غير مقروء
-                              return (
-                                <div key={req.id} className="flex">
                                   <motion.div
-                                    ref={(el) => {
-                                      // Store ref in cardRefs map for touch detection
-                                      if (el) {
-                                        cardRefs.current.set(req.id, el);
-                                      }
-                                      // Also handle ninthItemRef
-                                      if (isNinthItem && el) {
-                                        (ninthItemRef as React.MutableRefObject<
-                                          HTMLDivElement | null
-                                        >).current = el;
-                                      }
-                                    }}
-                                    data-request-id={req.id}
-                                    initial={{ opacity: 0, y: 15 }}
-                                    animate={isTouchHovered
-                                      ? { opacity: 1, y: -8, scale: 1.02 }
-                                      : { opacity: 1, y: 0, scale: 1 }}
-                                    transition={{
-                                      type: "spring",
-                                      stiffness: 400,
-                                      damping: 30,
-                                      delay: index < 9 ? index * 0.03 : 0, // تأخير خفيف فقط لأول 9 كروت
-                                    }}
-                                    whileHover={{ y: -8, scale: 1.02 }}
-                                    className={`w-full bg-card border border-border rounded-2xl overflow-hidden transition-all duration-300 flex flex-col cursor-pointer relative shadow-sm hover:shadow-md hover:border-primary/20 ${
-                                      isTouchHovered ? "" : "group"
-                                    }`}
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      // Update guest viewed requests in localStorage
-                                      if (isGuest) {
-                                        setGuestViewedIds((prev) => {
-                                          const newSet = new Set(prev);
-                                          newSet.add(req.id);
-                                          try {
-                                            localStorage.setItem(
-                                              "guestViewedRequestIds",
-                                              JSON.stringify([...newSet]),
-                                            );
-                                          } catch (e) {
-                                            logger.error(
-                                              "Error saving guest viewed requests:",
-                                              e,
-                                            );
-                                          }
-                                          return newSet;
-                                        });
-                                      }
-                                      onSelectRequest(req);
-                                    }}
-                                    onTouchStart={(e) => {
-                                      // Prevent scroll interference
-                                      e.stopPropagation();
-                                    }}
-                                    onTouchEnd={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      // Update guest viewed requests in localStorage
-                                      if (isGuest) {
-                                        setGuestViewedIds((prev) => {
-                                          const newSet = new Set(prev);
-                                          newSet.add(req.id);
-                                          try {
-                                            localStorage.setItem(
-                                              "guestViewedRequestIds",
-                                              JSON.stringify([...newSet]),
-                                            );
-                                          } catch (e) {
-                                            logger.error(
-                                              "Error saving guest viewed requests:",
-                                              e,
-                                            );
-                                          }
-                                          return newSet;
-                                        });
-                                      }
-                                      onSelectRequest(req);
-                                    }}
+                                    initial={{ opacity: 0, scale: 0.8 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    className="absolute top-3 left-3 z-20 w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center"
+                                    title="فتحت هذا الطلب سابقاً"
                                   >
-                                    {/* My Request Indicator - مؤشر طلبي الخاص */}
-                                    {isMyRequest && (
-                                      <motion.div
-                                        initial={{ opacity: 0, scale: 0.8 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        className="absolute top-3 left-3 z-20 w-7 h-7 rounded-full bg-teal-600 backdrop-blur-sm flex items-center justify-center shadow-md border border-white/30"
-                                        title="هذا طلبك"
-                                      >
-                                        <UserIcon
-                                          size={14}
-                                          className="text-white"
+                                    <Eye
+                                      size={14}
+                                      className="text-white/80"
+                                    />
+                                  </motion.div>
+                                )}
+                              {/* Unread Indicator - نقطة القراءة (طلب غير مقروء) */}
+                              {isUnread && !isMyRequest && (
+                                <motion.div
+                                  initial={{ opacity: 0, scale: 0 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  className="absolute top-3 right-3 z-20 w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50 border-2 border-white dark:border-card"
+                                  title="طلب غير مقروء"
+                                />
+                              )}
+                              {/* Category Icon Section - As Primary Visual */}
+                              <motion.div className="h-40 w-full relative overflow-hidden bg-secondary/10 flex items-center justify-center group-hover:bg-secondary/20 transition-colors duration-500">
+                                {/* Background Decoration */}
+                                <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-foreground to-transparent" />
+
+                                {/* Animated Pattern */}
+                                <motion.div
+                                  className="absolute -inset-20 opacity-[0.05]"
+                                  style={{
+                                    backgroundImage:
+                                      `repeating-linear-gradient(45deg, currentColor, currentColor 1px, transparent 1px, transparent 20px)`,
+                                    backgroundSize: "40px 40px",
+                                  }}
+                                  animate={{
+                                    backgroundPosition: [
+                                      "0px 0px",
+                                      "40px 40px",
+                                    ],
+                                  }}
+                                  transition={{
+                                    duration: 20,
+                                    repeat: Infinity,
+                                    ease: "linear",
+                                  }}
+                                />
+
+                                {/* Main Category Icon */}
+                                {(() => {
+                                  // Find the first/main category
+                                  const mainCatLabel = req.categories
+                                    ?.[0];
+                                  const mainCatObj = mainCatLabel
+                                    ? categories.find(
+                                      (c) =>
+                                        c.label === mainCatLabel ||
+                                        c.id === mainCatLabel,
+                                    )
+                                    : null;
+
+                                  return (
+                                    <motion.div
+                                      initial={{ scale: 0.8, opacity: 0 }}
+                                      animate={{ scale: 1, opacity: 1 }}
+                                      transition={{
+                                        type: "spring",
+                                        stiffness: 300,
+                                        damping: 20,
+                                      }}
+                                      className="relative z-10 flex flex-col items-center gap-3"
+                                    >
+                                      <div className="w-16 h-16 rounded-3xl bg-background shadow-lg shadow-black/5 flex items-center justify-center border border-border/50 group-hover:scale-110 group-hover:shadow-xl transition-all duration-500">
+                                        <CategoryIcon
+                                          icon={mainCatObj?.icon}
+                                          emoji={mainCatObj?.emoji}
+                                          size={32}
                                         />
-                                      </motion.div>
-                                    )}
-                                    {/* Viewed Indicator - مؤشر المشاهدة (فتحت هذا الطلب سابقاً) */}
-                                    {!isMyRequest &&
-                                      viewedRequestIds.has(req.id) &&
-                                      (
-                                        <motion.div
-                                          initial={{ opacity: 0, scale: 0.8 }}
-                                          animate={{ opacity: 1, scale: 1 }}
-                                          className="absolute top-3 left-3 z-20 w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center"
-                                          title="فتحت هذا الطلب سابقاً"
-                                        >
-                                          <Eye
-                                            size={14}
-                                            className="text-white/80"
-                                          />
-                                        </motion.div>
+                                      </div>
+                                      {/* Optional: Show image count if images exist, but subtly */}
+                                      {req.images &&
+                                        req.images.length > 0 && (
+                                        <div className="absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center shadow-md border-2 border-white dark:border-card">
+                                          <Camera size={12} />
+                                        </div>
                                       )}
-                                    {/* Unread Indicator - نقطة القراءة (طلب غير مقروء) */}
-                                    {isUnread && !isMyRequest && (
-                                      <motion.div
-                                        initial={{ opacity: 0, scale: 0 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        className="absolute top-3 right-3 z-20 w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50 border-2 border-white dark:border-card"
-                                        title="طلب غير مقروء"
-                                      />
-                                    )}
-                                    {/* Category Icon Section - As Primary Visual */}
-                                    <motion.div className="h-40 w-full relative overflow-hidden bg-secondary/10 flex items-center justify-center group-hover:bg-secondary/20 transition-colors duration-500">
-                                      {/* Background Decoration */}
-                                      <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-foreground to-transparent" />
+                                    </motion.div>
+                                  );
+                                })()}
+                              </motion.div>
 
-                                      {/* Animated Pattern */}
-                                      <motion.div
-                                        className="absolute -inset-20 opacity-[0.05]"
-                                        style={{
-                                          backgroundImage:
-                                            `repeating-linear-gradient(45deg, currentColor, currentColor 1px, transparent 1px, transparent 20px)`,
-                                          backgroundSize: "40px 40px",
-                                        }}
-                                        animate={{
-                                          backgroundPosition: [
-                                            "0px 0px",
-                                            "40px 40px",
-                                          ],
-                                        }}
-                                        transition={{
-                                          duration: 20,
-                                          repeat: Infinity,
-                                          ease: "linear",
-                                        }}
-                                      />
+                              {/* Title & Description Below Image */}
+                              <div className="px-4 pt-4 pb-0">
+                                <h3 className="text-base font-bold text-foreground line-clamp-1">
+                                  <HighlightedText
+                                    text={req.title}
+                                    words={radarWords}
+                                  />
+                                </h3>
+                                <p className="text-muted-foreground text-xs line-clamp-2 leading-relaxed mt-1">
+                                  <HighlightedText
+                                    text={req.description}
+                                    words={radarWords}
+                                  />
+                                </p>
 
-                                      {/* Main Category Icon */}
-                                      {(() => {
-                                        // Find the first/main category
-                                        const mainCatLabel = req.categories
-                                          ?.[0];
-                                        const mainCatObj = mainCatLabel
-                                          ? categories.find(
+                                {/* First Row: Location Only */}
+                                {req.location && (
+                                  <div className="flex items-center gap-1.5 text-muted-foreground/70 font-medium text-xs mt-2">
+                                    <MapPin
+                                      size={13}
+                                      className="text-primary/60"
+                                    />
+                                    {req.location}
+                                  </div>
+                                )}
+
+                                {/* Second Row: Categories - On their own line - Show only when status is active */}
+                                {req.categories &&
+                                  req.categories.length > 0 &&
+                                  req.status !== "assigned" &&
+                                  req.status !== "completed" && (
+                                  <div className="flex flex-wrap gap-1.5 mt-2">
+                                    {req.categories.map(
+                                      (catLabel, idx) => {
+                                        // البحث عن التصنيف للحصول على الأيقونة والاسم بناءً على اللغة
+                                        // catLabel قد يكون label (عربي) أو id (إنجليزي)
+                                        const categoryObj = categories
+                                          .find(
                                             (c) =>
-                                              c.label === mainCatLabel ||
-                                              c.id === mainCatLabel,
+                                              c.label === catLabel ||
+                                              c.id === catLabel,
+                                          );
+                                        // نعرض الاسم بناءً على اللغة الحالية
+                                        const displayLabel = categoryObj
+                                          ? getCategoryLabel(
+                                            categoryObj,
+                                            locale,
                                           )
-                                          : null;
+                                          : catLabel;
+                                        const categoryId = categoryObj?.id ||
+                                          catLabel;
 
                                         return (
+                                          <span
+                                            key={idx}
+                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                                              getKnownCategoryColor(
+                                                categoryId,
+                                              )
+                                            }`}
+                                          >
+                                            <CategoryIcon
+                                              icon={categoryObj?.icon}
+                                              emoji={categoryObj?.emoji}
+                                              size={12}
+                                            />
+                                            <span className="truncate max-w-[80px]">
+                                              {displayLabel}
+                                            </span>
+                                          </span>
+                                        );
+                                      },
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="px-4 pb-4 flex-1 flex flex-col relative">
+                                {/* Request Info - Clean Professional Layout with Floating Labels */}
+                                <div className="mb-4">
+                                  {/* Seriousness Indicator - مؤشر الجدية */}
+                                  {isMyRequest && (() => {
+                                    const receivedOffers =
+                                      receivedOffersMap.get(req.id) || [];
+                                    const offersCount = receivedOffers.length;
+                                    const seriousness = calculateSeriousness(
+                                      offersCount,
+                                    );
+                                    // استخدام القيمة المحفوظة في الطلب إذا كانت متوفرة، وإلا حسابها من عدد العروض
+                                    const finalSeriousness = req.seriousness ||
+                                      seriousness;
+                                    const seriousnessLabels = [
+                                      "",
+                                      "منخفضة جداً",
+                                      "منخفضة",
+                                      "متوسطة",
+                                      "عالية",
+                                      "عالية جداً",
+                                    ];
+                                    const seriousnessColors = [
+                                      "",
+                                      "text-red-600 bg-red-50 border-red-200",
+                                      "text-orange-600 bg-orange-50 border-orange-200",
+                                      "text-blue-600 bg-blue-50 border-blue-200",
+                                      "text-green-600 bg-green-50 border-green-200",
+                                      "text-emerald-600 bg-emerald-50 border-emerald-200",
+                                    ];
+                                    return (
+                                      <div className="mb-3 flex items-center justify-center">
+                                        <div
+                                          className={`px-3 py-1.5 rounded-full text-xs font-bold border ${
+                                            seriousnessColors[
+                                              finalSeriousness
+                                            ] || seriousnessColors[3]
+                                          }`}
+                                        >
+                                          الجدية: {seriousnessLabels[
+                                            finalSeriousness
+                                          ] || seriousnessLabels[3]}{" "}
+                                          ({offersCount}{" "}
+                                          {offersCount === 1 ? "عرض" : "عروض"})
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+
+                                  {/* Location, Budget, and Delivery Time - Compact Badge Row */}
+                                  <div className="flex flex-wrap gap-2 mt-4">
+                                    {/* City */}
+                                    {req.location && (
+                                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary/40 border border-border/50 text-xs font-medium text-foreground/80">
+                                        <MapPin
+                                          size={13}
+                                          className="text-primary/70"
+                                        />
+                                        <span className="truncate max-w-[100px]">
+                                          {req.location.split("،")[0]}
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {/* Budget */}
+                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary/40 border border-border/50 text-xs font-medium text-foreground/80">
+                                      <DollarSign
+                                        size={13}
+                                        className="text-primary/70"
+                                      />
+                                      <span>
+                                        {req.budgetType === "fixed" &&
+                                            req.budgetMin && req.budgetMax
+                                          ? `${req.budgetMin}-${req.budgetMax} ر.س`
+                                          : "غير محددة"}
+                                      </span>
+                                    </div>
+
+                                    {/* Delivery Time */}
+                                    {req.deliveryTimeFrom && (
+                                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary/40 border border-border/50 text-xs font-medium text-foreground/80">
+                                        <Clock
+                                          size={13}
+                                          className="text-primary/70"
+                                        />
+                                        <span>
+                                          {req.deliveryTimeFrom}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="mt-auto pt-4 pb-4 px-4 border-t border-border">
+                                  {/* Action Area */}
+                                  <div className="flex flex-col gap-3">
+                                    <div className="flex items-center justify-center">
+                                      {req.status === "assigned" ||
+                                          req.status === "completed"
+                                        ? (
+                                          <div className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-muted text-muted-foreground">
+                                            <Lock size={14} />
+                                            منتهي
+                                          </div>
+                                        )
+                                        : isMyRequest
+                                        ? (
+                                          (() => {
+                                            const receivedOffers =
+                                              receivedOffersMap.get(
+                                                req.id,
+                                              ) ||
+                                              [];
+                                            const offersCount =
+                                              receivedOffers.length;
+                                            return (
+                                              <motion.button
+                                                type="button"
+                                                whileHover={{
+                                                  scale: 1.02,
+                                                }}
+                                                whileTap={{ scale: 0.96 }}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  if (
+                                                    navigator.vibrate
+                                                  ) {
+                                                    navigator.vibrate([
+                                                      10,
+                                                      30,
+                                                      10,
+                                                    ]);
+                                                  }
+                                                  onSelectRequest(
+                                                    req,
+                                                    false,
+                                                  ); // Open request without scrolling to offer section
+                                                }}
+                                                onPointerDown={(e) =>
+                                                  e.stopPropagation()}
+                                                onTouchStart={(e) =>
+                                                  e.stopPropagation()}
+                                                className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800 text-primary border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all relative overflow-visible"
+                                              >
+                                                <UserIcon
+                                                  size={14}
+                                                  className="text-primary"
+                                                />
+                                                <span className="flex items-center gap-1">
+                                                  طلبي
+                                                  {offersCount > 0 && (
+                                                    <span className="text-primary/70 font-bold text-[10px] animate-pulse whitespace-nowrap">
+                                                      ({offersCount}{" "}
+                                                      {offersCount === 1
+                                                        ? "عرض"
+                                                        : "عروض"})
+                                                    </span>
+                                                  )}
+                                                </span>
+                                                {/* Notification badge for offers count */}
+                                                {offersCount > 0 && (
+                                                  <motion.span
+                                                    initial={{ scale: 0 }}
+                                                    animate={{ scale: 1 }}
+                                                    className="absolute -top-1 -left-1 w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-md z-30 border border-white dark:border-gray-900 aspect-square"
+                                                  >
+                                                    {offersCount}
+                                                  </motion.span>
+                                                )}
+                                              </motion.button>
+                                            );
+                                          })()
+                                        )
+                                        : myOffer
+                                        ? (
                                           <motion.div
-                                            initial={{ scale: 0.8, opacity: 0 }}
-                                            animate={{ scale: 1, opacity: 1 }}
+                                            initial={{
+                                              scale: 0.9,
+                                              opacity: 0,
+                                            }}
+                                            animate={{
+                                              scale: 1,
+                                              opacity: 1,
+                                            }}
+                                            className={`w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border ${(() => {
+                                              const config = getOfferStatusConfig(myOffer.status);
+                                              return `${config.bgColor} ${config.textColor} ${config.borderColor}`;
+                                            })()}`}
+                                          >
+                                            {myOffer.status === "accepted"
+                                              ? <CheckCircle size={16} />
+                                              : myOffer.status ===
+                                                  "negotiating"
+                                              ? (
+                                                <MessageCircle
+                                                  size={16}
+                                                />
+                                              )
+                                              : <CheckCircle size={16} />}
+
+                                            {myOffer.status === "accepted"
+                                              ? "تم قبول عرضك"
+                                              : myOffer.status ===
+                                                  "negotiating"
+                                              ? "قيد التفاوض"
+                                              : "تم التقديم"}
+                                          </motion.div>
+                                        )
+                                        : (
+                                          <motion.button
+                                            type="button"
+                                            initial={false}
+                                            whileHover={{
+                                              scale: 1.02,
+                                            }}
+                                            whileTap={{
+                                              scale: 0.98,
+                                            }}
+                                            animate={isTouchHovered
+                                              ? {
+                                                scale: 1.02,
+                                              }
+                                              : {}}
                                             transition={{
                                               type: "spring",
-                                              stiffness: 300,
-                                              damping: 20,
+                                              stiffness: 800,
+                                              damping: 15,
+                                              mass: 0.5,
                                             }}
-                                            className="relative z-10 flex flex-col items-center gap-3"
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              // Quick haptic
+                                              if (navigator.vibrate) {
+                                                navigator.vibrate(10);
+                                              }
+                                              // Open RequestDetail with scroll to offer form
+                                              onSelectRequest(req, true);
+                                            }}
+                                            onPointerDown={(e) =>
+                                              e.stopPropagation()}
+                                            onPointerUp={(e) =>
+                                              e.stopPropagation()}
+                                            onTouchStart={(e) =>
+                                              e.stopPropagation()}
+                                            onTouchEnd={(e) =>
+                                              e.stopPropagation()}
+                                            className="w-full h-9 px-4 text-xs font-bold rounded-xl bg-primary text-white relative overflow-hidden animate-button-breathe"
                                           >
-                                            <div className="w-16 h-16 rounded-3xl bg-background shadow-lg shadow-black/5 flex items-center justify-center border border-border/50 group-hover:scale-110 group-hover:shadow-xl transition-all duration-500">
-                                              <CategoryIcon
-                                                icon={mainCatObj?.icon}
-                                                emoji={mainCatObj?.emoji}
-                                                size={32}
-                                              />
-                                            </div>
-                                            {/* Optional: Show image count if images exist, but subtly */}
-                                            {req.images &&
-                                              req.images.length > 0 && (
-                                              <div className="absolute top-0 right-0 translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center shadow-md border-2 border-white dark:border-card">
-                                                <Camera size={12} />
-                                              </div>
-                                            )}
-                                          </motion.div>
-                                        );
-                                      })()}
-                                    </motion.div>
-
-                                    {/* Title & Description Below Image */}
-                                    <div className="px-5 pt-4 pb-2">
-                                      <h3 className="text-base font-bold text-foreground line-clamp-1">
-                                        <HighlightedText
-                                          text={req.title}
-                                          words={radarWords}
-                                        />
-                                      </h3>
-                                      <p className="text-muted-foreground text-xs line-clamp-2 leading-relaxed mt-1">
-                                        <HighlightedText
-                                          text={req.description}
-                                          words={radarWords}
-                                        />
-                                      </p>
-
-                                      {/* First Row: Location Only */}
-                                      {req.location && (
-                                        <div className="flex items-center gap-1.5 text-muted-foreground/70 font-medium text-xs mt-2">
-                                          <MapPin
-                                            size={13}
-                                            className="text-primary/60"
-                                          />
-                                          {req.location}
-                                        </div>
-                                      )}
-
-                                      {/* Second Row: Categories - On their own line - Show only when status is active */}
-                                      {req.categories &&
-                                        req.categories.length > 0 &&
-                                        req.status !== "assigned" &&
-                                        req.status !== "completed" && (
-                                        <div className="flex flex-wrap gap-1.5 mt-2">
-                                          {req.categories.map(
-                                            (catLabel, idx) => {
-                                              // البحث عن التصنيف للحصول على الأيقونة والاسم بناءً على اللغة
-                                              // catLabel قد يكون label (عربي) أو id (إنجليزي)
-                                              const categoryObj = categories
-                                                .find(
-                                                  (c) =>
-                                                    c.label === catLabel ||
-                                                    c.id === catLabel,
-                                                );
-                                              // نعرض الاسم بناءً على اللغة الحالية
-                                              const displayLabel = categoryObj
-                                                ? getCategoryLabel(
-                                                  categoryObj,
-                                                  locale,
-                                                )
-                                                : catLabel;
-                                              const categoryId =
-                                                categoryObj?.id ||
-                                                catLabel;
-
-                                              return (
-                                                <span
-                                                  key={idx}
-                                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
-                                                    getKnownCategoryColor(
-                                                      categoryId,
-                                                    )
-                                                  }`}
-                                                >
-                                                  <CategoryIcon
-                                                    icon={categoryObj?.icon}
-                                                    emoji={categoryObj?.emoji}
-                                                    size={12}
-                                                  />
-                                                  <span className="truncate max-w-[80px]">
-                                                    {displayLabel}
-                                                  </span>
-                                                </span>
-                                              );
-                                            },
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    <div className="px-5 pb-5 flex-1 flex flex-col relative">
-                                      {/* Request Info - Clean Professional Layout with Floating Labels */}
-                                      <div className="mb-4 mt-4">
-                                        {/* Seriousness Indicator - مؤشر الجدية */}
-                                        {isMyRequest && (() => {
-                                          const receivedOffers =
-                                            receivedOffersMap.get(req.id) || [];
-                                          const offersCount =
-                                            receivedOffers.length;
-                                          const seriousness =
-                                            calculateSeriousness(
-                                              offersCount,
-                                            );
-                                          // استخدام القيمة المحفوظة في الطلب إذا كانت متوفرة، وإلا حسابها من عدد العروض
-                                          const finalSeriousness =
-                                            req.seriousness || seriousness;
-                                          const seriousnessLabels = [
-                                            "",
-                                            "منخفضة جداً",
-                                            "منخفضة",
-                                            "متوسطة",
-                                            "عالية",
-                                            "عالية جداً",
-                                          ];
-                                          const seriousnessColors = [
-                                            "",
-                                            "text-red-600 bg-red-50 border-red-200",
-                                            "text-orange-600 bg-orange-50 border-orange-200",
-                                            "text-blue-600 bg-blue-50 border-blue-200",
-                                            "text-green-600 bg-green-50 border-green-200",
-                                            "text-emerald-600 bg-emerald-50 border-emerald-200",
-                                          ];
-                                          return (
-                                            <div className="mb-3 flex items-center justify-center">
-                                              <div
-                                                className={`px-3 py-1.5 rounded-full text-xs font-bold border ${
-                                                  seriousnessColors[
-                                                    finalSeriousness
-                                                  ] || seriousnessColors[3]
-                                                }`}
-                                              >
-                                                الجدية: {seriousnessLabels[
-                                                  finalSeriousness
-                                                ] || seriousnessLabels[3]}{" "}
-                                                ({offersCount}{" "}
-                                                {offersCount === 1
-                                                  ? "عرض"
-                                                  : "عروض"})
-                                              </div>
-                                            </div>
-                                          );
-                                        })()}
-
-                                        {/* Location, Budget, and Delivery Time - Compact Badge Row */}
-                                        <div className="flex flex-wrap gap-2 mt-4">
-                                          {/* City */}
-                                          {req.location && (
-                                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary/40 border border-border/50 text-xs font-medium text-foreground/80">
-                                              <MapPin
-                                                size={13}
-                                                className="text-primary/70"
-                                              />
-                                              <span className="truncate max-w-[100px]">
-                                                {req.location.split("،")[0]}
-                                              </span>
-                                            </div>
-                                          )}
-
-                                          {/* Budget */}
-                                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary/40 border border-border/50 text-xs font-medium text-foreground/80">
-                                            <DollarSign
-                                              size={13}
-                                              className="text-primary/70"
+                                            {/* Ping Ring - Pulsing border effect */}
+                                            <motion.span
+                                              className="absolute -inset-1 rounded-xl border-[3px] border-primary pointer-events-none"
+                                              animate={{
+                                                scale: [1, 1.2, 1.35],
+                                                opacity: [0.7, 0.3, 0],
+                                              }}
+                                              transition={{
+                                                duration: 1.8,
+                                                repeat: Infinity,
+                                                ease: "easeOut",
+                                              }}
                                             />
-                                            <span>
-                                              {req.budgetType === "fixed" &&
-                                                  req.budgetMin && req.budgetMax
-                                                ? `${req.budgetMin}-${req.budgetMax} ر.س`
-                                                : "غير محددة"}
-                                            </span>
-                                          </div>
+                                            <motion.span
+                                              className="absolute -inset-0.5 rounded-xl border-2 border-primary/80 pointer-events-none"
+                                              animate={{
+                                                scale: [1, 1.1, 1.18],
+                                                opacity: [0.8, 0.4, 0],
+                                              }}
+                                              transition={{
+                                                duration: 1.8,
+                                                repeat: Infinity,
+                                                ease: "easeOut",
+                                                delay: 0.3,
+                                              }}
+                                            />
+                                            {/* Always-on diagonal shimmer - from NE (top-right) to SW (bottom-left) */}
+                                            {/* Light mode shimmer - more visible */}
+                                            <span
+                                              className="absolute inset-0 pointer-events-none animate-shimmer-diagonal dark:hidden"
+                                              style={{
+                                                background:
+                                                  "linear-gradient(315deg, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.12) 50%, transparent 65%, transparent 100%)",
+                                                backgroundSize: "200% 200%",
+                                              }}
+                                            />
+                                            {/* Dark mode shimmer - lighter */}
+                                            <span
+                                              className="absolute inset-0 pointer-events-none animate-shimmer-diagonal hidden dark:block"
+                                              style={{
+                                                background:
+                                                  "linear-gradient(315deg, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.05) 50%, transparent 65%, transparent 100%)",
+                                                backgroundSize: "200% 200%",
+                                              }}
+                                            />
+                                            {/* Intensified shimmer on hover/touch - Light mode */}
+                                            <span
+                                              className={`absolute inset-0 pointer-events-none opacity-0 dark:hidden ${
+                                                isTouchHovered
+                                                  ? "opacity-30"
+                                                  : "group-hover:opacity-30"
+                                              } transition-opacity duration-300 bg-gradient-to-tr from-white/20 via-white/40 to-transparent`}
+                                            />
 
-                                          {/* Delivery Time */}
-                                          {req.deliveryTimeFrom && (
-                                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary/40 border border-border/50 text-xs font-medium text-foreground/80">
-                                              <Clock
-                                                size={13}
-                                                className="text-primary/70"
-                                              />
-                                              <span>
-                                                {req.deliveryTimeFrom}
+                                            {/* Button Content */}
+                                            <span className="relative z-10 flex items-center justify-center gap-2">
+                                              <span className="bg-white/20 p-1 rounded-full backdrop-blur-sm">
+                                                <Plus
+                                                  size={14}
+                                                  strokeWidth={3}
+                                                  className="text-white"
+                                                />
                                               </span>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      <div className="mt-auto pt-4 pb-4 px-5 border-t border-border">
-                                        {/* Action Area */}
-                                        <div className="flex flex-col gap-3">
-                                          <div className="flex items-center justify-center">
-                                            {req.status === "assigned" ||
-                                                req.status === "completed"
-                                              ? (
-                                                <div className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-muted text-muted-foreground">
-                                                  <Lock size={14} />
-                                                  منتهي
-                                                </div>
-                                              )
-                                              : isMyRequest
-                                              ? (
-                                                (() => {
-                                                  const receivedOffers =
-                                                    receivedOffersMap.get(
-                                                      req.id,
-                                                    ) ||
-                                                    [];
-                                                  const offersCount =
-                                                    receivedOffers.length;
-                                                  return (
-                                                    <motion.button
-                                                      type="button"
-                                                      whileHover={{
-                                                        scale: 1.02,
-                                                      }}
-                                                      whileTap={{ scale: 0.96 }}
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        if (
-                                                          navigator.vibrate
-                                                        ) {
-                                                          navigator.vibrate([
-                                                            10,
-                                                            30,
-                                                            10,
-                                                          ]);
-                                                        }
-                                                        onSelectRequest(
-                                                          req,
-                                                          false,
-                                                        ); // Open request without scrolling to offer section
-                                                      }}
-                                                      onPointerDown={(e) =>
-                                                        e.stopPropagation()}
-                                                      onTouchStart={(e) =>
-                                                        e.stopPropagation()}
-                                                      className="w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800 text-primary border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all relative overflow-visible"
-                                                    >
-                                                      <UserIcon
-                                                        size={14}
-                                                        className="text-primary"
-                                                      />
-                                                      <span className="flex items-center gap-1">
-                                                        طلبي
-                                                        {offersCount > 0 && (
-                                                          <span className="text-primary/70 font-bold text-[10px] animate-pulse whitespace-nowrap">
-                                                            ({offersCount}{" "}
-                                                            {offersCount === 1
-                                                              ? "عرض"
-                                                              : "عروض"})
-                                                          </span>
-                                                        )}
-                                                      </span>
-                                                      {/* Notification badge for offers count */}
-                                                      {offersCount > 0 && (
-                                                        <motion.span
-                                                          initial={{ scale: 0 }}
-                                                          animate={{ scale: 1 }}
-                                                          className="absolute -top-1 -left-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-md z-30 border border-white dark:border-gray-900"
-                                                        >
-                                                          {offersCount}
-                                                        </motion.span>
-                                                      )}
-                                                    </motion.button>
-                                                  );
-                                                })()
-                                              )
-                                              : myOffer
-                                              ? (
-                                                <motion.div
-                                                  initial={{
-                                                    scale: 0.9,
-                                                    opacity: 0,
-                                                  }}
-                                                  animate={{
-                                                    scale: 1,
-                                                    opacity: 1,
-                                                  }}
-                                                  className={`w-full h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 ${
-                                                    myOffer.status ===
-                                                        "accepted"
-                                                      ? "bg-primary/15 text-primary"
-                                                      : myOffer.status ===
-                                                          "negotiating"
-                                                      ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
-                                                      : "bg-primary/15 text-primary"
-                                                  }`}
-                                                >
-                                                  {myOffer.status === "accepted"
-                                                    ? <CheckCircle size={16} />
-                                                    : myOffer.status ===
-                                                        "negotiating"
-                                                    ? (
-                                                      <MessageCircle
-                                                        size={16}
-                                                      />
-                                                    )
-                                                    : <CheckCircle size={16} />}
-
-                                                  {myOffer.status === "accepted"
-                                                    ? "تم قبول عرضك"
-                                                    : myOffer.status ===
-                                                        "negotiating"
-                                                    ? "قيد التفاوض"
-                                                    : "تم التقديم"}
-                                                </motion.div>
-                                              )
-                                              : (
-                                                <motion.button
-                                                  type="button"
-                                                  initial={false}
-                                                  whileHover={{
-                                                    scale: 1.02,
-                                                  }}
-                                                  whileTap={{
-                                                    scale: 0.98,
-                                                  }}
-                                                  animate={isTouchHovered
-                                                    ? {
-                                                      scale: 1.02,
-                                                    }
-                                                    : {}}
-                                                  transition={{
-                                                    type: "spring",
-                                                    stiffness: 800,
-                                                    damping: 15,
-                                                    mass: 0.5,
-                                                  }}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    // Quick haptic
-                                                    if (navigator.vibrate) {
-                                                      navigator.vibrate(10);
-                                                    }
-                                                    // Offer modal removed
-                                                  }}
-                                                  onPointerDown={(e) =>
-                                                    e.stopPropagation()}
-                                                  onPointerUp={(e) =>
-                                                    e.stopPropagation()}
-                                                  onTouchStart={(e) =>
-                                                    e.stopPropagation()}
-                                                  onTouchEnd={(e) =>
-                                                    e.stopPropagation()}
-                                                  className="w-full h-9 px-4 text-xs font-bold rounded-xl bg-primary text-white relative overflow-hidden animate-button-breathe"
-                                                >
-                                                  {/* Ping Ring - Pulsing border effect */}
-                                                  <motion.span
-                                                    className="absolute -inset-1 rounded-xl border-[3px] border-primary pointer-events-none"
-                                                    animate={{
-                                                      scale: [1, 1.2, 1.35],
-                                                      opacity: [0.7, 0.3, 0],
-                                                    }}
-                                                    transition={{
-                                                      duration: 1.8,
-                                                      repeat: Infinity,
-                                                      ease: "easeOut",
-                                                    }}
-                                                  />
-                                                  <motion.span
-                                                    className="absolute -inset-0.5 rounded-xl border-2 border-primary/80 pointer-events-none"
-                                                    animate={{
-                                                      scale: [1, 1.1, 1.18],
-                                                      opacity: [0.8, 0.4, 0],
-                                                    }}
-                                                    transition={{
-                                                      duration: 1.8,
-                                                      repeat: Infinity,
-                                                      ease: "easeOut",
-                                                      delay: 0.3,
-                                                    }}
-                                                  />
-                                                  {/* Always-on diagonal shimmer - from NE (top-right) to SW (bottom-left) */}
-                                                  {/* Light mode shimmer - more visible */}
-                                                  <span
-                                                    className="absolute inset-0 pointer-events-none animate-shimmer-diagonal dark:hidden"
-                                                    style={{
-                                                      background:
-                                                        "linear-gradient(315deg, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.12) 50%, transparent 65%, transparent 100%)",
-                                                      backgroundSize:
-                                                        "200% 200%",
-                                                    }}
-                                                  />
-                                                  {/* Dark mode shimmer - lighter */}
-                                                  <span
-                                                    className="absolute inset-0 pointer-events-none animate-shimmer-diagonal hidden dark:block"
-                                                    style={{
-                                                      background:
-                                                        "linear-gradient(315deg, transparent 0%, transparent 35%, rgba(255, 255, 255, 0.05) 50%, transparent 65%, transparent 100%)",
-                                                      backgroundSize:
-                                                        "200% 200%",
-                                                    }}
-                                                  />
-                                                  {/* Intensified shimmer on hover/touch - Light mode */}
-                                                  <span
-                                                    className={`absolute inset-0 pointer-events-none opacity-0 dark:hidden ${
-                                                      isTouchHovered
-                                                        ? "opacity-30"
-                                                        : "group-hover:opacity-30"
-                                                    } transition-opacity duration-300 bg-gradient-to-tr from-white/20 via-white/40 to-transparent`}
-                                                  />
-
-                                                  {/* Button Content */}
-                                                  <span className="relative z-10 flex items-center justify-center gap-2">
-                                                    <span className="bg-white/20 p-1 rounded-full backdrop-blur-sm">
-                                                      <Plus
-                                                        size={14}
-                                                        strokeWidth={3}
-                                                        className="text-white"
-                                                      />
-                                                    </span>
-                                                    <span>تقديم عرض</span>
-                                                  </span>
-                                                </motion.button>
-                                              )}
-                                          </div>
-                                        </div>
-                                      </div>
+                                              <span>تقديم عرض</span>
+                                            </span>
+                                          </motion.button>
+                                        )}
                                     </div>
-                                  </motion.div>
+
+                                    {/* Share and Report Buttons */}
+                                    {!isMyRequest && (
+                                      <div className="flex items-center justify-center gap-2 mt-2">
+                                        <motion.button
+                                          type="button"
+                                          whileHover={{ scale: 1.05 }}
+                                          whileTap={{ scale: 0.95 }}
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            if (navigator.vibrate) {
+                                              navigator.vibrate(10);
+                                            }
+                                            const shareUrl = getRequestShareUrl(
+                                              req.id,
+                                            );
+                                            try {
+                                              if (navigator.share) {
+                                                await navigator.share({
+                                                  title: req.title,
+                                                  text: `${req.title}\n${
+                                                    req.description?.substring(
+                                                      0,
+                                                      100,
+                                                    ) || ""
+                                                  }...\n\nشاهد الطلب على أبيلي`,
+                                                  url: shareUrl,
+                                                });
+                                              } else {
+                                                await copyShareUrl("request", {
+                                                  requestId: req.id,
+                                                });
+                                              }
+                                            } catch (err) {
+                                              logger.error("Share failed", err);
+                                            }
+                                          }}
+                                          onPointerDown={(e) =>
+                                            e.stopPropagation()}
+                                          onTouchStart={(e) =>
+                                            e.stopPropagation()}
+                                          className="flex-1 h-8 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 bg-secondary/50 hover:bg-secondary border border-border/50 text-foreground/70 hover:text-foreground transition-colors"
+                                          title="مشاركة"
+                                        >
+                                          <Share2 size={14} />
+                                          <span>مشاركة</span>
+                                        </motion.button>
+
+                                        <motion.button
+                                          type="button"
+                                          whileHover={{ scale: 1.05 }}
+                                          whileTap={{ scale: 0.95 }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (navigator.vibrate) {
+                                              navigator.vibrate(10);
+                                            }
+                                            handleReportRequest(req.id);
+                                          }}
+                                          onPointerDown={(e) =>
+                                            e.stopPropagation()}
+                                          onTouchStart={(e) =>
+                                            e.stopPropagation()}
+                                          className="flex-1 h-8 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 bg-secondary/50 hover:bg-secondary border border-border/50 text-foreground/70 hover:text-foreground transition-colors"
+                                          title="إبلاغ"
+                                        >
+                                          <Flag size={14} />
+                                          <span>إبلاغ</span>
+                                        </motion.button>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              );
-                            })}
-                          </motion.div>
-                        </div>
-                      </div>
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </motion.div>
                     </motion.div>
                   )}
               </AnimatePresence>

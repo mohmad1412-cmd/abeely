@@ -1103,14 +1103,14 @@ export const Profile: React.FC<ProfileProps> = ({
                       />
                       التصنيفات والمهام
                       {tempCategories.length > 0 && (
-                        <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full bg-primary text-white px-1.5 text-[10px] font-bold">
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary text-white text-[10px] font-bold aspect-square">
                           {tempCategories.length}
                         </span>
                       )}
                     </h3>
                     <motion.div
                       animate={{ rotate: isCategoriesExpanded ? 180 : 0 }}
-                      transition={{ duration: 0.2 }}
+                      transition={{ duration: 0.1, ease: "easeOut" }}
                     >
                       <ChevronDown
                         size={18}
@@ -1124,7 +1124,7 @@ export const Profile: React.FC<ProfileProps> = ({
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
                         className="overflow-hidden space-y-3"
                       >
                         <div className="relative mt-3">
@@ -1193,7 +1193,7 @@ export const Profile: React.FC<ProfileProps> = ({
                     </h3>
                     <motion.div
                       animate={{ rotate: isCitiesExpanded ? 180 : 0 }}
-                      transition={{ duration: 0.2 }}
+                      transition={{ duration: 0.1, ease: "easeOut" }}
                     >
                       <ChevronDown
                         size={18}
@@ -1207,7 +1207,7 @@ export const Profile: React.FC<ProfileProps> = ({
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
                         className="overflow-hidden space-y-3"
                       >
                         {/* Options: جميع المدن or مدن محددة */}

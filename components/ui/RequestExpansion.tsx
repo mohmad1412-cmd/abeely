@@ -1,92 +1,99 @@
 import React from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  DollarSign,
-  Flag,
-  Hash,
-  MapPin,
-  MessageCircle,
-  Send,
-  Share2,
-} from "lucide-react";
-import { Category, Offer, Request, SupportedLocale, getCategoryLabel } from "../../types.ts";
+import { motion } from "framer-motion";
+import { ChevronLeft, ChevronRight, Clock, MessageCircle } from "lucide-react";
+import { Category, Offer, Request, SupportedLocale } from "../../types.ts";
 import { Button } from "./Button.tsx";
 import { HighlightedText } from "./HighlightedText.tsx";
-import { getKnownCategoryColor } from "../../utils/categoryColors.ts";
-import { CategoryIcon } from "./CategoryIcon.tsx";
+import { getOfferStatusConfig } from "../../utils/statusConfig.ts";
+import { supabase } from "../../services/supabaseClient.ts";
+import { logger } from "../../utils/logger.ts";
+import { ImageViewerModal } from "./ImageViewerModal.tsx";
 
 interface RequestExpansionProps {
   request: Request;
   isMyRequest: boolean;
   radarWords?: string[];
-  onMakeOffer?: () => void;
   onReport?: () => void;
   onShare?: () => void;
   onEdit?: () => void;
   onBump?: () => void;
-  _onArchive?: () => void;
   receivedOffers?: Offer[];
   unreadMessagesPerOffer?: Map<string, number>;
   onOpenChat?: (offer: Offer) => void;
   onSelectOffer?: (offer: Offer) => void;
-  children?: React.ReactNode; // For additional content
+  children?: React.ReactNode;
   categories?: Category[];
   locale?: SupportedLocale;
-  hasMyOffer?: boolean; // If user already made an offer
+  hasMyOffer?: boolean;
 }
 
 export const RequestExpansion: React.FC<RequestExpansionProps> = ({
   request,
   isMyRequest,
   radarWords = [],
-  onMakeOffer,
-  onReport,
-  onShare,
-  onEdit,
-  onBump,
+  onReport: _onReport,
+  onShare: _onShare,
+  onEdit: _onEdit,
+  onBump: _onBump,
   receivedOffers = [],
   unreadMessagesPerOffer = new Map(),
   onOpenChat,
   onSelectOffer,
   children,
-  categories = [],
-  locale = "ar",
-  hasMyOffer = false,
+  categories: _categories = [],
+  locale: _locale = "ar",
+  hasMyOffer: _hasMyOffer = false,
 }) => {
   const [currentImageIndex, setCurrentImageIndex] = React.useState(0);
-  const [isZoomed, setIsZoomed] = React.useState(false);
-  const imageRef = React.useRef<HTMLImageElement>(null);
+  const [isViewerOpen, setIsViewerOpen] = React.useState(false);
+  const [providerNamesMap, setProviderNamesMap] = React.useState<
+    Map<string, string>
+  >(new Map());
 
-  // Reset zoom when image changes
+  // Fetch provider names from profiles if providerName is "مزود خدمة"
   React.useEffect(() => {
-    setIsZoomed(false);
-  }, [currentImageIndex]);
-
-  const categoriesDisplay = React.useMemo(() => {
-    if (!request.categories || request.categories.length === 0) return [];
-
-    return request.categories.slice(0, 3).map((catLabel, idx) => {
-      const categoryObj = categories.find((c) =>
-        c.label === catLabel || c.id === catLabel
+    const fetchProviderNames = async () => {
+      const offersNeedingNames = receivedOffers.filter(
+        (offer) =>
+          (!offer.providerName || offer.providerName === "مزود خدمة") &&
+          offer.providerId,
       );
-      const displayLabel = categoryObj
-        ? getCategoryLabel(categoryObj, locale)
-        : catLabel;
-      const categoryId = categoryObj?.id || catLabel;
 
-      return {
-        id: categoryId,
-        label: displayLabel,
-        icon: categoryObj?.icon,
-        emoji: categoryObj?.emoji,
-        color: getKnownCategoryColor(categoryId),
-        key: `${categoryId}-${idx}`,
-      };
-    });
-  }, [request.categories, categories, locale]);
+      if (offersNeedingNames.length === 0) return;
+
+      const providerIds = offersNeedingNames
+        .map((offer) => offer.providerId)
+        .filter((id): id is string => !!id);
+
+      if (providerIds.length === 0) return;
+
+      try {
+        const { data: profiles, error } = await supabase
+          .from("profiles")
+          .select("id, display_name")
+          .in("id", providerIds);
+
+        if (error) {
+          logger.warn("Failed to fetch provider names:", error);
+          return;
+        }
+
+        if (profiles) {
+          const newMap = new Map<string, string>();
+          profiles.forEach((profile) => {
+            if (profile.display_name && profile.display_name.trim()) {
+              newMap.set(profile.id, profile.display_name.trim());
+            }
+          });
+          setProviderNamesMap(newMap);
+        }
+      } catch (err) {
+        logger.error("Error fetching provider names:", err);
+      }
+    };
+
+    fetchProviderNames();
+  }, [receivedOffers]);
 
   const deliveryInfo = React.useMemo(() => {
     if (!request.deliveryTimeFrom && request.deliveryTimeType !== "immediate") {
@@ -95,14 +102,15 @@ export const RequestExpansion: React.FC<RequestExpansionProps> = ({
 
     let deliveryLabel = "";
     const timeFrom = request.deliveryTimeFrom?.toLowerCase() || "";
-    
+
     if (request.deliveryTimeType === "immediate" || timeFrom.includes("فوراً")) {
       deliveryLabel = "التنفيذ فوراً";
     } else if (timeFrom.includes("يوم واحد")) {
       deliveryLabel = "التنفيذ خلال يوم واحد";
     } else if (request.deliveryTimeFrom) {
       if (request.deliveryTimeTo) {
-        deliveryLabel = `التنفيذ خلال (${request.deliveryTimeFrom} - ${request.deliveryTimeTo})`;
+        deliveryLabel =
+          `التنفيذ خلال (${request.deliveryTimeFrom} - ${request.deliveryTimeTo})`;
       } else {
         deliveryLabel = `التنفيذ خلال (${request.deliveryTimeFrom})`;
       }
@@ -150,17 +158,15 @@ export const RequestExpansion: React.FC<RequestExpansionProps> = ({
   }, [receivedOffers, unreadMessagesPerOffer]);
 
   const nextImage = (e?: React.MouseEvent | React.PointerEvent) => {
-    if (e) e.stopPropagation();
-    if (request.images) {
-      setIsZoomed(false);
+    if (e && "stopPropagation" in e) e.stopPropagation();
+    if (request.images && request.images.length > 1) {
       setCurrentImageIndex((prev) => (prev + 1) % request.images!.length);
     }
   };
 
   const prevImage = (e?: React.MouseEvent | React.PointerEvent) => {
-    if (e) e.stopPropagation();
-    if (request.images) {
-      setIsZoomed(false);
+    if (e && "stopPropagation" in e) e.stopPropagation();
+    if (request.images && request.images.length > 1) {
       setCurrentImageIndex((prev) =>
         (prev - 1 + request.images!.length) % request.images!.length
       );
@@ -171,186 +177,224 @@ export const RequestExpansion: React.FC<RequestExpansionProps> = ({
     <div className="pt-0 px-4 space-y-4">
       {deliveryInfo && (
         <div
-          className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap text-right rounded-xl border border-border/40 bg-secondary/20 p-3 -mx-4 mt-4"
+          className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap text-right rounded-xl border border-border/40 bg-secondary/20 p-3 -mx-4 mt-2 shadow-sm"
           dir="rtl"
         >
+          <div className="flex items-center gap-2 mb-1 text-primary">
+            <Clock size={14} />
+            <span className="font-bold text-[11px]">موعد التنفيذ المتوقع:</span>
+          </div>
           {deliveryInfo.value}
         </div>
       )}
 
       {/* 2. Description */}
       <div
-        className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap text-right rounded-xl border border-border/40 bg-secondary/20 pt-3 px-3 pb-4 -mx-4 mt-4"
+        className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap text-right rounded-xl border border-border/40 bg-secondary/20 pt-3 px-3 pb-4 -mx-4 mt-4 shadow-sm"
         dir="rtl"
       >
         <HighlightedText text={request.description || ""} words={radarWords} />
       </div>
 
-      {/* 3. Images & Attachments Slider */}
+      {/* 3. Images Slider */}
       {request.images && request.images.length > 0 && (
-        <div className={`relative group rounded-xl ${isZoomed ? "overflow-auto" : "overflow-hidden"} bg-secondary/20 aspect-video -mx-4`}>
-          <motion.div
-            className="relative w-full h-full flex"
-            animate={{ x: `-${currentImageIndex * 100}%` }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            drag={!isZoomed ? "x" : false}
-            dragDirectionLock
-            dragElastic={0.15}
-            dragMomentum={false}
-            onDragEnd={(e, { offset, velocity }) => {
-              if (isZoomed) return;
-              const threshold = 80;
-              const velocityThreshold = 300;
-              if (offset.x < -threshold || velocity.x < -velocityThreshold) {
-                nextImage(e as any);
-              } else if (offset.x > threshold || velocity.x > velocityThreshold) {
-                prevImage(e as any);
-              }
-            }}
+        <>
+          <div
+            className={`relative group rounded-2xl overflow-hidden bg-secondary/10 aspect-video -mx-4 shadow-inner border border-border/20`}
           >
-            {request.images.map((image, index) => (
-              <motion.img
-                key={index}
-                ref={index === currentImageIndex ? imageRef : null}
-                src={image}
-                alt="Request image"
-                className={`w-full h-full shrink-0 object-cover ${isZoomed ? "cursor-zoom-out" : "cursor-grab active:cursor-grabbing"}`}
-                animate={{
-                  scale: isZoomed && index === currentImageIndex ? 2 : 1,
-                }}
-                transition={{ duration: 0.2, ease: "easeOut" }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (index === currentImageIndex) {
-                    setIsZoomed(!isZoomed);
-                  }
-                }}
-                style={{ transformOrigin: "center center" }}
-                draggable={false}
-              />
-            ))}
-          </motion.div>
-
-          {request.images.length > 1 && (
-            <>
-              <button
-                type="button"
-                onClick={prevImage}
-                className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              <button
-                type="button"
-                onClick={nextImage}
-                className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <ChevronRight size={20} />
-              </button>
-              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-                {request.images.map((_, i: number) => (
-                  <div
-                    key={i}
-                    className={`w-1.5 h-1.5 rounded-full transition-all ${
-                      i === currentImageIndex ? "bg-white w-3" : "bg-white/40"
-                    }`}
+            <motion.div
+              className="h-full flex"
+              drag={request.images.length > 1 ? "x" : false}
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.2}
+              onDragEnd={(_, info) => {
+                const threshold = 50;
+                if (info.offset.x < -threshold) {
+                  nextImage();
+                } else if (info.offset.x > threshold) {
+                  prevImage();
+                }
+              }}
+              animate={{ x: `-${currentImageIndex * 100}%` }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              style={{ width: `${request.images.length * 100}%` }}
+            >
+              {request.images.map((image, index) => (
+                <div
+                  key={index}
+                  className="w-full h-full relative shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsViewerOpen(true);
+                  }}
+                >
+                  <motion.img
+                    src={image}
+                    alt="Request content"
+                    className="w-full h-full object-cover select-none pointer-events-none transition-all duration-300 group-hover:scale-105 cursor-pointer"
                   />
-                ))}
+                  <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/25 to-transparent pointer-events-none" />
+                </div>
+              ))}
+            </motion.div>
+
+            {request.images.length > 1 && (
+              <>
+                {/* Desktop arrows - small & neat */}
+                <button
+                  type="button"
+                  onClick={prevImage}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/20 backdrop-blur-md flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all border border-white/10 hidden md:flex"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={nextImage}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/20 backdrop-blur-md flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all border border-white/10 hidden md:flex"
+                >
+                  <ChevronRight size={18} />
+                </button>
+
+                {/* Pagination indicators - pill style */}
+                <div className="absolute bottom-3 right-1/2 translate-x-1/2 flex gap-1.5 z-10 bg-black/25 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/5">
+                  {request.images.map((_, i) => (
+                    <button
+                      type="button"
+                      key={i}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCurrentImageIndex(i);
+                      }}
+                      className={`h-1 rounded-full transition-all duration-300 ${
+                        i === currentImageIndex ? "bg-white w-4" : "bg-white/40"
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                {/* Photo Counter */}
+                <div className="absolute top-3 left-3 z-10 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/5 text-[10px] font-bold text-white/95 shadow-sm">
+                  {currentImageIndex + 1} / {request.images.length}
+                </div>
+              </>
+            )}
+
+            {currentImageIndex === 0 && (
+              <div className="absolute top-3 right-3 z-10 bg-black/25 backdrop-blur-sm px-2.5 py-1 rounded-lg border border-white/5 text-[9px] font-medium text-white/90 pointer-events-none">
+                انقر للفتح
               </div>
-            </>
-          )}
-        </div>
+            )}
+          </div>
+
+          <ImageViewerModal
+            images={request.images ?? []}
+            initialIndex={currentImageIndex}
+            isOpen={isViewerOpen}
+            onClose={() => setIsViewerOpen(false)}
+          />
+        </>
       )}
 
       {/* 5. Received Offers (My Requests Only) */}
       {isMyRequest && receivedOffers.length > 0 && (
-        <div
-          className="mt-4 pt-4 border-t border-border/40 text-right"
-          dir="rtl"
-        >
-          <div className="flex items-center justify-between mb-3 px-1">
-            <span className="text-xs font-bold text-muted-foreground">
-              العروض المستلمة ({receivedOffers.length})
-            </span>
-          </div>
-          <div className="max-h-60 overflow-y-auto pr-1 space-y-2 custom-scrollbar">
-            {sortedOffers.map((offer) => {
-              const isAccepted = offer.status === "accepted";
-              const isNegotiating = offer.status === "negotiating";
-              const unreadCount = unreadMessagesPerOffer.get(offer.id) || 0;
-              const statusLabel = isAccepted
-                ? "مقبول"
-                : isNegotiating
-                ? "تفاوض"
-                : "قيد المراجعة";
-              const statusClass = isAccepted
-                ? "bg-emerald-500/15 text-emerald-600 border-emerald-500/30"
-                : isNegotiating
-                ? "bg-amber-500/15 text-amber-600 border-amber-500/30"
-                : "bg-secondary/70 text-muted-foreground border-border/40";
+        <>
+          <div className="w-full h-px bg-border/20 my-4" />
+          <div className="text-right" dir="rtl">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <span className="text-xs font-black text-muted-foreground uppercase tracking-wider">
+                العروض المستلمة ({receivedOffers.length})
+              </span>
+            </div>
+            <div className="max-h-60 overflow-y-auto pr-1 space-y-2.5 custom-scrollbar">
+              {sortedOffers.map((offer) => {
+                const isAccepted = offer.status === "accepted";
+                const isNegotiating = offer.status === "negotiating";
+                const unreadCount = unreadMessagesPerOffer.get(offer.id) || 0;
+                const statusLabel = isAccepted
+                  ? "مقبول"
+                  : isNegotiating
+                  ? "تفاوض"
+                  : "قيد المراجعة";
+                const statusConfig = getOfferStatusConfig(offer.status);
+                const statusClass =
+                  `${statusConfig.bgColor} ${statusConfig.textColor} ${statusConfig.borderColor} border`;
 
-              return (
-                <div
-                  key={offer.id}
-                  onClick={() => onSelectOffer?.(offer)}
-                  className={`p-3 rounded-xl border transition-all active:scale-[0.98] ${
-                    isAccepted
-                      ? "bg-primary/5 border-primary/20 ring-1 ring-primary/10"
-                      : "bg-secondary/40 border-border/40 hover:bg-secondary/60"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-bold text-foreground truncate">
-                          {offer.providerName || "مزود خدمة"}
+                return (
+                  <div
+                    key={offer.id}
+                    onClick={() => onSelectOffer?.(offer)}
+                    className={`p-3.5 rounded-2xl border transition-all active:scale-[0.98] cursor-pointer shadow-sm hover:shadow-md ${
+                      isAccepted
+                        ? "bg-primary/[0.03] border-primary/20 ring-1 ring-primary/5"
+                        : "bg-secondary/20 border-border/40 hover:bg-secondary/30"
+                    }`}
+                  >
+                    <div className="mb-1.5">
+                      <span className="text-sm font-black text-foreground truncate block">
+                        {(() => {
+                          if (
+                            (!offer.providerName ||
+                              offer.providerName === "مزود خدمة") &&
+                            offer.providerId
+                          ) {
+                            const cachedName = providerNamesMap.get(
+                              offer.providerId,
+                            );
+                            return cachedName || offer.providerName ||
+                              "مزود خدمة";
+                          }
+                          return offer.providerName || "مزود خدمة";
+                        })()}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground flex-wrap">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <span className="font-black text-primary text-[13px]">
+                          {offer.price} ر.س
                         </span>
                         <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded-full border font-bold ${statusClass}`}
+                          className={`text-[9px] px-2 py-0.5 rounded-full border font-black uppercase ${statusClass}`}
                         >
                           {statusLabel}
                         </span>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="font-bold text-primary">
-                          {offer.price} ر.س
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock size={12} />
-                          {offer.deliveryTime}
-                        </span>
-                      </div>
-                    </div>
-
-                    {(isAccepted || isNegotiating) && onOpenChat && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={(e: React.MouseEvent) => {
-                          e.stopPropagation();
-                          onOpenChat(offer);
-                        }}
-                        className="h-8 px-3 rounded-lg gap-1.5 relative shrink-0"
-                      >
-                        <MessageCircle size={14} />
-                        محادثة
-                        {unreadCount > 0 && (
-                          <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold">
-                            {unreadCount > 9 ? "+9" : unreadCount}
+                        {offer.deliveryTime && (
+                          <span className="flex items-center gap-1 opacity-80">
+                            <Clock size={10} />
+                            {offer.deliveryTime}
                           </span>
                         )}
-                      </Button>
-                    )}
+                      </div>
+                      {(isAccepted || isNegotiating) && onOpenChat && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={(e: React.MouseEvent) => {
+                            e.stopPropagation();
+                            onOpenChat(offer);
+                          }}
+                          className="h-8.5 px-4 rounded-xl gap-2 relative shrink-0 font-bold shadow-sm"
+                        >
+                          <MessageCircle size={14} />
+                          محادثة
+                          {unreadCount > 0 && (
+                            <span className="absolute -top-1.5 -right-1.5 w-[18px] h-[18px] bg-destructive text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-lg border-2 border-background animate-bounce">
+                              {unreadCount > 9 ? "9+" : unreadCount}
+                            </span>
+                          )}
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {children && (
-        <div className="mt-4 pt-4 border-t border-border/40 mb-4">
+        <div className="mt-4 pt-4 border-t border-border/20 mb-4">
           {children}
         </div>
       )}

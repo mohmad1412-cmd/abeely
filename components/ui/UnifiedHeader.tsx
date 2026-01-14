@@ -301,7 +301,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                 <motion.span
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
-                  className="absolute -top-2.5 -left-2.5 min-w-[20px] h-[20px] px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg z-30 border-2 border-white dark:border-gray-900"
+                  className="absolute -top-2.5 -left-2.5 w-[20px] h-[20px] bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg z-30 border-2 border-white dark:border-gray-900 aspect-square"
                 >
                   {myRequestOffersCount}
                 </motion.span>
@@ -1471,7 +1471,7 @@ export const UnifiedHeader: React.FC<UnifiedHeaderProps> = ({
                         <motion.span
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
-                          className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center shadow-md"
+                          className="absolute -top-1.5 -right-1.5 w-[18px] h-[18px] rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center shadow-md aspect-square"
                         >
                           {activeFiltersCount}
                         </motion.span>

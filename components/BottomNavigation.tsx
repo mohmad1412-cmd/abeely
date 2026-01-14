@@ -101,7 +101,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
       <motion.span
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
-        className="absolute -top-1.5 -right-3 min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow-md"
+        className="absolute -top-1.5 -right-3 w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow-md aspect-square"
       >
         {display}
       </motion.span>
@@ -270,7 +270,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
     <>
       {/* Mobile: Bottom Navigation */}
       <nav
-        className={`fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border shadow-lg safe-area-bottom md:hidden ${
+        className={`fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl backdrop-saturate-150 border-t border-border/50 shadow-lg safe-area-bottom md:hidden ${
           hideOnMobile ? "hidden" : ""
         }`}
       >
@@ -669,9 +669,18 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                   <div className="flex-1">
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log(
+                          "🔐 Login button clicked, calling onSignOut...",
+                        );
                         setIsProfileDropdownOpen(false);
-                        onSignOut?.();
+                        // إعطاء وقت للـ dropdown ليغلق قبل الانتقال
+                        setTimeout(() => {
+                          console.log("🔐 Calling onSignOut now...");
+                          onSignOut?.();
+                        }, 100);
                       }}
                       className="w-full text-right font-bold text-sm text-foreground hover:text-primary transition-colors"
                     >
@@ -1047,9 +1056,14 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                 {/* Sign Out / Sign In Button */}
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     setIsProfileDropdownOpen(false);
-                    onSignOut?.();
+                    // إعطاء وقت للـ dropdown ليغلق قبل الانتقال
+                    setTimeout(() => {
+                      onSignOut?.();
+                    }, 100);
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
                     isGuest

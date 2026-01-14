@@ -1137,7 +1137,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
                         className="overflow-hidden"
                       >
                         <div className="pt-3 space-y-3">
@@ -1303,7 +1303,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
                         className="overflow-hidden border-t border-border"
                       >
                         <div className="p-3 space-y-3">
@@ -1365,7 +1365,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
                         className="overflow-hidden border-t border-border"
                       >
                         <div className="p-3 space-y-3">
@@ -1531,7 +1531,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
                         className="overflow-hidden border-t border-border"
                       >
                         <div className="p-3 space-y-3">

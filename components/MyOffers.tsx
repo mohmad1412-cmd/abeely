@@ -488,7 +488,7 @@ export const MyOffers: React.FC<MyOffersProps> = ({
   return (
     <div
       ref={scrollContainerRef}
-      className="h-full overflow-x-hidden container mx-auto max-w-6xl relative no-scrollbar overflow-y-auto"
+      className="h-full overflow-x-hidden w-full mx-auto max-w-6xl relative no-scrollbar overflow-y-auto"
     >
       {/* Sticky Header Wrapper - Unified with main header - same structure as Marketplace */}
       <div
@@ -693,48 +693,6 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                               <AnimatePresence>
                                 {openFilterDropdownId === filter.id && (
                                   <>
-                                    {/* Backdrop - darkens screen and prevents interactions */}
-                                    <div
-                                      className="fixed inset-0 z-[110] bg-black/20 backdrop-blur-[1px] touch-none"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        e.nativeEvent
-                                          .stopImmediatePropagation();
-                                        setOpenFilterDropdownId(null);
-                                      }}
-                                      onTouchStart={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        e.nativeEvent
-                                          .stopImmediatePropagation();
-                                        setOpenFilterDropdownId(null);
-                                      }}
-                                      onTouchEnd={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        e.nativeEvent
-                                          .stopImmediatePropagation();
-                                        setOpenFilterDropdownId(null);
-                                      }}
-                                      onMouseDown={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        e.nativeEvent
-                                          .stopImmediatePropagation();
-                                      }}
-                                      onMouseUp={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        e.nativeEvent
-                                          .stopImmediatePropagation();
-                                        setOpenFilterDropdownId(null);
-                                      }}
-                                      style={{
-                                        touchAction: "none", // منع scroll والسلوك الافتراضي للـ touch events
-                                        pointerEvents: "auto",
-                                      }}
-                                    />
                                     <motion.div
                                       initial={{
                                         opacity: 0,
@@ -1024,6 +982,9 @@ export const MyOffers: React.FC<MyOffersProps> = ({
                 isMyOffersView={true}
                 showCategoriesInStatus={true}
                 radarWords={radarWords}
+                onCancelOffer={onArchiveOffer ? async (offerId: string) => {
+                  await onArchiveOffer(offerId);
+                } : undefined}
                 onRefresh={onRefresh
                   ? () => {
                     onRefresh();
